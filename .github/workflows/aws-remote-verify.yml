@@ -1,18 +1,8 @@
 name: AWS Remote Verify
 
 on:
-  push:
-    branches:
-      - feat/aws-native-phase-0-1
-    paths:
-      - src/**
-      - scripts/aws/**
-      - infra/aws/**
-      - package.json
-      - package-lock.json
-      - vitest.config.ts
-      - tsconfig.json
-      - .github/workflows/aws-remote-verify.yml
+  # Actions minutes: started once per deploy by aws-staging-deploy.yml (after the ECS rollout is
+  # verified), or by hand; not on every push.
   workflow_dispatch:
 
 permissions:
@@ -31,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -42,7 +32,19 @@ jobs:
           echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
           echo "Public site URL: $SITE"
 
+      # Round 15: the deep health check needs the token from Secrets Manager (see
+      # scripts/aws/health-check-token-header.sh for how the period before the deploy is handled).
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
       - name: Verify deployed Phase 4 runtime health
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+          ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
         run: |
           test -n "$SITE_URL" || (echo "Missing public site URL" >&2 && exit 1)
           HEALTH_URL="${SITE_URL%/}/api/health/phase4"
@@ -56,7 +58,12 @@ jobs:
           jq -e '.contentNetwork == true' /tmp/phase4-health.json >/dev/null || { echo "Expected Home content/network schema is not available to the running application." >&2; exit 1; }
 
           HOME_HEALTH_URL="${SITE_URL%/}/api/health/home"
-          HOME_HTTP_STATUS=$(curl --show-error --silent --max-time 45 --output /tmp/home-health.json --write-out '%{http_code}' "$HOME_HEALTH_URL")
+          HEALTH_HEADER_FILE="$(mktemp)"
+          trap 'rm -f -- "$HEALTH_HEADER_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          source scripts/aws/health-check-token-header.sh
+          write_health_check_header "$HEALTH_HEADER_FILE"
+          HOME_HTTP_STATUS=$(curl --show-error --silent --max-time 45 -H "@$HEALTH_HEADER_FILE" --output /tmp/home-health.json --write-out '%{http_code}' "$HOME_HEALTH_URL")
+          rm -f -- "$HEALTH_HEADER_FILE"
           echo "=== HOME RUNTIME STAGING HEALTH ==="
           echo "HTTP status: $HOME_HTTP_STATUS"
           jq . /tmp/home-health.json
@@ -171,7 +178,7 @@ jobs:
 
     steps:
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -469,13 +476,18 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
 
     steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
       - name: Validate staging OIDC configuration
         run: |
           test -n "${{ vars.AWS_ROLE_TO_ASSUME }}" || (echo "Missing staging variable AWS_ROLE_TO_ASSUME" && exit 1)
           test -n "$AWS_REGION" || (echo "Missing staging variable AWS_REGION" && exit 1)
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -496,7 +508,19 @@ jobs:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
           TRIGGER_SHA: ${{ github.sha }}
         run: |
-          jq -n --arg sha "$TRIGGER_SHA" '{commands:[("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/remote-verify.sh'\''") ]}' > /tmp/ssm-parameters.json
+          set -euo pipefail
+          [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA" --history
+          python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
+          import json, shlex, sys
+          import os, sys; sys.path.insert(0, os.path.join(os.environ["GITHUB_WORKSPACE"], "scripts", "aws")); from ci_checkout import host_update_worktree
+          sha = sys.argv[1]
+          script = f"""set -euo pipefail
+          {host_update_worktree('/home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1', sha)}
+          bash scripts/aws/remote-verify.sh
+          """
+          print(json.dumps({"commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore remote verify $TRIGGER_SHA" --timeout-seconds 1800 --parameters file:///tmp/ssm-parameters.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID" || (echo "SSM did not return a command ID." >&2 && exit 1)
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
@@ -520,3 +544,8 @@ jobs:
           FINAL_STATUS=$(jq -r '.Status' /tmp/ssm-result.json)
           echo "SSM final status: $FINAL_STATUS"
           if [ "$FINAL_STATUS" != "Success" ]; then exit 1; fi
+
+      - name: Delete the host checkout bundle
+        if: always()
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup

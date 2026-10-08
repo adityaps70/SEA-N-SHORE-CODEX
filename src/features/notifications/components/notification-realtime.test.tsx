@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   markNotificationRead: vi.fn(async () => ({ ok: true as const })),
   markAllNotificationsRead: vi.fn(async () => ({ ok: true as const })),
   loadNotificationChrome: vi.fn(),
+  loadUnreadNotificationCount: vi.fn(),
   loadNotifications: vi.fn(),
 }))
 
@@ -21,6 +22,7 @@ vi.mock('../actions', () => ({
   markNotificationRead: mocks.markNotificationRead,
   markAllNotificationsRead: mocks.markAllNotificationsRead,
   loadNotificationChrome: mocks.loadNotificationChrome,
+  loadUnreadNotificationCount: mocks.loadUnreadNotificationCount,
   loadNotifications: mocks.loadNotifications,
 }))
 
@@ -61,11 +63,13 @@ describe('notification incremental freshness', () => {
     mocks.markNotificationRead.mockClear()
     mocks.markAllNotificationsRead.mockClear()
     mocks.loadNotificationChrome.mockReset()
+    mocks.loadUnreadNotificationCount.mockReset()
     mocks.loadNotifications.mockReset()
     mocks.loadNotificationChrome.mockResolvedValue({
       ok: true,
       chrome: { recent: [fresh, current], unreadCount: 2 },
     })
+    mocks.loadUnreadNotificationCount.mockResolvedValue({ ok: true, unreadCount: 2 })
     mocks.loadNotifications.mockResolvedValue({ ok: true, notifications: [fresh, current] })
   })
 
@@ -78,12 +82,26 @@ describe('notification incremental freshness', () => {
   it('refreshes the bell snapshot every 30 seconds without a route refresh', async () => {
     render(<NotificationBell recent={[current]} unreadCount={1} />)
 
+    // Round 14 (3.9): a closed bell polls only the unread count; the list loads when it opens.
     await act(async () => { vi.advanceTimersByTime(30_000) })
-    await waitFor(() => expect(mocks.loadNotificationChrome).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mocks.loadUnreadNotificationCount).toHaveBeenCalledTimes(1))
+    expect(mocks.loadNotificationChrome).not.toHaveBeenCalled()
 
     expect(screen.getByText('2')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     expect(await screen.findByText('Neha commented on your post.')).toBeInTheDocument()
+    expect(mocks.loadNotificationChrome).toHaveBeenCalledTimes(1)
+    expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
+  it('reloads the open panel list every 30 seconds', async () => {
+    render(<NotificationBell unreadCount={1} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    await waitFor(() => expect(mocks.loadNotificationChrome).toHaveBeenCalledTimes(1))
+
+    await act(async () => { vi.advanceTimersByTime(30_000) })
+    await waitFor(() => expect(mocks.loadNotificationChrome).toHaveBeenCalledTimes(2))
+    expect(mocks.loadUnreadNotificationCount).not.toHaveBeenCalled()
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 

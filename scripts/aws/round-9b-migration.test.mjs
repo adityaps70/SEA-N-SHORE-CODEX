@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
+import fs, { readdirSync, readFileSync } from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const migrations = [
   '0055_community_groups_tagging',
   '0056_community_tagging_notifications',
 ]
 const script = fs.readFileSync('scripts/aws/round-9b-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/round-9b-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/round-9b-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-round-9b-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))
@@ -28,6 +29,12 @@ assert.deepEqual([...order].sort((a, b) => a - b), order)
 
 assert.match(script, /310356785722/)
 assert.match(script, /ROUND_9B_MIGRATION_EXPECTED_SHA/)
+// The SHA guard accepts every hex digit (a [0-9b-f] typo once refused any SHA containing an 'a').
+assert.match(script, /"\$\{ROUND_9B_MIGRATION_EXPECTED_SHA:-\}" =~ \^\[0-9a-f\]\{40\}\$/)
+for (const name of readdirSync(new URL('./', import.meta.url)).filter((n) => n.endsWith('.sh'))) {
+  const source = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
+  for (const m of source.matchAll(/\[([^[\]]*)\]\{40\}/g)) assert.equal(m[1], '0-9a-f', `${name}: ${m[0]}`)
+}
 assert.match(script, /plan\|migrate-once/)
 assert.match(script, /begin-transaction/)
 assert.match(script, /commit-transaction/)
@@ -37,7 +44,7 @@ assert.match(script, /sea_n_shore_applied_migrations/)
 assert.match(script, /ROUND_9B_MIGRATION_PLAN_ONLY_NO_APPLY/)
 assert.match(script, /ROUND_9B_MIGRATION_APPLY_VERIFIED=true/)
 assert.match(script, /ROUND_9B_MIGRATION_ALREADY_APPLIED=true/)
-assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
 
 assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
 assert.match(workflow, /Guard migration against a moved branch/)

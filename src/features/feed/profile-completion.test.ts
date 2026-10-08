@@ -106,3 +106,21 @@ describe('nextProfileCompletionHint', () => {
     expect(nextProfileCompletionHint(profile(), completePortfolio)).toBeNull()
   })
 })
+
+describe('profile completion for personas without credentials (round 11)', () => {
+  it('never asks a maritime enthusiast or a seafarer family member for credentials', () => {
+    for (const persona of ['maritime_enthusiast', 'seafarer_family'] as const) {
+      const member = profile({
+        profileType: 'maritime_professional',
+        persona,
+        communityRelationship: persona === 'seafarer_family' ? 'Spouse of a Chief Engineer' : null,
+        rank: null,
+        currentCompany: null,
+        sailingExperienceYears: null,
+      })
+      expect(calculateProfileCompletion(member, { experienceCount: 0, credentialCount: 0 })).toBe(100)
+      expect(nextProfileCompletionHint(member, { experienceCount: 0, credentialCount: 0 })).toBeNull()
+    }
+  })
+})
+

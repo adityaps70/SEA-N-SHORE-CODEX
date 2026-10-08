@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const workflowPath = '.github/workflows/aws-onboarding-e2e.yml'
 const actionPath = 'scripts/aws/onboarding-e2e-action.txt'
@@ -8,7 +9,7 @@ const browserScriptPath = 'scripts/aws/onboarding-staging-e2e.mjs'
 const persistenceAuditPath = 'scripts/aws/onboarding-e2e-persistence-audit.sh'
 
 test('onboarding e2e is safe by default and branch-scoped with exact-head CI gating', () => {
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   assert.ok(['plan', 'probe', 'run-once'].includes(action), `Unexpected onboarding e2e action: ${action}`)
 
   const workflow = readFileSync(workflowPath, 'utf8')
@@ -187,6 +188,26 @@ test('admin confirmation proves deferred signups exist and surfaces Cognito fail
   assert.match(waitBlock, /ONBOARDING E2E ADMIN CONFIRM STDERR/)
 })
 
+test('once Cognito email goes through Resend, every disposable sign-up must be decrypted by the sender', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const confirmStart = workflow.indexOf('- name: Confirm disposable sign-ups through staging bootstrap')
+  const confirmEnd = workflow.indexOf('- name: Wait for disposable sign-up confirmation')
+  const confirmBlock = workflow.slice(confirmStart, confirmEnd)
+  assert.match(confirmBlock, /SENDER_FN=sea-n-shore-staging-cognito-resend-email-sender/)
+  assert.match(confirmBlock, /UserPool\.LambdaConfig\.CustomEmailSender\.LambdaArn/)
+  assert.match(confirmBlock, /EXPECTED=\{len\(emails\)\}/)
+  assert.match(confirmBlock, /reserved_recipient/)
+  assert.match(confirmBlock, /\?\\"decrypt_failed\\" \?\\"send_failed\\" \?\\"no_recipient\\"/)
+  assert.match(confirmBlock, /ONBOARDING_E2E_RESEND_SENDER_VERIFIED=true/)
+  assert.match(confirmBlock, /ONBOARDING_E2E_RESEND_SENDER_VERIFIED=not-enabled/)
+  // filter-log-events prints one count per result page ("8\n0"); both counts must be summed.
+  assert.equal((confirmBlock.match(/--query 'length\(events\)' --output text \| awk '\{\{s \+= \$1\}\} END \{\{print s \+ 0\}\}'/g) ?? []).length, 2)
+
+  const waitEnd = workflow.indexOf('- name: Run staging sign-in and onboarding browser journeys')
+  const waitBlock = workflow.slice(confirmEnd, waitEnd)
+  assert.match(waitBlock, /\^ONBOARDING_E2E_RESEND_SENDER_VERIFIED=\(true\|not-enabled\)\$/)
+})
+
 test('public signup is quota-aware and creates all eight persona accounts', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
@@ -229,7 +250,13 @@ test('run-once performs a public sign-up smoke check, eight persona journeys and
   assert.match(browserScript, /Training specialization/)
   assert.match(browserScript, /Institute \/ academy/)
   assert.match(browserScript, /Relationship to the maritime community/)
-  assert.match(browserScript, /How would you describe yourself\?/)
+  // Round 12: "Other" gives an occupation instead of "How would you describe yourself?"; ranks are picked.
+  assert.match(browserScript, /Occupation \\\/ role/)
+  assert.match(browserScript, /selectOption\(value\)/)
+  assert.match(browserScript, /'Department', 'deck_officers'/)
+  assert.match(browserScript, /'Current or most recent rank', 'master'/)
+  assert.match(browserScript, /'Target job role \(rank \/ role\)', 'third_officer'/)
+  assert.match(browserScript, /ONBOARDING_E2E_ENTHUSIAST_SEA_JOB_REFUSED_VERIFIED=true/)
   assert.match(browserScript, /ONBOARDING_E2E_ALL_PERSONAS_VERIFIED=true/)
   assert.match(browserScript, /\/home/)
   assert.match(browserScript, /\/profile/)
@@ -337,3 +364,94 @@ test('confirmation shell variables do not leak into the Python f-string', () => 
   assert.match(confirmBlock, /Unexpected Cognito UserStatus for disposable user \$EMAIL: \$USER_STATUS/)
 })
 
+
+test('the sea job gate runs against a temporary sea job that is always removed (Round 14)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const seaJob = readFileSync('scripts/aws/onboarding-e2e-sea-job.sh', 'utf8')
+  const seaJobSsm = readFileSync('scripts/aws/onboarding-e2e-sea-job-ssm.sh', 'utf8')
+
+  assert.match(workflow, /- scripts\/aws\/onboarding-e2e-sea-job\.sh/)
+  assert.match(workflow, /- scripts\/aws\/onboarding-e2e-sea-job-ssm\.sh/)
+  const create = workflow.indexOf('- name: Create the temporary sea job through staging bootstrap')
+  const verify = workflow.indexOf('- name: Verify a Maritime Enthusiast is refused on the temporary sea job')
+  const cleanup = workflow.indexOf('- name: Close and delete the temporary sea job')
+  assert.ok(workflow.indexOf('id: journeys') < create && create < verify && verify < cleanup)
+  assert.match(workflow.slice(verify, cleanup), /E2E_PHASE: seajob/)
+  const cleanupStep = workflow.slice(cleanup, workflow.indexOf('- name:', cleanup + 10))
+  assert.match(cleanupStep, /if: always\(\)/)
+  assert.match(cleanupStep, /onboarding-e2e-sea-job-ssm\.sh cleanup/)
+  assert.match(cleanupStep, /ONBOARDING_E2E_TEMP_SEA_JOB_CLEANUP_VERIFIED=true/)
+
+  assert.match(browserScript, /\['signup', 'journeys', 'seajob'\]/)
+  assert.match(browserScript, /E2E_TEMP_SEA_JOB_ID is required for the sea job phase/)
+  assert.match(browserScript, /Expected the temporary sea job in the sea jobs list/)
+  assert.match(browserScript, /This role is for seafarers\. Update your profile type if this is wrong\./)
+  assert.match(browserScript, /\{ name: \/\^\(Easy Apply\|Apply now\)\$\/ \}\)\)\.toHaveCount\(0\)/)
+
+  // Only this run's job: its exact title and this run's E2E recruiter; never a pattern across runs.
+  assert.match(seaJob, /\^sea-n-shore-e2e-\$\{E2E_RUN_ID\}-recruiter@example\\\.com\$/)
+  assert.match(seaJob, /JOB_TITLE="E2E temporary sea job \$\{E2E_RUN_ID\}"/)
+  assert.match(seaJob, /ia\.email = '\$\{E2E_RECRUITER_EMAIL\}' AND j\.title = '\$\{JOB_TITLE\}'/)
+  assert.doesNotMatch(seaJob, /title ~|email ~/)
+  assert.match(seaJob, /refusing to create another/)
+  assert.match(seaJob, /Expected at most one temporary sea job for this run/)
+  const deletes = seaJob.match(/DELETE FROM [^"]+/g) ?? []
+  assert.deepEqual(deletes, [
+    'DELETE FROM public.job_applications WHERE job_id = (${RUN_JOB_SQL})',
+    'DELETE FROM public.jobs WHERE id = (${RUN_JOB_SQL})',
+  ])
+  assert.match(seaJob, /status = 'closed'::public\.job_listing_status/)
+  assert.match(seaJob, /ONBOARDING_E2E_TEMP_SEA_JOB_CLEANUP_VERIFIED=true/)
+  assert.match(seaJobSsm, /\{host_checkout\('\$WORK_DIR', sha\)\}/)
+  assert.match(seaJobSsm, /bash scripts\/aws\/onboarding-e2e-sea-job\.sh \{mode\}/)
+})
+
+test('the feed proof posts of a run are always removed, by exact body and exact author (Round 14)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const proof = readFileSync('scripts/aws/onboarding-e2e-feed-proof.sh', 'utf8')
+  const proofSsm = readFileSync('scripts/aws/onboarding-e2e-feed-proof-ssm.sh', 'utf8')
+  const stale = readFileSync('scripts/aws/onboarding-e2e-stale-feed-proof-runs.txt', 'utf8')
+  for (const path of ['onboarding-e2e-feed-proof.sh', 'onboarding-e2e-feed-proof-ssm.sh', 'onboarding-e2e-stale-feed-proof-runs.txt']) {
+    assert.match(workflow, new RegExp('- scripts/aws/' + path.replace(/[.]/g, '\\.')))
+  }
+  const avatar = workflow.indexOf('- name: Verify authenticated Home feed avatar hydration')
+  const cleanup = workflow.indexOf("- name: Remove this run's feed proof posts")
+  assert.ok(avatar > 0 && cleanup > avatar)
+  const step = workflow.slice(cleanup, workflow.indexOf('- name:', cleanup + 10))
+  assert.match(step, /if: always\(\)/)
+  assert.match(step, /onboarding-e2e-feed-proof-ssm\.sh/)
+  assert.match(step, /ONBOARDING_E2E_FEED_PROOF_CLEANUP_VERIFIED=true/)
+
+  // Exact authors and bodies per run; no patterns; a hard cap; proof that nothing is left.
+  assert.match(proof, /'sea-n-shore-e2e-\$\{run\}-seafarer@example\.com','sea-n-shore-e2e-\$\{run\}-shore@example\.com','sea-n-shore-e2e-\$\{run\}-enthusiast@example\.com'/)
+  assert.match(proof, /'Feed avatar hydration staging proof \$\{run\}','Feed avatar fallback staging proof \$\{run\}'/)
+  assert.match(proof, /ia\.email IN \(\$\{AUTHORS\}\) AND p\.body IN \(\$\{BODIES\}\)/)
+  assert.doesNotMatch(proof, / ~ | LIKE |ILIKE/)
+  assert.deepEqual(proof.match(/DELETE FROM [^"]+/g), ['DELETE FROM public.posts WHERE id IN (${PROOF_SQL})'])
+  assert.match(proof, /-le 2 \]\]/)
+  assert.match(proof, /Stale feed proof run ids must be numeric/)
+  assert.ok(stale.split('\n').filter((line) => line && !line.startsWith('#')).every((line) => /^\d+$/.test(line)))
+  assert.match(proofSsm, /\{host_checkout\('\$WORK_DIR', sha\)\}/)
+  assert.match(proofSsm, /bash scripts\/aws\/onboarding-e2e-feed-proof\.sh/)
+})
+
+
+test('every run removes its own eight disposable users at the end, by exact address', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const script = readFileSync(new URL('./onboarding-e2e-run-cleanup.sh', import.meta.url), 'utf8')
+  assert.match(workflow, /- name: Remove this run's disposable users through staging bootstrap\n\s+if: always\(\) && steps\.action\.outputs\.run_e2e == 'true' && steps\.instance\.outputs\.instance_id != '' && env\.E2E_SEAFARER_EMAIL != ''/)
+  assert.match(workflow, /if email != f'sea-n-shore-e2e-\{run_id\}-\{key\}@example\.com':/)
+  assert.match(workflow, /bash scripts\/aws\/onboarding-e2e-run-cleanup\.sh/)
+  assert.match(workflow, /grep -q '\^ONBOARDING_E2E_RUN_USERS_REMOVED=true\$'/)
+  assert.match(workflow, /- scripts\/aws\/onboarding-e2e-run-cleanup\.sh/)
+  // The cleanup runs after the persistence audit has read the profiles.
+  assert.ok(workflow.indexOf('- name: Wait and surface persistence evidence') < workflow.indexOf("- name: Remove this run's disposable users through staging bootstrap"))
+  assert.match(script, /\[\[ "\$email" == "sea-n-shore-e2e-\$\{ONBOARDING_E2E_RUN_ID\}-\$\{key\}@example\.com" \]\]/)
+  assert.match(script, /--filter "email = \\"\$email\\""/)
+  assert.match(script, /admin-delete-user/)
+  assert.match(script, /ONBOARDING_E2E_RUN_USERS_REMOVED=true/)
+  // Never a pattern delete.
+  assert.doesNotMatch(script, /email ~ /)
+  assert.doesNotMatch(script, /LIKE/i)
+})

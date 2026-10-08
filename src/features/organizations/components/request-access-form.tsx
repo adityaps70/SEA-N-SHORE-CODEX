@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useId, useRef, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
 import { requestOrganizationAccess } from '../actions'
 import { ACCESS_ROLE_LABELS, REQUESTABLE_ROLE_DESCRIPTIONS } from '../access-request-labels'
@@ -22,7 +21,6 @@ export function RequestAccessForm({
   initialState?: RequestAccessState
   compact?: boolean
 }) {
-  const router = useRouter()
   const id = useId()
   const openerRef = useRef<HTMLButtonElement>(null)
   const [localState, setState] = useState<RequestAccessState>(initialState)
@@ -83,7 +81,6 @@ export function RequestAccessForm({
         setSent(true)
         setState('pending')
         setOpen(false)
-        router.refresh()
       } catch {
         setError('We could not send the request. Check your connection and try again.')
       }

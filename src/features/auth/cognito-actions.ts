@@ -4,12 +4,16 @@ import {
   COGNITO_COOKIE_NAMES,
   createCognitoCookieManager,
 } from '@/lib/auth/cognito-cookies'
+import { isDisposableEmail } from '@/lib/auth/disposable-email'
+import { AUTH_EMAIL_RATE_LIMITED_MESSAGE, DISPOSABLE_EMAIL_MESSAGE } from '@/lib/errors/user-messages'
+import type { AuthEmailAction, AuthEmailLimiter } from './email-limits'
 import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
+import { cognitoPasswordRule, failedPasswordRules, PASSWORD_MAX_LENGTH, passwordRulesMessage } from './password-rules'
 
 export type CognitoAuthActionState = {
   error?: string
   message?: string
-  next?: 'new-password' | 'confirm-sign-up' | 'confirm-reset'
+  next?: 'new-password' | 'confirm-sign-up' | 'confirm-reset' | 'mfa'
 }
 
 type CookieStore = {
@@ -28,6 +32,7 @@ type AuthenticationResult = {
 type SignInResult =
   | { kind: 'authenticated'; authentication: AuthenticationResult }
   | { kind: 'new-password-required'; session: string; username: string }
+  | { kind: 'software-token-mfa'; session: string; username: string }
 
 type CognitoActionsApi = {
   signIn(input: { username: string; password: string }): Promise<SignInResult>
@@ -102,10 +107,26 @@ export function createCognitoAuthActions(input: {
   siteUrl: string
   allowInsecureHttpCookies?: boolean
   onCognitoIssue?: (context: { operation: string; reason: string }) => void
+  /** Round 14 (2.6): per-email and per-IP limits for sign-up, code resend and password reset. */
+  emailLimiter?: AuthEmailLimiter
+  /** The trusted client IP of this request (see trustedClientIp), used only for the limiter. */
+  clientIp?: string | null
 }) {
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl, {
     allowInsecureHttp: input.allowInsecureHttpCookies === true,
   })
+
+  /**
+   * Null when the attempt may go on to Cognito, else the error to show: the generic rate-limit
+   * message (which says nothing about whether an account exists), or the flow's own retry message
+   * when the limiter itself failed closed.
+   */
+  async function emailLimitError(action: AuthEmailAction, email: string, unavailableMessage: string) {
+    if (!input.emailLimiter) return null
+    const decision = await input.emailLimiter.consume({ action, email, ip: input.clientIp ?? null })
+    if (decision.allowed) return null
+    return decision.reason === 'rate_limited' ? AUTH_EMAIL_RATE_LIMITED_MESSAGE : unavailableMessage
+  }
 
   function reportCognitoIssue(operation: string, error: CognitoApiError) {
     const context = {
@@ -139,6 +160,16 @@ export function createCognitoAuthActions(input: {
             username: result.username,
           })
           return { next: 'new-password' }
+        }
+
+        // Round 14 (2.11): the password was right; the authenticator code comes next. The Cognito
+        // session stays in an HTTP-only cookie, never in the URL or the page.
+        if (result.kind === 'software-token-mfa') {
+          cookies.setMfaChallenge({
+            session: result.session,
+            username: result.username,
+          })
+          return { next: 'mfa' }
         }
 
         cookies.setAuthentication(result.authentication)
@@ -191,8 +222,21 @@ export function createCognitoAuthActions(input: {
     ): Promise<CognitoAuthActionState> {
       const parsed = signUpSchema.safeParse(Object.fromEntries(formData))
       if (!parsed.success) {
-        return { error: parsed.error.issues[0]?.message ?? 'Check your details.' }
+        const issue = parsed.error.issues[0]
+        if (issue?.path[0] === 'password') {
+          const password = String(formData.get('password') ?? '')
+          if (password.length > PASSWORD_MAX_LENGTH) return { error: `Use ${PASSWORD_MAX_LENGTH} characters or fewer for your password.` }
+          return { error: passwordRulesMessage(failedPasswordRules(password)) }
+        }
+        return { error: issue?.message ?? 'Check your details.' }
       }
+      // The pool's password policy, checked here first so the message names the exact rule (and a
+      // typo does not count against the sign-up email limit).
+      const failedRules = failedPasswordRules(parsed.data.password)
+      if (failedRules.length > 0) return { error: passwordRulesMessage(failedRules) }
+      if (isDisposableEmail(parsed.data.email)) return { error: DISPOSABLE_EMAIL_MESSAGE }
+      const limited = await emailLimitError('sign_up', parsed.data.email, 'We could not create your account. Please try again.')
+      if (limited) return { error: limited }
 
       try {
         await input.api.signUp({
@@ -219,7 +263,8 @@ export function createCognitoAuthActions(input: {
             return { error: 'Email confirmation is temporarily unavailable. Please try again in a little while, or continue with Google if it is offered.' }
           }
           if (error.code === 'InvalidPasswordException') {
-            return { error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.' }
+            const rule = cognitoPasswordRule(error.reason)
+            return { error: passwordRulesMessage(rule ? [rule] : failedPasswordRules(parsed.data.password)) }
           }
         }
         return { error: 'We could not create your account. Please try again.' }
@@ -232,6 +277,12 @@ export function createCognitoAuthActions(input: {
     ): Promise<CognitoAuthActionState> {
       const parsed = emailSchema.safeParse(formData.get('email'))
       if (!parsed.success) return { error: 'Enter a valid email address.' }
+      const limited = await emailLimitError(
+        'resend_code',
+        parsed.data,
+        'We could not resend the confirmation code. Please check the email address or try again.',
+      )
+      if (limited) return { error: limited }
 
       try {
         await input.api.resendConfirmationCode(parsed.data)
@@ -271,6 +322,8 @@ export function createCognitoAuthActions(input: {
     ): Promise<CognitoAuthActionState> {
       const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData))
       if (!parsed.success) return { error: 'Enter a valid email address.' }
+      const limited = await emailLimitError('password_reset', parsed.data.email, 'We could not request a reset code. Please try again.')
+      if (limited) return { error: limited }
 
       try {
         await input.api.forgotPassword(parsed.data.email)

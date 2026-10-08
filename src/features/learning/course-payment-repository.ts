@@ -7,6 +7,7 @@ import type { EventPaymentOrderStatus, PaymentCurrency, PaymentProviderName } fr
 import { courseManagerAccessSql } from './course-access'
 import { coursePrice, type CoursePrice } from './course-pricing'
 import { courseOpenToNewLearnersSql } from './course-publication'
+import { notifyEnrolled } from './learning-notifications'
 import { COURSE_CHECKOUT_REUSE_MINUTES, COURSE_PENDING_CHECK_MINUTES, type CoursePurchaseBlocker, type CourseRefundDueReason } from './course-payment-rules'
 
 /**
@@ -543,6 +544,12 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
   `, [current.id, enrollmentId])
   const order = mapCourseOrder(confirmed.rows[0]!)
   await audit(client, order, 'enrolled', { actor, toStatus: 'paid', details: { enrollmentId } })
+  // A repurchase after a refund is a new enrolment to tell the learner about: keyed by order.
+  await notifyEnrolled(
+    async (text, values) => (await client.query(text, values ? [...values] : undefined)).rows,
+    { learnerId: current.profileId!, courseId: course!.id, enrollmentId, occasion: order.id },
+    { inTransaction: true },
+  )
 
   const seller = course!.companyId ? { companyId: course!.companyId } : course!.sellerProfileId ? { profileId: course!.sellerProfileId } : null
   if (seller) {

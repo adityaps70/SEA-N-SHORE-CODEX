@@ -62,14 +62,31 @@ export const profilePreferencesSchema = z.preprocess((value) => {
 
 export type ProfilePreferencesInput = z.infer<typeof profilePreferencesSchema>
 
-export function profilePreferenceProjection(data: ProfilePreferencesInput) {
+/**
+ * Persona details saved by an earlier profile type that an in-place editor kept on screen (round 11):
+ * a value that is already saved stays visible and editable, so saving keeps what was submitted
+ * instead of clearing it because the new profile type does not ask for it.
+ */
+export type RetainedPersonaDetails = {
+  communityRelationship?: string | null
+  institutionName?: string | null
+  specialization?: string | null
+}
+
+export const retainedPersonaDetailsSchema = z.object({
+  familyRelationship: optionalText(80),
+  institutionName: optionalText(160),
+  specialization: optionalText(500),
+})
+
+export function profilePreferenceProjection(data: ProfilePreferencesInput, retained: RetainedPersonaDetails = {}) {
   return {
     profileType: legacyProfileTypeForPersona(data.persona),
     persona: data.persona as Persona,
     profileIntents: data.profileIntents,
-    communityRelationship: data.persona === 'seafarer_family' ? data.familyRelationship ?? null : null,
-    institutionName: data.persona === 'student_cadet' ? data.institutionName ?? null : null,
-    specialization: data.persona === 'trainer_instructor' ? data.specialization ?? null : null,
+    communityRelationship: data.persona === 'seafarer_family' ? data.familyRelationship ?? null : retained.communityRelationship ?? null,
+    institutionName: data.persona === 'student_cadet' ? data.institutionName ?? null : retained.institutionName ?? null,
+    specialization: data.persona === 'trainer_instructor' ? data.specialization ?? null : retained.specialization ?? null,
     currentCompany: personaUsesProfessionalCompany(data.persona) ? data.currentCompany ?? null : null,
     rank: data.persona === 'seafarer' ? data.rank ?? null : null,
   }

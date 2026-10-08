@@ -9,6 +9,13 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: adminMfa.isPlatformAdministrator } }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./access-request-repository', () => ({
@@ -27,6 +34,7 @@ import {
   escalateOrganizationAccessRequest,
   withdrawOrganizationAccessRequest,
 } from './access-request-actions'
+import { ADMIN_MFA_REQUIRED_MESSAGE } from '@/features/admin/mfa-gate'
 
 const requestId = '66666666-6666-4666-8666-666666666666'
 const companyId = '33333333-3333-4333-8333-333333333333'
@@ -41,6 +49,16 @@ beforeEach(() => {
 })
 
 describe('organization access decisions', () => {
+  it('refuses a platform administrator without an authenticator-app session, but not an organization owner', async () => {
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false })
+    await expect(decideOrganizationAccessRequest({ requestId, decision: 'rejected', note: 'Not our crew.' })).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(mocks.decide).not.toHaveBeenCalled()
+
+    adminMfa.isPlatformAdministrator.mockResolvedValueOnce(false)
+    await expect(decideOrganizationAccessRequest({ requestId, decision: 'rejected', note: 'Not our crew.' })).resolves.toEqual({ ok: true })
+    expect(mocks.decide).toHaveBeenCalledTimes(1)
+  })
+
   it('validates before authentication and requires a role to approve', async () => {
     await expect(decideOrganizationAccessRequest({ requestId: 'bad', decision: 'approved', grantedRole: 'member' })).resolves.toMatchObject({ ok: false })
     await expect(decideOrganizationAccessRequest({ requestId, decision: 'approved', grantedRole: null })).resolves.toEqual({

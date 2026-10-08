@@ -60,24 +60,35 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 const BUCKET_URL = 'https://sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com/member/post/photo.jpg?X-Amz-Signature=abc'
+// Rewritten in Round 13: stable signed media links (e.g. a shared profile photo or cover) are what
+// the optimizer resizes now; hourly pre-signed S3 URLs are shown as they are.
+const MEDIA_LINK = '/api/media/image/profiles/a/cover-photo.jpg?w=700&s=abcdefghijklmnopqrstuvwxyz012345'
 
 describe('PostMedia', () => {
-  it('serves media-bucket photos resized through the image optimizer at quality 90, sized to the post column', () => {
-    renderWithImageConfig(<PostMedia media={{ ...imageMedia, signedUrl: BUCKET_URL }} authorName="Member A" />)
+  it('serves stable media links resized through the image optimizer at quality 90, sized to the post column', () => {
+    renderWithImageConfig(<PostMedia media={{ ...imageMedia, signedUrl: MEDIA_LINK }} authorName="Member A" />)
 
     const image = screen.getByRole('img', { name: 'Portrait of a vessel deck inspection' })
-    expect(image.getAttribute('src')).toMatch(/^\/_next\/image\?url=https%3A%2F%2Fsea-n-shore-staging-310356785722-media/)
+    expect(image.getAttribute('src')).toMatch(/^\/_next\/image\?url=%2Fapi%2Fmedia%2Fimage%2Fprofiles/)
     expect(image.getAttribute('srcset')).toContain('&w=640&q=90 640w')
     expect(image.getAttribute('srcset')).not.toContain('q=75')
     expect(image).toHaveAttribute('sizes', '(max-width: 768px) 100vw, 640px')
     expect(image).toHaveAttribute('loading', 'lazy')
   })
 
+  it('shows an hourly pre-signed media-bucket photo as it is, never through the optimizer', () => {
+    renderWithImageConfig(<PostMedia media={{ ...imageMedia, signedUrl: BUCKET_URL }} authorName="Member A" />)
+
+    const image = screen.getByRole('img', { name: 'Portrait of a vessel deck inspection' })
+    expect(image).toHaveAttribute('src', BUCKET_URL)
+    expect(image).not.toHaveAttribute('srcset')
+  })
+
   it('asks for quality 90 for grid photos and the lightbox too', () => {
     const gallery = [0, 1].map((index) => ({
       ...imageMedia,
       storagePath: `member/post/photo-${index}.jpg`,
-      signedUrl: BUCKET_URL.replace('photo.jpg', `photo-${index}.jpg`),
+      signedUrl: MEDIA_LINK.replace('cover-photo.jpg', `cover-photo-${index}.jpg`),
       altText: `Photo ${index}`,
       position: index,
     }))

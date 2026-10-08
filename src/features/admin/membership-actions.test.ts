@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: adminMfa.isPlatformAdministrator } }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./membership-repository', () => ({
@@ -17,6 +24,7 @@ vi.mock('./membership-repository', () => ({
 }))
 
 import { grantAdminEntitlement, revokeAdminEntitlement } from './membership-actions'
+import { ADMIN_MFA_REQUIRED_MESSAGE } from './mfa-gate'
 
 const profileId = '22222222-2222-4222-8222-222222222222'
 const companyId = '33333333-3333-4333-8333-333333333333'
@@ -28,6 +36,15 @@ describe('admin membership actions', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1' })
     mocks.grantEntitlement.mockResolvedValue({ grantId })
     mocks.revokeEntitlement.mockResolvedValue(true)
+  })
+
+  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false }).mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false })
+    await expect(grantAdminEntitlement({ subjectType: 'profile', subjectId: profileId, capability: 'job.publish', reason: 'Verified recruiter.' }))
+      .resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    await expect(revokeAdminEntitlement(grantId, 'No longer needed.')).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(mocks.grantEntitlement).not.toHaveBeenCalled()
+    expect(mocks.revokeEntitlement).not.toHaveBeenCalled()
   })
 
   it('validates grant scope and reason before authentication', async () => {

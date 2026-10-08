@@ -17,7 +17,7 @@ The AWS resources created here are not throwaway infrastructure. ECR, ECS/Fargat
 ## Repository layout
 
 - `Dockerfile` — production Next.js 16 / Node 22 image.
-- `infra/aws/bootstrap/main.tf` — one-time AWS bootstrap: Terraform state bucket, ECR, GitHub OIDC deploy role, optional monthly budget alerts.
+- `infra/aws/bootstrap/main.tf` — one-time AWS bootstrap: Terraform state bucket, ECR, GitHub OIDC deploy role. (The Terraform monthly budget was retired in Round 15; cost alerts are the owner-managed console budget and anomaly subscription.)
 - `infra/aws/app/main.tf` — VPC, public ALB, ECS/Fargate service, task roles, CloudWatch logs, target group, and autoscaling.
 - `.github/workflows/aws-infra-ci.yml` — Terraform validation plus Docker build verification.
 - `.github/workflows/aws-staging-deploy.yml` — OIDC-authenticated build/push and ECS deployment.
@@ -42,7 +42,7 @@ cd infra/aws/bootstrap
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-Edit `terraform.tfvars` and set the billing email. If the AWS account already has the GitHub Actions OIDC provider, set `existing_github_oidc_provider_arn` to that ARN instead of creating a second provider.
+Edit `terraform.tfvars`. If the AWS account already has the GitHub Actions OIDC provider, set `existing_github_oidc_provider_arn` to that ARN instead of creating a second provider.
 
 Then run:
 

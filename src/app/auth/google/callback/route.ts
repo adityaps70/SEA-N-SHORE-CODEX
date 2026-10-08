@@ -6,6 +6,7 @@ import {
 import { createCognitoOAuth, verifyOAuthState } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { siteUrlFor } from '@/lib/site-url'
+import { googleCallbackFailure, logGoogleCallbackFailure } from '@/lib/auth/google-callback-failure'
 
 function redirectWithError(code: string, intent: 'sign-in' | 'sign-up' = 'sign-in') {
   const authPath = intent === 'sign-up' ? '/auth/sign-up' : '/auth/sign-in'
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
     ? 'sign-up'
     : 'sign-in'
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) {
+    logGoogleCallbackFailure('unavailable')
     return redirectWithError('unavailable', intent)
   }
 
@@ -36,12 +38,14 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
   const providerError = request.nextUrl.searchParams.get('error')
 
-  if (
-    providerError
-    || !code
-    || !verifier
-    || !verifyOAuthState(expectedState, actualState)
-  ) {
+  const failure = googleCallbackFailure({
+    providerError,
+    code,
+    verifier,
+    stateMatches: verifyOAuthState(expectedState, actualState),
+  })
+  if (failure || !code || !verifier) {
+    logGoogleCallbackFailure(failure ?? 'missing_code')
     return redirectWithError('verification', intent)
   }
 
@@ -63,6 +67,7 @@ export async function GET(request: NextRequest) {
     response.headers.set('Cache-Control', 'private, no-store')
     return response
   } catch {
+    logGoogleCallbackFailure('exchange_failed')
     return redirectWithError('exchange', intent)
   }
 }

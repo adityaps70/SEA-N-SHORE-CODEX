@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const sql = fs.readFileSync('infra/aws/database/migrations/0032_membership_access_foundation.sql', 'utf8')
 const completionSql = fs.readFileSync('infra/aws/database/migrations/0033_membership_experience_completion.sql', 'utf8')
 const script = fs.readFileSync('scripts/aws/membership-access-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/membership-access-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/membership-access-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-membership-access-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))
@@ -41,7 +42,7 @@ assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_APPLY_VERIFIED=true/)
 assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_ALREADY_APPLIED=true/)
 assert.match(script, /legacy_organization_conversions/)
 assert.match(script, /COMPLETE="5\/5\/4"/)
-assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
 
 assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
 assert.match(workflow, /Guard migration against a moved branch/)

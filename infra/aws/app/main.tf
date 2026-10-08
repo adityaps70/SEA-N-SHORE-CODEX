@@ -64,9 +64,11 @@ variable "certificate_arn" {
 }
 
 variable "allowed_ingress_cidrs" {
-  description = "CIDRs allowed to reach the public ALB."
+  # Round 14 (1.4): no longer used. The ALB's own group has no ingress; CloudFront reaches it through
+  # alb_cloudfront (the origin-facing prefix list on 443). Kept so existing variable files still load.
+  description = "Unused since Round 14 (1.4); the ALB accepts only CloudFront."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = []
 }
 
 variable "task_cpu" {
@@ -76,21 +78,21 @@ variable "task_cpu" {
 }
 
 variable "task_memory" {
-  description = "Fargate memory in MiB."
+  description = "Fargate memory in MiB (Round 13: 2048; the deploy workflow never copies below it)."
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "desired_count" {
-  description = "Initial ECS desired task count."
+  description = "Initial ECS desired task count (Round 13: two tasks so one OOM or deploy never empties the target group)."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "min_capacity" {
-  description = "Minimum ECS task count for autoscaling."
+  description = "Minimum ECS task count for autoscaling (Round 13: never scale in below two tasks)."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "max_capacity" {
@@ -176,21 +178,9 @@ resource "aws_security_group" "alb" {
   description = "Public ingress to the Sea N Shore ALB"
   vpc_id      = aws_vpc.app.id
 
-  ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ingress_cidrs
-  }
-
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ingress_cidrs
-  }
+  # Round 14 (1.4): no direct ingress at all; CloudFront reaches the ALB through alb_cloudfront.
+  # An explicit empty list removes the old inline rules (zero dynamic blocks would leave them).
+  ingress = []
 
   egress {
     from_port   = 0
@@ -229,11 +219,23 @@ resource "aws_lb" "app" {
   name               = substr("${local.name_prefix}-alb", 0, 32)
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+  # Round 14 (1.4): alb_cloudfront admits CloudFront's origin-facing range on 443.
+  security_groups = [aws_security_group.alb.id, aws_security_group.alb_cloudfront.id]
+  subnets         = [aws_subnet.public_a.id, aws_subnet.public_b.id]
 
-  enable_deletion_protection = false
+  # Round 14 (2.14): no accidental deletion, malformed header names dropped, access logs kept.
+  enable_deletion_protection = true
+  drop_invalid_header_fields = true
   idle_timeout               = 60
+
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "alb"
+    enabled = true
+  }
+
+  # The ALB writes a test object when logging is enabled, so the bucket policy must exist first.
+  depends_on = [aws_s3_bucket_policy.alb_logs]
 
   tags = local.common_tags
 }
@@ -253,26 +255,17 @@ resource "aws_lb_target_group" "app" {
     unhealthy_threshold = 3
     interval            = 30
     timeout             = 10
-    path                = "/auth/sign-in"
-    protocol            = "HTTP"
-    matcher             = "200-399"
+    # Round 14 (1.5): a cheap liveness route instead of rendering the sign-in page.
+    path     = "/api/health/live"
+    protocol = "HTTP"
+    matcher  = "200"
   }
 
   tags = local.common_tags
 }
 
-resource "aws_lb_listener" "http_forward" {
-  count = var.certificate_arn == "" ? 1 : 0
-
-  load_balancer_arn = aws_lb.app.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
-  }
-}
+# Round 14 (1.4): the plain-HTTP forward listener on port 80 is gone; CloudFront reaches the ALB
+# only through aws_lb_listener.origin_https.
 
 resource "aws_lb_listener" "http_redirect" {
   count = var.certificate_arn != "" ? 1 : 0
@@ -308,8 +301,9 @@ resource "aws_lb_listener" "https" {
 }
 
 resource "aws_cloudwatch_log_group" "app" {
-  name              = "/ecs/${local.name_prefix}/web"
-  retention_in_days = 14
+  name = "/ecs/${local.name_prefix}/web"
+  # Round 14 (3.11): 90 days of web logs for incident and abuse investigation.
+  retention_in_days = 90
   tags              = local.common_tags
 }
 
@@ -400,7 +394,7 @@ resource "aws_ecs_task_definition" "web" {
         { name = "AWS_COGNITO_REGION", value = var.aws_region },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
-        { name = "AWS_COGNITO_DOMAIN", value = "${aws_cognito_user_pool_domain.app.domain}.auth.${var.aws_region}.amazoncognito.com" },
+        { name = "AWS_COGNITO_DOMAIN", value = aws_cognito_user_pool_domain.custom.domain },
         { name = "AWS_COGNITO_GOOGLE_ENABLED", value = tostring(var.enable_google_identity_provider) },
         { name = "AWS_MEDIA_BUCKET", value = aws_s3_bucket.app["media"].bucket },
         { name = "REALTIME_WEBSOCKET_URL", value = local.realtime_websocket_url },
@@ -430,6 +424,10 @@ resource "aws_ecs_task_definition" "web" {
         {
           name      = "NEWSLETTER_TOKEN_SECRET"
           valueFrom = aws_secretsmanager_secret.newsletter_token.arn
+        },
+        {
+          name      = "HEALTH_CHECK_TOKEN"
+          valueFrom = aws_secretsmanager_secret.health_check_token.arn
         }
       ]
 
@@ -445,7 +443,7 @@ resource "aws_ecs_task_definition" "web" {
       healthCheck = {
         command = [
           "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:3000/auth/sign-in').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\""
+          "node -e \"fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\""
         ]
         interval    = 30
         timeout     = 10
@@ -466,6 +464,7 @@ resource "aws_ecs_task_definition" "web" {
     aws_iam_role_policy.ecs_execution_aurora_secret,
     aws_iam_role_policy.ecs_execution_realtime_ticket_secret,
     aws_iam_role_policy.ecs_execution_newsletter_token_secret,
+    aws_iam_role_policy.ecs_execution_health_check_token_secret,
     aws_iam_role_policy.ecs_task_aurora_secret,
     aws_iam_role_policy.ecs_task_media,
     aws_iam_role_policy.ecs_task_cognito_admin
@@ -482,7 +481,9 @@ resource "aws_ecs_service" "web" {
   launch_type      = "FARGATE"
   platform_version = "LATEST"
 
-  enable_execute_command = true
+  # Round 14 (2.14): ECS Exec is off. The staging deploy sets --disable-execute-command and verifies
+  # it; this matches so no Terraform run turns it back on.
+  enable_execute_command = false
 
   health_check_grace_period_seconds  = 90
   deployment_minimum_healthy_percent = 100
@@ -506,7 +507,7 @@ resource "aws_ecs_service" "web" {
   }
 
   depends_on = [
-    aws_lb_listener.http_forward,
+    aws_lb_listener.origin_https,
     aws_lb_listener.http_redirect,
     aws_lb_listener.https
   ]
@@ -519,9 +520,11 @@ resource "aws_ecs_service" "web" {
 }
 
 resource "aws_appautoscaling_target" "web" {
-  max_capacity       = var.max_capacity
-  min_capacity       = var.min_capacity
-  resource_id        = "service/${aws_ecs_cluster.app.name}/${aws_ecs_service.web.name}"
+  max_capacity = var.max_capacity
+  min_capacity = var.min_capacity
+  # Built from names rather than resource references (same value) so a targeted plan of the
+  # scaling and alarm resources does not pull in the service and its task definition.
+  resource_id        = "service/${local.name_prefix}/${local.name_prefix}-web"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }

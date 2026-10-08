@@ -45,6 +45,8 @@ export const profileIdentitySectionSchema = z.object({
   headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
   currentCompany: optionalText(160),
   currentCompanyId: optionalOrganizationIdSchema,
+  /** Round 10: a rank saved by an earlier profile, editable or clearable from the header editor. */
+  rank: optionalText(100),
   contactVisibility: z.enum(['private', 'members', 'public']),
 })
 

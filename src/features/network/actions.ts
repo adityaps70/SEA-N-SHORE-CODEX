@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { messageForErrorCode } from '@/lib/errors/user-messages'
 import {
   acceptConnectionRequestWithAurora,
   blockProfileWithAurora,
@@ -24,6 +25,8 @@ function networkError(message?: string) {
     case 'network_interaction_unavailable':
     case 'network_action_not_allowed': return 'This interaction is not available.'
     case 'network_self_interaction': return 'You cannot perform this action on your own profile.'
+    case 'network_connection_request_limit':
+    case 'network_connection_request_cooldown': return messageForErrorCode(message)
     default: return 'We could not update this relationship. Please try again.'
   }
 }

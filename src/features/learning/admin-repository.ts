@@ -10,6 +10,8 @@ import {
   canTransitionMentorApplicationStatus,
   type MentorApplicationStatus,
 } from './mentor-application'
+import { applyCourseRevisionWithQuery, revisionChangesFromLiveCourse } from './course-revision-repository'
+import { notifyCourseReviewed } from './learning-notifications'
 
 type LearningAdminQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type LearningAdminTransaction = <T>(work: (query: LearningAdminQuery) => Promise<T>) => Promise<T>
@@ -63,6 +65,9 @@ export type CourseReviewLesson = {
   position: number
   summary: string | null
   articleBody: string | null
+  articleFormat?: 'plain' | 'html'
+  /** A rich-text article, sanitized and with images signed, filled in by the review page. */
+  articleHtml?: string | null
   assetPath: string | null
   externalUrl: string | null
   durationSeconds: number | null
@@ -89,6 +94,8 @@ export type CourseReviewHistory = {
   }
   /** What changed since the previously reviewed submission; null when there is nothing to compare with. */
   changesSinceLastReview: CourseReviewChange[] | null
+  /** For changes to a published course: everything that differs from the live course. */
+  changesFromLiveCourse?: CourseReviewChange[] | null
 }
 
 export type CourseReviewItem = {
@@ -118,6 +125,8 @@ export type CourseReviewItem = {
   updatedAt: string
   curriculum: CourseReviewSection[]
   review: CourseReviewHistory
+  /** Set when this submission is a set of changes to a published course. */
+  revisionOf?: { courseId: string; slug: string; title: string } | null
 }
 
 type AdminAuthorizationRow = QueryResultRow & { allowed?: boolean }
@@ -130,6 +139,8 @@ type LockedCourseReviewRow = QueryResultRow & {
   id: string
   mentor_id: string | null
   status: string
+  revision_of_course_id?: string | null
+  revision_closed_at?: string | Date | null
 }
 type CourseSubmissionHistoryRow = QueryResultRow & {
   id: string
@@ -184,6 +195,9 @@ type CourseReviewRow = QueryResultRow & {
   status: string
   admin_review_note: string | null
   updated_at: string | Date
+  revision_of_course_id?: string | null
+  live_slug?: string | null
+  live_title?: string | null
 }
 type CourseCurriculumReviewRow = QueryResultRow & {
   course_id: string
@@ -196,6 +210,7 @@ type CourseCurriculumReviewRow = QueryResultRow & {
   lesson_position: string | number | null
   lesson_summary: string | null
   article_body: string | null
+  article_format?: string | null
   asset_path: string | null
   external_url: string | null
   duration_seconds: string | number | null
@@ -373,6 +388,7 @@ export function createLearningAdminRepository(input: {
          lesson.position as lesson_position,
          lesson.summary as lesson_summary,
          lesson.article_body,
+         lesson.article_format,
          lesson.asset_path,
          lesson.external_url,
          lesson.duration_seconds,
@@ -391,13 +407,17 @@ export function createLearningAdminRepository(input: {
        from public.learning_course_sections section
        left join public.learning_lessons lesson
          on lesson.section_id = section.id
+        and lesson.removed_at is null
        left join public.learning_quizzes quiz
          on quiz.lesson_id = lesson.id
        left join public.learning_quiz_questions question
          on question.quiz_id = quiz.id
+        and question.removed_at is null
        left join public.learning_quiz_options option
          on option.question_id = question.id
+        and option.removed_at is null
        where section.course_id = any($1::uuid[])
+         and section.removed_at is null
        order by section.course_id, section.position, lesson.position, question.position, option.position`,
       [courseIds],
     ) as CourseCurriculumReviewRow[]
@@ -438,6 +458,7 @@ export function createLearningAdminRepository(input: {
           position: Number(row.lesson_position),
           summary: row.lesson_summary,
           articleBody: row.article_body,
+          articleFormat: row.article_format === 'html' ? 'html' : 'plain',
           assetPath: row.asset_path,
           externalUrl: row.external_url,
           durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
@@ -537,7 +558,10 @@ export function createLearningAdminRepository(input: {
          course.course_format,
          course.status,
          course.admin_review_note,
-         course.updated_at
+         course.updated_at,
+         course.revision_of_course_id,
+         live.slug as live_slug,
+         live.title as live_title
        from public.learning_courses course
        left join public.learning_mentors mentor
          on mentor.id = course.mentor_id
@@ -547,15 +571,25 @@ export function createLearningAdminRepository(input: {
          on company.id = course.company_id
        left join public.profiles creator
          on creator.id = course.created_by_user_id
+       left join public.learning_courses live
+         on live.id = course.revision_of_course_id
        where course.status = $1
+         -- A closed revision (applied or discarded) is a record, not a course to review or list.
+         and course.revision_closed_at is null
        order by course.updated_at asc, course.id asc`,
       [status],
     ) as CourseReviewRow[]
 
     const courseIds = rows.map((row) => row.course_id)
-    const [curriculumByCourse, historyByCourse] = await Promise.all([
+    const [curriculumByCourse, historyByCourse, changesFromLive] = await Promise.all([
       loadCourseCurriculum(courseIds),
       loadReviewHistory(courseIds),
+      Promise.all(rows.map(async (row) => [
+        row.course_id,
+        row.revision_of_course_id
+          ? await revisionChangesFromLiveCourse(queryRows, row.course_id, row.revision_of_course_id)
+          : null,
+      ] as const)).then((entries) => new Map(entries)),
     ])
 
     return rows.map((row) => ({
@@ -584,7 +618,13 @@ export function createLearningAdminRepository(input: {
       adminReviewNote: row.admin_review_note,
       updatedAt: isoDateTime(row.updated_at),
       curriculum: curriculumByCourse.get(row.course_id) ?? [],
-      review: buildCourseReviewHistory(historyByCourse.get(row.course_id) ?? []),
+      review: {
+        ...buildCourseReviewHistory(historyByCourse.get(row.course_id) ?? []),
+        changesFromLiveCourse: changesFromLive.get(row.course_id) ?? null,
+      },
+      revisionOf: row.revision_of_course_id && row.live_slug && row.live_title
+        ? { courseId: row.revision_of_course_id, slug: row.live_slug, title: row.live_title }
+        : null,
     }))
   }
 
@@ -688,7 +728,7 @@ export function createLearningAdminRepository(input: {
       await requirePlatformAdministrator(txQuery, adminId, true)
 
       const lockedRows = await txQuery(
-        `select id, mentor_id, status
+        `select id, mentor_id, status, revision_of_course_id, revision_closed_at
          from public.learning_courses
          where id = $1
          for update`,
@@ -696,6 +736,13 @@ export function createLearningAdminRepository(input: {
       ) as LockedCourseReviewRow[]
       const course = lockedRows[0]
       if (!course) throw new Error('course_not_found')
+      if (course.revision_closed_at) throw new Error('course_transition_forbidden')
+      const isRevision = Boolean(course.revision_of_course_id)
+      // Changes to a published course are approved or sent back; they are never published or
+      // archived on their own.
+      if (isRevision && decision !== 'approved' && decision !== 'changes_requested') {
+        throw new Error('course_transition_forbidden')
+      }
 
       const current = courseStatus(course.status)
       if (!canTransitionCourseStatus({ actor: 'administrator', current, next: decision })) {
@@ -707,6 +754,10 @@ export function createLearningAdminRepository(input: {
       }
       if (decision === 'changes_requested' && !reviewerNote?.trim()) {
         throw new Error('course_review_note_required')
+      }
+
+      if (isRevision && decision === 'approved') {
+        return approveCourseRevision(txQuery, adminId, course, reviewerNote)
       }
 
       const persistedStatus: CourseStatus = decision === 'approved' ? 'published' : decision
@@ -726,7 +777,7 @@ export function createLearningAdminRepository(input: {
         updateSql += `,
              approved_at = now(),
              published_at = now()`
-      } else if (decision === 'published') {
+      } else if (decision === 'published' && current !== 'archived') {
         updateSql += `,
              published_at = now()`
       }
@@ -775,8 +826,64 @@ export function createLearningAdminRepository(input: {
         ],
       )
 
+      if (decision === 'approved' || decision === 'changes_requested') {
+        await notifyCourseReviewed(txQuery, { reviewedCourseId: courseId, liveCourseId: course.revision_of_course_id ?? courseId, decision })
+      }
+
       return { courseId, status: persistedStatus }
     })
+  }
+
+  /**
+   * Approving changes to a published course applies them to the live course (in place, learner
+   * progress untouched) and closes the revision.
+   */
+  async function approveCourseRevision(
+    txQuery: LearningAdminQuery,
+    adminId: string,
+    revision: LockedCourseReviewRow,
+    reviewerNote: string | null,
+  ) {
+    const current = courseStatus(revision.status)
+    if (!canTransitionCourseStatus({ actor: 'administrator', current, next: 'approved' })) {
+      if (current === 'draft') throw new Error('course_withdrawn')
+      throw new Error('course_transition_forbidden')
+    }
+    await txQuery(
+      `update public.learning_course_submissions
+       set outcome = 'approved',
+           reviewer_id = $2,
+           reviewer_note = $3,
+           reviewed_at = now(),
+           updated_at = now()
+       where course_id = $1
+         and outcome = 'pending'`,
+      [revision.id, adminId, reviewerNote],
+    )
+    const { liveCourseId } = await applyCourseRevisionWithQuery(txQuery, revision.id)
+    await txQuery(
+      `update public.learning_courses
+       set reviewed_by = $2,
+           reviewed_at = now(),
+           admin_review_note = $3,
+           updated_at = now()
+       where id = $1
+       returning id`,
+      [liveCourseId, adminId, reviewerNote],
+    )
+    await txQuery(
+      `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+       values ($1, $2, $3, $4, $5::jsonb)`,
+      [
+        adminId,
+        'learning.course.revision_approved',
+        'learning_course',
+        liveCourseId,
+        JSON.stringify({ revisionCourseId: revision.id, mentorId: revision.mentor_id, reviewerNote }),
+      ],
+    )
+    await notifyCourseReviewed(txQuery, { reviewedCourseId: revision.id, liveCourseId, decision: 'approved' })
+    return { courseId: liveCourseId, status: 'published' as const }
   }
 
   return {

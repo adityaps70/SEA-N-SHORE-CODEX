@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMessagingRealtimeConnection } from './connection'
+import { createMessagingRealtimeConnection, TYPING_MIN_INTERVAL_MS } from './connection'
 
 const SIGNAL = JSON.stringify({
   eventId: 'event-1',
@@ -144,5 +145,43 @@ describe('messaging realtime connection lifecycle', () => {
     await vi.advanceTimersByTimeAsync(30_000)
     expect(requestTicket).toHaveBeenCalledTimes(2)
     expect(onStatusChange).toHaveBeenLastCalledWith('disconnected')
+  })
+
+  it('sends typing with a membership token, at most once per interval, latest state first (Round 14, 2.9)', async () => {
+    const conversationId = '33333333-3333-4333-8333-333333333333'
+    const targetProfileId = '22222222-2222-4222-8222-222222222222'
+    const requestTypingToken = vi.fn(async () => ({ token: '1790000000.signed', targetProfileId, expiresAt: Math.floor(Date.now() / 1000) + 3600 }))
+    const connection = createMessagingRealtimeConnection({
+      requestTicket: async () => ({ ticket: 'ticket', webSocketUrl: 'wss://abc.execute-api.ap-south-1.amazonaws.com/staging' }),
+      requestTypingToken,
+      createSocket: (url) => new FakeSocket(url),
+      random: () => 0,
+    })
+    await connection.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+
+    expect(connection.sendTyping({ conversationId, targetProfileId, isTyping: true })).toBe(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(socket.send).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(socket.send.mock.calls[0]![0] as string)).toEqual({
+      action: 'typing', conversationId, targetProfileId, isTyping: true, typingToken: '1790000000.signed',
+    })
+
+    // Within the interval: only the latest state is kept, and it goes out when the interval ends.
+    connection.sendTyping({ conversationId, targetProfileId, isTyping: true })
+    connection.sendTyping({ conversationId, targetProfileId, isTyping: false })
+    await vi.advanceTimersByTimeAsync(TYPING_MIN_INTERVAL_MS - 100)
+    expect(socket.send).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(socket.send).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(socket.send.mock.calls[1]![0] as string)).toMatchObject({ isTyping: false })
+    expect(requestTypingToken).toHaveBeenCalledTimes(1)
+
+    // A token for a different participant is never used.
+    connection.sendTyping({ conversationId, targetProfileId: '44444444-4444-4444-8444-444444444444', isTyping: true })
+    await vi.advanceTimersByTimeAsync(TYPING_MIN_INTERVAL_MS)
+    expect(socket.send).toHaveBeenCalledTimes(2)
+    connection.stop()
   })
 })

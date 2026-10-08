@@ -147,13 +147,47 @@ resource "aws_wafv2_web_acl" "edge" {
   tags = local.common_tags
 }
 
-# Read the existing ALB without pulling app-resource changes into an edge recovery plan.
-data "aws_lb" "edge_origin" {
-  name = "sea-n-shore-staging-alb"
-}
-
 data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
+}
+
+# Round 14 (3.1): hashed build assets and public brand images are cached at the edge, keyed on the
+# path only; HTML keeps CachingDisabled so signed-in pages and Set-Cookie responses are never cached.
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
+# Optimized images (/_next/image): keyed on the image URL, width and quality plus Accept (the
+# format the browser takes), never on cookies. The origin's Cache-Control decides how long.
+resource "aws_cloudfront_cache_policy" "next_image" {
+  name        = "${local.name_prefix}-next-image"
+  comment     = "Next.js optimized images: url, w, q and Accept; no cookies."
+  min_ttl     = 0
+  default_ttl = 86400
+  max_ttl     = 31536000
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["Accept"]
+      }
+    }
+
+    query_strings_config {
+      query_string_behavior = "whitelist"
+      query_strings {
+        items = ["url", "w", "q"]
+      }
+    }
+  }
 }
 
 data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
@@ -199,8 +233,10 @@ resource "aws_cloudfront_distribution" "app" {
   web_acl_id      = aws_wafv2_web_acl.edge.arn
   aliases         = [local.canonical_site_host, "www.${local.canonical_site_host}"]
 
+  # Round 14 (1.4): HTTPS to the ALB's dedicated origin hostname with the shared X-Origin-Verify
+  # secret; the ALB answers 403 to anything without it.
   origin {
-    domain_name = data.aws_lb.edge_origin.dns_name
+    domain_name = var.origin_tls_hostname
     origin_id   = "sea-n-shore-staging-alb"
 
     custom_header {
@@ -208,10 +244,15 @@ resource "aws_cloudfront_distribution" "app" {
       value = "d3prih0q6jofyr.cloudfront.net"
     }
 
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = random_password.origin_verify.result
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
@@ -224,6 +265,77 @@ resource "aws_cloudfront_distribution" "app" {
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
+  }
+
+  ordered_cache_behavior {
+    path_pattern           = "/_next/static/*"
+    target_origin_id       = "sea-n-shore-staging-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
+  }
+  ordered_cache_behavior {
+    path_pattern           = "/_next/image*"
+    target_origin_id       = "sea-n-shore-staging-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.next_image.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
+  }
+  ordered_cache_behavior {
+    path_pattern           = "/brand/*"
+    target_origin_id       = "sea-n-shore-staging-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
+  }
+  ordered_cache_behavior {
+    path_pattern           = "/landing/*"
+    target_origin_id       = "sea-n-shore-staging-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
+  }
+  ordered_cache_behavior {
+    path_pattern           = "/favicon.ico"
+    target_origin_id       = "sea-n-shore-staging-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
 
     function_association {
       event_type   = "viewer-request"

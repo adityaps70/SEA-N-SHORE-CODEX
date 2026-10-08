@@ -20,7 +20,7 @@ ACTION_FILE="scripts/aws/membership-access-migration-action.txt"
 git diff --quiet HEAD -- "$FOUNDATION_MIGRATION" "$COMPLETION_MIGRATION" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in
   plan|migrate-once) ;;
   *) echo "Unsupported membership access migration action: $ACTION" >&2; exit 1 ;;
@@ -167,7 +167,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$MEMBERSHIP_ACCESS_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$MEMBERSHIP_ACCESS_MIGRATION_EXPECTED_SHA" ]]
 
 if [[ "$FOUNDATION_BEFORE" == "$FOUNDATION_EMPTY" ]]; then
   apply_migration_file "$FOUNDATION_MIGRATION" "sea-n-shore-membership-access-0032" 20

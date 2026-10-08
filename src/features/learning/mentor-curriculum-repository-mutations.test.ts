@@ -35,6 +35,10 @@ function draft(overrides: Partial<MentorLessonDraft> = {}): MentorLessonDraft {
   }
 }
 
+function v(values?: readonly unknown[]) {
+  return values ?? []
+}
+
 function editableCourse(text: string) {
   return text.includes('for update') && text.includes('learning_courses')
 }
@@ -62,6 +66,10 @@ describe('mentor curriculum repository mutations', () => {
     const query: Query = async (text, values) => {
       seen.push({ text, values })
       if (editableCourse(text)) return [{ id: courseId, mentor_id: mentorId, status: 'changes_requested' }]
+      // The section is locked first; with no learner history it is deleted, not retired.
+      if (text.includes('from public.learning_course_sections') && text.includes('for update') && !text.includes('order by')) {
+        return v(values)[0] === sectionA ? [{ id: sectionA }] : []
+      }
       if (text.includes('delete from public.learning_course_sections')) return [{ id: sectionA }]
       if (text.includes('from public.learning_course_sections') && text.includes('order by position')) {
         return [{ id: sectionB, position: 1 }]

@@ -1,5 +1,4 @@
 import {
-  createMediaReadUrl,
   createMediaUploadUrl,
   deleteMediaObject,
   getMediaObject,
@@ -7,6 +6,7 @@ import {
   putMediaObject,
 } from '@/lib/aws/storage'
 import { PDFDocument } from 'pdf-lib'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import {
   POST_DOCUMENT_MAX_BYTES,
   POST_DOCUMENT_MAX_PAGES,
@@ -32,7 +32,7 @@ export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string,
     [...new Set(paths)].map(async (path) => [
       path,
       path.startsWith('profiles/')
-        ? await createMediaReadUrl(path)
+        ? await createMediaImageSrc(path)
         : buildFirstPartyMediaUrl(path),
     ] as const),
   )

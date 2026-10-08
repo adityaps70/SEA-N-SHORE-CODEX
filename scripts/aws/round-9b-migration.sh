@@ -16,7 +16,7 @@ MIGRATIONS=(
   "infra/aws/database/migrations/0056_community_tagging_notifications.sql"
 )
 
-[[ "${ROUND_9B_MIGRATION_EXPECTED_SHA:-}" =~ ^[0-9b-f]{40}$ ]] || {
+[[ "${ROUND_9B_MIGRATION_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "ROUND_9B_MIGRATION_EXPECTED_SHA must be an exact commit SHA." >&2
   exit 1
 }
@@ -25,7 +25,7 @@ MIGRATIONS=(
 git diff --quiet HEAD -- "${MIGRATIONS[@]}" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 # A manual "migrate-once" dispatch (already checked by the workflow: exact SHA + confirmation phrase)
 # overrides the committed plan switch, so no execute/rearm commits are needed.
 if [[ -n "${ROUND_9B_MIGRATION_ACTION:-}" ]]; then
@@ -117,7 +117,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$ROUND_9B_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$ROUND_9B_MIGRATION_EXPECTED_SHA" ]]
 
 data_api --sql "CREATE TABLE IF NOT EXISTS public.sea_n_shore_applied_migrations (name text PRIMARY KEY, sha256 text NOT NULL, git_sha text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())" >/dev/null
 

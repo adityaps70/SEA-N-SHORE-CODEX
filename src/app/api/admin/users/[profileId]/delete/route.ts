@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { runtimeAdminUserControlService } from '@/features/admin/runtime-user-control-service'
+import { AdminSignInControlError } from '@/features/admin/sign-in-control-error'
 import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
 
 export const runtime = 'nodejs'
@@ -20,9 +21,16 @@ function json(payload: { ok: boolean; error?: string }, status: number) {
   })
 }
 
+function signInShare(error: AdminSignInControlError) {
+  return error.total === 1 ? 'the sign-in method' : `${error.failed} of ${error.total} sign-in methods`
+}
+
 function errorResponse(error: unknown) {
   if (error instanceof AwsAuthenticationRequiredError) {
     return json({ ok: false, error: 'Sign in again to continue.' }, 401)
+  }
+  if (error instanceof AdminSignInControlError && error.message === 'admin_user_cognito_delete_incomplete') {
+    return json({ ok: false, error: `The account was not deleted: ${signInShare(error)} couldn’t be removed. Try again.` }, 502)
   }
   const code = error instanceof Error ? error.message : ''
   if (code === 'admin_forbidden') return json({ ok: false, error: 'Administrator access is required.' }, 403)

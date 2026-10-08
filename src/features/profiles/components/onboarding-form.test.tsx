@@ -89,7 +89,9 @@ describe('OnboardingForm persona activation', () => {
 
     expect(screen.getByRole('button', { name: 'Seafarer' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByLabelText('Location')).toHaveValue('Mumbai, Maharashtra, India')
-    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Master')
+    // Round 12: the restored free-text rank is recognised and pre-selected in the pickers.
+    expect(screen.getByLabelText('Department')).toHaveValue('deck_officers')
+    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('master')
     expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Ocean Shipping')
     expect(screen.getByLabelText('Who can see my contact details?')).toHaveValue('private')
   })
@@ -112,7 +114,8 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByLabelText('Full name')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Username/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Location')).toBeInTheDocument()
-    expect(screen.getByLabelText('Current or most recent rank')).toBeInTheDocument()
+    expect(screen.getByLabelText('Department')).toBeInTheDocument()
+    expect(screen.getByLabelText('Current or most recent rank')).toBeDisabled()
     expect(screen.getByLabelText('Current / last organisation')).toBeInTheDocument()
     expect(screen.queryByLabelText('Professional summary')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Sailing experience in years')).not.toBeInTheDocument()
@@ -185,8 +188,8 @@ describe('OnboardingForm persona activation', () => {
         slug: 'asha-singh',
         location: 'Goa',
         currentCompany: 'Oceanic Shipping',
-        rank: 'Chief Engineer',
-        headline: 'Chief Engineer',
+        roleDepartmentKey: 'engine_officers',
+        roleKey: 'chief_engineer',
         contactVisibility: 'members',
       },
     })
@@ -197,7 +200,8 @@ describe('OnboardingForm persona activation', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Network$/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
-    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'Chief Engineer' } })
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'engine_officers' } })
+    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'chief_engineer' } })
     fireEvent.change(screen.getByLabelText('Current / last organisation'), { target: { value: 'Oceanic Shipping' } })
 
     const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
@@ -206,7 +210,8 @@ describe('OnboardingForm persona activation', () => {
     await screen.findByRole('alert')
     expect(screen.getByLabelText('Full name')).toHaveValue('Asha Updated')
     expect(screen.getByLabelText('Location')).toHaveValue('Goa')
-    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Chief Engineer')
+    expect(screen.getByLabelText('Department')).toHaveValue('engine_officers')
+    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('chief_engineer')
     expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Oceanic Shipping')
     expect(screen.getByRole('button', { name: /Find jobs/i })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /^Network$/i })).toHaveAttribute('aria-pressed', 'true')
@@ -220,7 +225,8 @@ describe('OnboardingForm persona activation', () => {
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
-    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'Chief Engineer' } })
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'engine_officers' } })
+    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'chief_engineer' } })
     fireEvent.change(screen.getByLabelText('Current / last organisation'), { target: { value: 'Oceanic Shipping' } })
 
     const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
@@ -231,9 +237,87 @@ describe('OnboardingForm persona activation', () => {
     expect(alert).toHaveTextContent(/try again/i)
     expect(screen.getByLabelText('Full name')).toHaveValue('Asha Updated')
     expect(screen.getByLabelText('Location')).toHaveValue('Goa')
-    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Chief Engineer')
+    expect(screen.getByLabelText('Department')).toHaveValue('engine_officers')
+    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('chief_engineer')
     expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Oceanic Shipping')
     await waitFor(() => expect(document.activeElement).toBe(alert))
+  })
+})
+
+describe('OnboardingForm rank and role pickers (round 12)', () => {
+  it('keeps Rank disabled until a Department is chosen, then offers only that department', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+
+    const rank = screen.getByLabelText('Current or most recent rank')
+    expect(rank).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'deck_officers' } })
+    expect(rank).toBeEnabled()
+    const options = Array.from((rank as HTMLSelectElement).options).map((option) => option.textContent)
+    expect(options).toContain('Master / Captain')
+    expect(options).toContain('Other (type your own)')
+    expect(options).not.toContain('Cook')
+    expect(rank.tagName).toBe('SELECT')
+  })
+
+  it('shows a short text box when "Other (type your own)" is chosen', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'deck_officers' } })
+    expect(screen.queryByLabelText('Type your rank')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'other_deck_officers' } })
+    expect(screen.getByLabelText('Type your rank')).toHaveAttribute('name', 'roleOtherText')
+  })
+
+  it('submits the picked keys with the form', async () => {
+    actionMocks.completeActivation.mockResolvedValueOnce({ revision: 1, error: 'stop here', values: {} })
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'deck_officers' } })
+    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'master' } })
+    fireEvent.submit(screen.getByRole('button', { name: 'Complete profile' }).closest('form')!)
+
+    await waitFor(() => expect(actionMocks.completeActivation).toHaveBeenCalled())
+    const calls = actionMocks.completeActivation.mock.calls as unknown as Array<[unknown, FormData]>
+    const submitted = calls[calls.length - 1][1]
+    expect(submitted.get('roleFields')).toBe('1')
+    expect(submitted.get('roleDepartmentKey')).toBe('deck_officers')
+    expect(submitted.get('roleKey')).toBe('master')
+    expect(submitted.has('rank')).toBe(false)
+  })
+
+  it('asks a student / cadet for their stage and a target job role, suggested from the stage', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /^Student \/ Cadet/i }))
+
+    const stage = screen.getByLabelText('Current stage')
+    expect(stage).toBeRequired()
+    expect(screen.getByLabelText('Target job role (rank / role)')).toBeRequired()
+    fireEvent.change(stage, { target: { value: 'deck_cadet' } })
+    expect(screen.getByLabelText('Target department')).toHaveValue('deck_officers')
+    expect(screen.getByLabelText('Target job role (rank / role)')).toHaveValue('third_officer')
+
+    fireEvent.change(stage, { target: { value: 'pre_sea' } })
+    expect(screen.getByLabelText('Course')).toBeInTheDocument()
+  })
+
+  it('gives a Maritime Enthusiast only an optional occupation, no rank or department', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /^Maritime Enthusiast/i }))
+
+    expect(screen.getByLabelText(/Occupation \/ role/)).toHaveAttribute('name', 'occupationText')
+    expect(screen.queryByLabelText('Department')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Current or most recent rank')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Role')).not.toBeInTheDocument()
+  })
+
+  it('gives shore professionals Department (function) and Role instead of a typed designation', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /^Shore Professional/i }))
+
+    expect(screen.getByLabelText('Department (function)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Role')).toBeDisabled()
+    expect(screen.queryByLabelText('Current role / designation')).not.toBeInTheDocument()
   })
 })
 

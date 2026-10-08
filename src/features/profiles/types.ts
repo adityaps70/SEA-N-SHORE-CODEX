@@ -28,6 +28,18 @@ export type PublicProfile = {
   communityRelationship?: string | null
   institutionName?: string | null
   specialization?: string | null
+  /** Round 12: structured department and rank / role (taxonomy keys), see features/roles/taxonomy. */
+  roleDepartmentKey?: string | null
+  roleKey?: string | null
+  /** Text typed for "Other (type your own)". */
+  roleOtherText?: string | null
+  cadetStageKey?: string | null
+  cadetCourseKey?: string | null
+  /** A cadet's target job role, which matching uses instead of their stage. */
+  targetDepartmentKey?: string | null
+  targetRoleKey?: string | null
+  /** Display-only occupation for people without a maritime rank (never scores against jobs). */
+  occupationText?: string | null
   fullName: string
   avatarPath: string | null
   avatarUrl?: string | null
@@ -73,6 +85,14 @@ export type PublicProfileRow = {
   community_relationship?: string | null
   institution_name?: string | null
   specialization?: string | null
+  role_department_key?: string | null
+  role_key?: string | null
+  role_other_text?: string | null
+  cadet_stage_key?: string | null
+  cadet_course_key?: string | null
+  target_department_key?: string | null
+  target_role_key?: string | null
+  occupation_text?: string | null
   full_name: string
   avatar_path: string | null
   cover_path?: string | null

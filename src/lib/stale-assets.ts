@@ -2,16 +2,17 @@ const RELOAD_GUARD_KEY = 'sns:stale-asset-reload'
 const RELOAD_GUARD_WINDOW_MS = 60_000
 
 /**
- * True when an error means the browser asked for a JavaScript chunk that the
- * server no longer has — the classic symptom of a client still running the
- * previous build after a deploy (Next.js `ChunkLoadError`).
+ * True when an error means the browser is still running the previous build after a deploy:
+ * it asked for a JavaScript chunk the server no longer has (Next.js `ChunkLoadError`), or it
+ * submitted a form to a Server Action the new build does not have (`UnrecognizedActionError`,
+ * logged on the server as "Failed to find Server Action"). One reload fixes both.
  */
 export function isStaleAssetError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const { name, message } = error as { name?: unknown; message?: unknown }
-  if (name === 'ChunkLoadError') return true
+  if (name === 'ChunkLoadError' || name === 'UnrecognizedActionError') return true
   if (typeof message !== 'string') return false
-  return /Failed to load chunk|Loading chunk [\w-]+ failed|Loading CSS chunk/i.test(message)
+  return /Failed to load chunk|Loading chunk [\w-]+ failed|Loading CSS chunk|Server Action "[^"]*" was not found on the server/i.test(message)
 }
 
 type ReloadableWindow = Pick<Window, 'location'> & { sessionStorage?: Pick<Storage, 'getItem' | 'setItem'> }

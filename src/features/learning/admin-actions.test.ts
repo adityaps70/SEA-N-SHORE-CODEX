@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: adminMfa.isPlatformAdministrator } }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./admin-repository', async (importOriginal) => {
@@ -21,6 +28,7 @@ vi.mock('./admin-repository', async (importOriginal) => {
 })
 
 import { reviewCourse, reviewMentorApplication } from './admin-actions'
+import { ADMIN_MFA_REQUIRED_MESSAGE } from '@/features/admin/mfa-gate'
 
 const applicationId = '11111111-1111-4111-8111-111111111111'
 const courseId = '22222222-2222-4222-8222-222222222222'
@@ -30,6 +38,14 @@ describe('learning mentor review server action', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1', cognitoSub: 'admin-sub', email: 'admin@example.com' })
     mocks.reviewMentorApplication.mockResolvedValue({ applicationId, status: 'approved', mentorId: 'mentor-1' })
+  })
+
+  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false }).mockResolvedValueOnce({ kind: 'federated', enabled: false, email: 'admin@example.com', hostedSession: true })
+    await expect(reviewMentorApplication(applicationId, 'approved', null)).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    await expect(reviewCourse(courseId, 'approved', null)).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(mocks.reviewMentorApplication).not.toHaveBeenCalled()
+    expect(mocks.reviewCourse).not.toHaveBeenCalled()
   })
 
   it('rejects malformed application ids before authentication', async () => {

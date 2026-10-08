@@ -9,6 +9,10 @@
 
 export const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Sign in again, then retry.'
 export const GENERIC_RETRY_MESSAGE = 'Something went wrong on our side and nothing was changed. Please try again in a moment.'
+/** Round 14 (2.6): sign-up, confirmation-code resend or password reset tried too often. Reveals nothing about the account. */
+export const AUTH_EMAIL_RATE_LIMITED_MESSAGE = 'Too many attempts. Please wait a while and try again.'
+/** Round 14 (2.7): sign-up with a disposable / temporary email address. */
+export const DISPOSABLE_EMAIL_MESSAGE = 'Please use a permanent email address.'
 
 /** Exact codes with a specific message. Keep sentences short: what happened, then what to do. */
 export const KNOWN_ERROR_MESSAGES: Record<string, string> = {
@@ -48,6 +52,17 @@ export const KNOWN_ERROR_MESSAGES: Record<string, string> = {
   media_object_too_large: 'That file is too large. Choose a smaller file and try again.',
   scorm_zip_too_large: 'That package is too large. Upload a smaller SCORM zip.',
   profile_media_type_unsupported: 'That image type is not supported. Use a JPG, PNG or WebP image.',
+
+  // Social action quotas (Round 14, 2.8)
+  network_connection_request_limit: "You've sent a lot of connection requests today. Please try again tomorrow.",
+  network_connection_request_cooldown: 'You can send this member a new request 7 days after your last one.',
+  feed_post_rate_limited: "You're posting very quickly. Please wait a little and try again.",
+  feed_comment_rate_limited: "You're commenting very quickly. Please wait a little and try again.",
+  feed_reaction_rate_limited: "You're reacting very quickly. Please wait a little and try again.",
+
+  // Auth email flows (Round 14, 2.6 and 2.7)
+  auth_email_rate_limited: AUTH_EMAIL_RATE_LIMITED_MESSAGE,
+  disposable_email_blocked: DISPOSABLE_EMAIL_MESSAGE,
 
   // Newsletter
   newsletter_rate_limited: 'Too many sign-up attempts from this connection. Please wait a few minutes and try again.',

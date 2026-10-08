@@ -79,7 +79,8 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
 
     expect(media).toContain('createMediaUploadUrl')
     expect(media).toContain('headMediaObject')
-    expect(media).toContain('createMediaReadUrl')
+    // Round 13: banners are read through the stable signed image link (pre-signed URL fallback).
+    expect(media).toContain('createMediaImageSrc')
     expect(policy).toContain('events/')
     expect(actions).toContain('createEventBannerUploadAction')
     expect(actions).toContain('verifyEventBannerReference')

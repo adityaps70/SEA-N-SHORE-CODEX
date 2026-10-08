@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { withTransaction as databaseTransaction } from '@/lib/db/client'
 import { createOutboxRepositoryForClient, type OutboxRepository } from '@/features/events/outbox-repository'
+import { createSocialActionQuotasForClient, type SocialActionQuotas } from '@/features/social/quotas'
 import {
   createNetworkRepositoryForClient,
   type NetworkRepository,
@@ -10,6 +11,8 @@ import type { NetworkConnectionRow } from './types'
 type NetworkTransactionContext = {
   network: NetworkRepository
   outbox: OutboxRepository
+  /** Per-member action quotas (Round 14, 2.8); bound to the same transaction. */
+  quotas?: SocialActionQuotas
 }
 
 type NetworkTransaction = <T>(fn: (repositories: NetworkTransactionContext) => Promise<T>) => Promise<T>
@@ -94,10 +97,13 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
 
   async function sendConnectionRequest(actorId: string, targetId: string) {
     assertNotSelf(actorId, targetId)
-    return input.withTransaction(async ({ network: repository, outbox }) => {
+    return input.withTransaction(async ({ network: repository, outbox, quotas }) => {
       await assertInteractable(repository, actorId, targetId)
       const existing = await repository.findConnectionByPair(actorId, targetId)
       if (existing) duplicateConnectionError(existing)
+      // No connection row exists for the pair here, so a recent request to this member was
+      // declined or withdrawn: the quota also enforces the 7-day re-request cooldown.
+      await quotas?.consume({ profileId: actorId, action: 'connection_request', targetProfileId: targetId })
 
       let connectionId: string
       try {
@@ -240,6 +246,7 @@ const productionService = createNetworkService({
   withTransaction: (fn) => databaseTransaction((client) => fn({
     network: createNetworkRepositoryForClient(client),
     outbox: createOutboxRepositoryForClient(client),
+    quotas: createSocialActionQuotasForClient(client),
   })),
 })
 

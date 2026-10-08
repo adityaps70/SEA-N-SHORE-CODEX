@@ -77,18 +77,6 @@ variable "existing_github_oidc_provider_arn" {
   default     = ""
 }
 
-variable "billing_email" {
-  description = "Email for AWS Budget alerts. Leave blank to skip budget notifications."
-  type        = string
-  default     = ""
-}
-
-variable "monthly_budget_usd" {
-  description = "Monthly AWS budget used for warnings."
-  type        = number
-  default     = 50
-}
-
 data "aws_caller_identity" "current" {}
 
 data "tls_certificate" "github" {
@@ -349,6 +337,13 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media/private-migrations/beaufortmarine.sql"
       },
       {
+        # Exact-SHA git bundles handed to the bootstrap host (the host never clones from GitHub).
+        Sid      = "CiCheckoutBundles"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-migration/ci-checkouts/*"
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
@@ -384,30 +379,32 @@ resource "aws_iam_role_policy" "github_deploy" {
   })
 }
 
-resource "aws_budgets_budget" "monthly" {
-  count = var.billing_email == "" ? 0 : 1
+# Round 15: the USD 50 Terraform budget (sea-n-shore-staging-monthly-budget) and the billing_email
+# variable that only fed it are retired; the owner's console budget and cost anomaly subscription
+# (not managed here) cover cost alerts. scripts/aws/bootstrap-budget-retirement.sh destroys it.
 
-  name         = "${local.name_prefix}-monthly-budget"
-  budget_type  = "COST"
-  limit_amount = tostring(var.monthly_budget_usd)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+# Round 15: the verify workflows read the deep health check token with this role. A separate
+# inline policy (scripts/aws/github-deploy-iam.sh reconciles only the main one), limited to that
+# one secret: its value (verify workflows) and its ARN (the staging deploy wires it into the web
+# task). The 6-character suffix is the random part Secrets Manager adds to every secret ARN.
+resource "aws_iam_role_policy" "github_deploy_health_check_token" {
+  name = "${local.name_prefix}-github-deploy-health-check-token"
+  role = aws_iam_role.github_deploy.id
 
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 80
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.billing_email]
-  }
-
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "ACTUAL"
-    notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.billing_email]
-  }
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadHealthCheckTokenSecret"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${local.name_prefix}/health-check-token-??????"
+      }
+    ]
+  })
 }
 
 output "aws_account_id" {

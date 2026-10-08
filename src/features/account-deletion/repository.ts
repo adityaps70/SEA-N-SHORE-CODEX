@@ -86,7 +86,8 @@ export async function loadDeletionFacts(query: Query, profileId: string, options
          (select count(*) from public.events
            where company_id is null and host_user_id = $1 and removed_at is null) as events,
          (select count(*) from public.learning_courses
-           where company_id is null and created_by_user_id = $1 and removed_at is null) as courses,
+           where company_id is null and created_by_user_id = $1 and removed_at is null
+             and revision_of_course_id is null) as courses,
          (select count(*) from public.learning_courses course
            where course.company_id is null and course.created_by_user_id = $1
              and exists (
@@ -108,7 +109,7 @@ export async function loadDeletionFacts(query: Query, profileId: string, options
                and other_profile.account_status = 'active') as other_active_managers,
            (select count(*) from public.jobs j where j.company_id = c.id and j.deleted_at is null) as jobs,
            (select count(*) from public.events e where e.company_id = c.id and e.removed_at is null) as events,
-           (select count(*) from public.learning_courses course where course.company_id = c.id and course.removed_at is null) as courses
+           (select count(*) from public.learning_courses course where course.company_id = c.id and course.removed_at is null and course.revision_of_course_id is null) as courses
          from public.companies c
          where c.id = any($1::uuid[])`,
         [companyIds, profileId, MANAGER_ROLES],

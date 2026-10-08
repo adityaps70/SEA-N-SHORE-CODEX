@@ -26,6 +26,8 @@ type SavePlaybackPositionActionResult =
       ok: true
       lessonId: string
       lastPositionSeconds: number
+      /** How far the learner has reached (the player lets them seek a few seconds past it). */
+      furthestPositionSeconds?: number
     }
   | { ok: false; error: string }
 
@@ -82,6 +84,7 @@ export async function saveLearningPlaybackPosition(
   lessonId: string,
   positionSeconds: number,
   durationSeconds?: number,
+  watchedSeconds?: number,
 ): Promise<SavePlaybackPositionActionResult> {
   const parsedSlug = slugSchema.safeParse(slug)
   const parsedLessonId = lessonIdSchema.safeParse(lessonId)
@@ -89,11 +92,14 @@ export async function saveLearningPlaybackPosition(
   const parsedDuration = durationSeconds === undefined
     ? { success: true as const, data: undefined }
     : playbackDurationSchema.safeParse(durationSeconds)
+  const parsedWatched = watchedSeconds === undefined
+    ? { success: true as const, data: undefined }
+    : playbackPositionSchema.safeParse(watchedSeconds)
 
   if (!parsedSlug.success || !parsedLessonId.success) {
     return { ok: false, error: 'Invalid course or lesson.' }
   }
-  if (!parsedPosition.success || !parsedDuration.success) {
+  if (!parsedPosition.success || !parsedDuration.success || !parsedWatched.success) {
     return { ok: false, error: 'Invalid playback position.' }
   }
 
@@ -106,18 +112,30 @@ export async function saveLearningPlaybackPosition(
           parsedLessonId.data,
           parsedPosition.data,
         )
-      : await learnerProgressRepository.savePlaybackPosition(
-          user.id,
-          parsedSlug.data,
-          parsedLessonId.data,
-          parsedPosition.data,
-          parsedDuration.data,
-        )
+      : parsedWatched.data === undefined
+        ? await learnerProgressRepository.savePlaybackPosition(
+            user.id,
+            parsedSlug.data,
+            parsedLessonId.data,
+            parsedPosition.data,
+            parsedDuration.data,
+          )
+        : await learnerProgressRepository.savePlaybackPosition(
+            user.id,
+            parsedSlug.data,
+            parsedLessonId.data,
+            parsedPosition.data,
+            parsedDuration.data,
+            parsedWatched.data,
+          )
 
     return {
       ok: true,
       lessonId: result.lessonId,
       lastPositionSeconds: result.lastPositionSeconds,
+      ...('furthestPositionSeconds' in result && typeof result.furthestPositionSeconds === 'number'
+        ? { furthestPositionSeconds: result.furthestPositionSeconds }
+        : {}),
     }
   } catch (error) {
     return { ok: false, error: playbackPositionError(error) }

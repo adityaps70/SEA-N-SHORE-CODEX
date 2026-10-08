@@ -58,6 +58,7 @@ function lesson(overrides: Partial<LearnerLesson> & Pick<LearnerLesson, 'id' | '
   return {
     summary: null,
     articleBody: null,
+    articleFormat: 'plain',
     assetPath: null,
     externalUrl: null,
     durationSeconds: null,
@@ -207,6 +208,7 @@ describe('/learn/courses/[slug]/learn', () => {
       quiz: null,
       nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=${quizLessonId}`,
       phoneActions: expect.anything(),
+      articleHtml: null,
     })
     expect(within(player).getByTestId('material-player')).toHaveTextContent(videoLesson.title)
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
@@ -270,6 +272,7 @@ describe('/learn/courses/[slug]/learn', () => {
       quiz: null,
       nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=${videoId}`,
       phoneActions: expect.anything(),
+      articleHtml: null,
     })
   })
 
@@ -288,6 +291,7 @@ describe('/learn/courses/[slug]/learn', () => {
       quiz,
       nextLessonHref: null,
       phoneActions: expect.anything(),
+      articleHtml: null,
     })
   })
 
@@ -326,6 +330,7 @@ describe('/learn/courses/[slug]/learn', () => {
       quiz: null,
       nextLessonHref: null,
       phoneActions: expect.anything(),
+      articleHtml: null,
     })
   })
 

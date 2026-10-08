@@ -157,7 +157,19 @@ describe('Cognito auth actions', () => {
     },
   )
 
-  it('shows a clear password-policy error when Cognito rejects the sign-up password', async () => {
+  it('names the rule Cognito rejected when it refuses the sign-up password', async () => {
+    const api = fakeApi()
+    api.signUp.mockRejectedValueOnce(new CognitoApiError('InvalidPasswordException', undefined, 'uppercase'))
+    const { actions } = setup(api)
+    await expect(
+      actions.signUp(
+        {},
+        form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1!' }),
+      ),
+    ).resolves.toEqual({ error: 'Your password needs an uppercase letter.' })
+  })
+
+  it('lists the real policy (no symbol needed) when Cognito refuses a password without saying why', async () => {
     const api = fakeApi()
     api.signUp.mockRejectedValueOnce(new CognitoApiError('InvalidPasswordException'))
     const { actions } = setup(api)
@@ -167,8 +179,23 @@ describe('Cognito auth actions', () => {
         form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1!' }),
       ),
     ).resolves.toEqual({
-      error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.',
+      error: 'Choose a different password: at least 12 characters with a lowercase letter, an uppercase letter and a number.',
     })
+  })
+
+  it.each([
+    ['alllowercase1234', 'Your password needs an uppercase letter.'],
+    ['NoDigitsInThisOne', 'Your password needs a number.'],
+    ['ALLUPPERCASE1234', 'Your password needs a lowercase letter.'],
+    ['Short1', 'Your password needs at least 12 characters.'],
+    ['short', 'Your password needs at least 12 characters, an uppercase letter and a number.'],
+  ])('says exactly which rule %s breaks, before asking Cognito', async (password, error) => {
+    const api = fakeApi()
+    const { actions } = setup(api)
+    await expect(
+      actions.signUp({}, form({ fullName: 'New Mariner', email: 'new@example.com', password })),
+    ).resolves.toEqual({ error })
+    expect(api.signUp).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -256,6 +283,38 @@ describe('Cognito auth actions', () => {
     const { actions } = setup(api, cookies)
     await expect(actions.signOut()).resolves.toBeUndefined()
     expect(api.globalSignOut).toHaveBeenCalledWith('a1')
+    expect(cookies.values.size).toBe(0)
+  })
+})
+describe('Cognito sign-in with an authenticator app (Round 14, 2.11)', () => {
+  it('keeps the MFA session in HTTP-only challenge cookies and signs nobody in yet', async () => {
+    const api = fakeApi()
+    api.signIn.mockResolvedValueOnce({
+      kind: 'software-token-mfa',
+      session: 'mfa-session',
+      username: 'internal-user-1',
+    })
+    const { actions, cookies } = setup(api)
+
+    const result = await actions.signIn({}, form({ email: 'captain@example.com', password: 'LongEnoughPass1' }))
+
+    expect(result).toEqual({ next: 'mfa' })
+    expect(JSON.stringify(result)).not.toContain('mfa-session')
+    expect(cookies.values.get(COGNITO_COOKIE_NAMES.mfaChallenge)).toBe('mfa-session')
+    expect(cookies.values.get(COGNITO_COOKIE_NAMES.mfaChallengeUser)).toBe('internal-user-1')
+    expect(cookies.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
+    expect(cookies.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+    // The new-password challenge cookies are not reused for MFA.
+    expect(cookies.values.has(COGNITO_COOKIE_NAMES.challenge)).toBe(false)
+  })
+
+  it('clears a pending MFA challenge on sign-out', async () => {
+    const cookies = fakeCookies({
+      [COGNITO_COOKIE_NAMES.mfaChallenge]: 'mfa-session',
+      [COGNITO_COOKIE_NAMES.mfaChallengeUser]: 'internal-user-1',
+    })
+    const { actions } = setup(fakeApi(), cookies)
+    await actions.signOut()
     expect(cookies.values.size).toBe(0)
   })
 })

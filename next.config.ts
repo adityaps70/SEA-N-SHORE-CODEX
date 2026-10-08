@@ -1,17 +1,25 @@
 import type { NextConfig } from 'next'
 import { getServerActionAllowedOrigins } from './src/lib/auth/server-action-origins'
-import { OPTIMIZED_MEDIA_IMAGE_HOSTNAMES } from './src/lib/images/media-image-source'
 
 const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  // Round 14 (2.4): HTTPS only for two years, subdomains included (preload-eligible).
+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
 ]
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
+    // Round 13: bound the native (libvips) memory the image optimizer can take in the web task.
+    // One image at a time, no libvips operation cache, streaming reads, and at most 50 MP per
+    // source (the default 268 MP lets one decode allocate over a gigabyte).
+    imgOptConcurrency: 1,
+    imgOptOperationCache: false,
+    imgOptSequentialRead: true,
+    imgOptMaxInputPixels: 50_000_000,
     serverActions: {
       bodySizeLimit: '6mb',
       allowedOrigins: getServerActionAllowedOrigins(
@@ -21,22 +29,36 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
-    // Signed media-bucket URLs are resized to WebP by the optimizer (see MediaImage). The signed
-    // URL is stable for an hour, so optimized results are cached for at least that long.
+    // Member photos, covers, logos and banners reach the optimizer through stable signed links
+    // (/api/media/image/..., see media-image-link.ts) that stay the same for a 30-day window, so
+    // each photo is resized once per size instead of again every clock hour when a pre-signed S3
+    // URL used to change (Round 13: hourly memory spikes and OOM kills). Pre-signed S3 URLs are no
+    // longer optimized at all. Landing photos are static files.
     // WebP only: Next encodes AVIF at quality × 50/80, which smears the text, logos and graphics
-    // most post images are made of. Quality 90 is for post images and covers, 75 for avatars;
-    // Next 16 snaps any quality not listed here to the nearest listed one.
-    remotePatterns: OPTIMIZED_MEDIA_IMAGE_HOSTNAMES.map((hostname) => ({
-      protocol: 'https' as const,
-      hostname,
-      pathname: '/**',
-    })),
+    // most images are made of. Quality 90 is for covers and banners, 75 for avatars; Next 16
+    // snaps any quality not listed here to the nearest listed one.
+    localPatterns: [
+      { pathname: '/api/media/image/**' },
+      { pathname: '/landing/**', search: '' },
+    ],
     formats: ['image/webp'],
     qualities: [75, 90],
-    minimumCacheTTL: 3600,
+    minimumCacheTTL: 7 * 24 * 60 * 60,
+    // Bounds what one decode can take (largest photo the media route serves is 15 MB) and the
+    // optimizer's disk cache on the task's ephemeral storage.
+    maximumResponseBody: 15 * 1024 * 1024,
+    maximumDiskCacheSize: 2 * 1024 * 1024 * 1024,
   },
   async headers() {
-    return [{ source: '/(.*)', headers: securityHeaders }]
+    // Round 14 (3.1): public brand and landing images are not content-hashed, so the browser and
+    // CloudFront keep them for a day and refresh them in the background for a week after that.
+    const publicAssetCache = [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }]
+    return [
+      { source: '/(.*)', headers: securityHeaders },
+      { source: '/brand/:path*', headers: publicAssetCache },
+      { source: '/landing/:path*', headers: publicAssetCache },
+      { source: '/favicon.ico', headers: publicAssetCache },
+    ]
   },
 }
 

@@ -171,7 +171,7 @@ describe('NotificationList on phones', () => {
     expect(markAll).toHaveLength(2)
     const chips = screen.getByRole('group', { name: 'Filter notifications' })
     expect(chips).toHaveClass('md:hidden')
-    expect(Array.from(chips.querySelectorAll('button')).map((chip) => chip.textContent)).toEqual(['All', 'Jobs', 'My posts', 'Mentions'])
+    expect(Array.from(chips.querySelectorAll('button')).map((chip) => chip.textContent)).toEqual(['All', 'Jobs', 'My posts', 'Mentions', 'Learning'])
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -207,8 +207,9 @@ describe('NotificationList on phones', () => {
 
     expect(screen.queryByRole('button', { name: /commented on your post/ })).not.toBeInTheDocument()
     await waitFor(() => expect(mocks.deleteNotification).toHaveBeenCalledWith(notification.id))
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
+    // Round 14 (3.9): deleteNotification revalidates /notifications, so no extra route refresh.
     expect(screen.getByRole('button', { name: /mentioned you/ })).toBeInTheDocument()
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('restores the row and explains when the delete fails', async () => {

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { messageForErrorCode } from '@/lib/errors/user-messages'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import {
@@ -16,11 +17,12 @@ import {
   isOwnedPostMediaStoragePath,
   validatePostMediaMetadata,
 } from './media-policy'
-import { getFeedPage, getPostById } from './queries'
+import { getFeedPage, getMyActivityPosts, getMyCommentActivity, getPostById } from './queries'
 import {
   commentInputSchema,
   createPostInputSchema,
   deleteCommentInputSchema,
+  feedCursorSchema,
   feedRequestSchema,
   pollVoteSchema,
   reactionDetailsSchema,
@@ -50,7 +52,7 @@ import {
   updateCommentWithAurora,
   updatePostWithAurora,
 } from './service'
-import { POST_CATEGORIES, type FeedComment, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
+import { POST_CATEGORIES, type FeedComment, type FeedCursor, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 export type RepostActionResult = { ok: true; postId: string } | { ok: false; error: string }
@@ -95,6 +97,15 @@ export type DeleteCommentActionResult =
 function safeErrorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   return /^[a-z][a-z0-9_]{0,79}$/.test(message) ? message : 'unknown_error'
+}
+
+/** Round 14 (2.8): per-member quotas for posts, comments and reactions. */
+const SOCIAL_QUOTA_ERROR_CODES = new Set(['feed_post_rate_limited', 'feed_comment_rate_limited', 'feed_reaction_rate_limited'])
+
+/** The friendly message for a quota error, or null for any other error. */
+function socialQuotaMessage(error: unknown): string | null {
+  const code = safeErrorCode(error)
+  return SOCIAL_QUOTA_ERROR_CODES.has(code) ? messageForErrorCode(code) : null
 }
 
 function postMediaReferencesFromFormData(formData: FormData) {
@@ -319,6 +330,8 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
       if (safeErrorCode(error) === 'feed_organization_post_forbidden') return { error: ORGANIZATION_POST_FORBIDDEN_MESSAGE, values: safePostValues(formData) }
+      const quotaMessage = socialQuotaMessage(error)
+      if (quotaMessage) return { error: quotaMessage, values: safePostValues(formData) }
       return { error: 'We could not publish your poll. Your entries are still here.', values: safePostValues(formData) }
     }
   } else if (data.media?.length) {
@@ -368,6 +381,9 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         // Keep the uploaded media: the member can switch to posting as themselves and publish it.
         return { error: ORGANIZATION_POST_FORBIDDEN_MESSAGE, values: safePostValues(formData) }
       }
+      // Keep the uploaded media here too, so the member can publish it once they may post again.
+      const quotaMessage = socialQuotaMessage(error)
+      if (quotaMessage) return { error: quotaMessage, values: safePostValues(formData) }
       await Promise.allSettled(data.media.map((media) => removeFeedImage(media.storagePath)))
       return { error: 'We could not attach your media, so the post was not published.', values: safePostValues(formData) }
     }
@@ -386,6 +402,8 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
       if (safeErrorCode(error) === 'feed_organization_post_forbidden') return { error: ORGANIZATION_POST_FORBIDDEN_MESSAGE, values: safePostValues(formData) }
+      const quotaMessage = socialQuotaMessage(error)
+      if (quotaMessage) return { error: quotaMessage, values: safePostValues(formData) }
       return { error: 'We could not publish your post. Your entries are still here.', values: safePostValues(formData) }
     }
   }
@@ -398,6 +416,22 @@ export async function loadFeedPage(input: FeedRequest) {
   if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
   try { return { ok: true as const, page: await getFeedPage(parsed.data) } }
   catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+/** Round 14 (3.7): the next 20 of the member's own posts on My Activities › Posts. */
+export async function loadMyActivityPostsPage(input: { cursor: FeedCursor }) {
+  const cursor = feedCursorSchema.safeParse(input?.cursor)
+  if (!cursor.success) return { ok: false as const, error: 'The next page request was invalid.' }
+  try { return { ok: true as const, page: await getMyActivityPosts(cursor.data) } }
+  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+/** Round 14 (3.7): the next 20 posts the member commented on, for My Activities › Comments. */
+export async function loadMyCommentActivityPage(input: { cursor: FeedCursor }) {
+  const cursor = feedCursorSchema.safeParse(input?.cursor)
+  if (!cursor.success) return { ok: false as const, error: 'The next page request was invalid.' }
+  try { return { ok: true as const, page: await getMyCommentActivity(cursor.data) } }
+  catch { return { ok: false as const, error: 'We could not load more comments.' } }
 }
 
 export async function loadReactionDetails(input: unknown) {
@@ -518,7 +552,7 @@ export async function repostPost(
     if (code === 'feed_repost_source_unavailable' || code === 'feed_interaction_unavailable') {
       return { ok: false, error: 'This post is no longer available to repost.' }
     }
-    return { ok: false, error: 'We could not repost this post.' }
+    return { ok: false, error: socialQuotaMessage(error) ?? 'We could not repost this post.' }
   }
 }
 
@@ -528,7 +562,7 @@ export async function setPostReaction(postId: string, reaction: PostReactionType
   if (!parsedId.success || !parsedReaction.success) return { ok: false, error: 'Invalid reaction.' }
   const user = await requireAwsUser()
   try { await setPostReactionWithAurora(user.id, parsedId.data, parsedReaction.data) }
-  catch { return { ok: false, error: 'We could not update your reaction.' } }
+  catch (error) { return { ok: false, error: socialQuotaMessage(error) ?? 'We could not update your reaction.' } }
   return { ok: true }
 }
 
@@ -537,7 +571,7 @@ export async function setPostLiked(postId: string, liked: boolean): Promise<Feed
   if (!parsedId.success || typeof liked !== 'boolean') return { ok: false, error: 'Invalid post.' }
   const user = await requireAwsUser()
   try { await setPostLikedWithAurora(user.id, parsedId.data, liked) }
-  catch { return { ok: false, error: 'We could not update your like.' } }
+  catch (error) { return { ok: false, error: socialQuotaMessage(error) ?? 'We could not update your like.' } }
   revalidateSocialFeed()
   return { ok: true }
 }
@@ -548,7 +582,7 @@ export async function setCommentReaction(commentId: string, reaction: PostReacti
   if (!parsedId.success || !parsedReaction.success) return { ok: false, error: 'Invalid reaction.' }
   const user = await requireAwsUser()
   try { await setCommentReactionWithAurora(user.id, parsedId.data, parsedReaction.data) }
-  catch { return { ok: false, error: 'We could not update your comment reaction.' } }
+  catch (error) { return { ok: false, error: socialQuotaMessage(error) ?? 'We could not update your comment reaction.' } }
   return { ok: true }
 }
 
@@ -637,8 +671,8 @@ export async function addComment(_previousState: CommentActionState, formData: F
     const comment = await hydrateComment(parsed.data.postId, commentId)
     if (!comment) return { error: 'We could not refresh your comment.', value: parsed.data.body }
     return { ok: true, comment }
-  } catch {
-    return { error: 'We could not add your comment.', value: parsed.data.body }
+  } catch (error) {
+    return { error: socialQuotaMessage(error) ?? 'We could not add your comment.', value: parsed.data.body }
   }
 }
 

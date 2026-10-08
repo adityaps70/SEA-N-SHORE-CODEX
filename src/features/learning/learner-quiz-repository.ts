@@ -5,6 +5,7 @@ import {
   completeLearningLessonWithQuery,
   type LearnerProgressQuery,
 } from './learner-progress-repository'
+import { learnerCourseAccessSql } from './course-publication'
 
 export type LearnerQuizOption = { id: string; label: string; position: number }
 export type LearnerQuizQuestion = { id: string; prompt: string; position: number; options: LearnerQuizOption[] }
@@ -112,14 +113,13 @@ function quizAccessQuery(lockEnrollment: boolean) {
      on section.id = lesson.section_id
    inner join public.learning_courses course
      on course.id = section.course_id
-    and course.status = 'published'
-   inner join public.learning_mentors mentor
+   left join public.learning_mentors mentor
      on mentor.id = course.mentor_id
-    and mentor.status = 'active'
-   inner join public.learning_mentor_applications application
+   left join public.learning_mentor_applications application
      on application.id = mentor.application_id
     and application.user_id = mentor.user_id
-    and application.status = 'approved'
+   left join public.companies company
+     on company.id = course.company_id
    inner join public.learning_enrollments enrollment
      on enrollment.course_id = course.id
     and enrollment.learner_id = $1
@@ -135,6 +135,8 @@ function quizAccessQuery(lockEnrollment: boolean) {
    ) attempt_stats on true
    where course.slug = $2
      and lesson.id = $3
+     -- Published, or archived/removed with the learner already enrolled (shared learner access rule).
+     and ${learnerCourseAccessSql()}
      and (
        lesson.release_mode = 'immediate'
        or (lesson.release_mode = 'scheduled' and lesson.release_at <= now())
@@ -169,6 +171,7 @@ async function loadQuestions(query: QuizQuery, quizId: string) {
     `select question.id, question.prompt, question.position
      from public.learning_quiz_questions question
      where question.quiz_id = $1
+       and question.removed_at is null
      order by question.position asc, question.id asc`, [quizId]) as Promise<QuizQuestionRow[]>
 }
 async function loadSafeOptions(query: QuizQuery, questionIds: string[]) {
@@ -177,6 +180,7 @@ async function loadSafeOptions(query: QuizQuery, questionIds: string[]) {
     `select option.id, option.question_id, option.label, option.position
      from public.learning_quiz_options option
      where option.question_id = any($1::uuid[])
+       and option.removed_at is null
      order by option.question_id asc, option.position asc, option.id asc`, [questionIds]) as Promise<QuizOptionRow[]>
 }
 async function loadScoringOptions(query: QuizQuery, questionIds: string[]) {
@@ -185,6 +189,7 @@ async function loadScoringOptions(query: QuizQuery, questionIds: string[]) {
     `select option.id, option.question_id, option.label, option.position, option.is_correct
      from public.learning_quiz_options option
      where option.question_id = any($1::uuid[])
+       and option.removed_at is null
      order by option.question_id asc, option.position asc, option.id asc`, [questionIds]) as Promise<QuizScoringOptionRow[]>
 }
 async function loadAttemptHistory(query: QuizQuery, enrollmentId: string, quizId: string, learnerId: string) {

@@ -17,7 +17,90 @@ permissions:
   actions: read
 
 jobs:
+  apply-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      approval: ${{ steps.apply_guard.outputs.approval }}
+      skip: ${{ steps.plan_scope.outputs.skip }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the guard file
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            scripts/aws/phase5b-action.txt
+            scripts/aws/arm-commit-guard.sh
+          sparse-checkout-cone-mode: false
+
+      # Round 16: runs that change AWS wait for the owner's approval in 'staging-apply';
+      # plans (and other read-only guard values) never wait.
+      - name: Decide whether this run changes AWS
+        id: apply_guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(cut -d' ' -f1 < scripts/aws/phase5b-action.txt | tr -d '[:space:]')"
+          case "$ACTION" in
+            plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Guard action: $ACTION"
+
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/phase5b-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
+
+      # Actions minutes: a plan (or discover) run only reads AWS, so it is skipped when this push changed none of
+      # this runner's own scripts or tests (only its guard file and/or this workflow, e.g. a rearm).
+      - name: Skip a plan run when none of this runner's scripts changed
+        id: plan_scope
+        env:
+          GUARD_FILE: scripts/aws/phase5b-action.txt
+          RUNNER_FILES: "scripts/aws/phase5b-ses-readiness.sh scripts/aws/phase5b-ses-readiness.test.mjs"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP=false
+          ACTION="$(cut -d' ' -f1 < "$GUARD_FILE" | tr -d '[:space:]')"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then
+            SKIP="$(python3 -c '
+          import fnmatch, json, os, sys
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          commits = event.get("commits") or []
+          files = {f for c in commits for k in ("added", "modified", "removed") for f in (c.get(k) or [])}
+          watched = os.environ["RUNNER_FILES"].split()
+          # Only a complete, non-empty list of changed files can show that nothing of this runner changed.
+          complete = bool(commits) and len(commits) < 2048 and bool(files)
+          print("true" if complete and not any(fnmatch.fnmatch(f, p) for f in files for p in watched) else "false")
+          ')"
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          echo "Plan run skipped: $SKIP"
+
+  apply-approval:
+    needs: apply-gate
+    if: needs.apply-gate.outputs.approval == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    timeout-minutes: 10
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
   phase5b:
+    needs:
+      - apply-gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && (needs.apply-approval.result == 'success' || needs.apply-approval.result == 'skipped') }}
     runs-on: ubuntu-latest
     environment: staging
     env:
@@ -29,9 +112,10 @@ jobs:
       SES_CONFIGURATION_SET: sea-n-shore-staging-transactional
       COGNITO_USER_POOL_NAME: sea-n-shore-staging-users
 
+    timeout-minutes: 60
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Read bounded Phase 5B action
         id: action
@@ -39,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF_NAME" = "feat/aws-native-phase-0-1"
-          PHASE5B_ACTION="$(tr -d '[:space:]' < scripts/aws/phase5b-action.txt)"
+          PHASE5B_ACTION="$(cut -d' ' -f1 < scripts/aws/phase5b-action.txt | tr -d '[:space:]')"
           case "$PHASE5B_ACTION" in
             discover|ensure-identity|request-production-access|verify-ready|cutover|verify-cutover|rollback-cognito) ;;
             *) echo "Unsupported Phase 5B action: $PHASE5B_ACTION" >&2; exit 2 ;;
@@ -85,7 +169,7 @@ jobs:
           }
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -99,7 +183,7 @@ jobs:
 
       - name: Preserve Cognito rollback capture
         if: steps.action.outputs.value == 'cutover'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: phase5b-cognito-rollback-${{ github.sha }}-${{ github.run_id }}
           path: |

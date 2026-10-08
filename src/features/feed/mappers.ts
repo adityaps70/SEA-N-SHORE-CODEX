@@ -16,6 +16,7 @@ import type {
   ReactionSummary,
 } from './types'
 import { EMPTY_REACTION_SUMMARY, POST_REACTIONS, reactionCount } from './types'
+import { roleDisplayLabel } from '@/features/roles/taxonomy'
 import { communityImageUrl } from '@/features/community/repository'
 
 type MaritimeSummaryRow = {
@@ -29,6 +30,8 @@ type AuthorRow = {
   full_name: string
   avatar_path: string | null
   headline: string | null
+  role_key?: string | null
+  role_other_text?: string | null
   maritime_profiles: MaritimeSummaryRow | MaritimeSummaryRow[] | null
 }
 
@@ -135,6 +138,8 @@ export type FeedPostRow = {
   viewer_follows_organization?: boolean | null
   created_at: string
   updated_at: string
+  /** Round 14 (3.7): the list's sort timestamp as exact text (microseconds, UTC) for keyset cursors. */
+  cursor_at?: string | null
   profiles: AuthorRow | AuthorRow[] | null
   post_media: MediaRow | MediaRow[] | null
   post_polls: PollRow | PollRow[] | null
@@ -257,7 +262,7 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, 
     avatarPath: author.avatar_path,
     avatarUrl: author.avatar_path ? signedUrls.get(author.avatar_path) ?? null : null,
     headline: author.headline,
-    rank: maritime?.rank ?? null,
+    rank: roleDisplayLabel({ roleKey: author.role_key, otherText: author.role_other_text, legacyText: maritime?.rank }),
     currentCompany: maritime?.current_company ?? null,
   }
 }

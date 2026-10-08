@@ -25,6 +25,7 @@ const kindSchema = z.enum([
   'lesson_document',
   'lesson_resource',
   'scorm_package',
+  'lesson_caption',
 ])
 const storagePathSchema = z.string().min(1).max(1024)
 
@@ -126,6 +127,7 @@ export async function getLearningMediaReadUrl(input: {
       courseId: parsedCourse.data,
       kind: parsedKind.data,
       storagePath: parsedPath.data,
+      alreadyAttached: await learningMediaRepository.isMediaReferenced(user.id, parsedCourse.data, parsedPath.data),
     })
     return { ok: true, url }
   } catch {

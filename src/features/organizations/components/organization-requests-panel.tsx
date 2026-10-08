@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { decideOrganizationAccessRequest } from '../access-request-actions'
 import { ACCESS_ROLE_LABELS, accessRoleLabel, relativeDays } from '../access-request-labels'
 import { ACCESS_REQUEST_ESCALATION_DAYS, requestAgeDays } from '../access-request-policy'
@@ -159,7 +158,6 @@ export function OrganizationRequestsPanel({
   nowIso: string
   readOnly?: boolean
 }) {
-  const router = useRouter()
   const [decided, setDecided] = useState<Record<string, string>>({})
   const pending = requests.filter((request) => request.status === 'pending' && !decided[request.id])
   const history = requests.filter((request) => request.status !== 'pending').slice(0, 20)
@@ -196,7 +194,6 @@ export function OrganizationRequestsPanel({
               readOnly={readOnly}
               onDecided={(id, message) => {
                 setDecided((current) => ({ ...current, [id]: message }))
-                router.refresh()
               }}
             />
           ))}

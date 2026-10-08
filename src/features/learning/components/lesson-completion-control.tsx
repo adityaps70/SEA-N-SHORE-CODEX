@@ -37,11 +37,8 @@ export function LessonCompletionControl({
       }
 
       setCompleted(true)
-      if (!result.enrollmentCompleted && nextLessonHref) {
-        router.push(nextLessonHref)
-      } else {
-        router.refresh()
-      }
+      // Completing revalidated the lesson page; only moving on needs a navigation.
+      if (!result.enrollmentCompleted && nextLessonHref) router.push(nextLessonHref)
     } catch {
       setError('We could not update your lesson progress. Please try again.')
     } finally {
@@ -67,7 +64,7 @@ export function LessonCompletionControl({
         className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 max-md:w-full max-md:focus-visible:outline max-md:focus-visible:outline-2 max-md:focus-visible:outline-offset-2 max-md:focus-visible:outline-ocean-500 max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px] max-md:font-bold max-md:hover:bg-navy-900"
       >
         {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5 md:hidden" aria-hidden="true" />}
-        {pending ? 'Saving…' : 'Mark complete'}
+        {pending ? 'Saving…' : nextLessonHref ? 'Complete & next' : 'Mark complete'}
       </button>
 
       {error ? (

@@ -83,12 +83,12 @@ echo "AURORA_BUSINESS_PARITY_INVENTORY_COMPLETE=true"
 # PII-safe identity evidence. Raw values exist only in restrictive temporary files
 # and are never emitted to GitHub Actions logs.
 TMP_IDENTITY_DIR="$(mktemp -d)"
-trap 'rm -rf -- "$TMP_IDENTITY_DIR"' EXIT
+trap 'rm -rf -- "$TMP_IDENTITY_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws cognito-idp list-users --region "$AWS_REGION" --user-pool-id "$COGNITO_POOL_ID" --output json > "$TMP_IDENTITY_DIR/cognito.json"
-IDENTITY_SQL="SELECT profile_id::text, provider_subject, coalesce(email, '') FROM public.identity_accounts WHERE provider = 'cognito' ORDER BY profile_id"
+IDENTITY_SQL="SELECT ia.profile_id::text, ia.provider_subject, coalesce(ia.email, ''), coalesce(p.account_status::text, 'missing') FROM public.identity_accounts ia LEFT JOIN public.profiles p ON p.id = ia.profile_id WHERE ia.provider = 'cognito' ORDER BY ia.profile_id"
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$IDENTITY_SQL" --output json > "$TMP_IDENTITY_DIR/accounts.json"
 python3 - "$TMP_IDENTITY_DIR/cognito.json" "$TMP_IDENTITY_DIR/accounts.json" <<'PY'
-import hashlib, json, re, sys
+import collections, hashlib, json, re, sys
 
 def token(value):
     value=(value or '').strip().lower()
@@ -106,26 +106,72 @@ for user in cognito.get('Users', []):
     cognito_rows.append((token(email), token(subject)))
 
 account_rows=[]
+account_status={}
 for row in accounts.get('records', []):
     profile=row[0].get('stringValue','')
     subject=row[1].get('stringValue','')
     email=row[2].get('stringValue','')
+    status=row[3].get('stringValue','') if len(row) > 3 else 'active'
     if not profile or not subject or not email: raise SystemExit('Aurora identity row missing profile, subject, or email')
     account_rows.append((token(email), token(profile), token(subject)))
+    account_status[token(subject)]=status
 
-if len({x[0] for x in cognito_rows}) != len(cognito_rows): raise SystemExit('Duplicate Cognito email token')
+# Round 15 multi-login: one person may hold several Cognito users with the same email (email + Google), each linked
+# to the same profile through its own identity_accounts row; Cognito users with no profile yet (sign-up not finished)
+# are counted, not failed. Real problems still fail: duplicate subjects, an Aurora identity whose Cognito user is
+# missing or has another email, and one email mapped to two different profiles.
 if len({x[1] for x in cognito_rows}) != len(cognito_rows): raise SystemExit('Duplicate Cognito subject token')
-if len({x[0] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora identity email token')
-if len({x[1] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora identity profile token')
 if len({x[2] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora provider subject token')
 
-cognito_pairs={(email_token, subject_token) for email_token, subject_token in cognito_rows}
-provider_pairs={(email_token, subject_token) for email_token, _, subject_token in account_rows}
-if cognito_pairs != provider_pairs:
-    raise SystemExit('Cognito and Aurora provider identity mappings differ')
+cognito_email_by_subject={subject_token: email_token for email_token, subject_token in cognito_rows}
+profile_by_subject={subject_token: profile_token for _, profile_token, subject_token in account_rows}
+# An identity whose Cognito user is gone is expected only for a profile whose deletion was requested (the account
+# deletion removes the sign-in); on any other profile it fails. Counts are by profile status only.
+orphans=collections.Counter(account_status[subject_token] for _, _, subject_token in account_rows if subject_token not in cognito_email_by_subject)
+live_by_profile=collections.Counter(p for _, p, subject in account_rows if subject in cognito_email_by_subject)
+orphan_profiles={(p, account_status[subject]) for _, p, subject in account_rows if subject not in cognito_email_by_subject}
+orphan_kinds=collections.Counter(f"{status}:{'has_other_sign_in' if live_by_profile[p] else 'no_sign_in_left'}" for p, status in orphan_profiles)
+summary=['AURORA_IDENTITIES_WITHOUT_COGNITO_USER=' + json.dumps(dict(sorted(orphans.items()))),
+         'AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=' + json.dumps(dict(sorted(orphan_kinds.items())))]
+for line in summary:
+    print(line)
+    # Also on stderr: SSM keeps only the first 24,000 characters of stdout, which the table hashes fill.
+    print(line, file=sys.stderr)
+for email_token, profile_token, subject_token in account_rows:
+    if subject_token in cognito_email_by_subject and cognito_email_by_subject[subject_token] != email_token:
+        raise SystemExit('Aurora identity email differs from Cognito')
+
+profiles_by_email={}
+for email_token, profile_token, _ in account_rows:
+    profiles_by_email.setdefault(email_token, set()).add(profile_token)
+if any(len(profiles) > 1 for profiles in profiles_by_email.values()):
+    raise SystemExit('One email is mapped to several profiles')
+
+subjects_by_email={}
+for email_token, subject_token in cognito_rows:
+    subjects_by_email.setdefault(email_token, []).append(subject_token)
+groups={'multi_login': 0, 'multi_login_plus_unmapped': 0, 'unmapped_only': 0}
+for subjects in (s for s in subjects_by_email.values() if len(s) > 1):
+    mapped=[subject for subject in subjects if subject in profile_by_subject]
+    if not mapped: groups['unmapped_only'] += 1
+    elif len(mapped) == len(subjects): groups['multi_login'] += 1
+    else: groups['multi_login_plus_unmapped'] += 1
+unmapped=sum(1 for _, subject_token in cognito_rows if subject_token not in profile_by_subject)
+profiles_with_several=sum(1 for n in collections.Counter(p for _, p, _ in account_rows).values() if n > 1)
+for line in ['COGNITO_DUPLICATE_EMAIL_GROUPS=' + json.dumps(groups, sort_keys=True), f'COGNITO_UNMAPPED_USERS={unmapped}',
+             f'AURORA_PROFILES_WITH_SEVERAL_IDENTITIES={profiles_with_several}']:
+    print(line)
+    print(line, file=sys.stderr)
+# Refuse only after every summary line is out, so a failing run still answers what it found.
+if any(status != 'deletion_requested' for status in orphans):
+    raise SystemExit('Aurora identity has no Cognito user (profile not deleted)')
 
 print(f'COGNITO_USER_COUNT={len(cognito_rows)}')
 print(f'AURORA_IDENTITY_COUNT={len(account_rows)}')
+cognito_pairs={(email_token, subject_token) for email_token, subject_token in cognito_rows}
+provider_pairs={(email_token, subject_token) for email_token, _, subject_token in account_rows if subject_token in cognito_email_by_subject}
+if not provider_pairs <= cognito_pairs:
+    raise SystemExit('Cognito and Aurora provider identity mappings differ')
 for email_token, subject_token in sorted(cognito_rows):
     if not re.fullmatch(r'[0-9a-f]{16}', email_token + '') or not re.fullmatch(r'[0-9a-f]{16}', subject_token + ''):
         raise SystemExit('Bad Cognito token')

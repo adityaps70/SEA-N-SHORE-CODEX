@@ -1,3 +1,4 @@
+import { roleDisplayLabel } from '@/features/roles/taxonomy'
 import { mapLinkedOrganization } from './organization-link'
 import type { PublicProfile, PublicProfileRow } from './types'
 
@@ -17,6 +18,14 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     communityRelationship: row.community_relationship ?? null,
     institutionName: row.institution_name ?? null,
     specialization: row.specialization ?? null,
+    roleDepartmentKey: row.role_department_key ?? null,
+    roleKey: row.role_key ?? null,
+    roleOtherText: row.role_other_text ?? null,
+    cadetStageKey: row.cadet_stage_key ?? null,
+    cadetCourseKey: row.cadet_course_key ?? null,
+    targetDepartmentKey: row.target_department_key ?? null,
+    targetRoleKey: row.target_role_key ?? null,
+    occupationText: row.occupation_text ?? null,
     fullName: row.full_name,
     avatarPath: row.avatar_path,
     avatarUrl: null,
@@ -25,7 +34,8 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     location: row.location,
     headline: row.headline,
     summary: row.summary,
-    rank: maritime?.rank ?? null,
+    // Round 12: the taxonomy label (or the typed "Other" text), falling back to the old rank text.
+    rank: roleDisplayLabel({ roleKey: row.role_key, otherText: row.role_other_text, legacyText: maritime?.rank }),
     currentCompany: maritime?.current_company ?? null,
     currentCompanyId: maritime?.current_company_id ?? null,
     currentOrganization: mapLinkedOrganization(row.current_organization),

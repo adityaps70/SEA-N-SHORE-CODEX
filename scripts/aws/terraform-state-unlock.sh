@@ -29,7 +29,7 @@ git diff --quiet HEAD -- \
   .github/workflows/aws-terraform-state-unlock.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 [[ "$ACTION" == "plan" || "$ACTION" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || {
   echo "Unsupported Terraform state unlock action (plan or an exact lock ID)." >&2
   exit 1
@@ -37,7 +37,7 @@ ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 
 WORK_DIR="$(mktemp -d "$PWD/.terraform-state-unlock.XXXXXXXX")"
 TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 export TMPDIR="$TF_TMPDIR"
 
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
@@ -88,7 +88,7 @@ if pgrep -u "$(id -u)" -x terraform >/dev/null 2>&1; then
   echo "A terraform process is still running on this instance; refusing to release the lock." >&2
   exit 1
 fi
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$TERRAFORM_STATE_UNLOCK_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$TERRAFORM_STATE_UNLOCK_EXPECTED_SHA" ]]
 
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \

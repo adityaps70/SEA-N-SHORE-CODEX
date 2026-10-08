@@ -2,7 +2,6 @@
 
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { Check, X } from 'lucide-react'
 import { acceptConnectionRequest, declineConnectionRequest } from '../actions'
@@ -17,7 +16,6 @@ function initials(name: string) {
  * ✓ (Accept) buttons. The full Requests tab keeps the richer request cards.
  */
 export function NetworkInvitationRow({ profile }: { profile: NetworkProfile }) {
-  const router = useRouter()
   const [outcome, setOutcome] = useState<'accepted' | 'declined' | null>(null)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
@@ -36,7 +34,6 @@ export function NetworkInvitationRow({ profile }: { profile: NetworkProfile }) {
         return
       }
       setOutcome(action === 'accept' ? 'accepted' : 'declined')
-      router.refresh()
     })
   }
 

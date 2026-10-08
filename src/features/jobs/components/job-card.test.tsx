@@ -63,7 +63,8 @@ describe('JobCard', () => {
     expect(logo).toHaveAttribute('src', '/api/company-logo/22222222-2222-4222-8222-222222222222')
     const matchLabel = screen.getByText('Your match')
     expect(matchLabel.closest('[data-job-match]')?.querySelector('svg')).toBeNull()
-    expect(screen.getByText('60%')).toBeVisible()
+    // Round 12: banded label with the % from 40%.
+    expect(screen.getByText('Good match · 60%')).toBeVisible()
     expect(screen.getByText(job.summary)).toHaveClass('line-clamp-2')
   })
 

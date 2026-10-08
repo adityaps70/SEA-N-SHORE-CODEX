@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
+import { jobMatchDisplay } from '../match-display'
 import { JobCompanyLogo } from './job-company-identity'
 import { SaveJobButton } from './save-job-button'
 
@@ -39,6 +40,8 @@ export function JobListRow({
   const place = [job.location, formatJoining(job)].filter(Boolean).join(' · ')
   const applyState = alreadyApplied ? 'Applied' : !open ? 'Applications closed' : job.easyApply ? 'Easy Apply' : null
   const age = relativeTimeFrom(job.publishedAt ?? job.createdAt)
+  // Round 12: no badge for no match or below 40%; banded labels from 40%.
+  const display = jobMatchDisplay(match)
 
   return (
     <li className={`relative flex gap-3 px-4 py-3.5 hover:bg-mist-50/70 ${className}`} data-job-row>
@@ -56,8 +59,8 @@ export function JobListRow({
         </p>
         {place ? <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{place}</p> : null}
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
-          {match ? <span className="font-semibold text-ocean-800">{match.score}% match</span> : null}
-          {match && (applyState || age) ? <span aria-hidden="true">·</span> : null}
+          {display?.showInList ? <span className="font-semibold text-ocean-800">{display.text}</span> : null}
+          {display?.showInList && (applyState || age) ? <span aria-hidden="true">·</span> : null}
           {applyState ? <span className={applyState === 'Applications closed' ? 'font-medium text-amber-800' : ''}>{applyState}</span> : null}
           {applyState && age ? <span aria-hidden="true">·</span> : null}
           {age ? <span>{age}</span> : null}

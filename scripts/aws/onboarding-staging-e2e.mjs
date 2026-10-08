@@ -19,8 +19,9 @@ const personaSpecs = [
     intent: 'Host events',
     fields: [
       ['Location', 'Chennai'],
-      ['How would you describe yourself?', 'Maritime technology supporter'],
+      [/^Occupation \/ role/, 'Maritime technology supporter'],
     ],
+    absent: ['Department', 'Current or most recent rank'],
   },
   {
     key: 'seafarer',
@@ -28,9 +29,14 @@ const personaSpecs = [
     intent: 'Find jobs',
     fields: [
       ['Location', 'Mumbai'],
-      ['Current or most recent rank', 'Chief Engineer'],
       ['Current / last organisation', 'E2E Shipping'],
     ],
+    // Round 12: Department → Rank pickers, never a typed rank.
+    selects: [
+      ['Department', 'deck_officers'],
+      ['Current or most recent rank', 'master'],
+    ],
+    rankDisabledUntilDepartment: 'Current or most recent rank',
     verifyUsernameLifecycle: true,
   },
   {
@@ -39,9 +45,13 @@ const personaSpecs = [
     intent: 'Network',
     fields: [
       ['Location', 'Singapore'],
-      ['Current role / designation', 'Marine Superintendent'],
       ['Current organisation', 'E2E Shore'],
     ],
+    selects: [
+      ['Department (function)', 'technical_fleet'],
+      ['Role', 'marine_superintendent'],
+    ],
+    absent: ['Current role / designation'],
   },
   {
     key: 'recruiter',
@@ -49,9 +59,12 @@ const personaSpecs = [
     intent: 'Hire people',
     fields: [
       ['Location', 'Mumbai'],
-      ['Role / designation', 'Crewing Manager'],
       ['Current organisation', 'E2E Manning'],
     ],
+    selects: [
+      ['Role', 'hr_crewing_manager'],
+    ],
+    absent: ['Role / designation'],
   },
   {
     key: 'trainer',
@@ -61,6 +74,9 @@ const personaSpecs = [
       ['Location', 'Kochi'],
       ['Training specialization', 'SIRE 2.0'],
       ['Organisation / institute', 'E2E Academy'],
+    ],
+    selects: [
+      ['Role', 'simulator_instructor'],
     ],
   },
   {
@@ -72,6 +88,15 @@ const personaSpecs = [
       ['Location', 'Pune'],
       ['Institute / academy', 'E2E Maritime Institute'],
     ],
+    // The target job role is suggested from the stage: Deck Cadet → Third Officer.
+    selects: [
+      ['Current stage', 'deck_cadet'],
+    ],
+    expectValues: [
+      ['Target department', 'deck_officers'],
+      ['Target job role (rank / role)', 'third_officer'],
+    ],
+    absent: ['Current or most recent rank'],
   },
   {
     key: 'family',
@@ -82,6 +107,7 @@ const personaSpecs = [
       ['Location', 'Goa'],
       ['Relationship to the maritime community', 'Spouse / partner'],
     ],
+    absent: ['Department', 'Current or most recent rank'],
   },
   {
     key: 'enthusiast',
@@ -90,7 +116,11 @@ const personaSpecs = [
     intent: 'Attend events',
     fields: [
       ['Location', 'Visakhapatnam'],
+      [/^Occupation \/ role/, 'Web developer'],
     ],
+    // A Maritime Enthusiast gets only an occupation, and is not matched or allowed to apply on sea jobs.
+    absent: ['Department', 'Department (function)', 'Current or most recent rank', 'Role'],
+    verifySeaJobGate: true,
   },
 ]
 
@@ -117,7 +147,9 @@ const users = personaSpecs.map((spec) => {
 
 assert.ok(siteUrl, 'SITE_URL is required')
 assert.match(runId ?? '', /^\d+$/, 'GITHUB_RUN_ID is required')
-assert.ok(['signup', 'journeys'].includes(phase), 'E2E_PHASE must be signup or journeys')
+assert.ok(['signup', 'journeys', 'seajob'].includes(phase), 'E2E_PHASE must be signup, journeys or seajob')
+const tempSeaJobId = process.env.E2E_TEMP_SEA_JOB_ID
+if (phase === 'seajob') assert.match(tempSeaJobId ?? '', /^[0-9a-f-]{36}$/, 'E2E_TEMP_SEA_JOB_ID is required for the sea job phase')
 for (const user of users) {
   const emailPattern = new RegExp('^sea-n-shore-e2e-[0-9]+-' + user.key + '@example\\.com$')
   assert.match(user.email ?? '', emailPattern)
@@ -190,10 +222,10 @@ async function signUp(user) {
   try {
     for (let attempt = 0; attempt <= SIGNUP_THROTTLE_RETRY_DELAYS_MS.length; attempt += 1) {
       await page.goto(siteUrl + '/auth/sign-up', { waitUntil: 'networkidle' })
-      await page.getByLabel('Full name').fill(user.fullName)
-      await page.getByLabel('Email').fill(user.email)
-      await page.getByLabel('Password').fill(user.password)
-      await page.getByRole('button', { name: 'Create account' }).click()
+      await page.getByLabel('Full name', { exact: true }).fill(user.fullName)
+      await page.getByLabel('Email', { exact: true }).fill(user.email)
+      await page.getByLabel('Password', { exact: true }).fill(user.password)
+      await page.getByRole('button', { name: 'Create account', exact: true }).click()
 
       const authError = page.locator('p[role="alert"]')
       const authStatus = page.locator('p[role="status"]')
@@ -240,11 +272,21 @@ async function signUp(user) {
 
 async function signIn(page, user) {
   await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'networkidle' })
-  await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByLabel('Email', { exact: true }).fill(user.email)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
-  await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
+  // The intro heading is hidden on phones (Round 8 mobile layout); the identity step is on every viewport.
+  await expect(page.getByRole('group', { name: 'Which best describes you?' })).toBeVisible()
+}
+
+/** Signs in a persona that finished onboarding earlier in this run; it lands on Home. */
+async function signInOnboarded(page, user) {
+  await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'networkidle' })
+  await page.getByLabel('Email', { exact: true }).fill(user.email)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 }
 
 async function expectUsernameAvailable(page, username) {
@@ -255,8 +297,9 @@ async function expectUsernameAvailable(page, username) {
 async function expectPublicProfileUrl(page, username, fullName) {
   const response = await page.goto(siteUrl + '/people/' + username, { waitUntil: 'domcontentloaded' })
   assert.equal(response?.status(), 200, 'Expected /people/' + username + ' to resolve successfully')
-  await expect(page.getByText(fullName, { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('@' + username, { exact: true }).first()).toBeVisible()
+  // The profile's h1 (the same name also sits in the mobile page bar, hidden at desktop width).
+  await expect(page.getByRole('heading', { level: 1, name: fullName, exact: true })).toBeVisible()
+  await expect(page.getByRole('main').getByText('@' + username, { exact: true }).first()).toBeVisible()
 }
 
 async function verifyExistingLegacyProfileUrl(page) {
@@ -276,18 +319,24 @@ async function verifyExistingLegacyProfileUrl(page) {
   console.log('ONBOARDING_E2E_LEGACY_PROFILE_URL_VERIFIED=true')
 }
 
+// An invalid, reserved or taken username also offers the generated one ("If you continue, we'll
+// use @…"), so these hints are matched from their start rather than exactly.
+function hintStartingWith(page, text) {
+  return page.getByText(new RegExp('^' + text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+}
+
 async function verifyUsernameBeforeCompletion(page, takenUsername, initialUsername) {
   const usernameField = usernameInput(page)
 
   await usernameField.fill('Bad Slug!!')
-  await expect(page.getByText('Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.', { exact: true })).toBeVisible()
+  await expect(hintStartingWith(page, 'Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.')).toBeVisible()
 
   await usernameField.fill('admin')
-  await expect(page.getByText('That username is reserved.', { exact: true })).toBeVisible()
+  await expect(hintStartingWith(page, 'That username is reserved.')).toBeVisible()
   console.log('ONBOARDING_E2E_USERNAME_RESERVED_VERIFIED=true')
 
   await usernameField.fill(takenUsername)
-  await expect(page.getByText('That username is already taken.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(hintStartingWith(page, 'That username is already taken.')).toBeVisible({ timeout: 10_000 })
 
   await usernameField.fill('E2E-Seafarer-' + runId)
   await expect(usernameField).toHaveValue(initialUsername)
@@ -374,6 +423,28 @@ async function verifyUsernameEditLifecycle(page, user, initialUsername, takenUse
   console.log('ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true')
 }
 
+/**
+ * Round 12: a Maritime Enthusiast sees no match % on sea jobs, and a sea job with a minimum match
+ * refuses them with the seafarer message instead of an Apply button.
+ */
+async function verifySeaJobGate(page) {
+  await page.goto(siteUrl + '/jobs?mode=sea', { waitUntil: 'networkidle' })
+  const body = await page.locator('main').innerText()
+  assert.doesNotMatch(body, /(Partial|Good|Strong) match · \d+%|\d+% match/, 'A Maritime Enthusiast must not see a match % on sea jobs')
+  console.log('ONBOARDING_E2E_ENTHUSIAST_NO_SEA_MATCH_VERIFIED=true')
+
+  // The temporary sea job this run created (minimum match 70) must be listed, and must refuse.
+  const jobHref = '/jobs/' + tempSeaJobId
+  const hrefs = await page.locator('a[href^="/jobs/"]').evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')))
+  assert.ok(hrefs.includes(jobHref), 'Expected the temporary sea job in the sea jobs list')
+
+  await page.goto(siteUrl + jobHref, { waitUntil: 'networkidle' })
+  await expect(page.getByText('Sea-going role. Your profile type is Maritime Enthusiast.', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('This role is for seafarers. Update your profile type if this is wrong.', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /^(Easy Apply|Apply now)$/ })).toHaveCount(0)
+  console.log('ONBOARDING_E2E_ENTHUSIAST_SEA_JOB_REFUSED_VERIFIED=true')
+}
+
 async function completePersona(user, takenUsername) {
   const context = await browser.newContext(user.mobile ? { viewport: { width: 390, height: 844 } } : {})
   const page = await context.newPage()
@@ -385,15 +456,32 @@ async function completePersona(user, takenUsername) {
   })
   await personaButton.click()
   await expect(personaButton).toHaveAttribute('aria-pressed', 'true')
+  // Phones walk through onboarding one step at a time (round 8): Continue shows the next step.
+  if (user.mobile) await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await expect(page.getByText('What are you here to do?', { exact: true })).toBeVisible()
 
   const intentButton = page.getByRole('button', { name: user.intent, exact: true })
   await intentButton.click()
   await expect(intentButton).toHaveAttribute('aria-pressed', 'true')
+  if (user.mobile) await page.getByRole('button', { name: 'Continue', exact: true }).click()
 
   for (const [label, value] of user.fields) {
-    await page.getByLabel(label, { exact: true }).fill(value)
+    await page.getByLabel(label, { exact: typeof label === 'string' }).fill(value)
   }
+  for (const label of user.absent ?? []) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0)
+  }
+  if (user.rankDisabledUntilDepartment) {
+    await expect(page.getByLabel(user.rankDisabledUntilDepartment, { exact: true })).toBeDisabled()
+    console.log('ONBOARDING_E2E_RANK_WAITS_FOR_DEPARTMENT_VERIFIED=true')
+  }
+  for (const [label, value] of user.selects ?? []) {
+    await page.getByLabel(label, { exact: true }).selectOption(value)
+  }
+  for (const [label, value] of user.expectValues ?? []) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveValue(value)
+  }
+  if (user.selects || user.absent) console.log('ONBOARDING_E2E_ROLE_PICKERS_VERIFIED=' + user.key)
 
   await verifyAccessibility(page, user.label)
   if (user.mobile) await verifyMobileLayout(page, user.label)
@@ -417,6 +505,7 @@ async function completePersona(user, takenUsername) {
     await verifyExistingLegacyProfileUrl(page)
     await verifyUsernameEditLifecycle(page, user, username, takenUsername)
   }
+  // The sea job gate runs in its own phase, once the temporary sea job exists (see the workflow).
 
   console.log(personaMarkers[user.key])
   await context.close()
@@ -434,6 +523,14 @@ try {
       }
     }
     console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
+  } else if (phase === 'seajob') {
+    const enthusiast = users.find((user) => user.verifySeaJobGate)
+    assert.ok(enthusiast)
+    const context = await browser.newContext(enthusiast.mobile ? { viewport: { width: 390, height: 844 } } : {})
+    const page = await context.newPage()
+    await signInOnboarded(page, enthusiast)
+    await verifySeaJobGate(page)
+    await context.close()
   } else {
     const other = users.find((user) => user.key === 'other')
     assert.ok(other)

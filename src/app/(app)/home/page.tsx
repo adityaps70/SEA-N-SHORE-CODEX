@@ -10,6 +10,7 @@ import { getPeopleYouMayKnow } from '@/features/network/queries'
 import { getHomeRailData } from '@/features/profiles/home-rail-queries'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
+import { RankSelectionPrompt } from '@/features/roles/components/rank-selection-prompt'
 
 export const metadata: Metadata = { title: 'Home' }
 
@@ -42,6 +43,7 @@ export default async function HomePage({
       suggestions={suggestions.slice(0, 3)}
       verified={rail.verified}
     >
+      <RankSelectionPrompt profile={profile} className="mb-4 max-md:mb-2" />
       {/* On phones the trigger card is hidden: the Post tab's Create sheet opens the composer. */}
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} composeRequest={composeRequest} hideTriggerOnPhones />

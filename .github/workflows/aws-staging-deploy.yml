@@ -32,12 +32,18 @@ permissions:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    # A job-level block replaces the workflow's: actions: read is needed by the exact-head CI wait (Actions API).
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
     outputs:
       run_build: ${{ steps.resolve.outputs.run_build }}
       deploy_to_ecs: ${{ steps.resolve.outputs.deploy_to_ecs }}
+    timeout-minutes: 10
     steps:
       - name: Checkout exact ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve staging deployment action
         id: resolve
@@ -49,6 +55,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Round 14 (1.3): a manual deploy may only ship the live branch, like a push deploy.
+            [[ "$GITHUB_REF" == "refs/heads/feat/aws-native-phase-0-1" ]] || { echo "Manual deploys are allowed only from feat/aws-native-phase-0-1." >&2; exit 1; }
             echo "STAGING_DEPLOY_ACTION=workflow-dispatch" >> "$GITHUB_ENV"
             echo "run_build=true" >> "$GITHUB_OUTPUT"
             if [[ "$MANUAL_DEPLOY" == "true" ]]; then
@@ -63,7 +71,7 @@ jobs:
           fi
 
           [[ "$GITHUB_REF" == "refs/heads/feat/aws-native-phase-0-1" ]]
-          ACTION="$(tr -d '[:space:]' < scripts/aws/staging-deploy-action.txt)"
+          ACTION="$(cut -d' ' -f1 < scripts/aws/staging-deploy-action.txt | tr -d '[:space:]')"
           echo "STAGING_DEPLOY_ACTION=$ACTION" >> "$GITHUB_ENV"
           case "$ACTION" in
             plan)
@@ -79,6 +87,17 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        if: steps.resolve.outputs.deploy_to_ecs == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/staging-deploy-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
 
       - name: Wait for exact-head AWS Infrastructure CI
         if: steps.resolve.outputs.run_build == 'true'
@@ -113,11 +132,29 @@ jobs:
             exit 1
           }
 
-  deploy:
+  # Round 16: a deploy to ECS waits for the owner's approval in 'staging-apply'.
+  apply-approval:
     needs: gate
-    if: needs.gate.outputs.run_build == 'true'
+    if: needs.gate.outputs.deploy_to_ecs == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    timeout-minutes: 10
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
+  deploy:
+    needs:
+      - gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.apply-approval.result == 'success' || (needs.apply-approval.result == 'skipped' && needs.gate.outputs.deploy_to_ecs != 'true')) && needs.gate.outputs.run_build == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
+    # The workflow's permissions, plus actions: write to start the post-deploy checks.
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
@@ -131,17 +168,25 @@ jobs:
       NOTIFICATION_WORKER_TASK_DEFINITION: sea-n-shore-staging-notification-worker
       # NEXT_PUBLIC_SITE_URL is resolved from scripts/aws/public-site-url.txt (one repository variable).
       SERVER_ACTION_ALLOWED_ORIGINS: https://seanshore.in,https://d3prih0q6jofyr.cloudfront.net
-      AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
+      # Round 14 (1.6): the site is HTTPS end to end for browsers; no insecure auth cookies.
+      AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "false"
+      # Round 15: phone/SMS sign-in is retired; OTP_LIMITS_TABLE and ALLOWED_PHONE_CALLING_CODES are
+      # removed from the web task. The deep health check token is injected from Secrets Manager.
+      HEALTH_CHECK_TOKEN_SECRET_NAME: sea-n-shore-staging/health-check-token
       AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
       AURORA_PORT: "5432"
       AURORA_DATABASE: sea_n_shore
       AURORA_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:rds!cluster-7bd593b0-cb50-4dbb-9e93-6e7bbb6d3fc1-mL7X5H
+      # Round 14 (2.12): the least-privilege app role's own rotated secret. Set together with
+      # scripts/aws/aurora-app-credentials.txt = app at cutover; "master" keeps the master secret.
+      AURORA_APP_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/aurora-app-1fXL2g
       DEPLOY_TO_ECS: ${{ needs.gate.outputs.deploy_to_ecs }}
 
+    timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -161,14 +206,44 @@ jobs:
           test -n "$SERVER_ACTION_ALLOWED_ORIGINS" || (echo "Missing staging Server Action origin" && exit 1)
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Refuse a commit that is already deployed
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          # Round 14 (1.8): the live web task's image tag (<sha>-<run id>) records which commit is
+          # deployed, so a re-run or a second flip can never deploy the same SHA twice.
+          LIVE_TASK="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+          LIVE_IMAGE="$(aws ecs describe-task-definition --task-definition "$LIVE_TASK" --query "taskDefinition.containerDefinitions[?name=='$ECS_CONTAINER_NAME'].image | [0]" --output text)"
+          echo "Live web image tag: ${LIVE_IMAGE##*:}"
+          if [[ "${LIVE_IMAGE##*:}" == "${GITHUB_SHA}-"* ]]; then
+            echo "Commit $GITHUB_SHA is already deployed (${LIVE_IMAGE##*:}); refusing to deploy it again." >&2
+            exit 1
+          fi
+
+      - name: Resolve health check token secret
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          # Round 15: the web task reads HEALTH_CHECK_TOKEN from this secret (ARN only; the value is
+          # never read here). Fails before the build when the secret or the deploy role's access is
+          # missing: run sms-retirement-infra and bootstrap-budget-retirement first.
+          HEALTH_CHECK_TOKEN_SECRET_ARN="$(aws secretsmanager describe-secret --secret-id "$HEALTH_CHECK_TOKEN_SECRET_NAME" --query ARN --output text)" || {
+            echo "Cannot describe $HEALTH_CHECK_TOKEN_SECRET_NAME; apply the SMS retirement and bootstrap budget retirement runners before deploying." >&2
+            exit 1
+          }
+          [[ "$HEALTH_CHECK_TOKEN_SECRET_ARN" =~ ^arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/health-check-token-[A-Za-z0-9]{6}$ ]] \
+            || { echo "Unexpected health check token secret ARN." >&2; exit 1; }
+          echo "HEALTH_CHECK_TOKEN_SECRET_ARN=$HEALTH_CHECK_TOKEN_SECRET_ARN" >> "$GITHUB_ENV"
+          echo "HEALTH_CHECK_TOKEN_SECRET_ARN=$HEALTH_CHECK_TOKEN_SECRET_ARN"
+
       - name: Login to Amazon ECR
         id: ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
       - name: Build and push immutable application image
         id: image
@@ -247,14 +322,32 @@ jobs:
           echo "- Origins: \`$SERVER_ACTION_ALLOWED_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Method/header: \`PUT / Content-Type\`" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Resolve database credentials
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          MODE="$(tr -d '[:space:]' < scripts/aws/aurora-app-credentials.txt)"
+          case "$MODE" in
+            master) DB_CREDENTIALS_SECRET_ARN="$AURORA_SECRET_ARN" ;;
+            app)
+              [[ "$AURORA_APP_SECRET_ARN" =~ ^arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/aurora-app-[A-Za-z0-9]{6}$ ]] \
+                || { echo "aurora-app-credentials.txt says app but AURORA_APP_SECRET_ARN is not the app secret." >&2; exit 1; }
+              DB_CREDENTIALS_SECRET_ARN="$AURORA_APP_SECRET_ARN"
+              ;;
+            *) echo "Unsupported database credentials mode: $MODE" >&2; exit 1 ;;
+          esac
+          echo "DB_CREDENTIALS_MODE=$MODE" >> "$GITHUB_ENV"
+          echo "DB_CREDENTIALS_SECRET_ARN=$DB_CREDENTIALS_SECRET_ARN" >> "$GITHUB_ENV"
+          echo "DATABASE_CREDENTIALS_MODE=$MODE"
+
       - name: Create new ECS task definition revision
         if: env.DEPLOY_TO_ECS == 'true'
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
           set -euo pipefail
-          AURORA_USER_SECRET="${AURORA_SECRET_ARN}:username::"
-          AURORA_PASSWORD_SECRET="${AURORA_SECRET_ARN}:password::"
+          AURORA_USER_SECRET="${DB_CREDENTIALS_SECRET_ARN}:username::"
+          AURORA_PASSWORD_SECRET="${DB_CREDENTIALS_SECRET_ARN}:password::"
 
           aws ecs describe-task-definition \
             --task-definition "$ECS_TASK_DEFINITION" \
@@ -266,12 +359,15 @@ jobs:
             --arg NAME "$ECS_CONTAINER_NAME" \
             --arg SITE "$NEXT_PUBLIC_SITE_URL" \
             --arg ALLOW_INSECURE_HTTP_COOKIES "$AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES" \
+            --arg LIVENESS_CHECK "node -e \"fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\"" \
             --arg AWS_MEDIA_BUCKET "$AWS_MEDIA_BUCKET" \
             --arg AURORA_HOST "$AURORA_HOST" \
             --arg AURORA_PORT "$AURORA_PORT" \
             --arg AURORA_DATABASE "$AURORA_DATABASE" \
             --arg AURORA_USER_SECRET "$AURORA_USER_SECRET" \
             --arg AURORA_PASSWORD_SECRET "$AURORA_PASSWORD_SECRET" \
+            --arg DB_CREDENTIALS_SECRET_ARN "$DB_CREDENTIALS_SECRET_ARN" \
+            --arg HEALTH_CHECK_TOKEN_SECRET "$HEALTH_CHECK_TOKEN_SECRET_ARN" \
             '
             del(
               .taskDefinitionArn,
@@ -282,29 +378,38 @@ jobs:
               .registeredAt,
               .registeredBy
             )
+            # Round 13: never shrink the web task below 2048 MiB / 0.5 vCPU when copying it.
+            | .memory = (if ((.memory // "0") | tonumber) < 2048 then "2048" else .memory end)
+            | .cpu = (if ((.cpu // "0") | tonumber) < 512 then "512" else .cpu end)
             | .containerDefinitions |= map(
                 if .name == $NAME then
                   .image = $IMAGE
+                  # Round 14 (1.5): cheap liveness route instead of rendering /auth/sign-in.
+                  | .healthCheck.command = ["CMD-SHELL", $LIVENESS_CHECK]
                   | .environment = (
                       ((.environment // [])
                         | map(select(
                             .name != "NEXT_PUBLIC_SITE_URL"
                             and ((.name | startswith("NEXT_PUBLIC_" + "SUPABASE_")) | not)
                             and .name != "AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES"
+                            and .name != "OTP_LIMITS_TABLE"
+                            and .name != "ALLOWED_PHONE_CALLING_CODES"
                             and .name != "AWS_MEDIA_BUCKET"
                             and .name != "AURORA_HOST"
                             and .name != "AURORA_PORT"
                             and .name != "AURORA_DATABASE"
                             and .name != "AURORA_SSL"
+                            and .name != "AURORA_SECRET_ARN"
                           )))
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
-                          {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":"true"},
+                          {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":$ALLOW_INSECURE_HTTP_COOKIES},
                           {"name":"AWS_MEDIA_BUCKET","value":$AWS_MEDIA_BUCKET},
                           {"name":"AURORA_HOST","value":$AURORA_HOST},
                           {"name":"AURORA_PORT","value":$AURORA_PORT},
                           {"name":"AURORA_DATABASE","value":$AURORA_DATABASE},
-                          {"name":"AURORA_SSL","value":"true"}
+                          {"name":"AURORA_SSL","value":"true"},
+                          {"name":"AURORA_SECRET_ARN","value":$DB_CREDENTIALS_SECRET_ARN}
                         ]
                     )
                   | .secrets = (
@@ -312,10 +417,12 @@ jobs:
                         | map(select(
                             .name != "AURORA_USER"
                             and .name != "AURORA_PASSWORD"
+                            and .name != "HEALTH_CHECK_TOKEN"
                           )))
                       + [
                           {"name":"AURORA_USER","valueFrom":$AURORA_USER_SECRET},
-                          {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET}
+                          {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET},
+                          {"name":"HEALTH_CHECK_TOKEN","valueFrom":$HEALTH_CHECK_TOKEN_SECRET}
                         ]
                     )
                 else . end
@@ -338,11 +445,18 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_ARN" \
+            --disable-execute-command \
             --force-new-deployment > /dev/null
 
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
+
+          # Round 14 (2.14): ECS Exec stays off on the web service; the deploy owns this setting.
+          EXEC_ENABLED=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].enableExecuteCommand' --output json)
+          [[ "$EXEC_ENABLED" == "false" ]] || { echo "ECS Exec is still enabled on $ECS_SERVICE." >&2; exit 1; }
+          echo "ECS_EXEC_DISABLED_VERIFIED=true"
 
       - name: Promote event worker task definitions
         if: env.DEPLOY_TO_ECS == 'true'
@@ -352,10 +466,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Round 14 (2.7): the outbox worker's daily abandoned sign-up sweep needs the user pool id,
+          # taken from the web task definition this deploy just copied.
+          COGNITO_USER_POOL_ID="$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $NAME) | .environment[]? | select(.name == "AWS_COGNITO_USER_POOL_ID") | .value' task-definition-current.json)"
+          [[ "$COGNITO_USER_POOL_ID" =~ ^ap-south-1_[A-Za-z0-9]+$ ]] || { echo "Web task definition has no Cognito user pool id." >&2; exit 1; }
+
           promote_worker() {
             local family="$1"
             local container_name="$2"
             local output_name="$3"
+            local extra_environment="$4"
             local current_file="/tmp/${container_name}-current.json"
             local next_file="/tmp/${container_name}-next.json"
 
@@ -364,9 +484,18 @@ jobs:
               --query taskDefinition \
               --output json > "$current_file"
 
+            # Round 14 (2.12): the workers use the same database credentials as the web task; with the
+            # app role they also get AURORA_SECRET_ARN so they reload the secret after a rotation.
+            if [[ "$DB_CREDENTIALS_MODE" == app ]]; then
+              extra_environment="$(jq -c --arg ARN "$DB_CREDENTIALS_SECRET_ARN" '. + [{"name":"AURORA_SECRET_ARN","value":$ARN}]' <<<"$extra_environment")"
+            fi
+
             jq \
               --arg IMAGE "$WORKER_EXPECTED_IMAGE_URI" \
               --arg NAME "$container_name" \
+              --arg AURORA_USER_SECRET "${DB_CREDENTIALS_SECRET_ARN}:username::" \
+              --arg AURORA_PASSWORD_SECRET "${DB_CREDENTIALS_SECRET_ARN}:password::" \
+              --argjson EXTRA_ENVIRONMENT "$extra_environment" \
               '
               del(
                 .taskDefinitionArn,
@@ -378,7 +507,20 @@ jobs:
                 .registeredBy
               )
               | .containerDefinitions |= map(
-                  if .name == $NAME then .image = $IMAGE else . end
+                  if .name == $NAME then
+                    .image = $IMAGE
+                    | .environment = (
+                        ((.environment // []) | map(select(.name as $n | ($EXTRA_ENVIRONMENT | map(.name) | index($n)) == null and $n != "AURORA_SECRET_ARN")))
+                        + $EXTRA_ENVIRONMENT
+                      )
+                    | .secrets = (
+                        ((.secrets // []) | map(select(.name != "AURORA_USER" and .name != "AURORA_PASSWORD")))
+                        + [
+                            {"name":"AURORA_USER","valueFrom":$AURORA_USER_SECRET},
+                            {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET}
+                          ]
+                      )
+                  else . end
                 )
               ' "$current_file" > "$next_file"
 
@@ -392,8 +534,9 @@ jobs:
             echo "$output_name=$task_arn" >> "$GITHUB_ENV"
           }
 
-          promote_worker "$OUTBOX_WORKER_TASK_DEFINITION" "outbox-worker" "OUTBOX_WORKER_TASK_ARN"
-          promote_worker "$NOTIFICATION_WORKER_TASK_DEFINITION" "notification-worker" "NOTIFICATION_WORKER_TASK_ARN"
+          promote_worker "$OUTBOX_WORKER_TASK_DEFINITION" "outbox-worker" "OUTBOX_WORKER_TASK_ARN" \
+            "$(jq -cn --arg POOL "$COGNITO_USER_POOL_ID" '[{"name":"AWS_COGNITO_USER_POOL_ID","value":$POOL}]')"
+          promote_worker "$NOTIFICATION_WORKER_TASK_DEFINITION" "notification-worker" "NOTIFICATION_WORKER_TASK_ARN" '[]'
 
       - name: Deploy event workers and wait for stability
         if: env.DEPLOY_TO_ECS == 'true'
@@ -537,6 +680,20 @@ jobs:
           echo "- Image: \`$EXPECTED_IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- rolloutState: \`$PRIMARY_ROLLOUT_STATE\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- desiredCount/runningCount/pendingCount: \`$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Actions minutes: the live checks run once per deploy, after the rollout above is verified,
+      # instead of on every push.
+      - name: Start the post-deploy checks
+        if: env.DEPLOY_TO_ECS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for workflow in aws-remote-verify.yml aws-google-auth-live-verify.yml aws-logo-browser-verify.yml; do
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref feat/aws-native-phase-0-1
+            echo "Started $workflow"
+          done
 
 # legacy-import-rollout-trigger: 2026-10-02
 

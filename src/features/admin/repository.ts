@@ -140,6 +140,20 @@ export type AdminUserSummary = {
   updatedAt: string
   /** Storage key of the profile photo; the page signs it into a short-lived URL. */
   avatarPath?: string | null
+  /** How many Cognito sign-ins (identity_accounts rows) the member has. */
+  loginMethods: number
+  /** Which kinds of sign-in those are, e.g. ['email', 'google']. */
+  loginKinds: AdminSignInKind[]
+}
+
+export const ADMIN_SIGN_IN_KINDS = ['email', 'google', 'phone'] as const
+export type AdminSignInKind = (typeof ADMIN_SIGN_IN_KINDS)[number]
+
+/** One Cognito user of a member: the name the Cognito admin API addresses it by. */
+export type AdminUserSignIn = {
+  username: string
+  subject: string
+  kind: AdminSignInKind
 }
 
 export type AdminUserSearch = {
@@ -316,6 +330,13 @@ type AdminUserRow = QueryResultRow & {
   created_at: string
   updated_at: string
   avatar_path?: string | null
+  login_methods?: number | string | null
+  login_kinds?: string[] | null
+}
+type AdminSignInRow = QueryResultRow & {
+  provider_subject: string
+  provider_username: string | null
+  email: string | null
 }
 type OrganizationDirectoryRow = QueryResultRow & {
   company_id: string
@@ -548,7 +569,48 @@ function mapCompanyAccessRequest(row: CompanyAccessRequestRow): AdminCompanyAcce
   }
 }
 
+/**
+ * Kind of one identity_accounts row (alias x), told apart the way the app does elsewhere:
+ * Google users carry a federated "google_..." Cognito username (account-deletion/reauth.ts),
+ * mobile sign-ins a made-up phone-<hash>@auth.seaandshore.in email (auth/phone-login-email.ts).
+ */
+const SIGN_IN_KIND_SQL = `case
+           when x.provider_username ~* '^google_' then 'google'
+           when x.email ~* '^phone-[0-9a-f]{32}@auth[.]seaandshore[.]in$' then 'phone'
+           else 'email'
+         end`
+
+/**
+ * One row per profile. A member can have several Cognito users (email + password, Google, a
+ * re-linked Google...) since 0031 dropped the one-sign-in-per-profile constraint, so the list
+ * shows one representative sign-in (verified email first, then any email, then the oldest)
+ * and counts the rest instead of joining every row.
+ */
+const ADMIN_USER_IDENTITY_JOINS_SQL = `left join lateral (
+         select x.email, x.provider_subject
+         from public.identity_accounts x
+         where x.profile_id = p.id and x.provider = 'cognito'
+         order by (x.email_verified and x.email is not null) desc,
+           (x.email is not null) desc,
+           x.created_at asc,
+           x.id asc
+         limit 1
+       ) ia on true
+       left join lateral (
+         select count(*) as login_methods,
+           coalesce(array_agg(distinct ${SIGN_IN_KIND_SQL}), '{}'::text[]) as login_kinds
+         from public.identity_accounts x
+         where x.profile_id = p.id and x.provider = 'cognito'
+       ) logins on true`
+
+function signInKind(username: string | null, email: string | null): AdminSignInKind {
+  if (username && /^google_/i.test(username)) return 'google'
+  if (email && /^phone-[0-9a-f]{32}@auth\.seaandshore\.in$/i.test(email.trim())) return 'phone'
+  return 'email'
+}
+
 function mapAdminUser(row: AdminUserRow): AdminUserSummary {
+  const kinds = new Set(row.login_kinds ?? [])
   return {
     id: row.profile_id,
     fullName: row.full_name,
@@ -561,6 +623,8 @@ function mapAdminUser(row: AdminUserRow): AdminUserSummary {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     avatarPath: row.account_status === 'deletion_requested' ? null : row.avatar_path ?? null,
+    loginMethods: Number(row.login_methods ?? 0),
+    loginKinds: ADMIN_SIGN_IN_KINDS.filter((kind) => kinds.has(kind)),
   }
 }
 
@@ -646,6 +710,8 @@ function defaultTransaction<T>(work: (query: AdminQuery) => Promise<T>) {
     return result.rows
   }))
 }
+
+export type AdminOtherRoleText = { text: string; profileCount: number; jobCount: number }
 
 export function createAdminRepository(input: { query?: AdminQuery; transaction?: AdminTransaction; now?: () => number } = {}) {
   const queryRows: AdminQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
@@ -741,6 +807,40 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       publishedJobs: numberValue(row?.published_jobs),
       publishedEvents: numberValue(row?.published_events),
     }
+  }
+
+  /**
+   * Round 12: texts typed for "Other (type your own)" rank / role in the last `days` days, counted
+   * for profiles (by last update) and jobs (by creation), so common ones can join the taxonomy.
+   * Read-only.
+   */
+  async function listOtherRoleTexts(userId: string, input: { days?: number; limit?: number } = {}): Promise<AdminOtherRoleText[]> {
+    await requirePlatformAdministrator(queryRows, userId)
+    const days = Math.min(Math.max(Math.trunc(input.days ?? 90), 1), 365)
+    const limit = Math.min(Math.max(Math.trunc(input.limit ?? 50), 1), 200)
+    const rows = await queryRows(
+      `with typed as (
+         select lower(btrim(p.role_other_text)) as normalized, btrim(p.role_other_text) as text, 'profile'::text as source
+         from public.profiles p
+         where p.role_other_text is not null
+           and p.updated_at >= now() - ($1::int * interval '1 day')
+         union all
+         select lower(btrim(j.role_other_text)), btrim(j.role_other_text), 'job'::text
+         from public.jobs j
+         where j.role_other_text is not null
+           and j.deleted_at is null
+           and j.created_at >= now() - ($1::int * interval '1 day')
+       )
+       select min(text) as text,
+              count(*) filter (where source = 'profile') as profile_count,
+              count(*) filter (where source = 'job') as job_count
+       from typed
+       group by normalized
+       order by count(*) desc, min(text) asc
+       limit $2`,
+      [days, limit],
+    ) as Array<QueryResultRow & { text: string; profile_count: string | number; job_count: string | number }>
+    return rows.map((row) => ({ text: row.text, profileCount: numberValue(row.profile_count), jobCount: numberValue(row.job_count) }))
   }
 
   async function listModerationCases(
@@ -1245,7 +1345,13 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
         lower(p.full_name) like ${parameter}
         or lower(coalesce(p.slug, '')) like ${parameter}
         or lower(coalesce(p.headline, '')) like ${parameter}
-        or lower(coalesce(ia.email, '')) like ${parameter}
+        or exists (
+          select 1
+          from public.identity_accounts x
+          where x.profile_id = p.id
+            and x.provider = 'cognito'
+            and lower(coalesce(x.email, '')) like ${parameter}
+        )
       )`)
     }
 
@@ -1264,10 +1370,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     await requirePlatformAdministrator(queryRows, adminId)
     const { values, where } = adminUserFilter(input)
     const rows = await queryRows(
-      `select count(distinct p.id) as total
+      `select count(*) as total
        from public.profiles p
-       left join public.identity_accounts ia
-         on ia.profile_id = p.id and ia.provider = 'cognito'
        ${where.length ? `where ${where.join(' and ')}` : ''}`,
       values,
     ) as Array<{ total: number | string | null }>
@@ -1302,6 +1406,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          p.account_status::text as account_status,
          ia.email,
          ia.provider_subject,
+         logins.login_methods,
+         logins.login_kinds,
          exists (
            select 1
            from public.user_roles target_admin
@@ -1311,8 +1417,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          p.created_at,
          p.updated_at
        from public.profiles p
-       left join public.identity_accounts ia
-         on ia.profile_id = p.id and ia.provider = 'cognito'
+       ${ADMIN_USER_IDENTITY_JOINS_SQL}
        ${whereSql}
        order by
          case p.account_status::text
@@ -1342,6 +1447,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          p.account_status::text as account_status,
          ia.email,
          ia.provider_subject,
+         logins.login_methods,
+         logins.login_kinds,
          exists (
            select 1
            from public.user_roles target_admin
@@ -1351,13 +1458,33 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          p.created_at,
          p.updated_at
        from public.profiles p
-       left join public.identity_accounts ia
-         on ia.profile_id = p.id and ia.provider = 'cognito'
+       ${ADMIN_USER_IDENTITY_JOINS_SQL}
        where p.id = $1
        limit 1`,
       [profileId],
     ) as AdminUserRow[]
     return rows[0] ? mapAdminUser(rows[0]) : null
+  }
+
+  /** Every Cognito user of a member, so account controls reach all of their sign-ins. */
+  async function listUserSignIns(adminId: string, profileId: string): Promise<AdminUserSignIn[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select provider_subject, provider_username, email
+       from public.identity_accounts
+       where profile_id = $1 and provider = 'cognito'
+       order by created_at asc, id asc`,
+      [profileId],
+    ) as AdminSignInRow[]
+    return rows.flatMap((row) => {
+      const username = row.provider_username?.trim() || row.provider_subject?.trim()
+      if (!username) return []
+      return [{
+        username,
+        subject: row.provider_subject,
+        kind: signInKind(row.provider_username, row.email),
+      }]
+    })
   }
 
   async function listUserAccountHistory(
@@ -1420,6 +1547,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            p.account_status::text as account_status,
            ia.email,
            ia.provider_subject,
+           logins.login_methods,
+           logins.login_kinds,
            exists (
              select 1
              from public.user_roles target_admin
@@ -1429,8 +1558,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            p.created_at,
            p.updated_at
          from public.profiles p
-         left join public.identity_accounts ia
-           on ia.profile_id = p.id and ia.provider = 'cognito'
+         ${ADMIN_USER_IDENTITY_JOINS_SQL}
          where p.id = $1
          for update of p`,
         [profileId],
@@ -1819,6 +1947,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   return {
     isPlatformAdministrator,
     getAdminDashboardMetrics,
+    listOtherRoleTexts,
     listModerationCases,
     listAuditEvents,
     moderateContent,
@@ -1827,6 +1956,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     searchUsers,
     countUsers,
     getAdminUser,
+    listUserSignIns,
     listUserAccountHistory,
     setUserAccountStatus,
     recordUserDeletionAudit,

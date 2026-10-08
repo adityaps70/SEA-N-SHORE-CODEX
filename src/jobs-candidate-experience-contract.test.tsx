@@ -28,7 +28,8 @@ describe('premium candidate jobs experience contract', () => {
     const card = source('src/features/jobs/components/job-card.tsx')
     const applyButton = source('src/features/jobs/components/apply-job-button.tsx')
     expect(card).toContain('JobMatchResult')
-    expect(card).toContain('match.score')
+    // Round 12: the banded match label (no badge below 40%) instead of a raw score.
+    expect(card).toContain('jobMatchDisplay')
     expect(card).toContain('Verified')
     expect(card).toContain('Urgent')
     expect(card).toContain('ApplyJobButton')

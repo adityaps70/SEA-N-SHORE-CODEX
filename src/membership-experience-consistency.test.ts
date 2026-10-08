@@ -15,7 +15,7 @@ test('membership experience is reflected across profile, creator, activities, or
   const phoneCreateSheet = read('src/components/navigation/create-sheet.tsx')
   const activities = read('src/app/(app)/activities/page.tsx')
   const settingsVerifications = read('src/app/(app)/settings/verifications/page.tsx')
-  const learnPage = read('src/app/(app)/learn/page.tsx')
+  const learnPage = read('src/app/(public)/learn/page.tsx')
   const hiringOrganization = read('src/app/(app)/hiring/organization/page.tsx')
   const organizationsPage = read('src/app/(app)/organizations/page.tsx')
   const organizationWorkspace = read('src/app/(app)/organizations/[slug]/page.tsx')

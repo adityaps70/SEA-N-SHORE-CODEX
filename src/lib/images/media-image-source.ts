@@ -1,20 +1,13 @@
-/**
- * Hosts whose photos are served through Next's image optimizer (resized, WebP/AVIF). This list
- * builds `images.remotePatterns` in next.config.ts, so the optimizer only ever fetches from here.
- * Everything else (first-party /api routes, blob: previews, data: URLs) is shown as it is.
- */
-export const OPTIMIZED_MEDIA_IMAGE_HOSTNAMES = [
-  'sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com',
-] as const
+import { isMediaImageLink } from './media-image-route'
 
+/**
+ * Whether a photo source goes through Next's image optimizer (resized WebP). Only the stable
+ * signed links from `createMediaImageLink` and the static landing photos do. Pre-signed S3 URLs
+ * change every hour, which made the optimizer redo every photo at once each hour (Round 13), so
+ * they are shown as they are; first-party /api routes, blob: previews and data: URLs likewise.
+ */
 export function isOptimizedMediaImageUrl(src: string): boolean {
-  if (!src.startsWith('https://')) return false
-  try {
-    const { hostname } = new URL(src)
-    return (OPTIMIZED_MEDIA_IMAGE_HOSTNAMES as readonly string[]).includes(hostname)
-  } catch {
-    return false
-  }
+  return isMediaImageLink(src) || /^\/landing\/[A-Za-z0-9_-]+\.(?:webp|jpe?g|png)$/.test(src)
 }
 
 const VARIANT_MEDIA_QUERY: Record<string, string> = {

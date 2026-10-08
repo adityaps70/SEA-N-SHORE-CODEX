@@ -8,6 +8,8 @@ import {
   snapshotSectionsFromRows,
   type CourseReviewSnapshot,
 } from './course-review-snapshot'
+import { loadCourseCurriculumRows } from './course-snapshot-query'
+import { liveCourseSql } from './course-publication'
 
 type CourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CourseTransaction = <T>(work: (query: CourseQuery) => Promise<T>) => Promise<T>
@@ -30,6 +32,8 @@ type OwnedCourseRow = QueryResultRow & {
   publisher_name: string
   publisher_slug: string | null
   hidden_for_plan?: boolean | null
+  open_revision_id?: string | null
+  open_revision_status?: string | null
 }
 type OwnedCourseDetailRow = QueryResultRow & {
   id: string
@@ -63,13 +67,22 @@ type OwnedCourseDetailRow = QueryResultRow & {
   last_review_note?: string | null
   last_review_at?: string | Date | null
   pending_submitted_at?: string | Date | null
+  revision_of_course_id?: string | null
+  revision_closed_at?: string | Date | null
+  live_slug?: string | null
+  live_title?: string | null
+  open_revision_id?: string | null
+  open_revision_status?: string | null
 }
 type LockedCourseRow = QueryResultRow & {
   id: string
+  slug?: string
   status: string
   mentor_id: string | null
   company_id: string | null
   details_revision?: string | number | null
+  revision_of_course_id?: string | null
+  revision_closed_at?: string | Date | null
 }
 type UpdatedCourseRow = QueryResultRow & {
   id: string
@@ -256,6 +269,20 @@ export type MentorCourseSummary = {
   publisherSlug: string | null
   /** Hidden from new learners because the owner's plan ended (enrolled learners keep it). */
   hiddenForPlan?: boolean
+  /** The draft copy being edited for this published course, if any. */
+  openRevision?: CourseOpenRevision | null
+}
+
+export type CourseOpenRevision = {
+  courseId: string
+  status: CourseStatus
+}
+
+/** Set when this course is a draft revision of a published course. */
+export type CourseRevisionOf = {
+  courseId: string
+  slug: string
+  title: string
 }
 
 export type CourseLastReview = {
@@ -279,6 +306,12 @@ export type MentorOwnedCourseDetail = CourseDraftInput & {
   lastReview: CourseLastReview | null
   /** When the course was last sent for review, while it is in review. */
   submittedAt: string | null
+  /** This course is a draft revision of the live course named here. */
+  revisionOf?: CourseRevisionOf | null
+  /** The revision was approved and applied, or discarded; it is read-only now. */
+  revisionClosed?: boolean
+  /** For a live course: the draft revision being edited, if any. */
+  openRevision?: CourseOpenRevision | null
 }
 
 export type CourseDetailsSaveResult = {
@@ -713,11 +746,17 @@ export function createCourseRepository(input: {
          course.company_id,
          case when course.company_id is null then creator.full_name else company.name end as publisher_name,
          case when course.company_id is null then creator.slug else company.slug end as publisher_slug,
-         not ${planVisibleSql('course', 'course')} as hidden_for_plan
+         not ${planVisibleSql('course', 'course')} as hidden_for_plan,
+         open_revision.id as open_revision_id,
+         open_revision.status as open_revision_status
        from public.learning_courses course
        join public.profiles creator on creator.id = course.created_by_user_id
        left join public.companies company on company.id = course.company_id
+       left join public.learning_courses open_revision
+         on open_revision.revision_of_course_id = course.id
+        and open_revision.revision_closed_at is null
        where ${courseManagerAccessSql('course', '$1')}
+         and ${liveCourseSql('course')}
        order by course.updated_at desc, course.id desc`,
       [actorId],
     ) as OwnedCourseRow[]
@@ -739,6 +778,9 @@ export function createCourseRepository(input: {
       publisherName: row.publisher_name,
       publisherSlug: row.publisher_slug,
       hiddenForPlan: row.hidden_for_plan === true,
+      openRevision: row.open_revision_id && row.open_revision_status
+        ? { courseId: row.open_revision_id, status: asCourseStatus(row.open_revision_status) }
+        : null,
     }))
   }
 
@@ -775,10 +817,20 @@ export function createCourseRepository(input: {
          last_review.reviewed_at as last_review_at,
          pending_submission.submitted_at as pending_submitted_at,
          case when course.company_id is null then creator.full_name else company.name end as publisher_name,
-         case when course.company_id is null then creator.slug else company.slug end as publisher_slug
+         case when course.company_id is null then creator.slug else company.slug end as publisher_slug,
+         course.revision_of_course_id,
+         course.revision_closed_at,
+         live.slug as live_slug,
+         live.title as live_title,
+         open_revision.id as open_revision_id,
+         open_revision.status as open_revision_status
        from public.learning_courses course
        join public.profiles creator on creator.id = course.created_by_user_id
        left join public.companies company on company.id = course.company_id
+       left join public.learning_courses live on live.id = course.revision_of_course_id
+       left join public.learning_courses open_revision
+         on open_revision.revision_of_course_id = course.id
+        and open_revision.revision_closed_at is null
        left join lateral (
          select submission.outcome, submission.reviewer_note, submission.reviewed_at
          from public.learning_course_submissions submission
@@ -833,6 +885,13 @@ export function createCourseRepository(input: {
       detailsRevision: revisionNumber(row.details_revision),
       lastReview: lastReviewFromRow(row),
       submittedAt: row.status === 'submitted' ? nullableIso(row.pending_submitted_at) : null,
+      revisionOf: row.revision_of_course_id && row.live_slug && row.live_title
+        ? { courseId: row.revision_of_course_id, slug: row.live_slug, title: row.live_title }
+        : null,
+      revisionClosed: Boolean(row.revision_of_course_id && row.revision_closed_at),
+      openRevision: row.open_revision_id && row.open_revision_status
+        ? { courseId: row.open_revision_id, status: asCourseStatus(row.open_revision_status) }
+        : null,
     }
   }
 
@@ -856,7 +915,8 @@ export function createCourseRepository(input: {
               course.slug, course.title, course.subtitle, course.description, course.category, course.level,
               course.language, course.thumbnail_path, course.trailer_path, course.learning_outcomes,
               course.requirements, course.target_audience, course.price_minor, course.discount_price_minor,
-              course.currency, course.access_type, course.certificate_enabled, course.course_format
+              course.currency, course.access_type, course.certificate_enabled, course.course_format,
+              course.navigation_mode, course.revision_of_course_id, course.revision_closed_at
        from public.learning_courses course
        where course.id = $1
          and ${courseManagerAccessSql('course', '$2')}
@@ -882,7 +942,7 @@ export function createCourseRepository(input: {
     return transaction(async (txQuery) => {
       const current = await lockManagedCourse(txQuery, actorId, courseId)
       const status = asCourseStatus(current.status)
-      if (!canMentorEditCourse(status)) throw new CourseEditLockedError(status)
+      if (!canMentorEditCourse(status) || current.revision_closed_at) throw new CourseEditLockedError(status)
 
       const storedRevision = revisionNumber(current.details_revision)
       if (
@@ -917,7 +977,8 @@ export function createCourseRepository(input: {
              updated_at = now()
          where id = $1
          returning id, details_revision, updated_at`,
-        [courseId, ...courseValues(draft)],
+        // A draft revision keeps its own slug: a live course's address never changes through an edit.
+        [courseId, ...courseValues(current.revision_of_course_id ? { ...draft, slug: String(current.slug) } : draft)],
       ) as UpdatedCourseRow[]
       const updated = rows[0]
       if (!updated) throw new Error('course_update_failed')
@@ -945,7 +1006,7 @@ export function createCourseRepository(input: {
       const current = await lockManagedCourse(txQuery, actorId, courseId)
 
       const currentStatus = asCourseStatus(current.status)
-      if (!canTransitionCourseStatus({ actor: 'mentor', current: currentStatus, next: 'submitted' })) {
+      if (current.revision_closed_at || !canTransitionCourseStatus({ actor: 'mentor', current: currentStatus, next: 'submitted' })) {
         throw new Error('course_submit_forbidden')
       }
       const storedRevision = revisionNumber(current.details_revision)
@@ -957,69 +1018,7 @@ export function createCourseRepository(input: {
         throw new CourseEditConflictError(storedRevision)
       }
 
-      const readinessRows = await txQuery(
-        `select
-           section.id as section_id,
-           section.title as section_title,
-           section.position as section_position,
-           lesson.id as lesson_id,
-           lesson.title as lesson_title,
-           lesson.lesson_type,
-           lesson.position as lesson_position,
-           lesson.article_body,
-           lesson.asset_path,
-           lesson.external_url,
-           lesson.is_published,
-           lesson.release_mode,
-           lesson.release_at,
-           lesson.drip_delay_days,
-           lesson.prerequisite_lesson_id,
-           lesson.completion_rule,
-           lesson.completion_threshold,
-           lesson.max_attempts,
-           lesson.embed_kind,
-           assignment.instructions as assignment_instructions,
-           assignment.accepted_extensions as assignment_extensions,
-           assignment.max_upload_bytes as assignment_max_upload_bytes,
-           scorm.status as scorm_status,
-           scorm.source_zip_path as scorm_source_zip_path,
-           scorm.launch_path as scorm_launch_path,
-           scorm.processing_error as scorm_processing_error,
-           quiz.id as quiz_id,
-           quiz.pass_percentage,
-           question.id as question_id,
-           question.position as question_position,
-           option.id as option_id,
-           option.is_correct as option_is_correct,
-           lesson.summary as lesson_summary,
-           quiz.instructions as quiz_instructions,
-           question.prompt as question_prompt,
-           option.label as option_label
-         from public.learning_course_sections section
-         left join public.learning_lessons lesson
-           on lesson.section_id = section.id
-         left join public.learning_assignments assignment
-           on assignment.lesson_id = lesson.id
-         left join public.learning_scorm_packages scorm
-           on scorm.lesson_id = lesson.id
-         left join public.learning_quizzes quiz
-           on quiz.lesson_id = lesson.id
-         left join public.learning_quiz_questions question
-           on question.quiz_id = quiz.id
-         left join public.learning_quiz_options option
-           on option.question_id = question.id
-         where section.course_id = $1
-         order by
-           section.position asc,
-           section.id asc,
-           lesson.position asc nulls last,
-           lesson.id asc nulls last,
-           question.position asc nulls last,
-           question.id asc nulls last,
-           option.position asc nulls last,
-           option.id asc nulls last`,
-        [courseId],
-      ) as SubmissionReadinessRow[]
+      const readinessRows = await loadCourseCurriculumRows<SubmissionReadinessRow>(txQuery, courseId)
       validateSubmissionReadiness(readinessRows)
 
       const snapshot: CourseReviewSnapshot = {

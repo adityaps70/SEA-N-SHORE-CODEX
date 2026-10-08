@@ -7,7 +7,9 @@ EXPECTED_ACCOUNT="310356785722"
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 CLUSTER="sea-n-shore-staging"
 SERVICE="sea-n-shore-staging-web"
-BUCKET="sea-n-shore-staging-310356785722-media"
+# Round 14 (2.13): the dump moved out of the media bucket. A re-run would also need the import
+# task to be granted read access to the migration bucket.
+BUCKET="sea-n-shore-staging-310356785722-migration"
 KEY="private-migrations/beaufortmarine.sql"
 EXPECTED_BYTES="13693941"
 EXPECTED_SHA256="f2a2b6b537b5ec1a373ec656409828d889a294aa3a0c7f5895165c1103430efd"
@@ -19,7 +21,7 @@ ACTION_FILE="scripts/aws/legacy-user-import-action.txt"
 git diff --quiet HEAD -- "$0" "$ACTION_FILE" scripts/migration/beaufortmarine-import.mjs infra/aws/database/migrations/0058_legacy_profile_claims.sql
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 if [[ -n "${LEGACY_USER_IMPORT_ACTION:-}" ]]; then ACTION="$(tr -d '[:space:]' <<<"$LEGACY_USER_IMPORT_ACTION")"; fi
 case "$ACTION" in plan|import-once) ;; *) echo "Unsupported action: $ACTION" >&2; exit 1 ;; esac
 
@@ -47,7 +49,7 @@ if [[ "$ACTION" == "plan" ]]; then
 fi
 
 [[ "$OBJECT_PRESENT" == true ]] || { echo "Legacy SQL object has not been uploaded." >&2; exit 1; }
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEGACY_USER_IMPORT_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEGACY_USER_IMPORT_EXPECTED_SHA" ]]
 
 # Ensure the claim bridge exists before the data task runs.
 export LEGACY_PROFILE_CLAIMS_EXPECTED_SHA="$LEGACY_USER_IMPORT_EXPECTED_SHA"
@@ -56,7 +58,7 @@ export LEGACY_PROFILE_CLAIMS_MIGRATION_ACTION="migrate-once"
 bash scripts/aws/legacy-profile-claims-migration.sh
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASKDEF" --query taskDefinition --output json > "$WORK/current.json"
 jq --arg BUCKET "$BUCKET" --arg KEY "$KEY" --arg HASH "$EXPECTED_SHA256" --arg BYTES "$EXPECTED_BYTES" '
   del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)

@@ -2,14 +2,30 @@ resource "aws_cognito_user_pool" "app" {
   name                     = "${local.name_prefix}-users"
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
-  mfa_configuration        = "OFF"
-  deletion_protection      = "ACTIVE"
+  # Round 14 (2.11): optional authenticator-app (TOTP) MFA; the app requires it for platform
+  # administrators. Software tokens only: no SMS MFA (so no sms_configuration), and no paid
+  # Plus tier, threat protection or advanced security.
+  mfa_configuration   = "OPTIONAL"
+  deletion_protection = "ACTIVE"
 
+  software_token_mfa_configuration {
+    enabled = true
+  }
+
+  # Round 15: phone/SMS sign-in is retired, so the custom-auth (define/create/verify auth
+  # challenge) triggers are gone; sign-in is email + password (SRP) or Google only.
   lambda_config {
-    define_auth_challenge          = aws_lambda_function.cognito_define_auth_challenge.arn
-    create_auth_challenge          = aws_lambda_function.cognito_create_auth_challenge.arn
-    verify_auth_challenge_response = aws_lambda_function.cognito_verify_auth_challenge.arn
-    pre_sign_up                    = aws_lambda_function.cognito_pre_sign_up_link.arn
+    pre_sign_up = aws_lambda_function.cognito_pre_sign_up_link.arn
+    # Account emails go through Resend (cognito-email-sender.tf); the key encrypts the codes.
+    kms_key_id = var.enable_cognito_resend_email ? aws_kms_key.cognito_email_sender.arn : null
+
+    dynamic "custom_email_sender" {
+      for_each = var.enable_cognito_resend_email ? [1] : []
+      content {
+        lambda_arn     = aws_lambda_function.cognito_resend_email_sender.arn
+        lambda_version = "V1_0"
+      }
+    }
   }
 
   password_policy {
@@ -45,10 +61,8 @@ resource "aws_cognito_user_pool" "app" {
   }
 
   depends_on = [
-    aws_lambda_permission.cognito_define_auth_challenge,
-    aws_lambda_permission.cognito_create_auth_challenge,
-    aws_lambda_permission.cognito_verify_auth_challenge,
-    aws_lambda_permission.cognito_pre_sign_up_link
+    aws_lambda_permission.cognito_pre_sign_up_link,
+    aws_lambda_permission.cognito_resend_email_sender
   ]
 
   tags = local.common_tags
@@ -66,10 +80,16 @@ resource "aws_cognito_user_pool_client" "web" {
   generate_secret               = false
   prevent_user_existence_errors = "ENABLED"
 
+  # Round 14 (1.2): a write_attributes list without phone_number was rejected by Cognito
+  # ("Invalid write attributes specified"), so the client's attributes stay as they were.
+  # Round 15 leaves them unchanged too: phone_number_verified can never be client-writable, and
+  # without a list Cognito has accepted, any change here risks the same rejection. With custom auth
+  # gone, a phone number on an account no longer signs anybody in.
+
+  # Round 15: ALLOW_CUSTOM_AUTH (phone/SMS sign-in codes) is retired.
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_USER_SRP_AUTH",
-    "ALLOW_CUSTOM_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 
@@ -140,50 +160,10 @@ resource "aws_cognito_identity_provider" "google" {
   }
 }
 
-data "archive_file" "cognito_define_auth_challenge" {
-  type        = "zip"
-  source_file = "${path.module}/lambda/cognito-define-auth-challenge.mjs"
-  output_path = "${path.module}/.terraform/cognito-define-auth-challenge.zip"
-}
-
-data "archive_file" "cognito_create_auth_challenge" {
-  type        = "zip"
-  source_file = "${path.module}/lambda/cognito-create-auth-challenge.mjs"
-  output_path = "${path.module}/.terraform/cognito-create-auth-challenge.zip"
-}
-
-data "archive_file" "cognito_verify_auth_challenge" {
-  type        = "zip"
-  source_file = "${path.module}/lambda/cognito-verify-auth-challenge.mjs"
-  output_path = "${path.module}/.terraform/cognito-verify-auth-challenge.zip"
-}
-
 data "archive_file" "cognito_pre_sign_up_link" {
   type        = "zip"
   source_file = "${path.module}/lambda/cognito-pre-sign-up-link.mjs"
   output_path = "${path.module}/.terraform/cognito-pre-sign-up-link.zip"
-}
-
-resource "aws_iam_role" "cognito_auth_challenge" {
-  name = "${local.name_prefix}-cognito-auth-challenge"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "lambda.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy_attachment" "cognito_auth_challenge_logs" {
-  role       = aws_iam_role.cognito_auth_challenge.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
 resource "aws_iam_role" "cognito_pre_sign_up_link" {
@@ -226,98 +206,10 @@ resource "aws_iam_role_policy" "cognito_pre_sign_up_link" {
   })
 }
 
-resource "aws_iam_role_policy" "cognito_auth_challenge_sms" {
-  name = "${local.name_prefix}-cognito-auth-challenge-sms"
-  role = aws_iam_role.cognito_auth_challenge.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "SendPhoneOtp"
-      Effect   = "Allow"
-      Action   = ["sns:Publish"]
-      Resource = "*"
-    }]
-  })
-}
-
-resource "aws_cloudwatch_log_group" "cognito_define_auth_challenge" {
-  name              = "/aws/lambda/${local.name_prefix}-cognito-define-auth-challenge"
-  retention_in_days = 14
-  tags              = local.common_tags
-}
-
-resource "aws_cloudwatch_log_group" "cognito_create_auth_challenge" {
-  name              = "/aws/lambda/${local.name_prefix}-cognito-create-auth-challenge"
-  retention_in_days = 14
-  tags              = local.common_tags
-}
-
-resource "aws_cloudwatch_log_group" "cognito_verify_auth_challenge" {
-  name              = "/aws/lambda/${local.name_prefix}-cognito-verify-auth-challenge"
-  retention_in_days = 14
-  tags              = local.common_tags
-}
-
 resource "aws_cloudwatch_log_group" "cognito_pre_sign_up_link" {
   name              = "/aws/lambda/${local.name_prefix}-cognito-pre-sign-up-link"
   retention_in_days = 14
   tags              = local.common_tags
-}
-
-resource "aws_lambda_function" "cognito_define_auth_challenge" {
-  function_name    = "${local.name_prefix}-cognito-define-auth-challenge"
-  role             = aws_iam_role.cognito_auth_challenge.arn
-  runtime          = "nodejs22.x"
-  handler          = "cognito-define-auth-challenge.handler"
-  filename         = data.archive_file.cognito_define_auth_challenge.output_path
-  source_code_hash = data.archive_file.cognito_define_auth_challenge.output_base64sha256
-  timeout          = 10
-  memory_size      = 128
-
-  depends_on = [
-    aws_cloudwatch_log_group.cognito_define_auth_challenge,
-    aws_iam_role_policy_attachment.cognito_auth_challenge_logs
-  ]
-
-  tags = local.common_tags
-}
-
-resource "aws_lambda_function" "cognito_create_auth_challenge" {
-  function_name    = "${local.name_prefix}-cognito-create-auth-challenge"
-  role             = aws_iam_role.cognito_auth_challenge.arn
-  runtime          = "nodejs22.x"
-  handler          = "cognito-create-auth-challenge.handler"
-  filename         = data.archive_file.cognito_create_auth_challenge.output_path
-  source_code_hash = data.archive_file.cognito_create_auth_challenge.output_base64sha256
-  timeout          = 10
-  memory_size      = 128
-
-  depends_on = [
-    aws_cloudwatch_log_group.cognito_create_auth_challenge,
-    aws_iam_role_policy_attachment.cognito_auth_challenge_logs,
-    aws_iam_role_policy.cognito_auth_challenge_sms
-  ]
-
-  tags = local.common_tags
-}
-
-resource "aws_lambda_function" "cognito_verify_auth_challenge" {
-  function_name    = "${local.name_prefix}-cognito-verify-auth-challenge"
-  role             = aws_iam_role.cognito_auth_challenge.arn
-  runtime          = "nodejs22.x"
-  handler          = "cognito-verify-auth-challenge.handler"
-  filename         = data.archive_file.cognito_verify_auth_challenge.output_path
-  source_code_hash = data.archive_file.cognito_verify_auth_challenge.output_base64sha256
-  timeout          = 10
-  memory_size      = 128
-
-  depends_on = [
-    aws_cloudwatch_log_group.cognito_verify_auth_challenge,
-    aws_iam_role_policy_attachment.cognito_auth_challenge_logs
-  ]
-
-  tags = local.common_tags
 }
 
 resource "aws_lambda_function" "cognito_pre_sign_up_link" {
@@ -337,33 +229,6 @@ resource "aws_lambda_function" "cognito_pre_sign_up_link" {
   ]
 
   tags = local.common_tags
-}
-
-resource "aws_lambda_permission" "cognito_define_auth_challenge" {
-  statement_id   = "AllowCognitoDefineAuthChallenge"
-  action         = "lambda:InvokeFunction"
-  function_name  = aws_lambda_function.cognito_define_auth_challenge.function_name
-  principal      = "cognito-idp.amazonaws.com"
-  source_account = data.aws_caller_identity.current.account_id
-  source_arn     = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/*"
-}
-
-resource "aws_lambda_permission" "cognito_create_auth_challenge" {
-  statement_id   = "AllowCognitoCreateAuthChallenge"
-  action         = "lambda:InvokeFunction"
-  function_name  = aws_lambda_function.cognito_create_auth_challenge.function_name
-  principal      = "cognito-idp.amazonaws.com"
-  source_account = data.aws_caller_identity.current.account_id
-  source_arn     = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/*"
-}
-
-resource "aws_lambda_permission" "cognito_verify_auth_challenge" {
-  statement_id   = "AllowCognitoVerifyAuthChallenge"
-  action         = "lambda:InvokeFunction"
-  function_name  = aws_lambda_function.cognito_verify_auth_challenge.function_name
-  principal      = "cognito-idp.amazonaws.com"
-  source_account = data.aws_caller_identity.current.account_id
-  source_arn     = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/*"
 }
 
 resource "aws_lambda_permission" "cognito_pre_sign_up_link" {

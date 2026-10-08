@@ -15,10 +15,15 @@ describe('Cognito protected route proxy', () => {
     const marketing = await handler(request('/'))
     const signIn = await handler(request('/auth/sign-in'))
     const publicProfile = await handler(request('/people/captain-rhea'))
+    // Health checks authenticate with their own token, never a session redirect.
+    const live = await handler(request('/api/health/live'))
+    const deepHome = await handler(request('/api/health/home'))
 
     expect(marketing.status).toBe(200)
     expect(signIn.status).toBe(200)
     expect(publicProfile.status).toBe(200)
+    expect(live.status).toBe(200)
+    expect(deepHome.status).toBe(200)
     expect(getVerifiedPrincipal).not.toHaveBeenCalled()
     expect(refreshSession).not.toHaveBeenCalled()
   })
@@ -67,7 +72,13 @@ describe('Cognito protected route proxy', () => {
     '/hiring',
     '/home',
     '/jobs',
-    '/learn',
+    '/learn/my-learning',
+    '/learn/studio',
+    '/learn/studio/courses/33333333-3333-4333-8333-333333333333/edit',
+    '/learn/teach',
+    '/learn/courses/sire-2-0/learn',
+    '/learn/courses/sire-2-0/preview/not-a-uuid',
+    '/learn/courses/sire-2-0/anything-new',
     '/messages',
     '/network',
     '/notifications',
@@ -95,6 +106,20 @@ describe('Cognito protected route proxy', () => {
     })
 
     await handler(request(path))
+    expect(getVerifiedPrincipal).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    '/learn',
+    '/learn/courses/sire-2-0-practical-vessel-inspection-readiness',
+    '/learn/courses/sire-2-0/preview/33333333-3333-4333-8333-333333333333',
+  ])('%s is public (catalogue, course page and free previews)', async (path) => {
+    const getVerifiedPrincipal = vi.fn(async () => null)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal, refreshSession: vi.fn(async () => false) })
+
+    const response = await handler(request(path))
+
+    expect(response.headers.get('location')).toBeNull()
     expect(getVerifiedPrincipal).not.toHaveBeenCalled()
   })
 })

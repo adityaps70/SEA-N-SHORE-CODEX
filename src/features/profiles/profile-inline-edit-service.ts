@@ -5,6 +5,9 @@ import type {
   ProfileIdentitySectionInput,
   ProfileProfessionalSectionInput,
 } from './profile-inline-schemas'
+import type { ProfilePreferencesInput, RetainedPersonaDetails } from './profile-preferences'
+import { createProfilePreferencesService } from './profile-preferences-service'
+import { UPDATE_PROFILE_ROLE_SQL, profileRoleValues, type ProfileRoleSelection } from '@/features/roles/profile-role-input'
 
 type ReturningIdRow = QueryResultRow & { id: string }
 type LockedProfileRow = QueryResultRow & {
@@ -14,6 +17,50 @@ type LockedProfileRow = QueryResultRow & {
 }
 
 type TransactionRunner = <T>(fn: (client: DatabaseQueryClient) => Promise<T>) => Promise<T>
+
+/** A profile type change saved with a card, through the same preferences service as Edit profile. */
+export type ProfileCardPreferences = {
+  data: ProfilePreferencesInput
+  retained?: RetainedPersonaDetails
+}
+
+/** The organization shown in the header: a name, optionally linked to its Sea N Shore page. */
+export type ProfileCurrentOrganization = {
+  currentCompany?: string
+  currentCompanyId?: string
+}
+
+async function savePreferencesWithClient(client: DatabaseQueryClient, profileId: string, preferences: ProfileCardPreferences) {
+  // Same transaction: the preferences service runs on this client instead of opening its own.
+  const service = createProfilePreferencesService({ withTransaction: (fn) => fn(client) })
+  await service.updatePreferences(profileId, preferences.data, preferences.retained)
+}
+
+async function upsertCurrentOrganization(client: DatabaseQueryClient, profileId: string, organization: ProfileCurrentOrganization) {
+  await client.query(
+    `insert into public.maritime_profiles (
+       user_id, current_company, current_company_id, vessel_types, trading_areas, shore_career_preference, updated_at
+     ) values ($1, $2, $3::uuid, '{}'::text[], '{}'::text[], false, now())
+     on conflict (user_id) do update set
+       current_company = excluded.current_company,
+       current_company_id = excluded.current_company_id,
+       updated_at = now()`,
+    [profileId, organization.currentCompany ?? null, organization.currentCompany ? organization.currentCompanyId ?? null : null],
+  )
+}
+
+async function updateRank(client: DatabaseQueryClient, profileId: string, rank?: string) {
+  // Round 10: only the rank column; a member without a maritime row has no rank to change.
+  await client.query(
+    `update public.maritime_profiles set rank = $2, updated_at = now() where user_id = $1`,
+    [profileId, rank?.trim() ? rank.trim() : null],
+  )
+}
+
+async function saveRole(client: DatabaseQueryClient, profileId: string, role?: ProfileRoleSelection | null) {
+  // Round 12: the structured department / rank, cadet stage and target role, and occupation.
+  if (role) await client.query(UPDATE_PROFILE_ROLE_SQL, profileRoleValues(profileId, role))
+}
 
 function unavailable(): never {
   throw new Error('profile_edit_unavailable')
@@ -28,6 +75,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     profileId: string,
     data: ProfileIdentitySectionInput,
     isMaritime: boolean,
+    options: { rankSubmitted?: boolean; preferences?: ProfileCardPreferences; role?: ProfileRoleSelection | null } = {},
   ) {
     return input.withTransaction(async (client) => {
       const locked = await client.query<LockedProfileRow>(
@@ -75,18 +123,12 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
       )
       if (result.rows[0]?.id !== profileId) unavailable()
 
-      if (isMaritime) {
-        await client.query(
-          `insert into public.maritime_profiles (
-             user_id, current_company, current_company_id, vessel_types, trading_areas, shore_career_preference, updated_at
-           ) values ($1, $2, $3::uuid, '{}'::text[], '{}'::text[], false, now())
-           on conflict (user_id) do update set
-             current_company = excluded.current_company,
-             current_company_id = excluded.current_company_id,
-             updated_at = now()`,
-          [profileId, data.currentCompany ?? null, data.currentCompany ? data.currentCompanyId ?? null : null],
-        )
-      }
+      // Round 11: a profile type change from the header saves first, so the organization and rank
+      // below (linked to their Sea N Shore page, or cleared) are what stays.
+      if (options.preferences) await savePreferencesWithClient(client, profileId, options.preferences)
+      if (isMaritime) await upsertCurrentOrganization(client, profileId, data)
+      if (options.rankSubmitted) await updateRank(client, profileId, data.rank)
+      await saveRole(client, profileId, options.role)
       return true
     })
   }
@@ -118,7 +160,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     })
   }
 
-  async function updateProfessional(profileId: string, data: ProfileProfessionalSectionInput) {
+  async function updateProfessional(profileId: string, data: ProfileProfessionalSectionInput, role?: ProfileRoleSelection | null) {
     return input.withTransaction(async (client) => {
       await client.query(
         `insert into public.maritime_profiles (
@@ -143,11 +185,57 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
           data.shoreCareerPreference,
         ],
       )
+      await saveRole(client, profileId, role)
       return true
     })
   }
 
-  return { updateIdentity, updateAbout, updateProfessional }
+  /**
+   * The Profile box of "Access & goals" (round 11): profile type, goals and the persona details it
+   * shows, saved with the preferences service, then the organization and rank when submitted.
+   */
+  async function updateGoals(
+    profileId: string,
+    preferences: ProfileCardPreferences | null,
+    options: { organization?: ProfileCurrentOrganization; rankSubmitted?: boolean; rank?: string; role?: ProfileRoleSelection | null } = {},
+  ) {
+    return input.withTransaction(async (client) => {
+      if (preferences) await savePreferencesWithClient(client, profileId, preferences)
+      if (options.organization) await upsertCurrentOrganization(client, profileId, options.organization)
+      if (options.rankSubmitted) await updateRank(client, profileId, options.rank)
+      await saveRole(client, profileId, options.role)
+      return true
+    })
+  }
+
+  /**
+   * Round 12 "Select your rank" banner: only the structured role, plus the rank text shown on posts
+   * for a seafarer (a maritime row is created when there is none yet).
+   */
+  async function updateRole(profileId: string, role: ProfileRoleSelection, rankText: string | null) {
+    return input.withTransaction(async (client) => {
+      await saveRole(client, profileId, role)
+      if (rankText) {
+        await client.query(
+          `insert into public.maritime_profiles (user_id, rank, vessel_types, trading_areas, shore_career_preference, updated_at)
+           values ($1, $2, '{}'::text[], '{}'::text[], false, now())
+           on conflict (user_id) do update set rank = excluded.rank, updated_at = now()`,
+          [profileId, rankText],
+        )
+      }
+      return true
+    })
+  }
+
+  /** The Organizations card (round 11): which organization the header shows, or none. */
+  async function setCurrentOrganization(profileId: string, organization: ProfileCurrentOrganization) {
+    return input.withTransaction(async (client) => {
+      await upsertCurrentOrganization(client, profileId, organization)
+      return true
+    })
+  }
+
+  return { updateIdentity, updateAbout, updateProfessional, updateGoals, setCurrentOrganization, updateRole }
 }
 
 const productionService = createProfileInlineEditService({
@@ -157,3 +245,6 @@ const productionService = createProfileInlineEditService({
 export const updateProfileIdentitySectionWithAurora = productionService.updateIdentity
 export const updateProfileAboutSectionWithAurora = productionService.updateAbout
 export const updateProfileProfessionalSectionWithAurora = productionService.updateProfessional
+export const updateProfileGoalsSectionWithAurora = productionService.updateGoals
+export const setProfileCurrentOrganizationWithAurora = productionService.setCurrentOrganization
+export const updateProfileRoleWithAurora = productionService.updateRole

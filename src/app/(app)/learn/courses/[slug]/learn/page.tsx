@@ -15,6 +15,9 @@ import {
 } from '@/features/learning/learner-course-repository'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { renderArticleHtml } from '@/features/learning/article-html'
+import { PlayerFocusShell } from '@/features/learning/components/player-focus-mode'
+import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -38,7 +41,12 @@ function lessonHref(slug: string, lessonId: string) {
 }
 
 function activityLabel(lesson: LearnerLesson) {
-  return lesson.lessonType.replaceAll('_', ' ')
+  return lessonTypeLabel(lesson.lessonType)
+}
+
+function sectionProgress(lessons: readonly LearnerLesson[]) {
+  const done = lessons.filter((lesson) => lesson.completed).length
+  return { done, total: lessons.length, percent: lessons.length ? Math.round((done / lessons.length) * 100) : 0 }
 }
 
 function shouldSignLessonAsset(lesson: LearnerLesson) {
@@ -97,15 +105,25 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   const selectedMediaUrl = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
     ? await createMediaReadUrl(selectedLesson.assetPath)
     : null
+  const selectedArticleHtml = selectedLesson?.isAvailable && selectedLesson.articleFormat === 'html' && selectedLesson.articleBody
+    ? await renderArticleHtml(selectedLesson.articleBody, (path) => createMediaReadUrl(path))
+    : null
 
+  const lessonTitles = new Map(lessons.map((lesson) => [lesson.id, lesson.title]))
   const curriculumList = (
     <div className="space-y-4">
-      {course.sections.map((section) => (
+      {course.sections.map((section) => {
+        const progress = sectionProgress(section.lessons)
+        return (
         <section key={section.id} aria-label={section.title}>
-          <h3 className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{section.title}</h3>
+          <div className="flex items-baseline justify-between gap-2 px-2">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{section.title}</h3>
+            <span className="shrink-0 text-xs font-semibold text-slate-500" aria-label={`${progress.done} of ${progress.total} completed`}>{progress.done}/{progress.total} · {progress.percent}%</span>
+          </div>
           <div className="mt-2 space-y-1">
             {section.lessons.map((lesson) => {
               const active = selectedLesson?.id === lesson.id
+              const prerequisite = !lesson.completed && lesson.prerequisiteLessonId ? lessonTitles.get(lesson.prerequisiteLessonId) ?? null : null
               return (
                 <Link
                   key={lesson.id}
@@ -120,18 +138,24 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                   ) : (
                     <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                   )}
-                  <span>
+                  <span className="min-w-0">
                     <span className="block font-medium">{lesson.title}</span>
-                    <span className={`mt-1 block text-xs capitalize ${active ? 'text-slate-300' : 'text-slate-400'}`}>
+                    <span className={`mt-1 block text-xs ${active ? 'text-slate-300' : 'text-slate-500'}`}>
                       {activityLabel(lesson)}{lesson.completed ? ' · Completed' : !lesson.isAvailable ? ' · Locked' : ''}
                     </span>
+                    {prerequisite ? (
+                      <span className={`mt-1 inline-flex max-w-full rounded-full px-2 py-0.5 text-[11px] font-semibold ${active ? 'bg-white/15 text-white' : 'bg-amber-50 text-amber-800'}`}>
+                        <span className="truncate">After “{prerequisite}”</span>
+                      </span>
+                    ) : null}
                   </span>
                 </Link>
               )
             })}
           </div>
         </section>
-      ))}
+        )
+      })}
     </div>
   )
   const lessonPosition = selectedLessonIndex + 1
@@ -156,16 +180,17 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
           />
         )}
       />
-      <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-md:hidden sm:p-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
+      <PlayerFocusShell className="max-md:flex max-md:flex-col">
+      {/* A compact course card (learning round A, A7); focus mode hides it. */}
+      <header className="rounded-3xl border border-slate-200 bg-white px-6 py-4 shadow-sm max-md:hidden group-data-[focus=on]/player:hidden">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">My Learning · {course.category}</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{course.title}</h1>
-            {course.subtitle ? <p className="mt-3 text-base leading-7 text-slate-600">{course.subtitle}</p> : null}
-            <p className="mt-3 text-sm text-slate-500">Mentored by {course.mentorName}</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{course.title}</h1>
+            <p className="mt-1 text-sm text-slate-500">Mentored by {course.mentorName}</p>
           </div>
 
-          <div className="min-w-56 rounded-2xl bg-slate-50 p-4">
+          <div className="min-w-56 rounded-2xl bg-slate-50 px-4 py-3">
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="font-medium text-slate-700">{course.completedLessons} of {course.totalLessons} materials completed</span>
               <span className="font-semibold text-slate-950">{course.progressPercent}%</span>
@@ -202,9 +227,9 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
         </section>
       ) : null}
 
-      <div className="mt-6 grid gap-6 max-md:mt-0 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="mt-6 grid gap-6 max-md:mt-0 lg:grid-cols-[320px_minmax(0,1fr)] group-data-[focus=on]/player:mt-0 lg:group-data-[focus=on]/player:grid-cols-[minmax(0,1fr)]">
         {/* Phones open the curriculum from the "Curriculum n/N" button beside the lesson actions. */}
-        <nav aria-label="Course curriculum" className="h-fit rounded-3xl border border-slate-200 bg-white p-4 shadow-sm max-md:hidden lg:sticky lg:top-6">
+        <nav aria-label="Course curriculum" className="h-fit rounded-3xl border border-slate-200 bg-white p-4 shadow-sm max-md:hidden lg:sticky lg:top-6 group-data-[focus=on]/player:hidden">
           <div className="px-2 pb-3">
             <h2 className="text-sm font-semibold text-slate-950">Course curriculum</h2>
             <p className="mt-1 text-xs text-slate-500">
@@ -234,6 +259,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                   mediaUrl={selectedMediaUrl}
                   slug={course.slug}
                   quiz={selectedQuiz}
+                  articleHtml={selectedArticleHtml}
                   nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
                   phoneActions={curriculumSheet}
                 />
@@ -268,6 +294,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
           )}
         </main>
       </div>
+      </PlayerFocusShell>
     </div>
   )
 }

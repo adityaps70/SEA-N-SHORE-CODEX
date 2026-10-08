@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { guardAction } from './guard-value.mjs'
 
 const scriptPath = 'scripts/aws/staging-data-cleanup.sh'
 const actionPath = 'scripts/aws/staging-data-cleanup-action.txt'
@@ -11,7 +12,7 @@ assert.equal(existsSync(actionPath), true, 'missing staging data cleanup action 
 assert.equal(existsSync(workflowPath), true, 'missing staging data cleanup workflow')
 
 const script = readFileSync(scriptPath, 'utf8')
-const action = readFileSync(actionPath, 'utf8').trim()
+const action = guardAction(readFileSync(actionPath, 'utf8'))
 const workflow = readFileSync(workflowPath, 'utf8')
 
 const syntax = spawnSync('bash', ['-n', scriptPath], { encoding: 'utf8' })

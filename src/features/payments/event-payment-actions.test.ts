@@ -20,7 +20,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ userCan: mocks.userCan }))
-vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: (userId: string) => mocks.canAccessPlatformAdmin(userId) } }))
 vi.mock('@/lib/db/client', () => ({ query: vi.fn(), withTransaction: vi.fn() }))
 vi.mock('./event-payment-runtime', () => ({ eventPaymentService: mocks.service }))
 vi.mock('./customer-contact', async () => {
@@ -189,6 +195,15 @@ describe('refundEventPaymentAction', () => {
     mocks.service.refundOrder.mockResolvedValue({ state: 'refund_pending', order: paid })
     await expect(refundEventPaymentAction(orderId)).resolves.toMatchObject({ ok: true, message: expect.stringMatching(/Refund of ₹499 started/) })
     expect(mocks.service.refundOrder).toHaveBeenCalledWith({ orderId, actor: { type: 'admin', profileId: userId }, reason: 'admin_refund' })
+  })
+
+  it('does not let a platform admin refund without an authenticator-app session', async () => {
+    mocks.repository.getOrderForManager.mockResolvedValue(null)
+    mocks.canAccessPlatformAdmin.mockResolvedValue(true)
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false })
+    await expect(refundEventPaymentAction(orderId)).resolves.toEqual({ ok: false, error: 'Only the event organiser or the Sea N Shore team can refund this payment.' })
+    expect(mocks.repository.getOrderById).not.toHaveBeenCalled()
+    expect(mocks.service.refundOrder).not.toHaveBeenCalled()
   })
 
   it('refuses everyone else on the server', async () => {

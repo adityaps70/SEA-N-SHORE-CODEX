@@ -9,7 +9,7 @@ CLUSTER_ID="sea-n-shore-staging-aurora"
 DATABASE_NAME="sea_n_shore"
 POOL_NAME="sea-n-shore-staging-users"
 TEST_EMAIL_REGEX='^sea-n-shore-.*@example[.]com$'
-ACTION="$(tr -d '[:space:]' < scripts/aws/staging-data-cleanup-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/staging-data-cleanup-action.txt | tr -d '[:space:]')"
 
 [[ "${STAGING_DATA_CLEANUP_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "STAGING_DATA_CLEANUP_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -329,7 +329,7 @@ JOB_SQL="$(uuid_list "${STALE_JOB_IDS[@]}")"
 
 # Capture Cognito identifiers before identity mappings are removed. Values are never printed.
 IDENTITY_FILE="$(mktemp)"
-trap 'rm -f "$IDENTITY_FILE"' EXIT
+trap 'rm -f "$IDENTITY_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 sql "select coalesce(email,''), provider_subject
      from public.identity_accounts
      where provider='cognito' and profile_id in ($PROFILE_SQL)
@@ -366,7 +366,7 @@ rollback() {
     aws rds-data rollback-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --transaction-id "$TX_ID" >/dev/null 2>&1 || true
   fi
 }
-trap 'rollback; rm -f "$IDENTITY_FILE"' EXIT
+trap 'rollback; rm -f "$IDENTITY_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 tx() {
   aws rds-data execute-statement \

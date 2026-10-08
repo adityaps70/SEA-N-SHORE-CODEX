@@ -105,6 +105,32 @@ describe('ProfileHeader', () => {
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
+  it('keeps an organization from an earlier profile editable, and offers to remove a saved rank instead of typing one (round 12)', () => {
+    render(
+      <ProfileHeader
+        profile={{ ...profile, profileType: 'maritime_professional', persona: 'maritime_enthusiast', currentCompany: 'ig computers', rank: 'captain' }}
+        editHref="/profile/edit#identity"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
+    expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
+    expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Remove “captain” from next to my name' })).not.toBeChecked()
+    expect(screen.getByRole('textbox', { name: /Occupation \/ role/ })).toBeInTheDocument()
+  })
+
+  it('does not add organization or rank fields to the inline editor when nothing is saved for a persona without them', () => {
+    render(
+      <ProfileHeader
+        profile={{ ...profile, profileType: 'maritime_professional', persona: 'maritime_enthusiast', currentCompany: null, rank: null }}
+        editHref="/profile/edit#identity"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
+    expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
+  })
+
   it('lets the phone "…" sheet in its actions open the same inline editor, including contact visibility', () => {
     render(
       <ProfileHeader
@@ -116,7 +142,7 @@ describe('ProfileHeader', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'More profile actions' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Edit basic information/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Edit profile/ }))
     expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Member A')
     expect(screen.getByRole('combobox', { name: 'Contact visibility' })).toHaveValue('public')
   })

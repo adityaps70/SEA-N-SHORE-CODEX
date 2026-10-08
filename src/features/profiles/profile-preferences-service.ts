@@ -1,13 +1,13 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
-import { profilePreferenceProjection, type ProfilePreferencesInput } from './profile-preferences'
+import { profilePreferenceProjection, type ProfilePreferencesInput, type RetainedPersonaDetails } from './profile-preferences'
 
 type ReturningIdRow = QueryResultRow & { id: string }
 type TransactionRunner = <T>(fn: (client: DatabaseQueryClient) => Promise<T>) => Promise<T>
 
 export function createProfilePreferencesService(input: { withTransaction: TransactionRunner }) {
-  async function updatePreferences(profileId: string, data: ProfilePreferencesInput) {
-    const projection = profilePreferenceProjection(data)
+  async function updatePreferences(profileId: string, data: ProfilePreferencesInput, retained: RetainedPersonaDetails = {}) {
+    const projection = profilePreferenceProjection(data, retained)
 
     return input.withTransaction(async (client) => {
       const updated = await client.query<ReturningIdRow>(

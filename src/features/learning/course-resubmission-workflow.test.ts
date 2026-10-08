@@ -317,6 +317,7 @@ function articleDraft(overrides: Partial<MentorMaterialDraft> = {}): MentorMater
     materialType: 'article',
     summary: null,
     articleBody: 'Review records and procedures before the inspection.',
+    articleFormat: 'plain',
     assetPath: null,
     externalUrl: null,
     durationSeconds: null,

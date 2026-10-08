@@ -52,6 +52,8 @@ export type ReactorRow = QueryResultRow & {
   avatar_path: string | null
   headline: string | null
   rank: string | null
+  role_key?: string | null
+  role_other_text?: string | null
   current_company: string | null
   reaction_type: PostReactionType
   reacted_at: string
@@ -94,7 +96,18 @@ type ReactionDetailsLookup = {
   limit: number
 }
 
-const FEED_ROW_SELECT = `
+/**
+ * Round 14 (3.7): a list's sort timestamp as text with microsecond precision, for keyset cursors.
+ * node-postgres turns timestamptz into a JavaScript Date (milliseconds only), which would round the
+ * cursor and could skip or repeat rows; the text form compares exactly when sent back as a parameter.
+ */
+export function cursorTimestampSql(expression: string) {
+  return `to_char((${expression}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+}
+
+/** Feed post rows; `cursorAtSql` is the timestamp the list is ordered by (default: the post's creation). */
+function feedRowSelect(cursorAtSql = 'p.created_at') {
+  return `
   select
     p.id,
     p.category::text as category,
@@ -105,6 +118,7 @@ const FEED_ROW_SELECT = `
     p.group_id,
     p.created_at,
     p.updated_at,
+    ${cursorTimestampSql(cursorAtSql)} as cursor_at,
     case when post_group.id is null then null else json_build_object(
       'id', post_group.id,
       'slug', post_group.slug,
@@ -128,6 +142,8 @@ const FEED_ROW_SELECT = `
       'full_name', author.full_name,
       'avatar_path', author.avatar_path,
       'headline', author.headline,
+      'role_key', author.role_key,
+      'role_other_text', author.role_other_text,
       'maritime_profiles', case
         when maritime.user_id is null then null
         else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company)
@@ -165,11 +181,16 @@ const FEED_ROW_SELECT = `
         where option_row.post_id = p.id
       ), '[]'::json)
     ) else null end as post_polls,
-    json_build_object(
-      'like', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'like'),
-      'support', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'support'),
-      'respect', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'respect'),
-      'on_point', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'on_point')
+    -- Round 14 (3.4): one pass over the post's reactions instead of four.
+    (
+      select json_build_object(
+        'like', (count(*) filter (where reaction.reaction_type = 'like'))::int,
+        'support', (count(*) filter (where reaction.reaction_type = 'support'))::int,
+        'respect', (count(*) filter (where reaction.reaction_type = 'respect'))::int,
+        'on_point', (count(*) filter (where reaction.reaction_type = 'on_point'))::int
+      )
+      from public.post_reactions reaction
+      where reaction.post_id = p.id
     ) as post_reactions,
     coalesce((
       select json_agg(json_build_object(
@@ -226,7 +247,10 @@ const FEED_ROW_SELECT = `
   left join public.maritime_profiles maritime on maritime.user_id = author.id
   left join public.companies post_company on post_company.id = p.company_id
   left join public.community_groups post_group on post_group.id = p.group_id
-` as const
+`
+}
+
+const FEED_ROW_SELECT = feedRowSelect()
 
 /**
  * Group posts: public groups are readable by every signed-in member, private groups only by
@@ -419,16 +443,28 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     viewerProfileId: string
     authorProfileId: string
     limit?: number
+    /** Round 14 (3.7): keyset position, the (created_at, id) of the last post already shown. */
+    cursor?: FeedCursor
     /** Leave out posts published as an organization; they belong on the organization page. */
     personalOnly?: boolean
   }): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId, lookup.authorProfileId]
-    const limitSql = lookup.limit === undefined ? '' : ' limit $3'
-    if (lookup.limit !== undefined) values.push(lookup.limit)
+    let cursorSql = ''
+    if (lookup.cursor) {
+      values.push(lookup.cursor.createdAt, lookup.cursor.id)
+      const createdAtParameter = values.length - 1
+      const idParameter = values.length
+      cursorSql = `\n         and (p.created_at < $${createdAtParameter}::timestamptz or (p.created_at = $${createdAtParameter}::timestamptz and p.id < $${idParameter}::uuid))`
+    }
+    let limitSql = ''
+    if (lookup.limit !== undefined) {
+      values.push(lookup.limit)
+      limitSql = ` limit $${values.length}`
+    }
     return await queryRows(
       `${FEED_ROW_SELECT}
        where p.author_id = $2
-         and p.deleted_at is null${lookup.personalOnly ? '\n         and p.company_id is null' : ''}
+         and p.deleted_at is null${lookup.personalOnly ? '\n         and p.company_id is null' : ''}${cursorSql}
          and ${visibilitySql()}
        order by p.created_at desc, p.id desc${limitSql}`,
       values,
@@ -487,19 +523,33 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return true
   }
 
-  async function listCommentedRows(lookup: { viewerProfileId: string; limit?: number }): Promise<FeedPostRow[]> {
+  /**
+   * Posts the viewer commented on, latest viewer comment first. `cursor_at` is that comment's time,
+   * so the keyset cursor (Round 14, 3.7) is (last_commented_at, post id).
+   */
+  async function listCommentedRows(lookup: { viewerProfileId: string; limit?: number; cursor?: FeedCursor }): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId]
-    const limitSql = lookup.limit === undefined ? '' : ' limit $2'
-    if (lookup.limit !== undefined) values.push(lookup.limit)
+    let cursorSql = ''
+    if (lookup.cursor) {
+      values.push(lookup.cursor.createdAt, lookup.cursor.id)
+      const commentedAtParameter = values.length - 1
+      const idParameter = values.length
+      cursorSql = `\n         and (viewer_activity.last_commented_at < $${commentedAtParameter}::timestamptz or (viewer_activity.last_commented_at = $${commentedAtParameter}::timestamptz and p.id < $${idParameter}::uuid))`
+    }
+    let limitSql = ''
+    if (lookup.limit !== undefined) {
+      values.push(lookup.limit)
+      limitSql = ` limit $${values.length}`
+    }
     return await queryRows(
-      `${FEED_ROW_SELECT}
+      `${feedRowSelect('viewer_activity.last_commented_at')}
        join (
          select c.post_id, max(c.created_at) as last_commented_at
          from public.post_comments c
          where c.author_id = $1 and c.deleted_at is null
          group by c.post_id
        ) viewer_activity on viewer_activity.post_id = p.id
-       where p.deleted_at is null and ${visibilitySql()}
+       where p.deleted_at is null and ${visibilitySql()}${cursorSql}
        order by viewer_activity.last_commented_at desc, p.id desc${limitSql}`,
       values,
     ) as FeedRow[]
@@ -513,6 +563,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       [viewerProfileId, postId],
     ) as FeedRow[]
     return rows[0] ?? null
+  }
+
+  /** Round 14 (2.2): whether a post by this author is visible to the viewer (same rules as the feed). */
+  async function isPostVisibleTo(viewerProfileId: string, postId: string, authorProfileId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `select 1
+       from public.posts p
+       join public.profiles author on author.id = p.author_id
+       where p.id = $2 and p.author_id = $3 and p.deleted_at is null and ${visibilitySql()}
+       limit 1`,
+      [viewerProfileId, postId, authorProfileId],
+    )
+    return rows.length > 0
   }
 
   async function listRepostSourceRows(viewerProfileId: string, postIds: string[]): Promise<FeedPostRow[]> {
@@ -586,6 +649,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
          reactor.avatar_path,
          reactor.headline,
          maritime.rank,
+         reactor.role_key,
+         reactor.role_other_text,
          maritime.current_company,
          reaction.reaction_type::text as reaction_type,
          reaction.created_at as reacted_at
@@ -632,13 +697,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            'full_name', author.full_name,
            'avatar_path', author.avatar_path,
            'headline', author.headline,
+           'role_key', author.role_key,
+           'role_other_text', author.role_other_text,
            'maritime_profiles', case when maritime.user_id is null then null else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company) end
          ) as profiles,
-         case when c.deleted_at is null then json_build_object(
-           'like', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'like'),
-           'support', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'support'),
-           'respect', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'respect'),
-           'on_point', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'on_point')
+         case when c.deleted_at is null then (
+           select json_build_object(
+             'like', (count(*) filter (where cr.reaction_type = 'like'))::int,
+             'support', (count(*) filter (where cr.reaction_type = 'support'))::int,
+             'respect', (count(*) filter (where cr.reaction_type = 'respect'))::int,
+             'on_point', (count(*) filter (where cr.reaction_type = 'on_point'))::int
+           )
+           from public.comment_reactions cr
+           where cr.comment_id = c.id
          ) else json_build_object('like', 0, 'support', 0, 'respect', 0, 'on_point', 0) end as reaction_summary,
          ${viewerSql} as viewer_reaction,
          ${ownershipSql},
@@ -1360,6 +1431,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     restoreOwnDeletedPost,
     listCommentedRows,
     getPostRow,
+    isPostVisibleTo,
     listRepostSourceRows,
     getViewerState,
     listReactionDetails,

@@ -17,6 +17,9 @@ describe('assignment grading repository', () => {
         response_text: 'Initial inspection evidence.', attachment_path: null, score_points: 60, percentage: 60,
         passed: false, feedback: 'Add stronger evidence.', graded_at: new Date('2026-09-15T10:00:00.000Z'),
       }])
+      .mockResolvedValueOnce([{
+        id: 'file-1', attempt_id: 'attempt-2', file_name: 'evidence.pdf', content_type: 'application/pdf', size_bytes: 1024,
+      }])
     const repository = createAssignmentGradingRepository({ query })
 
     const result = await repository.getForMentor('mentor-1', 'attempt-2')
@@ -25,9 +28,11 @@ describe('assignment grading repository', () => {
       id: 'attempt-2',
       assignmentInstructions: 'Submit a structured inspection readiness response.',
       learnerName: 'Test Learner',
-      previousAttempts: [{ id: 'attempt-1', attemptNumber: 1, passed: false, feedback: 'Add stronger evidence.' }],
+      attachments: [{ id: 'file-1', fileName: 'evidence.pdf', contentType: 'application/pdf', sizeBytes: 1024 }],
+      previousAttempts: [{ id: 'attempt-1', attemptNumber: 1, passed: false, feedback: 'Add stronger evidence.', attachments: [] }],
     })
-    expect(query).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(3)
+    expect(query.mock.calls[2]?.[1]).toEqual([['attempt-2', 'attempt-1']])
     expect(String(query.mock.calls[0]?.[0])).toContain('mentor.user_id = $1')
     expect(query.mock.calls[0]?.[1]).toEqual(['mentor-1', 'attempt-2'])
   })
@@ -41,7 +46,7 @@ describe('assignment grading repository', () => {
   })
 
   it('records an explicit needs-revision grade without completing learner progress', async () => {
-    const query = vi.fn()
+    const query = vi.fn().mockResolvedValue([])
       .mockResolvedValueOnce([{
         attempt_id: 'attempt-1', status: 'submitted', enrollment_id: 'enrollment-1', lesson_id: 'lesson-1',
         learner_id: 'learner-1', course_id: 'course-1', course_slug: 'course-slug', max_points: 100, passing_percentage: 70,
@@ -56,7 +61,11 @@ describe('assignment grading repository', () => {
     })
 
     expect(result).toMatchObject({ percentage: 60, passed: false, progressPercent: null, enrollmentCompleted: false })
-    expect(query).toHaveBeenCalledTimes(2)
+    const statements = query.mock.calls.map(([sql]) => String(sql))
+    expect(statements.some((sql) => sql.includes('learning_progress'))).toBe(false)
+    // The learner is told about the grade after it is stored, behind a savepoint (learning round A, A6).
+    expect(statements[1]).toContain("set status = 'graded'")
+    expect(statements.slice(2)).toEqual(['savepoint learning_notification', expect.stringContaining('from public.learning_assignment_attempts attempt'), 'release savepoint learning_notification'])
   })
 
   it('completes the material only when an explicit pass meets the configured pass threshold', async () => {

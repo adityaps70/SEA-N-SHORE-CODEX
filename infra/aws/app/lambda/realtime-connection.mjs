@@ -4,16 +4,29 @@ import {
   GetItemCommand,
   PutItemCommand,
   QueryCommand,
+  UpdateItemCommand,
 } from '@aws-sdk/client-dynamodb'
 import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi'
-import { randomUUID } from 'node:crypto'
+import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager'
+import { createHmac, hkdfSync, randomUUID, timingSafeEqual } from 'node:crypto'
 
 const dynamodb = new DynamoDBClient({})
+const secrets = new SecretsManagerClient({})
 const tableName = process.env.REALTIME_CONNECTIONS_TABLE
 const profileIndexName = process.env.REALTIME_PROFILE_INDEX ?? 'profile_id-index'
+const ticketSecretArn = process.env.REALTIME_TICKET_SECRET_ARN
+
+// Round 14 (2.9): membership is checked by the app, which signs a typing token for
+// (actor, conversation, other participant); see src/features/realtime/typing-token.ts.
+export const TYPING_TOKEN_KEY_INFO = 'sea-n-shore/realtime-typing/v1'
+export const TYPING_TOKEN_TTL_SECONDS = 12 * 60 * 60
+// At most one typing signal per connection per 2 s.
+export const TYPING_MIN_INTERVAL_MS = 2_000
+const TYPING_TOKEN_PATTERN = /^(\d{10})\.([A-Za-z0-9_-]{43})$/
+let cachedTypingKey
 function managementClient(event) {
   const domainName = event.requestContext?.domainName
   const stage = event.requestContext?.stage
@@ -92,6 +105,48 @@ async function pushTyping(websocket, connectionId, data) {
   }
 }
 
+async function typingTokenKey() {
+  if (cachedTypingKey) return cachedTypingKey
+  if (!ticketSecretArn) throw new Error('REALTIME_TICKET_SECRET_ARN is not configured')
+  const result = await secrets.send(new GetSecretValueCommand({ SecretId: ticketSecretArn }))
+  const source = result.SecretString?.trim() ?? ''
+  if (source.length < 32) throw new Error('Realtime ticket secret is unavailable')
+  cachedTypingKey = Buffer.from(hkdfSync('sha256', source, Buffer.alloc(0), TYPING_TOKEN_KEY_INFO, 32))
+  return cachedTypingKey
+}
+
+export function isTypingTokenValid(key, token, { actorId, conversationId, targetProfileId }, nowMs = Date.now()) {
+  const match = typeof token === 'string' ? TYPING_TOKEN_PATTERN.exec(token) : null
+  if (!match) return false
+  const expiresAt = Number(match[1])
+  const nowSeconds = Math.floor(nowMs / 1000)
+  if (expiresAt <= nowSeconds || expiresAt > nowSeconds + TYPING_TOKEN_TTL_SECONDS) return false
+  const message = `typing\n${actorId}\n${conversationId}\n${targetProfileId}\n${expiresAt}`
+  const expected = Buffer.from(createHmac('sha256', key).update(message).digest('base64url'))
+  const given = Buffer.from(match[2])
+  return given.length === expected.length && timingSafeEqual(given, expected)
+}
+
+/** Claims this connection's typing slot; false when the last signal was under 2 s ago. */
+async function claimTypingSlot(connectionId, nowMs = Date.now()) {
+  try {
+    await dynamodb.send(new UpdateItemCommand({
+      TableName: tableName,
+      Key: { connection_id: { S: connectionId } },
+      UpdateExpression: 'SET last_typing_at = :now',
+      ConditionExpression: 'attribute_exists(connection_id) AND (attribute_not_exists(last_typing_at) OR last_typing_at <= :cutoff)',
+      ExpressionAttributeValues: {
+        ':now': { N: String(nowMs) },
+        ':cutoff': { N: String(nowMs - TYPING_MIN_INTERVAL_MS) },
+      },
+    }))
+    return true
+  } catch (error) {
+    if (error?.name === 'ConditionalCheckFailedException') return false
+    throw error
+  }
+}
+
 async function handleTyping(connectionId, event) {
   const websocket = managementClient(event)
   if (!websocket) throw new Error('REALTIME_MANAGEMENT_ENDPOINT is unavailable')
@@ -120,6 +175,10 @@ async function handleTyping(connectionId, event) {
   const actorId = await currentProfileId(connectionId)
   if (!actorId) return response(401, { error: 'authentication_required' })
   if (actorId === targetProfileId) return response(400, { error: 'invalid_typing_target' })
+  if (!isTypingTokenValid(await typingTokenKey(), body.typingToken, { actorId, conversationId, targetProfileId })) {
+    return response(403, { error: 'typing_not_allowed' })
+  }
+  if (!(await claimTypingSlot(connectionId))) return response(429, { error: 'typing_rate_limited' })
 
   const signal = {
     eventId: randomUUID(),

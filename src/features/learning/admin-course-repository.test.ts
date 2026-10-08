@@ -84,7 +84,8 @@ describe('learning admin course review repository', () => {
       updatedAt: '2026-09-14T12:00:00.000Z',
       curriculum: [],
       publisherType: 'personal',
-      review: { submissionNumber: 0, submittedAt: null, previousReview: null, changesSinceLastReview: null },
+      review: { submissionNumber: 0, submittedAt: null, previousReview: null, changesSinceLastReview: null, changesFromLiveCourse: null },
+      revisionOf: null,
     }])
 
     const listQuery = seen.find((entry) => entry.text.includes('from public.learning_courses course'))
@@ -201,6 +202,7 @@ describe('learning admin course review repository', () => {
           position: 0,
           summary: 'Prepare evidence before the inspection.',
           articleBody: 'Review records, procedures and interview evidence.',
+          articleFormat: 'plain',
           assetPath: null,
           externalUrl: null,
           durationSeconds: 300,
@@ -215,6 +217,7 @@ describe('learning admin course review repository', () => {
           position: 1,
           summary: 'Check core knowledge.',
           articleBody: null,
+          articleFormat: 'plain',
           assetPath: null,
           externalUrl: null,
           durationSeconds: null,

@@ -28,7 +28,8 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(workflow, /Name=tag:Name,Values=sea-n-shore-bootstrap/)
   assert.match(workflow, /AWS-RunShellScript/)
   assert.match(workflow, /bash scripts\/aws\/remote-verify\.sh/)
-  assert.match(workflow, /git reset --hard/)
+  // The persistent worktree is reset to the exact SHA from the runner's bundle (git reset --hard in ci_checkout.py).
+  assert.match(workflow, /host_update_worktree\('\/home\/ssm-user\/SEA-N-SHORE-CODEX\/\.worktrees\/aws-native-phase-0-1', sha\)/)
   assert.match(workflow, /verify-on-bootstrap:\s*\n\s*if:\s*\$\{\{\s*false\s*\}\}/)
 
   assert.doesNotMatch(workflow, /inputs:\s*[\s\S]*?command\s*:/)
@@ -121,11 +122,13 @@ test('staging deploy always restores the Aurora runtime contract without reading
   assert.match(deploy, /\{\"name\":\"AURORA_SSL\",\"value\":\"true\"\}/)
   assert.match(deploy, /\{\"name\":\"AURORA_USER\",\"valueFrom\":\$AURORA_USER_SECRET\}/)
   assert.match(deploy, /\{\"name\":\"AURORA_PASSWORD\",\"valueFrom\":\$AURORA_PASSWORD_SECRET\}/)
-  assert.match(deploy, /AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES/)
+  // Rewritten in Round 14 (1.6): production never allows insecure auth cookies.
+  assert.match(deploy, /AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "false"/)
   assert.match(
     deploy,
-    /\{\"name\":\"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES\",\"value\":\"true\"\}/,
+    /\{\"name\":\"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES\",\"value\":\$ALLOW_INSECURE_HTTP_COOKIES\}/,
   )
+  assert.doesNotMatch(deploy, /AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":"true"/)
   assert.match(deploy, /:username::/)
   assert.match(deploy, /:password::/)
 

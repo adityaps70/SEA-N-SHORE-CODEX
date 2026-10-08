@@ -89,6 +89,11 @@ function createInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
     status: 'published',
     certificates: ['STCW'],
     visas: ['US C1/D'],
+    // Round 12: new jobs pick a department and at least one accepted rank.
+    departmentKey: 'deck_officers',
+    acceptedRoleKeys: ['chief_officer'],
+    roleOtherText: null,
+    minMatchToApply: 70,
     ...overrides,
   }
 }
@@ -324,6 +329,53 @@ describe('hiring server actions', () => {
       ok: false,
       error: expect.stringMatching(/changed in another window/i),
     })
+  })
+})
+
+describe('job department, accepted ranks and minimum match (round 12)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'recruiter-1', cognitoSub: 'sub-1', email: null })
+    mocks.createJob.mockResolvedValue(jobId)
+    mocks.updateJob.mockResolvedValue(undefined)
+    mocks.getManagedJob.mockResolvedValue(managedJob())
+  })
+
+  it('requires a department and at least one accepted rank for a new job', async () => {
+    await expect(createHiringJob(createInput({ departmentKey: null, acceptedRoleKeys: [] }))).resolves.toEqual({ ok: false, error: 'Choose the department for this job.' })
+    await expect(createHiringJob(createInput({ acceptedRoleKeys: [] }))).resolves.toEqual({ ok: false, error: 'Choose at least one accepted rank / role.' })
+    expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('rejects rank keys that are not in the taxonomy or not in the department', async () => {
+    await expect(createHiringJob(createInput({ acceptedRoleKeys: ['sea_wizard'] }))).resolves.toMatchObject({ ok: false })
+    await expect(createHiringJob(createInput({ acceptedRoleKeys: ['cook'] }))).resolves.toMatchObject({ ok: false })
+    await expect(createHiringJob(createInput({ departmentKey: 'starfleet' }))).resolves.toMatchObject({ ok: false })
+    expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('saves several accepted ranks, the department domain and their labels as the old text', async () => {
+    await expect(createHiringJob(createInput({ domain: 'shore', acceptedRoleKeys: ['master', 'chief_officer'], minMatchToApply: undefined }))).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenCalledWith('recruiter-1', expect.objectContaining({
+      domain: 'sea',
+      department: 'Deck officers',
+      rank: 'Master / Captain, Chief Officer',
+      departmentKey: 'deck_officers',
+      acceptedRoleKeys: ['master', 'chief_officer'],
+      minMatchToApply: 70,
+    }))
+  })
+
+  it('allows a minimum match of 0 and rejects one outside 0..100', async () => {
+    await expect(createHiringJob(createInput({ minMatchToApply: 0 }))).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenLastCalledWith('recruiter-1', expect.objectContaining({ minMatchToApply: 0 }))
+    await expect(createHiringJob(createInput({ minMatchToApply: 120 }))).resolves.toMatchObject({ ok: false })
+  })
+
+  it('lets an older job without a department be edited, and lets the recruiter change the minimum later', async () => {
+    await expect(updateHiringJob(jobId, updateInput({ departmentKey: undefined, acceptedRoleKeys: undefined, minMatchToApply: undefined }))).resolves.toEqual({ ok: true })
+    await expect(updateHiringJob(jobId, updateInput({ minMatchToApply: 55 }))).resolves.toEqual({ ok: true })
+    expect(mocks.updateJob).toHaveBeenLastCalledWith('recruiter-1', jobId, expect.objectContaining({ minMatchToApply: 55, acceptedRoleKeys: ['chief_officer'] }), expect.anything())
   })
 })
 

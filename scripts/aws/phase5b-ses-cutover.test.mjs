@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { guardAction } from './guard-value.mjs'
 
 const scriptUrl = new URL('./phase5b-ses-cutover.sh', import.meta.url)
 const readinessUrl = new URL('./phase5b-ses-readiness.sh', import.meta.url)
@@ -78,7 +79,7 @@ test('Phase 5B cutover helper captures the live user pool before mutation and su
 
 test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven, and CI gated', () => {
   const workflow = fs.readFileSync(workflowUrl, 'utf8')
-  const action = fs.readFileSync(actionUrl, 'utf8').trim()
+  const action = guardAction(fs.readFileSync(actionUrl, 'utf8'))
   const allowedActions = new Set([
     'discover',
     'ensure-identity',
@@ -95,7 +96,7 @@ test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven,
   assert.match(workflow, /branches:\s*\[feat\/aws-native-phase-0-1\]/)
   assert.match(workflow, /scripts\/aws\/phase5b-action\.txt/)
   assert.match(workflow, /environment:\s*staging/)
-  assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/)
+  assert.match(workflow, /aws-actions\/configure-aws-credentials@[0-9a-f]{40} # v4\./)
   assert.match(workflow, /AWS_ROLE_TO_ASSUME/)
   assert.match(workflow, /head_sha=/)
   assert.match(workflow, /AWS Infrastructure CI/)

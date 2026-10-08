@@ -5,7 +5,8 @@ import { MapPin, Search, SlidersHorizontal, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition, type ReactNode } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
-import { JOB_DISCOVERY_MODES, MARITIME_CERTIFICATES, MARITIME_VISAS, SEA_RANKS, SHORE_ROLES, VESSEL_TYPES } from '../catalog'
+import { JOB_DISCOVERY_MODES, MARITIME_CERTIFICATES, MARITIME_VISAS, VESSEL_TYPES } from '../catalog'
+import { jobDepartments, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { JOB_JOINING_WINDOWS, JOB_SORT_OPTIONS, activeJobFilters } from '../filter-state'
 import type { JobSearchFilters } from '../types'
 import { CHIP_ROW_CLASS, PHONE_OUTLINE_BUTTON, PHONE_PRIMARY_BUTTON, chipClass } from './mobile-chip'
@@ -105,7 +106,12 @@ export function JobsMobileToolbar({ filters, resultCount }: JobsMobileToolbarPro
   const [pending, startTransition] = useTransition()
   const [sheetOpen, setSheetOpen] = useState(false)
   const activeFilters = activeJobFilters(filters)
-  const ranks = filters.mode === 'shore' ? SHORE_ROLES : SEA_RANKS
+  // Round 12: the same Department → Rank lists as profiles and the job form.
+  const departments = jobDepartments().filter((department) =>
+    filters.mode === 'sea' || filters.mode === 'shore' ? department.domain === filters.mode : true)
+  // An older link with only a rank shows that rank's department.
+  const selectedDepartment = filters.department ?? roleByKey(filters.ranks[0])?.department ?? ''
+  const ranks = rolesFor(selectedDepartment).filter((role) => !role.other)
 
   function navigate(mutator: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString())
@@ -247,8 +253,27 @@ export function JobsMobileToolbar({ filters, resultCount }: JobsMobileToolbarPro
             </div>
           </FilterSection>
 
-          <FilterSection title={filters.mode === 'shore' ? 'Role / position' : 'Rank / position'} id="job-filter-rank">
-            <ChipChoices label="Rank / position" options={ranks} selected={filters.ranks[0] ?? null} onSelect={(value) => update('rank', value)} collapsible />
+          <FilterSection title={filters.mode === 'shore' ? 'Department and role' : 'Department and rank'} id="job-filter-rank">
+            <label className="block text-[13px] font-semibold text-navy-900">Department
+              <select
+                value={selectedDepartment}
+                onChange={(event) => navigate((params) => {
+                  params.delete('department')
+                  params.delete('rank')
+                  if (event.target.value) params.set('department', event.target.value)
+                })}
+                className={FIELD_CLASS}
+              >
+                <option value="">Any department</option>
+                {departments.map((department) => <option key={department.key} value={department.key}>{department.label}</option>)}
+              </select>
+            </label>
+            <label className="mt-3 block text-[13px] font-semibold text-navy-900">Rank / position
+              <select value={filters.ranks[0] ?? ''} onChange={(event) => update('rank', event.target.value || null)} disabled={!selectedDepartment} className={`${FIELD_CLASS} disabled:bg-mist-50`}>
+                <option value="">{selectedDepartment ? 'Any rank' : 'Choose a department first'}</option>
+                {ranks.map((rank) => <option key={rank.key} value={rank.key}>{rank.label}</option>)}
+              </select>
+            </label>
           </FilterSection>
 
           <FilterSection title="Vessel type" id="job-filter-vessel">

@@ -113,3 +113,30 @@ describe('MaterialPlayer on phones', () => {
     expect(link).toHaveClass('max-md:hidden')
   })
 })
+
+describe('MaterialPlayer articles', () => {
+  it('renders an article written before rich text exactly as before: plain text, line breaks kept', () => {
+    const { container } = render(
+      <MaterialPlayer lesson={lesson({ lessonType: 'article', articleFormat: 'plain', articleBody: 'Line one\n<b>not bold</b>', assetPath: null })} slug="sire" mediaUrl={null} quiz={null} />,
+    )
+    const body = container.querySelector('.whitespace-pre-wrap') as HTMLElement
+    expect(body.textContent).toBe('Line one\n<b>not bold</b>')
+    expect(container.querySelector('b')).toBeNull()
+  })
+
+  it('renders a rich-text article from the server-sanitized HTML only', () => {
+    const { container } = render(
+      <MaterialPlayer
+        lesson={lesson({ lessonType: 'article', articleFormat: 'html', articleBody: '<p>raw <script>alert(1)</script></p>', assetPath: null })}
+        articleHtml="<h2>Before boarding</h2><p>Check the <strong>VIQ</strong>.</p>"
+        slug="sire"
+        mediaUrl={null}
+        quiz={null}
+      />,
+    )
+    const article = container.querySelector('.lesson-article') as HTMLElement
+    expect(article.querySelector('h2')).toHaveTextContent('Before boarding')
+    expect(article.querySelector('strong')).toHaveTextContent('VIQ')
+    expect(container.innerHTML).not.toContain('<script')
+  })
+})

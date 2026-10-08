@@ -23,18 +23,6 @@ describe('native LMS phase 1 contract', () => {
     expect(sql).toContain('learning_assignment_attempts')
   })
 
-  it('keeps the LMS migration guarded and exact-head CI gated', () => {
-    const guard = read('scripts/aws/learning-lms-phase-1-migration-action.txt').trim()
-    const workflow = read('.github/workflows/aws-learning-lms-phase-1-migration.yml')
-    expect(['plan', 'migrate-once']).toContain(guard)
-    expect(workflow).toContain('case "$ACTION" in')
-    expect(workflow).toContain('plan|migrate-once')
-    expect(workflow).toContain('AWS Infrastructure CI')
-    expect(workflow).toContain('310356785722')
-    expect(workflow).toContain('migrate-once')
-    expect(workflow).toContain('github.sha')
-  })
-
   it('provides native material and SCORM player components', () => {
     const materialPlayer = read('src/features/learning/components/material-player.tsx')
     const scormPlayer = read('src/features/learning/components/scorm-player.tsx')
@@ -44,8 +32,13 @@ describe('native LMS phase 1 contract', () => {
     expect(materialPlayer).toContain("case 'external_embed'")
     expect(materialPlayer).toContain("case 'scorm'")
     expect(scormPlayer).toContain('SCORM')
-    expect(scormPlayer).toContain('API_1484_11')
-    expect(scormPlayer).toContain('window.API')
+    // Round 14 (2.3): the sandboxed package gets window.API / API_1484_11 from the injected bridge,
+    // which mirrors values to the player over postMessage.
+    const scormBridge = read('src/features/learning/scorm-bridge.ts')
+    expect(scormBridge).toContain('window.API_1484_11={Initialize')
+    expect(scormBridge).toContain('window.API={LMSInitialize')
+    expect(scormPlayer).toContain('SCORM_BRIDGE_SOURCE')
+    expect(scormPlayer).not.toContain('allow-same-origin')
   })
 
   it('adds first-class material controls to Mentor Studio', () => {

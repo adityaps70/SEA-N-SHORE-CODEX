@@ -61,6 +61,7 @@ describe('profile header organization link', () => {
       profileId,
       expect.objectContaining({ currentCompany: 'Oceanic Ship Management', currentCompanyId: organizationId }),
       true,
+      { rankSubmitted: false },
     )
   })
 

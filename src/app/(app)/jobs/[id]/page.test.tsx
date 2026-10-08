@@ -69,7 +69,7 @@ describe('job detail page', () => {
 
     expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/jobs')
     expect(screen.getByRole('button', { name: 'More job actions' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /82% Maritime Match.*3 things match · 2 to check/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Strong match · 82%.*3 things match · 2 to check/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '…more' })).toBeInTheDocument()
 
     const bar = screen.getByTestId('job-apply-bar')

@@ -1,20 +1,22 @@
 'use server'
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect as nextRedirect } from 'next/navigation'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { createCognitoLogoutUrl } from '@/lib/auth/cognito-oauth'
 import { AFTER_SIGN_OUT_COOKIE, AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS } from '@/lib/auth/after-sign-out'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
+import { trustedClientIp } from '@/lib/http/client-ip'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
-import { createPhoneAuthActions, type PhoneAuthActionState } from './phone-auth-actions'
-import { createPhoneAuthAdmin } from './phone-auth-admin'
-import { createPhoneAuthActionHandlers } from './phone-action-handlers'
+import { createProductionAuthEmailLimiter } from './email-limits-runtime'
+import { createMfaSignInActions, createMfaSignInHandler } from './mfa-sign-in'
 
 export type { AuthActionState } from './action-handlers'
 
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
+
+const authEmailLimiter = createProductionAuthEmailLimiter()
 
 async function getProductionActions(): Promise<CognitoActions> {
   const cookieStore = await cookies()
@@ -29,6 +31,8 @@ async function getProductionActions(): Promise<CognitoActions> {
     cookieStore: cookieStore as unknown as Parameters<typeof createCognitoAuthActions>[0]['cookieStore'],
     siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
     allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    emailLimiter: authEmailLimiter,
+    clientIp: trustedClientIp(await headers()),
   })
 }
 
@@ -46,29 +50,20 @@ const handlers = createAuthActionHandlers({
   },
 })
 
-async function getProductionPhoneActions() {
-  const cookieStore = await cookies()
-  const environment = getCognitoEnvironment()
-  const api = createCognitoApi({
-    region: environment.AWS_COGNITO_REGION,
-    clientId: environment.AWS_COGNITO_CLIENT_ID,
-  })
-  const admin = createPhoneAuthAdmin({
-    userPoolId: environment.AWS_COGNITO_USER_POOL_ID,
-    region: environment.AWS_COGNITO_REGION,
-  })
-
-  return createPhoneAuthActions({
-    api,
-    admin,
-    cookieStore: cookieStore as unknown as Parameters<typeof createPhoneAuthActions>[0]['cookieStore'],
-    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
-    allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
-  })
-}
-
-const phoneHandlers = createPhoneAuthActionHandlers({
-  getActions: getProductionPhoneActions,
+const mfaSignInHandler = createMfaSignInHandler({
+  getActions: async () => {
+    const cookieStore = await cookies()
+    const environment = getCognitoEnvironment()
+    return createMfaSignInActions({
+      api: createCognitoApi({
+        region: environment.AWS_COGNITO_REGION,
+        clientId: environment.AWS_COGNITO_CLIENT_ID,
+      }),
+      cookieStore: cookieStore as unknown as Parameters<typeof createMfaSignInActions>[0]['cookieStore'],
+      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+      allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    })
+  },
   redirect: nextRedirect,
 })
 
@@ -85,13 +80,7 @@ export async function confirmSignUp(state: AuthActionState, formData: FormData):
 }
 
 export async function resendConfirmationCode(formData: FormData): Promise<void> {
-  const actions = await getProductionActions()
-  const email = String(formData.get('email') ?? '').trim().toLowerCase()
-  const result = await actions.resendConfirmationCode({}, formData)
-  const params = new URLSearchParams({ confirm: '1', email })
-  if (result.message === 'Confirmation code sent.') params.set('resent', '1')
-  else params.set('resendError', '1')
-  nextRedirect(`/auth/sign-up?${params.toString()}`)
+  return handlers.resendConfirmationCode(formData)
 }
 
 export async function requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -115,24 +104,15 @@ export async function signOutToSignUp(): Promise<void> {
   cookieStore.set(AFTER_SIGN_OUT_COOKIE, '/auth/sign-up', {
     httpOnly: true,
     sameSite: 'lax',
-    secure: !getCognitoEnvironment().AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    // Secure whenever the site is HTTPS (production), like the Cognito session cookies.
+    secure: new URL(publicEnvironment.NEXT_PUBLIC_SITE_URL).protocol === 'https:',
     path: '/',
     maxAge: AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS,
   })
   return handlers.signOut()
 }
 
-
-export async function requestPhoneOtp(
-  state: PhoneAuthActionState,
-  formData: FormData,
-): Promise<PhoneAuthActionState> {
-  return phoneHandlers.requestOtp(state, formData)
-}
-
-export async function confirmPhoneOtp(
-  state: PhoneAuthActionState,
-  formData: FormData,
-): Promise<PhoneAuthActionState> {
-  return phoneHandlers.confirmOtp(state, formData)
+/** Round 14 (2.11): the authenticator-code step after a correct password. */
+export async function confirmSignInMfa(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return mfaSignInHandler(state, formData)
 }

@@ -118,7 +118,8 @@ describe('QuizLessonActivity', () => {
     expect(screen.getByText('100%')).toBeInTheDocument()
     expect(screen.getByText('Attempt 1')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Continue to next lesson' })).toHaveAttribute('href', nextLessonHref)
-    expect(mocks.refresh).toHaveBeenCalledOnce()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('shows failed scoring feedback, reveals correct answers only after submission, and supports a clean retry', async () => {
@@ -214,5 +215,88 @@ describe('QuizLessonActivity', () => {
     expect(screen.getByRole('link', { name: 'Continue to next lesson' })).toHaveAttribute('href', nextLessonHref)
     expect(screen.queryByRole('button', { name: 'Submit quiz' })).not.toBeInTheDocument()
     expect(mocks.submitLearningQuiz).not.toHaveBeenCalled()
+  })
+
+  describe('attempt limits', () => {
+    function failedResult(attemptNumber: number) {
+      return {
+        ok: true,
+        attemptId: `aaaaaaaa-aaaa-4aaa-8aaa-00000000000${attemptNumber}`,
+        attemptNumber,
+        submittedAt: '2026-10-08T09:00:00.000Z',
+        score: 0,
+        totalQuestions: 2,
+        percentage: 0,
+        passPercentage: 70,
+        passed: false,
+        enrollmentCompleted: false,
+        completedLessons: null,
+        totalLessons: null,
+        progressPercent: null,
+        answers: [
+          { questionId: questionOneId, selectedOptionId: questionOneWrongId, correctOptionId: questionOneCorrectId, isCorrect: false },
+          { questionId: questionTwoId, selectedOptionId: questionTwoWrongId, correctOptionId: questionTwoCorrectId, isCorrect: false },
+        ],
+      }
+    }
+
+    async function answerAndSubmit() {
+      fireEvent.click(screen.getByLabelText('Prepare paperwork only'))
+      fireEvent.click(screen.getByLabelText('Only the Master'))
+      fireEvent.click(screen.getByRole('button', { name: 'Submit quiz' }))
+      await screen.findByText('Not passed yet')
+    }
+
+    it('shows “Attempts left: N” and hides “Try again” once the last attempt is used', async () => {
+      mocks.submitLearningQuiz.mockResolvedValueOnce(failedResult(2))
+      render(<QuizLessonActivity quiz={{ ...quiz, maxAttempts: 2, attemptsUsed: 1 }} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      expect(screen.getByText('Attempts left: 1')).toBeInTheDocument()
+      await answerAndSubmit()
+
+      expect(screen.queryByRole('button', { name: /Try again/ })).not.toBeInTheDocument()
+      expect(screen.getByText('You’ve used all 2 attempts for this quiz.')).toBeInTheDocument()
+    })
+
+    it('offers “Try again” with the attempts left while some remain', async () => {
+      mocks.submitLearningQuiz.mockResolvedValueOnce(failedResult(1))
+      render(<QuizLessonActivity quiz={{ ...quiz, maxAttempts: 3, attemptsUsed: 0 }} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      expect(screen.getByText('Attempts left: 3')).toBeInTheDocument()
+      await answerAndSubmit()
+
+      expect(screen.getByRole('button', { name: /Try again/ })).toBeInTheDocument()
+      expect(screen.getByText('Attempts left: 2')).toBeInTheDocument()
+    })
+
+    it('opens on the limit message, not the questions, when every attempt was used before', () => {
+      render(<QuizLessonActivity quiz={{ ...quiz, maxAttempts: 3, attemptsUsed: 3 }} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      expect(screen.getByText('You’ve used all 3 attempts for this quiz.')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Submit quiz' })).not.toBeInTheDocument()
+    })
+
+    it('says “Unlimited attempts” when the trainer set no limit, and always offers another try', async () => {
+      mocks.submitLearningQuiz.mockResolvedValueOnce(failedResult(7))
+      render(<QuizLessonActivity quiz={{ ...quiz, maxAttempts: null, attemptsUsed: 6 }} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      expect(screen.getByText('Unlimited attempts')).toBeInTheDocument()
+      await answerAndSubmit()
+
+      expect(screen.getByRole('button', { name: /Try again/ })).toBeInTheDocument()
+      expect(screen.getAllByText('Unlimited attempts').length).toBeGreaterThan(0)
+    })
+
+    it('switches to the limit message (not a generic error) when the server reports the limit', async () => {
+      mocks.submitLearningQuiz.mockResolvedValueOnce({ ok: false, error: 'You have used all your attempts for this quiz, so this answer was not submitted.', limitReached: true })
+      render(<QuizLessonActivity quiz={{ ...quiz, maxAttempts: 2, attemptsUsed: 1 }} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      fireEvent.click(screen.getByLabelText('Prepare paperwork only'))
+      fireEvent.click(screen.getByLabelText('Only the Master'))
+      fireEvent.click(screen.getByRole('button', { name: 'Submit quiz' }))
+
+      expect(await screen.findByText('You’ve used all 2 attempts for this quiz.')).toBeInTheDocument()
+      expect(screen.queryByText(/Please try again/)).not.toBeInTheDocument()
+    })
   })
 })

@@ -2,9 +2,10 @@
 
 FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
+# Round 14 (3.10): install exactly what package-lock.json pins.
 COPY package.json package-lock.json ./
 RUN npm install -g npm@11.6.0 \
-    && npm ci
+    && npm ci --no-audit --no-fund
 
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
@@ -18,7 +19,10 @@ ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 ENV SERVER_ACTION_ALLOWED_ORIGINS=${SERVER_ACTION_ALLOWED_ORIGINS}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build
+RUN npm run build \
+    && npm run build:workers \
+    && test -f dist/workers/publish-outbox.mjs \
+    && test -f dist/workers/consume-notifications.mjs
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app
@@ -28,6 +32,18 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NODE_EXTRA_CA_CERTS=/app/certs/ap-south-1-bundle.pem
+
+# Round 13: the web task was OOM-killed with a bare "Killed" (native memory, not the JS heap).
+# jemalloc returns freed native memory (libvips/sharp buffers) instead of fragmenting glibc arenas.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -f /usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000
+# About 60% of the 2048 MiB task: a real JS leak now fails with a heap error and stack trace
+# instead of a silent SIGKILL.
+ENV NODE_OPTIONS=--max-old-space-size=1228
 
 COPY --from=builder /app ./
 
@@ -43,4 +59,6 @@ RUN mkdir -p /app/certs \
 USER node
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Node directly (no npm wrapper, so SIGTERM reaches the server for a clean drain). The keep-alive
+# timeout outlives the ALB's 60 s idle timeout, so the ALB never reuses a socket Node has closed.
+CMD ["node", "node_modules/next/dist/bin/next", "start", "--keepAliveTimeout", "65000"]

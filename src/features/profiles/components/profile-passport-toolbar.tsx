@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useContext, useState } from 'react'
-import { AtSign, Download, Ellipsis, Eye, Pencil } from 'lucide-react'
+import { Download, Ellipsis, Eye, Pencil } from 'lucide-react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
 import { ProfileIdentityEditorContext } from './profile-header'
 import { ProfileShareControls } from './profile-share-controls'
@@ -13,8 +13,8 @@ const sheetLinkRowClass = 'flex min-h-14 w-full items-center gap-4 rounded-2xl p
 /**
  * Owner actions under the profile header.
  * Desktop: View public profile · Share profile · QR profile · Download CV (unchanged).
- * Phones: Share · QR · "…" — the "…" sheet holds View public profile, Download CV, Change username
- * and Edit basic information (which includes contact visibility).
+ * Phones: Share · QR · "…" — the "…" sheet holds View public profile, Download CV and Edit profile,
+ * which opens the header card's in-place editor (round 11; it never leaves for /profile/edit).
  */
 export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUrl?: string }) {
   const secondary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-3.5 text-sm font-semibold text-navy-950 transition hover:border-ocean-400 hover:bg-mist-50 hover:text-ocean-700'
@@ -53,18 +53,14 @@ export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUr
             <Download aria-hidden="true" />
             Download CV
           </Link>
-          <Link role="menuitem" href="/profile/edit#identity" className={sheetLinkRowClass} onClick={() => setSheetOpen(false)}>
-            <AtSign aria-hidden="true" />
-            Change username
-          </Link>
           {openIdentityEditor ? (
             <SheetRow
               role="menuitem"
               icon={<Pencil aria-hidden="true" />}
               label={(
                 <>
-                  <span className="block">Edit basic information</span>
-                  <span className="block text-xs font-medium text-muted">Name, headline, location, organization, contact visibility</span>
+                  <span className="block">Edit profile</span>
+                  <span className="block text-xs font-medium text-muted">Profile type, name, username, headline, organization, contact visibility</span>
                 </>
               )}
               onClick={() => {
@@ -72,12 +68,7 @@ export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUr
                 openIdentityEditor()
               }}
             />
-          ) : (
-            <Link role="menuitem" href="/profile/edit" className={sheetLinkRowClass} onClick={() => setSheetOpen(false)}>
-              <Pencil aria-hidden="true" />
-              Edit basic information and contact visibility
-            </Link>
-          )}
+          ) : null}
         </div>
       </BottomSheet>
     </div>

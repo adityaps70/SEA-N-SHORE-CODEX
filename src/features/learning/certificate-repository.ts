@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { coursePublisherNameSql } from './course-publication'
+import { notifyCertificateIssued } from './learning-notifications'
 
 export type CertificateQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CertificateTransaction = <T>(work: (query: CertificateQuery) => Promise<T>) => Promise<T>
@@ -43,6 +44,8 @@ type CertificateRow = QueryResultRow & {
   mentor_name: string
   completed_at: string | Date
   issued_at: string | Date
+  /** True when this call inserted the certificate (it did not exist yet). */
+  inserted?: boolean
 }
 
 type EnrollmentOwnershipRow = QueryResultRow & { id: string }
@@ -152,6 +155,7 @@ export async function issueCertificateForCompletedEnrollmentWithQuery(
      on conflict (enrollment_id) do update
      set enrollment_id = excluded.enrollment_id
      returning
+       (xmax = 0) as inserted,
        id,
        enrollment_id,
        course_id,
@@ -176,6 +180,16 @@ export async function issueCertificateForCompletedEnrollmentWithQuery(
 
   const certificate = certificateRows[0]
   if (!certificate) throw new Error('certificate_issue_failed')
+  // Only a certificate issued just now is announced; asking for an existing one again is silent.
+  if (certificate.inserted === true) {
+    await notifyCertificateIssued(query, {
+      learnerId: certificate.learner_id,
+      courseId: certificate.course_id,
+      enrollmentId: certificate.enrollment_id,
+      courseTitle: certificate.course_title,
+      verificationCode: certificate.verification_code,
+    })
+  }
   return mapCertificate(certificate)
 }
 

@@ -83,7 +83,13 @@ describe('Access & goals', () => {
     expect(within(section).getByText('Verified Recruiter')).toBeInTheDocument()
     expect(within(section).getByRole('link', { name: 'Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management')
     expect(within(section).getByText('Unclaimed')).toBeInTheDocument()
-    expect(within(section).getByRole('link', { name: 'Edit profile & goals' })).toHaveAttribute('href', '/profile/edit')
+    // Round 11: no "Edit profile & goals" page link; the Profile box has its own pencil, while
+    // the plan and verifications are managed in Settings.
+    expect(within(section).queryByRole('link', { name: 'Edit profile & goals' })).not.toBeInTheDocument()
+    expect(within(section).queryByRole('link', { name: /edit/i })).not.toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: 'Edit profile type and goals' })).toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'Manage plan' })).toHaveAttribute('href', '/settings/billing')
+    expect(within(section).getByRole('link', { name: 'Manage verifications' })).toHaveAttribute('href', '/settings/verifications')
   })
 })
 

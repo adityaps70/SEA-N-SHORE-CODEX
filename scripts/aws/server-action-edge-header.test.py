@@ -7,7 +7,8 @@ guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
 
 CLOUDFRONT_HOST = 'd3prih0q6jofyr.cloudfront.net'
-ORIGIN = 'sea-n-shore-staging-alb-68367905.ap-south-1.elb.amazonaws.com'
+ORIGIN = guard.ORIGIN_HOST
+SECRET = 'TestOriginVerify0123456789abcdefghijklmnopqrstuv'
 CERT_ARN = guard.CERTIFICATE_ARN_PREFIX + '0f6a5b3c-1d2e-4f70-8a9b-0c1d2e3f4a5b'
 
 
@@ -30,7 +31,7 @@ def cloudfront_after(custom_header):
             'custom_origin_config': [{
                 'http_port': 80,
                 'https_port': 443,
-                'origin_protocol_policy': 'http-only',
+                'origin_protocol_policy': 'https-only',
                 'origin_ssl_protocols': ['TLSv1.2'],
             }],
         }],
@@ -97,18 +98,20 @@ class ServerActionEdgeHeaderTests(unittest.TestCase):
         self.assertIn('Managed-AllViewerExceptHostHeader', edge)
 
     def test_guard_accepts_only_exact_in_place_header_update(self):
-        expected = [{'name': 'X-Forwarded-Host', 'value': CLOUDFRONT_HOST}]
-        self.assertEqual(guard.validate(plan_for(expected), ORIGIN, CERT_ARN), [])
+        forwarded = {'name': 'X-Forwarded-Host', 'value': CLOUDFRONT_HOST}
+        expected = [forwarded, {'name': 'X-Origin-Verify', 'value': SECRET}]
+        self.assertEqual(guard.validate(plan_for(expected), ORIGIN, CERT_ARN, origin_verify=SECRET), [])
 
         for bad_header in [
             [],
-            [{'name': 'X-Forwarded-Host', 'value': 'evil.example.com'}],
-            [{'name': 'Host', 'value': CLOUDFRONT_HOST}],
+            [forwarded],
+            [{'name': 'X-Forwarded-Host', 'value': 'evil.example.com'}, expected[1]],
+            [{'name': 'Host', 'value': CLOUDFRONT_HOST}, expected[1]],
             expected + [{'name': 'X-Test', 'value': 'extra'}],
         ]:
-            self.assertTrue(guard.validate(plan_for(bad_header), ORIGIN, CERT_ARN))
+            self.assertTrue(guard.validate(plan_for(bad_header), ORIGIN, CERT_ARN, origin_verify=SECRET))
 
-        self.assertTrue(guard.validate(plan_for(expected, ['delete', 'create']), ORIGIN, CERT_ARN))
+        self.assertTrue(guard.validate(plan_for(expected, ['delete', 'create']), ORIGIN, CERT_ARN, origin_verify=SECRET))
 
 
 if __name__ == '__main__':

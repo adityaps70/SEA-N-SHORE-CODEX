@@ -24,6 +24,9 @@ concurrency:
 jobs:
   guard:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       run_e2e: ${{ steps.guard.outputs.run_e2e }}
       messaging_only: ${{ steps.guard.outputs.messaging_only }}
@@ -32,13 +35,14 @@ jobs:
       cleanup_source_run_id: ${{ steps.guard.outputs.cleanup_source_run_id }}
       run_diagnostic: ${{ steps.guard.outputs.run_diagnostic }}
       diagnostic_source_run_id: ${{ steps.guard.outputs.diagnostic_source_run_id }}
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: guard
         shell: bash
         run: |
           set -euo pipefail
-          ACTION=$(tr -d '[:space:]' < scripts/aws/realtime-e2e-action.txt)
+          ACTION=$(cut -d' ' -f1 < scripts/aws/realtime-e2e-action.txt | tr -d '[:space:]')
           case "$ACTION" in
             plan)
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
@@ -101,6 +105,16 @@ jobs:
             *) echo "Unsupported REALTIME_E2E_ACTION=$ACTION" >&2; exit 1 ;;
           esac
 
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/realtime-e2e-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
+
   realtime-e2e:
     needs: guard
     if: needs.guard.outputs.run_e2e == 'true'
@@ -112,7 +126,7 @@ jobs:
       COGNITO_POOL_NAME: sea-n-shore-staging-users
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -149,15 +163,8 @@ jobs:
           set -euo pipefail
           [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Realtime E2E.' >&2; exit 1; }
 
-      - name: Verify live staging endpoints
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
-
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -167,6 +174,18 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+
+      # Round 15: after the AWS credentials, so the deep health check can send its token.
+      - name: Verify live staging endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
+          HEALTH_HEADER_FILE="$(mktemp)"
+          trap 'rm -f -- "$HEALTH_HEADER_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          source scripts/aws/health-check-token-header.sh
+          write_health_check_header "$HEALTH_HEADER_FILE"
+          curl -fsS --retry 3 --retry-delay 2 -H "@$HEALTH_HEADER_FILE" "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
 
       - name: Discover bootstrap instance
         shell: bash
@@ -199,7 +218,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Install dependencies
@@ -258,7 +277,7 @@ jobs:
       COGNITO_POOL_NAME: sea-n-shore-staging-users
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -295,15 +314,8 @@ jobs:
           set -euo pipefail
           [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Realtime connect probe.' >&2; exit 1; }
 
-      - name: Verify live staging endpoints
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
-
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -313,6 +325,18 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+
+      # Round 15: after the AWS credentials, so the deep health check can send its token.
+      - name: Verify live staging endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
+          HEALTH_HEADER_FILE="$(mktemp)"
+          trap 'rm -f -- "$HEALTH_HEADER_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          source scripts/aws/health-check-token-header.sh
+          write_health_check_header "$HEALTH_HEADER_FILE"
+          curl -fsS --retry 3 --retry-delay 2 -H "@$HEALTH_HEADER_FILE" "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
 
       - name: Discover bootstrap instance
         shell: bash
@@ -341,7 +365,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Install dependencies
@@ -374,7 +398,7 @@ jobs:
       SOURCE_RUN_ID: ${{ needs.guard.outputs.cleanup_source_run_id }}
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -412,7 +436,7 @@ jobs:
           [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Realtime cleanup.' >&2; exit 1; }
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -442,7 +466,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -460,7 +484,7 @@ jobs:
       SOURCE_RUN_ID: ${{ needs.guard.outputs.diagnostic_source_run_id }}
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -519,7 +543,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -539,7 +563,7 @@ jobs:
           echo "INSTANCE_ID=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_ENV"
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 

@@ -24,6 +24,14 @@ export type NetworkNotificationType =
   | 'organization_mention'
   /** Someone tagged the recipient in a photo. */
   | 'photo_tag'
+  /** Learning round A (A6): course, grade, certificate and review news. No actor; the words come from details. */
+  | 'learning_enrolled'
+  | 'learning_lessons_released'
+  | 'learning_assignment_graded'
+  | 'learning_certificate_issued'
+  | 'learning_course_approved'
+  | 'learning_course_changes_requested'
+  | 'learning_submissions_to_grade'
 
 export type NotificationActor = {
   id: string

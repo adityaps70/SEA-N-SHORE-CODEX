@@ -7,5 +7,3 @@ github_repository_id               = "1354507962"
 github_environment                 = "staging"
 ecr_repository_name                = "sea-n-shore"
 existing_github_oidc_provider_arn  = ""
-billing_email                      = "REPLACE_WITH_BILLING_EMAIL"
-monthly_budget_usd                 = 50

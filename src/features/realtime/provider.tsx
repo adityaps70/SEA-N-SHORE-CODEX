@@ -22,6 +22,7 @@ import {
   createMessagingRealtimeConnection,
   type MessagingRealtimeConnection,
   type MessagingRealtimeConnectionStatus,
+  type TypingTokenGrant,
 } from './connection'
 
 type RealtimeListener = (signal: MessagingRealtimeSignal) => void
@@ -43,6 +44,9 @@ type NewMessageAlert = {
 }
 
 const MessagingRealtimeContext = createContext<MessagingRealtimeContextValue | null>(null)
+
+/** Feed and network refreshes from realtime signals are coalesced into one per window. */
+export const REALTIME_REFRESH_DEBOUNCE_MS = 2_000
 
 async function requestRealtimeTicket() {
   const response = await fetch('/api/realtime/ticket', {
@@ -69,6 +73,20 @@ async function requestRealtimeTicket() {
     ticket: payload.ticket,
     webSocketUrl: payload.webSocketUrl,
   }
+}
+
+/** Round 14 (2.9): the server checks membership before it signs a typing token for a conversation. */
+async function requestTypingToken(conversationId: string): Promise<TypingTokenGrant | null> {
+  const response = await fetch('/api/realtime/typing-token', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId }),
+  })
+  if (!response.ok) return null
+  const payload = await response.json() as Partial<TypingTokenGrant>
+  if (typeof payload.token !== 'string' || typeof payload.targetProfileId !== 'string' || typeof payload.expiresAt !== 'number') return null
+  return { token: payload.token, targetProfileId: payload.targetProfileId, expiresAt: payload.expiresAt }
 }
 
 async function loadGlobalMessagingState() {
@@ -120,22 +138,30 @@ export function MessagingRealtimeProvider({
     isTyping: boolean
   }) => connectionRef.current?.sendTyping(input) ?? false, [])
 
+  // Round 14 (3.2): the connection lives for the whole signed-in session. The current path is read
+  // through a ref, so navigating no longer closes and reopens the socket (and re-requests a ticket).
+  const pathnameRef = useRef(pathname)
+  useEffect(() => {
+    pathnameRef.current = pathname
+  }, [pathname])
+
   useEffect(() => {
     let active = true
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
+    // Feed/network invalidations are batched: at most one server-component refresh per 2 seconds.
     const scheduleRefresh = () => {
       if (refreshTimer) return
       refreshTimer = setTimeout(() => {
         refreshTimer = null
         router.refresh()
-      }, 50)
+      }, REALTIME_REFRESH_DEBOUNCE_MS)
     }
 
     const showNewMessageAlert = (item: MessagingInboxItem) => {
       if (!active) return
       const conversationPath = `/messages/${item.conversationId}`
-      if (pathname === conversationPath) return
+      if (pathnameRef.current === conversationPath) return
 
       setNewMessageAlert({
         conversationId: item.conversationId,
@@ -150,7 +176,7 @@ export function MessagingRealtimeProvider({
     }
 
     const reconcileGlobalMessagingState = async (conversationId: string) => {
-      if (pathname.startsWith('/messages')) return
+      if (pathnameRef.current.startsWith('/messages')) return
 
       if (messagingRefreshRunningRef.current) {
         pendingConversationRef.current = conversationId
@@ -179,7 +205,7 @@ export function MessagingRealtimeProvider({
     }
 
     const reconcileUnreadOnConnected = async () => {
-      if (pathname.startsWith('/messages')) return
+      if (pathnameRef.current.startsWith('/messages')) return
       const unreadRevisionAtStart = getMessagingUnreadCountSnapshot().revision
       try {
         const state = await loadGlobalMessagingState()
@@ -193,6 +219,7 @@ export function MessagingRealtimeProvider({
 
     const connection = createMessagingRealtimeConnection({
       requestTicket: requestRealtimeTicket,
+      requestTypingToken,
       createSocket: (url) => new WebSocket(url),
       onConnected: () => {
         void reconcileUnreadOnConnected()
@@ -238,7 +265,7 @@ export function MessagingRealtimeProvider({
         alertTimerRef.current = null
       }
     }
-  }, [pathname, router, viewerProfileId])
+  }, [router, viewerProfileId])
 
   const value = useMemo(() => ({ status, subscribe, sendTyping }), [sendTyping, status, subscribe])
 

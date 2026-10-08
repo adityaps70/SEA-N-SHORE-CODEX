@@ -27,7 +27,23 @@ const PROTECTED_PREFIXES = [
   '/search',
 ] as const
 
+/**
+ * Learning pages anyone can read (learning round A): the course catalogue, each course's page and
+ * its free-preview materials. Everything else under /learn (the course player, My Learning,
+ * Learning Studio, trainer onboarding) stays signed-in only, and so does any /learn page added later.
+ */
+const PUBLIC_LEARN_PATHS = [
+  /^\/learn$/,
+  /^\/learn\/courses\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
+  /^\/learn\/courses\/[a-z0-9]+(?:-[a-z0-9]+)*\/preview\/[0-9a-f-]{36}$/,
+]
+
+export function isPublicLearnRoute(pathname: string) {
+  return PUBLIC_LEARN_PATHS.some((pattern) => pattern.test(pathname))
+}
+
 export function isCognitoProtectedRoute(pathname: string) {
+  if (isPublicLearnRoute(pathname)) return false
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 

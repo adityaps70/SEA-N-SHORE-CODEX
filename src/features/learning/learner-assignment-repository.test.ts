@@ -26,7 +26,7 @@ describe('learner assignment repository', () => {
 
     const result = await repository.submit('learner-1', 'course-slug', 'lesson-1', {
       responseText: 'My inspection-readiness response',
-      attachmentPath: null,
+      attachments: [],
     })
     const submittedStatus: 'submitted' = result.status
 
@@ -59,7 +59,7 @@ describe('learner assignment repository', () => {
 
     await expect(repository.submit('learner-1', 'course-slug', 'lesson-1', {
       responseText: 'A second response before grading',
-      attachmentPath: null,
+      attachments: [],
     })).rejects.toThrow('assignment_review_pending')
 
     expect(query).toHaveBeenCalledTimes(1)
@@ -80,7 +80,7 @@ describe('learner assignment repository', () => {
 
     await expect(repository.submit('learner-1', 'course-slug', 'lesson-1', {
       responseText: 'Retry',
-      attachmentPath: null,
+      attachments: [],
     })).rejects.toThrow('learning_attempt_limit_reached')
   })
 })

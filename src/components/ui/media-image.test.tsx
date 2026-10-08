@@ -1,17 +1,20 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaImage } from './media-image'
 
 afterEach(cleanup)
 
 const BUCKET_URL = 'https://sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com/profiles/a/avatar.webp?X-Amz-Signature=abc'
+const MEDIA_LINK = '/api/media/image/profiles/a/avatar-1.webp?w=700&s=abcdefghijklmnopqrstuvwxyz012345'
 
 describe('MediaImage', () => {
-  it('serves media-bucket photos through the image optimizer at the rendered size', () => {
-    render(<MediaImage src={BUCKET_URL} alt="Member A profile photo" width={44} height={44} sizes="44px" />)
+  // Rewritten in Round 13: stable signed media links (not hourly pre-signed S3 URLs) go through
+  // the optimizer, so its cache survives clock hours.
+  it('serves stable media links through the image optimizer at the rendered size', () => {
+    render(<MediaImage src={MEDIA_LINK} alt="Member A profile photo" width={44} height={44} sizes="44px" />)
 
     const image = screen.getByRole('img', { name: 'Member A profile photo' })
-    expect(image.getAttribute('src')).toMatch(/^\/_next\/image\?url=https%3A%2F%2Fsea-n-shore-staging-310356785722-media/)
+    expect(image.getAttribute('src')).toMatch(/^\/_next\/image\?url=%2Fapi%2Fmedia%2Fimage%2Fprofiles/)
     expect(image.getAttribute('srcset')).toContain('&w=48&q=75 48w')
     expect(image.getAttribute('srcset')).toContain('&w=96&q=75 96w')
     expect(image).toHaveAttribute('sizes', '44px')
@@ -21,7 +24,7 @@ describe('MediaImage', () => {
   it('fills a positioned box when asked to', () => {
     render(
       <span className="relative size-11 overflow-hidden rounded-full">
-        <MediaImage src={BUCKET_URL} alt="" fill sizes="44px" className="object-cover" />
+        <MediaImage src={MEDIA_LINK} alt="" fill sizes="44px" className="object-cover" />
       </span>,
     )
 
@@ -32,6 +35,7 @@ describe('MediaImage', () => {
   })
 
   it.each([
+    ['an hourly pre-signed media-bucket URL', BUCKET_URL],
     ['another https host', 'https://media.example/avatar.webp'],
     ['a first-party API route', '/api/company-logo/22222222-2222-4222-8222-222222222222'],
     ['the message attachment route', '/api/messages/attachments/44444444-4444-4444-8444-444444444444'],
@@ -107,6 +111,72 @@ describe('MediaImage', () => {
 
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.getAllByText('MA')).toHaveLength(1)
+  })
+})
+
+describe('MediaImage photo that finished before hydration with naturalWidth 0 (Round 15)', () => {
+  const proto = HTMLImageElement.prototype
+  const original = {
+    complete: Object.getOwnPropertyDescriptor(proto, 'complete'),
+    naturalWidth: Object.getOwnPropertyDescriptor(proto, 'naturalWidth'),
+    decode: Object.getOwnPropertyDescriptor(proto, 'decode'),
+  }
+
+  function finishedWithZeroWidth(decode: (() => Promise<void>) | undefined) {
+    Object.defineProperty(proto, 'complete', { configurable: true, get: () => true })
+    Object.defineProperty(proto, 'naturalWidth', { configurable: true, get: () => 0 })
+    if (decode) Object.defineProperty(proto, 'decode', { configurable: true, writable: true, value: decode })
+    else delete (proto as unknown as Record<string, unknown>).decode
+  }
+
+  afterEach(() => {
+    for (const [name, descriptor] of Object.entries(original)) {
+      if (descriptor) Object.defineProperty(proto, name, descriptor)
+      else delete (proto as unknown as Record<string, unknown>)[name]
+    }
+  })
+
+  function renderAvatar() {
+    return render(
+      <MediaImage src={BUCKET_URL} alt="Member A profile photo" width={44} height={44} sizes="44px" fallback={<span>MA</span>} />,
+    )
+  }
+
+  it('keeps a valid tiny photo whose decode() resolves (density-corrected width 0 from a srcset)', async () => {
+    const decode = vi.fn(async () => undefined)
+    finishedWithZeroWidth(decode)
+    renderAvatar()
+    // next/image may also call decode() on load; the photo stays either way.
+    await waitFor(() => expect(decode).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(screen.getByRole('img', { name: 'Member A profile photo' })).toBeInTheDocument()
+    expect(screen.queryByText('MA')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the initials when decode() rejects', async () => {
+    const decode = vi.fn(async () => { throw new DOMException('The source image cannot be decoded.', 'EncodingError') })
+    finishedWithZeroWidth(decode)
+    renderAvatar()
+    await waitFor(() => expect(screen.queryByRole('img')).not.toBeInTheDocument())
+    expect(screen.getByText('MA')).toBeInTheDocument()
+    expect(decode).toHaveBeenCalled()
+  })
+
+  it('falls back at once where decode() is unavailable, as before', () => {
+    finishedWithZeroWidth(undefined)
+    renderAvatar()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('MA')).toBeInTheDocument()
+  })
+
+  it('still falls back on a later error event after decode() resolved', async () => {
+    const decode = vi.fn(async () => undefined)
+    finishedWithZeroWidth(decode)
+    renderAvatar()
+    await waitFor(() => expect(decode).toHaveBeenCalled())
+    fireEvent.error(screen.getByRole('img', { name: 'Member A profile photo' }))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('MA')).toBeInTheDocument()
   })
 })
 

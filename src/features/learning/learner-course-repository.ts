@@ -7,6 +7,7 @@ import {
   type MaterialReleaseMode,
 } from './lms-material-policy'
 import { coursePublisherNameSql, learnerCourseAccessSql } from './course-publication'
+import { createScormContentToken } from './scorm-content-link'
 
 type LearnerCourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -55,6 +56,10 @@ export type LearnerCourseRow = QueryResultRow & {
   lesson_position: number | null
   lesson_summary: string | null
   article_body: string | null
+  article_format?: string | null
+  has_captions?: boolean | null
+  furthest_position_seconds?: number | null
+  watched_seconds?: number | null
   asset_path: string | null
   external_url: string | null
   duration_seconds: number | null
@@ -91,6 +96,8 @@ export type LearnerLesson = {
   position: number
   summary: string | null
   articleBody: string | null
+  /** 'html' for rich-text articles (render with renderArticleHtml); 'plain' for older ones. */
+  articleFormat: 'plain' | 'html'
   assetPath: string | null
   externalUrl: string | null
   durationSeconds: number | null
@@ -110,6 +117,12 @@ export type LearnerLesson = {
   completed: boolean
   completedAt: string | null
   lastPositionSeconds: number
+  /** How far the learner has reached in this video or audio (learning round A, A7). */
+  furthestPositionSeconds?: number
+  /** Playback time counted so far (all sessions). */
+  watchedSeconds?: number
+  /** A video with WebVTT captions, served by /api/learn/captions/<lesson id>. */
+  hasCaptions?: boolean
   viewedAt: string | null
   mediaPercent: number
   attemptsUsed: number
@@ -122,6 +135,8 @@ export type LearnerLesson = {
     status: 'processing' | 'ready' | 'error'
     version: '1.2' | '2004' | null
     launchPath: string | null
+    /** Signed path segment the sandboxed package loads its files through (Round 14, 2.3). */
+    contentToken?: string | null
   }
 }
 
@@ -223,7 +238,7 @@ function redactLockedMaterial(material: LearnerLesson) {
   material.assetPath = null
   material.externalUrl = null
   material.assignment = null
-  material.scorm = material.scorm ? { ...material.scorm, launchPath: null } : null
+  material.scorm = material.scorm ? { ...material.scorm, launchPath: null, contentToken: null } : null
   return material
 }
 
@@ -261,6 +276,8 @@ export function createLearnerCourseRepository(input: {
          lesson.position as lesson_position,
          lesson.summary as lesson_summary,
          lesson.article_body,
+         lesson.article_format,
+         (lesson.caption_path is not null and lesson.lesson_type = 'video') as has_captions,
          lesson.asset_path,
          lesson.external_url,
          lesson.duration_seconds,
@@ -279,6 +296,8 @@ export function createLearnerCourseRepository(input: {
          progress.completed,
          progress.completed_at,
          progress.last_position_seconds,
+         progress.furthest_position_seconds,
+         progress.watched_seconds,
          progress.viewed_at,
          progress.media_percent,
          progress.attempts_used,
@@ -300,6 +319,7 @@ export function createLearnerCourseRepository(input: {
          on company.id = course.company_id
        left join public.learning_course_sections section
          on section.course_id = course.id
+        and section.removed_at is null
        left join public.learning_lessons lesson
          on lesson.section_id = section.id
         and lesson.is_published = true
@@ -382,6 +402,7 @@ export function createLearnerCourseRepository(input: {
         position: Number(row.lesson_position),
         summary: row.lesson_summary,
         articleBody: row.article_body,
+        articleFormat: row.article_format === 'html' ? 'html' : 'plain',
         assetPath: row.asset_path,
         externalUrl: row.external_url,
         durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
@@ -401,6 +422,9 @@ export function createLearnerCourseRepository(input: {
         completed: row.completed ?? false,
         completedAt: nullableIsoDateTime(row.completed_at),
         lastPositionSeconds: Number(row.last_position_seconds ?? 0),
+        furthestPositionSeconds: Number(row.furthest_position_seconds ?? 0),
+        watchedSeconds: Number(row.watched_seconds ?? 0),
+        hasCaptions: row.has_captions === true,
         viewedAt: nullableIsoDateTime(row.viewed_at),
         mediaPercent: Number(row.media_percent ?? 0),
         attemptsUsed: Number(row.attempts_used ?? 0),
@@ -417,6 +441,7 @@ export function createLearnerCourseRepository(input: {
               status: scormStatus,
               version: scormVersion,
               launchPath: row.scorm_launch_path,
+              contentToken: scormStatus === 'ready' ? createScormContentToken(learnerId, String(row.lesson_id)) : null,
             },
       })
     }

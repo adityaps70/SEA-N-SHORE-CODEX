@@ -111,6 +111,7 @@ describe('learning course repository', () => {
       publisherName: 'Capt. Mentor',
       publisherSlug: 'capt-mentor',
       hiddenForPlan: false,
+      openRevision: null,
     }])
 
     expect(seen[0]?.text).toContain('public.learning_mentors access_mentor')

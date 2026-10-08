@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { Pencil, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -113,6 +113,7 @@ export function ProfileSectionEditButton({
   icon: Icon = Pencil,
   className,
   pressed,
+  buttonRef,
 }: {
   label: string
   onClick: () => void
@@ -120,9 +121,12 @@ export function ProfileSectionEditButton({
   className?: string
   /** Toggle buttons (the phone "edit entries" pencil) report their state. */
   pressed?: boolean
+  /** Focus returns here when the card's in-place editor closes. */
+  buttonRef?: Ref<HTMLButtonElement>
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
       aria-label={label}

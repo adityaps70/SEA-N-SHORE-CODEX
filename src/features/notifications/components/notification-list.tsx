@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { AtSign, Bell, BriefcaseBusiness, CheckCheck, ChevronRight, Ellipsis, MessageSquareText, Trash2 } from 'lucide-react'
+import { AtSign, Bell, BriefcaseBusiness, CheckCheck, ChevronRight, Ellipsis, GraduationCap, MessageSquareText, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
@@ -20,6 +20,7 @@ const EMPTY_FILTER_COPY: Record<Exclude<NotificationFilter, 'all'>, { icon: type
   jobs: { icon: BriefcaseBusiness, text: 'Job updates will show up here.' },
   my_posts: { icon: MessageSquareText, text: 'Reactions, comments and replies on your posts will show up here.' },
   mentions: { icon: AtSign, text: 'Posts and comments that mention you will show up here.' },
+  learning: { icon: GraduationCap, text: 'Course enrolments, new materials, grades and certificates will show up here.' },
 }
 
 export function NotificationList({ notifications }: { notifications: NetworkNotification[] }) {
@@ -105,9 +106,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       if (!result.ok) {
         setItems(previous)
         setError(result.error)
-        return
       }
-      router.refresh()
     })
   }
 

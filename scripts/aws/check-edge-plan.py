@@ -2,13 +2,38 @@
 """Allow only bounded staging CloudFront, canonical-host redirect function and profile-upload WAF changes."""
 import copy
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
 CACHE_POLICY_ID = '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'
 ORIGIN_POLICY_ID = 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
+# Round 14 (3.1): static assets and optimized images may be cached at the edge; HTML never is.
+CACHING_OPTIMIZED_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6'
+NEXT_IMAGE_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.next_image'
+EXPECTED_ORDERED_BEHAVIORS = [
+    ('/_next/static/*', 'optimized'),
+    ('/_next/image*', 'next_image'),
+    ('/brand/*', 'optimized'),
+    ('/landing/*', 'optimized'),
+    ('/favicon.ico', 'optimized'),
+]
 FORWARDED_HOST = 'd3prih0q6jofyr.cloudfront.net'
-EXPECTED_CUSTOM_HEADERS = [{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}]
+# Round 14 (1.4): CloudFront reaches the ALB only over HTTPS on the origin hostname, sending the
+# shared X-Origin-Verify secret (the ALB answers 403 without it). The secret is passed in by file
+# and never appears in an error message.
+ORIGIN_HOST = 'origin-staging.seaandshore.in'
+ORIGIN_VERIFY_HEADER = 'X-Origin-Verify'
+ORIGIN_VERIFY_PATTERN = re.compile(r'[A-Za-z0-9]{48}')
+
+
+def _sorted_headers(headers):
+    return sorted(headers or [], key=lambda header: str(header.get('name', '')))
+
+
+def expected_custom_headers(origin_verify):
+    return _sorted_headers([{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}, {'name': ORIGIN_VERIFY_HEADER, 'value': origin_verify}])
 
 CANONICAL_HOST = 'seanshore.in'
 EXPECTED_ALIASES = [CANONICAL_HOST, 'www.' + CANONICAL_HOST]
@@ -275,8 +300,26 @@ def _only_function_arn_unknown(value):
     return set(value[0]) <= {'function_arn'} and value[0].get('function_arn') is True
 
 
-def validate(plan, origin, certificate_arn='', template_path=None):
+def _only_grpc_enabled_unknown(value):
+    """Accept a provider-computed gRPC block: wholly unknown, or only its enabled flag unknown."""
+    if value is True:
+        return True
+    if not isinstance(value, list) or len(value) > 1:
+        return False
+    return all(isinstance(item, dict) and set(item) <= {'enabled'} for item in value)
+
+
+def _grpc_enabled(behavior):
+    return any(isinstance(item, dict) and item.get('enabled') is True for item in (behavior.get('grpc_config') or []))
+
+
+def validate(plan, origin, certificate_arn='', template_path=None, origin_verify=None):
     errors = []
+    if not isinstance(origin_verify, str) or not ORIGIN_VERIFY_PATTERN.fullmatch(origin_verify):
+        errors.append('Origin verify secret (48 letters/digits) required')
+        origin_verify = None
+    if origin != ORIGIN_HOST:
+        errors.append('Origin must be the dedicated HTTPS origin hostname')
     changes = {r['address']: r for r in plan.get('resource_changes', [])}
     for address, resource in changes.items():
         actions = resource.get('change', {}).get('actions', [])
@@ -288,6 +331,8 @@ def validate(plan, origin, certificate_arn='', template_path=None):
             if actions not in [['update'], ['no-op']]: errors.append('WAF must be update/no-op')
         elif address == FUNCTION_ADDRESS:
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Redirect function must be create/update/no-op')
+        elif address == NEXT_IMAGE_POLICY_ADDRESS:
+            if actions not in [['create'], ['update'], ['no-op']]: errors.append('Image cache policy must be create/update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
 
@@ -313,7 +358,11 @@ def validate(plan, origin, certificate_arn='', template_path=None):
     cf_change = changes.get('aws_cloudfront_distribution.app', {}).get('change', {})
     cf = cf_change.get('after', {})
     unknown = cf_change.get('after_unknown', {})
-    for field in ['aliases','enabled','web_acl_id','viewer_certificate','ordered_cache_behavior','custom_error_response']:
+    image_policy_change = changes.get(NEXT_IMAGE_POLICY_ADDRESS, {}).get('change', {})
+    image_policy_created = image_policy_change.get('actions') == ['create']
+    if image_policy_change.get('actions') in [['create'], ['update']]:
+        _validate_next_image_policy(image_policy_change.get('after') or {}, errors)
+    for field in ['aliases','enabled','web_acl_id','viewer_certificate','custom_error_response']:
         if has_unknown(unknown.get(field)): errors.append('Unknown safety field: ' + field)
     for block, fields in {'origin':['domain_name','origin_path','origin_id','custom_header','custom_origin_config'], 'default_cache_behavior':['target_origin_id','viewer_protocol_policy','cache_policy_id','origin_request_policy_id','allowed_methods','function_association','lambda_function_association']}.items():
         values = unknown.get(block, [])
@@ -346,10 +395,11 @@ def validate(plan, origin, certificate_arn='', template_path=None):
         errors.append('Unexpected origin')
     if len(origins) == 1:
         o = origins[0]
-        if o.get('custom_header') != EXPECTED_CUSTOM_HEADERS: errors.append('Exact trusted X-Forwarded-Host origin header required')
+        if origin_verify is None or _sorted_headers(o.get('custom_header')) != expected_custom_headers(origin_verify):
+            errors.append('Exact X-Origin-Verify and trusted X-Forwarded-Host origin headers required')
         if o.get('origin_path') not in [None,''] or o.get('origin_id') != 'sea-n-shore-staging-alb': errors.append('Origin path/id mismatch')
         custom = o.get('custom_origin_config', [])
-        if len(custom) != 1 or any(custom[0].get(k) != v for k,v in {'http_port':80,'https_port':443,'origin_protocol_policy':'http-only','origin_ssl_protocols':['TLSv1.2']}.items()): errors.append('Origin protocol/ports mismatch')
+        if len(custom) != 1 or any(custom[0].get(k) != v for k,v in {'http_port':80,'https_port':443,'origin_protocol_policy':'https-only','origin_ssl_protocols':['TLSv1.2']}.items()): errors.append('Origin protocol/ports mismatch (https-only required)')
     behavior = cf.get('default_cache_behavior', [])
     if len(behavior) != 1:
         errors.append('Default behavior missing')
@@ -366,13 +416,80 @@ def validate(plan, origin, certificate_arn='', template_path=None):
             arn = associations[0].get('function_arn')
             if arn != FUNCTION_ARN and not (arn in [None, ''] and function_created):
                 errors.append('Redirect association must reference the repository CloudFront function')
-    if cf.get('ordered_cache_behavior') or cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
+    if cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
+    _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors)
     return errors
+
+
+def _validate_next_image_policy(after, errors):
+    params = (after.get('parameters_in_cache_key_and_forwarded_to_origin') or [{}])[0]
+    cookies = (params.get('cookies_config') or [{}])[0]
+    headers = (params.get('headers_config') or [{}])[0]
+    queries = (params.get('query_strings_config') or [{}])[0]
+    header_items = ((headers.get('headers') or [{}])[0] or {}).get('items') or []
+    query_items = ((queries.get('query_strings') or [{}])[0] or {}).get('items') or []
+    if (
+        cookies.get('cookie_behavior') != 'none'
+        or headers.get('header_behavior') != 'whitelist' or sorted(header_items) != ['Accept']
+        or queries.get('query_string_behavior') != 'whitelist' or sorted(query_items) != ['q', 'url', 'w']
+        or after.get('max_ttl') != 31536000 or after.get('min_ttl') != 0
+    ):
+        errors.append('Image cache policy must key only on url, w, q and Accept, never cookies')
+
+
+def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors):
+    behaviors = cf.get('ordered_cache_behavior') or []
+    if not behaviors:
+        return
+    if [b.get('path_pattern') for b in behaviors] != [path for path, _ in EXPECTED_ORDERED_BEHAVIORS]:
+        errors.append('Ordered cache behaviors must be exactly the static asset and image paths')
+        return
+    unknown_behaviors = unknown.get('ordered_cache_behavior') or []
+    if unknown_behaviors is True:
+        errors.append('Unknown block: ordered_cache_behavior')
+        return
+    image_policy_id = (image_policy_change.get('after') or {}).get('id')
+    for index, (behavior, (path, policy)) in enumerate(zip(behaviors, EXPECTED_ORDERED_BEHAVIORS)):
+        u = unknown_behaviors[index] if index < len(unknown_behaviors) and isinstance(unknown_behaviors[index], dict) else {}
+        for f, value in u.items():
+            if not has_unknown(value):
+                continue
+            if f == 'cache_policy_id' and policy == 'next_image' and image_policy_created:
+                continue
+            if f == 'function_association' and function_created and _only_function_arn_unknown(value):
+                continue
+            # Computed by the AWS provider for a new behavior: the TTL fields (the cache policy decides
+            # the real TTLs) and gRPC's enabled flag (off unless set; the apply verifies it live).
+            if f in ('default_ttl', 'max_ttl'):
+                continue
+            if f == 'grpc_config' and _only_grpc_enabled_unknown(value) and not _grpc_enabled(behavior):
+                continue
+            # The unknown markers are booleans only, so printing them exposes no values.
+            errors.append('Unknown safety field in ordered behavior ' + path + ': ' + f + '=' + json.dumps(value))
+        expected_policy = CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy_id
+        if behavior.get('cache_policy_id') != expected_policy and not (policy == 'next_image' and image_policy_created and behavior.get('cache_policy_id') in [None, '']):
+            errors.append('Cache policy mismatch for ' + path)
+        if (
+            behavior.get('target_origin_id') != 'sea-n-shore-staging-alb'
+            or behavior.get('viewer_protocol_policy') != 'redirect-to-https'
+            or sorted(behavior.get('allowed_methods') or []) != ['GET', 'HEAD']
+            or sorted(behavior.get('cached_methods') or []) != ['GET', 'HEAD']
+            or behavior.get('compress') is not True
+            or behavior.get('origin_request_policy_id') not in [None, '']
+            or behavior.get('lambda_function_association')
+        ):
+            errors.append('Ordered behavior must be GET/HEAD, HTTPS, compressed, without origin request policy: ' + path)
+        associations = behavior.get('function_association') or []
+        arn = associations[0].get('function_arn') if len(associations) == 1 else None
+        if len(associations) != 1 or associations[0].get('event_type') != 'viewer-request' or (arn != FUNCTION_ARN and not (arn in [None, ''] and function_created)):
+            errors.append('Ordered behavior must keep the canonical-host redirect: ' + path)
 
 
 if __name__ == '__main__':
     with open(sys.argv[1]) as f: plan = json.load(f)
-    errors = validate(plan, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
+    verify_file = os.environ.get('EDGE_ORIGIN_VERIFY_FILE', '')
+    origin_verify = open(verify_file).read().strip() if verify_file else None
+    errors = validate(plan, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '', origin_verify=origin_verify)
     if errors:
         print('\n'.join(errors), file=sys.stderr)
         sys.exit(1)

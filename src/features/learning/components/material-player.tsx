@@ -20,6 +20,10 @@ type Props = {
   nextLessonHref?: string | null
   /** Phone-only controls shown beside Mark complete (the course player's "Curriculum n/N" button). */
   phoneActions?: ReactNode
+  /** A rich-text article, already sanitized on the server with its images signed (renderArticleHtml). */
+  articleHtml?: string | null
+  /** Free preview for a visitor: read or watch only; nothing is recorded. */
+  preview?: boolean
 }
 
 function safeEmbedUrl(url: string, kind: LearnerLesson['embedKind']) {
@@ -74,9 +78,16 @@ function LockedMaterial({ lesson }: { lesson: LearnerLesson }) {
   )
 }
 
-function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
+/** The material itself (no completion controls). Also used on its own for free previews. */
+export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false }: Props) {
   switch (lesson.lessonType) {
     case 'article':
+      if (lesson.articleFormat === 'html') {
+        return articleHtml ? (
+          // Sanitized with an allow-list on the server (article-html.ts) immediately before rendering.
+          <div className="lesson-article text-[15px] leading-8 text-navy-900" dangerouslySetInnerHTML={{ __html: articleHtml }} />
+        ) : null
+      }
       return lesson.articleBody ? (
         <div className="whitespace-pre-wrap text-[15px] leading-8 text-navy-900">{lesson.articleBody}</div>
       ) : null
@@ -89,6 +100,13 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
       ) : null
 
     case 'video':
+      if (preview && mediaUrl) {
+        return (
+          <video controls preload="metadata" src={mediaUrl} className="aspect-video w-full rounded-2xl bg-navy-950">
+            {lesson.hasCaptions ? <track kind="captions" src={`/api/learn/captions/${lesson.id}`} srcLang="en" label="Captions" default /> : null}
+          </video>
+        )
+      }
       return mediaUrl ? (
         <ResumableLessonMedia
           kind="video"
@@ -96,6 +114,10 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
           slug={slug}
           lessonId={lesson.id}
           initialPositionSeconds={lesson.lastPositionSeconds}
+          initialFurthestSeconds={lesson.furthestPositionSeconds ?? 0}
+          initialWatchedSeconds={lesson.watchedSeconds ?? 0}
+          completed={lesson.completed}
+          captionsSrc={lesson.hasCaptions ? `/api/learn/captions/${lesson.id}` : null}
         />
       ) : lesson.externalUrl ? (
         <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
@@ -104,6 +126,7 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
       ) : null
 
     case 'audio':
+      if (preview && mediaUrl) return <audio controls preload="metadata" src={mediaUrl} className="w-full" />
       return mediaUrl ? (
         <ResumableLessonMedia
           kind="audio"
@@ -111,6 +134,9 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
           slug={slug}
           lessonId={lesson.id}
           initialPositionSeconds={lesson.lastPositionSeconds}
+          initialFurthestSeconds={lesson.furthestPositionSeconds ?? 0}
+          initialWatchedSeconds={lesson.watchedSeconds ?? 0}
+          completed={lesson.completed}
         />
       ) : null
 
@@ -191,6 +217,7 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
           slug={slug}
           lessonId={lesson.id}
           launchPath={lesson.scorm.launchPath}
+          contentToken={lesson.scorm.contentToken ?? null}
           version={lesson.scorm.version}
           maxAttempts={lesson.maxAttempts}
           attemptsUsed={lesson.attemptsUsed}

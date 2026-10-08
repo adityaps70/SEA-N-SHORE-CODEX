@@ -8,10 +8,7 @@ export type CognitoAuthenticationResult = {
 export type CognitoSignInResult =
   | { kind: 'authenticated'; authentication: CognitoAuthenticationResult }
   | { kind: 'new-password-required'; session: string; username: string }
-
-export type CognitoCustomAuthResult =
-  | { kind: 'authenticated'; authentication: CognitoAuthenticationResult }
-  | { kind: 'challenge'; session: string; username: string }
+  | { kind: 'software-token-mfa'; session: string; username: string }
 
 export type CognitoPrincipal = {
   sub: string
@@ -22,6 +19,17 @@ export type CognitoPrincipal = {
   phoneNumberVerified?: boolean
   name: string | null
 }
+
+/** Round 14 (2.11): a member's own authenticator-app (TOTP) settings, read with their access token. */
+export type CognitoUserMfaSettings = {
+  username: string | null
+  email: string | null
+  /** True when an authenticator app is verified and turned on for sign-in. */
+  softwareTokenEnabled: boolean
+  preferredMfa: string | null
+}
+
+export type CognitoSoftwareTokenVerification = { status: 'SUCCESS' | 'ERROR' }
 
 export type CognitoSignUpResult = {
   userSub: string
@@ -50,6 +58,16 @@ type CognitoAuthenticationResponse = {
 type CognitoGetUserResponse = {
   Username?: string
   UserAttributes?: Array<{ Name?: string; Value?: string }>
+  UserMFASettingList?: string[]
+  PreferredMfaSetting?: string
+}
+
+type CognitoAssociateSoftwareTokenResponse = {
+  SecretCode?: string
+}
+
+type CognitoVerifySoftwareTokenResponse = {
+  Status?: string
 }
 
 type CognitoSignUpResponse = {
@@ -66,6 +84,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   ExpiredCodeException: 'The confirmation code has expired.',
   LimitExceededException: 'Cognito request limit exceeded. Please try again later.',
   TooManyRequestsException: 'Too many Cognito requests. Please try again later.',
+  EnableSoftwareTokenMFAException: 'The authenticator code is invalid.',
+  SoftwareTokenMFANotFoundException: 'No authenticator app is set up for this user.',
 }
 
 function normalizeErrorCode(value: unknown) {
@@ -79,12 +99,35 @@ function safeMessageFor(code: string) {
 
 export class CognitoApiError extends Error {
   readonly code: string
+  /** For a refusal from our own auth Lambdas, its reason code (e.g. "otp_cooldown"), else null. */
+  readonly reason: string | null
 
-  constructor(code: string, message = safeMessageFor(code)) {
+  constructor(code: string, message = safeMessageFor(code), reason: string | null = null) {
     super(message)
     this.name = 'CognitoApiError'
     this.code = code
+    this.reason = reason
   }
+}
+
+/** Only our own reason codes are kept from a Lambda refusal, never free text. */
+function lambdaRefusalReason(code: string, message: unknown) {
+  if (code !== 'UserLambdaValidationException' || typeof message !== 'string') return null
+  return /\b(otp_[a-z_]{2,40})\b/.exec(message)?.[1] ?? null
+}
+
+/**
+ * For InvalidPasswordException, which policy rule Cognito named ("Password must have uppercase
+ * characters", "Password not long enough", …) as a short code; the raw message is never kept.
+ */
+export function passwordRuleReason(code: string, message: unknown) {
+  if (code !== 'InvalidPasswordException' || typeof message !== 'string') return null
+  if (/long enough|minimum length/i.test(message)) return 'length'
+  if (/uppercase/i.test(message)) return 'uppercase'
+  if (/lowercase/i.test(message)) return 'lowercase'
+  if (/numeric|number/i.test(message)) return 'number'
+  if (/symbol/i.test(message)) return 'symbol'
+  return null
 }
 
 function mapAuthenticationTokens(response: CognitoAuthenticationResponse): CognitoAuthenticationResult {
@@ -101,7 +144,7 @@ function mapAuthenticationTokens(response: CognitoAuthenticationResponse): Cogni
   }
 }
 
-function mapSignInResult(response: CognitoAuthenticationResponse): CognitoSignInResult {
+function mapSignInResult(response: CognitoAuthenticationResponse, fallbackUsername: string): CognitoSignInResult {
   if (response.AuthenticationResult) {
     return {
       kind: 'authenticated',
@@ -120,26 +163,12 @@ function mapSignInResult(response: CognitoAuthenticationResponse): CognitoSignIn
     }
   }
 
-  throw new CognitoApiError('UnexpectedResponse')
-}
-
-
-function mapCustomAuthResult(
-  response: CognitoAuthenticationResponse,
-  fallbackUsername: string,
-): CognitoCustomAuthResult {
-  if (response.AuthenticationResult) {
+  // Round 14 (2.11): members who turned on an authenticator app answer a TOTP code next.
+  if (response.ChallengeName === 'SOFTWARE_TOKEN_MFA' && response.Session) {
     return {
-      kind: 'authenticated',
-      authentication: mapAuthenticationTokens(response),
-    }
-  }
-
-  if (response.ChallengeName === 'CUSTOM_CHALLENGE' && response.Session) {
-    return {
-      kind: 'challenge',
+      kind: 'software-token-mfa',
       session: response.Session,
-      username: response.ChallengeParameters?.USERNAME ?? fallbackUsername,
+      username: response.ChallengeParameters?.USER_ID_FOR_SRP || fallbackUsername,
     }
   }
 
@@ -172,9 +201,9 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
     }
 
     if (!response.ok) {
-      const error = payload as { __type?: unknown; code?: unknown }
+      const error = payload as { __type?: unknown; code?: unknown; message?: unknown }
       const code = normalizeErrorCode(error.__type ?? error.code)
-      throw new CognitoApiError(code)
+      throw new CognitoApiError(code, undefined, lambdaRefusalReason(code, error.message) ?? passwordRuleReason(code, error.message))
     }
 
     return payload as T
@@ -191,37 +220,7 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         },
       })
 
-      return mapSignInResult(response)
-    },
-
-    async startCustomAuth(username: string): Promise<CognitoCustomAuthResult> {
-      const response = await request<CognitoAuthenticationResponse>('InitiateAuth', {
-        AuthFlow: 'CUSTOM_AUTH',
-        ClientId: config.clientId,
-        AuthParameters: {
-          USERNAME: username,
-        },
-      })
-
-      return mapCustomAuthResult(response, username)
-    },
-
-    async respondToCustomChallenge(input: {
-      username: string
-      session: string
-      answer: string
-    }): Promise<CognitoCustomAuthResult> {
-      const response = await request<CognitoAuthenticationResponse>('RespondToAuthChallenge', {
-        ChallengeName: 'CUSTOM_CHALLENGE',
-        ClientId: config.clientId,
-        Session: input.session,
-        ChallengeResponses: {
-          USERNAME: input.username,
-          ANSWER: input.answer,
-        },
-      })
-
-      return mapCustomAuthResult(response, input.username)
+      return mapSignInResult(response, input.username)
     },
 
     async respondToNewPassword(input: {
@@ -236,6 +235,24 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         ChallengeResponses: {
           USERNAME: input.username,
           NEW_PASSWORD: input.newPassword,
+        },
+      })
+
+      return mapAuthenticationTokens(response)
+    },
+
+    async respondToSoftwareTokenMfa(input: {
+      username: string
+      session: string
+      code: string
+    }): Promise<CognitoAuthenticationResult> {
+      const response = await request<CognitoAuthenticationResponse>('RespondToAuthChallenge', {
+        ChallengeName: 'SOFTWARE_TOKEN_MFA',
+        ClientId: config.clientId,
+        Session: input.session,
+        ChallengeResponses: {
+          USERNAME: input.username,
+          SOFTWARE_TOKEN_MFA_CODE: input.code,
         },
       })
 
@@ -273,6 +290,54 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         phoneNumberVerified: attributes.get('phone_number_verified') === 'true',
         name: attributes.get('name') ?? null,
       }
+    },
+
+    /** Uncached GetUser: the member's authenticator-app status right now (never logged). */
+    async getUserMfaSettings(accessToken: string): Promise<CognitoUserMfaSettings> {
+      const response = await request<CognitoGetUserResponse>('GetUser', {
+        AccessToken: accessToken,
+      })
+      const email = (response.UserAttributes ?? []).find((attribute) => attribute.Name === 'email')?.Value ?? null
+
+      return {
+        username: response.Username ?? null,
+        email,
+        softwareTokenEnabled: (response.UserMFASettingList ?? []).includes('SOFTWARE_TOKEN_MFA'),
+        preferredMfa: response.PreferredMfaSetting ?? null,
+      }
+    },
+
+    /** Starts authenticator-app setup. The secret is shown to the member once and never stored or logged. */
+    async associateSoftwareToken(accessToken: string): Promise<{ secretCode: string }> {
+      const response = await request<CognitoAssociateSoftwareTokenResponse>('AssociateSoftwareToken', {
+        AccessToken: accessToken,
+      })
+      if (!response.SecretCode) throw new CognitoApiError('UnexpectedResponse')
+      return { secretCode: response.SecretCode }
+    },
+
+    async verifySoftwareToken(input: {
+      accessToken: string
+      code: string
+      friendlyDeviceName?: string
+    }): Promise<CognitoSoftwareTokenVerification> {
+      const response = await request<CognitoVerifySoftwareTokenResponse>('VerifySoftwareToken', {
+        AccessToken: input.accessToken,
+        UserCode: input.code,
+        ...(input.friendlyDeviceName ? { FriendlyDeviceName: input.friendlyDeviceName } : {}),
+      })
+      return { status: response.Status === 'SUCCESS' ? 'SUCCESS' : 'ERROR' }
+    },
+
+    /** Turns authenticator-app MFA on (and preferred) or off for the signed-in member. */
+    async setSoftwareTokenMfaPreference(input: { accessToken: string; enabled: boolean }): Promise<void> {
+      await request('SetUserMFAPreference', {
+        AccessToken: input.accessToken,
+        SoftwareTokenMfaSettings: {
+          Enabled: input.enabled,
+          PreferredMfa: input.enabled,
+        },
+      })
     },
 
     async signUp(input: {

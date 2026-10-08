@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import type { Capability } from '@/features/access/policy'
 import {
   ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES,
@@ -35,7 +34,6 @@ export function AdminEntitlementControlPanel({
   subjectId: string
   entitlementHistory: EntitlementHistoryItem[]
 }) {
-  const router = useRouter()
   const [reason, setReason] = useState('')
   const capabilities = subjectType === 'profile'
     ? ADMIN_PERSONAL_GRANTABLE_CAPABILITIES
@@ -64,7 +62,6 @@ export function AdminEntitlementControlPanel({
       }
       setFeedback('Entitlement granted and recorded in the audit trail.')
       setReason('')
-      router.refresh()
     })
   }
 
@@ -78,7 +75,6 @@ export function AdminEntitlementControlPanel({
       }
       setFeedback('Entitlement revoked and recorded in the audit trail.')
       setReason('')
-      router.refresh()
     })
   }
 

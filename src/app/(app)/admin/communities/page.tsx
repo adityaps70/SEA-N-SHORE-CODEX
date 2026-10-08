@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { Archive, ArchiveRestore, ExternalLink, PencilLine, Search, UserRound } from 'lucide-react'
+import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import { archiveGroupAsAdmin, unarchiveGroupAsAdmin } from '@/features/community/admin-actions'
@@ -43,6 +45,14 @@ function ArchiveForm({ group }: { group: AdminCommunityGroup }) {
 }
 
 export default async function AdminCommunitiesPage({ searchParams }: { searchParams: SearchParams }) {
+  // Round 14 (2.10): the admin layout's check does not run for every page render (partial
+  // rendering), and listAdminGroups takes no admin id, so the page checks for itself.
+  try {
+    await requirePlatformAdministratorUser()
+  } catch (error) {
+    if (error instanceof Error && error.message === 'admin_forbidden') notFound()
+    throw error
+  }
   const params = await searchParams
   const query = single(params.q).trim().slice(0, 120)
   const filter = readFilter(params.status)

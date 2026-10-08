@@ -10,6 +10,7 @@ import { AdminUserControlPanel } from '@/features/admin/components/admin-user-co
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { adminRepository, type AdminUserStatus } from '@/features/admin/repository'
+import { signInMethodsLabel } from '@/features/admin/sign-in-methods'
 
 export const metadata: Metadata = { title: 'User account · Admin' }
 
@@ -108,6 +109,7 @@ export default async function AdminUserDetailPage({
             <dl className="mt-4 divide-y divide-mist-100 border-t border-mist-100">
               <Fact label="Email">
                 <span className="inline-flex items-center gap-1.5 break-all"><Mail aria-hidden="true" className="size-3.5 shrink-0 text-muted" />{user.email ?? 'Not retained'}</span>
+                {signInMethodsLabel(user) ? <span className="block text-xs text-muted">{signInMethodsLabel(user)}</span> : null}
               </Fact>
               <Fact label="Account status">{statusLabel(user.status)}</Fact>
               <Fact label="Joined">{formatAdminDate(user.createdAt)}</Fact>

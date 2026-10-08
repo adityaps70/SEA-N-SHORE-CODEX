@@ -10,6 +10,8 @@ ACTION_FILE="scripts/aws/github-deploy-iam-action.txt"
 EXPECTED_SHA="${GITHUB_DEPLOY_IAM_EXPECTED_SHA:-}"
 MEDIA_BUCKET="sea-n-shore-staging-${EXPECTED_ACCOUNT}-media"
 MEDIA_BUCKET_ARN="arn:aws:s3:::${MEDIA_BUCKET}"
+# Exact-SHA git bundles the runner hands to the bootstrap host (private repo: the host never clones from GitHub).
+CI_CHECKOUT_ARN="arn:aws:s3:::sea-n-shore-staging-${EXPECTED_ACCOUNT}-migration/ci-checkouts/*"
 ECS_EXECUTION_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-ecs-execution"
 ECS_TASK_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-ecs-task"
 OUTBOX_WORKER_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-outbox-worker"
@@ -25,7 +27,7 @@ command -v git >/dev/null 2>&1 || { echo "git is required." >&2; exit 1; }
 [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]] || { echo "Detached checkout does not match expected SHA." >&2; exit 1; }
 [[ -f "$ACTION_FILE" ]] || { echo "Missing IAM action guard." >&2; exit 1; }
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once|apply-production-access-once) ;;
   *) echo "Unsupported deploy IAM action: $ACTION" >&2; exit 1 ;;
 esac
@@ -70,9 +72,10 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   --arg sesIdentity "$SES_IDENTITY_ARN" \
   --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" \
   --arg cognitoPool "$COGNITO_POOL_ARN" \
+  --arg ciCheckouts "$CI_CHECKOUT_ARN" \
   --argjson temporaryProductionAccess "$TEMP_PRODUCTION_ACCESS" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
@@ -117,6 +120,11 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
       Effect: "Allow",
       Action: ["ses:CreateConfigurationSet"],
       Resource: $sesConfigurationSet
+    }, {
+      Sid: "CiCheckoutBundles",
+      Effect: "Allow",
+      Action: ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
+      Resource: $ciCheckouts
     }]
     + (if $temporaryProductionAccess then [{
       Sid: "Phase5bSesProductionAccessRequest",
@@ -127,7 +135,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead"))' "$CURRENT" > "$CURRENT_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -221,6 +229,17 @@ verify_phase5b_ses_configuration_set_create_statement() {
   ' "$file" >/dev/null
 }
 
+verify_ci_checkout_statement() {
+  local file="$1"
+  jq -e --arg resource "$CI_CHECKOUT_ARN" '
+    [.Statement[] | select(.Sid == "CiCheckoutBundles")] as $matches
+    | ($matches | length) == 1
+    and $matches[0].Effect == "Allow"
+    and (($matches[0].Action | sort) == (["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"] | sort))
+    and $matches[0].Resource == $resource
+  ' "$file" >/dev/null
+}
+
 verify_phase5b_ses_production_access_request_statement() {
   local file="$1"
   jq -e '
@@ -248,6 +267,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_phase5b_ses_identity_create_statement "$CURRENT"
   verify_phase5b_ses_identity_manage_statement "$CURRENT"
   verify_phase5b_ses_configuration_set_create_statement "$CURRENT"
+  verify_ci_checkout_statement "$CURRENT"
   if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
     verify_phase5b_ses_production_access_request_statement "$CURRENT"
   else
@@ -261,12 +281,12 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest resource=${MEDIA_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest,CiCheckoutBundles resource=${MEDIA_BUCKET_ARN} ci_checkouts=${CI_CHECKOUT_ARN} cognito_pool=${COGNITO_POOL_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
 
-REMOTE_SHA="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | awk '{print $1}')"
+REMOTE_SHA="$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | awk '{print $1}')"
 [[ "$REMOTE_SHA" == "$EXPECTED_SHA" ]] || { echo "Feature branch moved; refusing IAM mutation." >&2; exit 1; }
 
 aws iam put-role-policy \
@@ -288,12 +308,13 @@ verify_phase5b_ses_resource_read_statement "$VERIFIED" || { echo "Phase 5B SES r
 verify_phase5b_ses_identity_create_statement "$VERIFIED" || { echo "Phase 5B SES identity-create IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_identity_manage_statement "$VERIFIED" || { echo "Phase 5B SES identity-manage IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_configuration_set_create_statement "$VERIFIED" || { echo "Phase 5B SES configuration-set-create IAM verification failed." >&2; exit 1; }
+verify_ci_checkout_statement "$VERIFIED" || { echo "CI checkout bundle IAM verification failed." >&2; exit 1; }
 if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
   verify_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request IAM verification failed." >&2; exit 1; }
 else
   verify_no_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request permission was not removed." >&2; exit 1; }
 fi
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
 cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"

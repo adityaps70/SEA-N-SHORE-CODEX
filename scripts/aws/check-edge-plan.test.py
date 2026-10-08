@@ -8,10 +8,13 @@ spec.loader.exec_module(guard)
 
 
 CERT_ARN = guard.CERTIFICATE_ARN_PREFIX + '0f6a5b3c-1d2e-4f70-8a9b-0c1d2e3f4a5b'
+# Round 14 (1.4): a fixture origin secret (48 letters/digits) and the dedicated HTTPS origin.
+SECRET = 'TestOriginVerify0123456789abcdefghijklmnopqrstuv'
+ORIGIN_HOST = guard.ORIGIN_HOST
 
 
 def cloudfront_after():
-    return {'web_acl_id':guard.WAF_ARN,'enabled':True,'aliases':['www.seanshore.in','seanshore.in'], 'viewer_certificate':[{'acm_certificate_arn':CERT_ARN,'cloudfront_default_certificate':False,'iam_certificate_id':'','minimum_protocol_version':'TLSv1.2_2021','ssl_support_method':'sni-only'}], 'origin':[{'domain_name':'alb.example.amazonaws.com','origin_id':'sea-n-shore-staging-alb','origin_path':'','custom_header':guard.EXPECTED_CUSTOM_HEADERS,'custom_origin_config':[{'http_port':80,'https_port':443,'origin_protocol_policy':'http-only','origin_ssl_protocols':['TLSv1.2']}]}], 'default_cache_behavior':[{'target_origin_id':'sea-n-shore-staging-alb','viewer_protocol_policy':'redirect-to-https','cache_policy_id':guard.CACHE_POLICY_ID,'origin_request_policy_id':guard.ORIGIN_POLICY_ID,'allowed_methods':['DELETE','GET','HEAD','OPTIONS','PATCH','POST','PUT'],'function_association':[{'event_type':'viewer-request','function_arn':guard.FUNCTION_ARN}],'lambda_function_association':[]}]}
+    return {'web_acl_id':guard.WAF_ARN,'enabled':True,'aliases':['www.seanshore.in','seanshore.in'], 'viewer_certificate':[{'acm_certificate_arn':CERT_ARN,'cloudfront_default_certificate':False,'iam_certificate_id':'','minimum_protocol_version':'TLSv1.2_2021','ssl_support_method':'sni-only'}], 'origin':[{'domain_name':ORIGIN_HOST,'origin_id':'sea-n-shore-staging-alb','origin_path':'','custom_header':guard.expected_custom_headers(SECRET),'custom_origin_config':[{'http_port':80,'https_port':443,'origin_protocol_policy':'https-only','origin_ssl_protocols':['TLSv1.2']}]}], 'default_cache_behavior':[{'target_origin_id':'sea-n-shore-staging-alb','viewer_protocol_policy':'redirect-to-https','cache_policy_id':guard.CACHE_POLICY_ID,'origin_request_policy_id':guard.ORIGIN_POLICY_ID,'allowed_methods':['DELETE','GET','HEAD','OPTIONS','PATCH','POST','PUT'],'function_association':[{'event_type':'viewer-request','function_arn':guard.FUNCTION_ARN}],'lambda_function_association':[]}]}
 
 
 def function_after(redirect_edge_host=False):
@@ -93,10 +96,10 @@ class EdgePlanTests(unittest.TestCase):
     def test_rejects_unrelated_changes_and_waf_recreation(self):
         for address, actions in [('aws_ecs_service.app', ['update']), ('aws_wafv2_web_acl.edge', ['delete','create']), ('aws_route53_record.production', ['create'])]:
             plan={'resource_changes':[{'address':address,'mode':'managed','change':{'actions':actions}}]}
-            self.assertTrue(guard.validate(plan, 'alb.example.amazonaws.com', CERT_ARN))
+            self.assertTrue(guard.validate(plan, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET))
 
     def test_rejects_empty_plan_without_existing_waf(self):
-        self.assertTrue(guard.validate({}, 'alb.example.amazonaws.com', CERT_ARN))
+        self.assertTrue(guard.validate({}, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET))
 
     def test_accepts_only_size_restrictions_body_count_override_as_waf_update(self):
         before={'id':guard.WAF_ID,'rule':[common_rule()]}
@@ -109,7 +112,7 @@ class EdgePlanTests(unittest.TestCase):
             {'address':'aws_cloudfront_distribution.app','mode':'managed','change':{'actions':['no-op'],'after':cloudfront_after()}},
             function_change(),
         ]}
-        self.assertEqual(guard.validate(plan,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(plan,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
 
         provider_expanded=copy.deepcopy(plan)
         provider_expanded['resource_changes'][0]['change']['after']['rule'][0]['statement'][0]['managed_rule_group_statement'][0]['rule_action_override'][0]['action_to_use']=[{
@@ -119,19 +122,19 @@ class EdgePlanTests(unittest.TestCase):
             'challenge': [],
             'count': [{'custom_request_handling': []}],
         }]
-        self.assertEqual(guard.validate(provider_expanded,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(provider_expanded,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
 
         unsafe_count=copy.deepcopy(provider_expanded)
         unsafe_count['resource_changes'][0]['change']['after']['rule'][0]['statement'][0]['managed_rule_group_statement'][0]['rule_action_override'][0]['action_to_use'][0]['count']=[{'custom_request_handling':[{'insert_header':[{'name':'X-Test','value':'unsafe'}]}]}]
-        self.assertTrue(guard.validate(unsafe_count,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(unsafe_count,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         wrong_action=copy.deepcopy(plan)
         wrong_action['resource_changes'][0]['change']['after']['rule'][0]['statement'][0]['managed_rule_group_statement'][0]['rule_action_override'][0]['action_to_use']=[{'allow':[{}]}]
-        self.assertTrue(guard.validate(wrong_action,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(wrong_action,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         extra_change=copy.deepcopy(plan)
         extra_change['resource_changes'][0]['change']['after']['rule'][0]['priority']=11
-        self.assertTrue(guard.validate(extra_change,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(extra_change,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
     def test_accepts_only_bounded_profile_media_body_xss_exception(self):
         before={
@@ -151,56 +154,77 @@ class EdgePlanTests(unittest.TestCase):
             {'address':'aws_cloudfront_distribution.app','mode':'managed','change':{'actions':['no-op'],'after':cloudfront_after()}},
             function_change(),
         ]}
-        self.assertEqual(guard.validate(plan,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(plan,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
 
         broad_path=copy.deepcopy(plan)
         broad_path['resource_changes'][0]['change']['after']['rule'][1]['statement'][0]['and_statement'][0]['statement'][1]['not_statement'][0]['statement'][0]['and_statement'][0]['statement'][1]['byte_match_statement'][0]['search_string']='/'
-        self.assertTrue(guard.validate(broad_path,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(broad_path,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         broad_method=copy.deepcopy(plan)
         broad_method['resource_changes'][0]['change']['after']['rule'][1]['statement'][0]['and_statement'][0]['statement'][1]['not_statement'][0]['statement'][0]['and_statement'][0]['statement'][0]['byte_match_statement'][0]['search_string']='GET'
-        self.assertTrue(guard.validate(broad_method,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(broad_method,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         wrong_label=copy.deepcopy(plan)
         wrong_label['resource_changes'][0]['change']['after']['rule'][1]['statement'][0]['and_statement'][0]['statement'][0]['label_match_statement'][0]['key']='awswaf:managed:aws:core-rule-set:CrossSiteScripting_QueryArguments'
-        self.assertTrue(guard.validate(wrong_label,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(wrong_label,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         removed_rate_limit=copy.deepcopy(plan)
         removed_rate_limit['resource_changes'][0]['change']['after']['rule'] = removed_rate_limit['resource_changes'][0]['change']['after']['rule'][:2]
-        self.assertTrue(guard.validate(removed_rate_limit,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(removed_rate_limit,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
     def test_accepts_bounded_creation_and_rejects_unsafe_variants(self):
         cf=cloudfront_after()
         plan={'resource_changes':[{'address':'aws_wafv2_web_acl.edge','mode':'managed','change':{'actions':['no-op'],'after':{'id':guard.WAF_ID}}},{'address':'aws_cloudfront_distribution.app','mode':'managed','change':{'actions':['create'],'after':cf}},function_change()], 'planned_values':{'root_module':{'resources':[{'address':'data.aws_cloudfront_cache_policy.caching_disabled','values':{'name':'Managed-CachingDisabled','id':guard.CACHE_POLICY_ID}},{'address':'data.aws_cloudfront_origin_request_policy.all_viewer_except_host','values':{'name':'Managed-AllViewerExceptHostHeader','id':guard.ORIGIN_POLICY_ID}}]}}}
-        self.assertEqual(guard.validate(plan,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(plan,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
         updated=copy.deepcopy(plan)
         updated['resource_changes'][1]['change']['actions']=['update']
-        self.assertEqual(guard.validate(updated,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(updated,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
         for address,actions in [('aws_ecs_service.app',['update']),('aws_route53_record.production',['create'])]:
             bad=copy.deepcopy(plan)
             bad['resource_changes'].append({'address':address,'mode':'managed','change':{'actions':actions}})
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN))
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
         bad=copy.deepcopy(plan)
         bad['resource_changes'][0]['change']['actions']=['delete','create']
-        self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
         null_alias=copy.deepcopy(plan)
         null_alias['resource_changes'][1]['change']['after']['aliases']=None
-        self.assertTrue(guard.validate(null_alias,'alb.example.amazonaws.com',CERT_ARN))
-        for key,value in [('http_port',81),('origin_protocol_policy','https-only')]:
+        self.assertTrue(guard.validate(null_alias,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
+        for key,value in [('http_port',81),('origin_protocol_policy','http-only'),('origin_protocol_policy','match-viewer')]:
             bad=copy.deepcopy(plan)
             bad['resource_changes'][1]['change']['after']['origin'][0]['custom_origin_config'][0][key]=value
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN))
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
         unknown=copy.deepcopy(plan)
         unknown['resource_changes'][1]['change']['after_unknown']={'aliases':True}
-        self.assertTrue(guard.validate(unknown,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(unknown,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
         for key,value in [('aliases',['seaandshore.in']),('web_acl_id','wrong-acl'),('origin',[{'domain_name':'wrong-origin'}]),('enabled',False)]:
             bad=copy.deepcopy(plan)
             bad['resource_changes'][1]['change']['after'][key]=value
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN))
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
         for bad_header in [[], [{'name':'X-Forwarded-Host','value':'evil.example.com'}], [{'name':'Host','value':guard.FORWARDED_HOST}]]:
             bad=copy.deepcopy(plan)
             bad['resource_changes'][1]['change']['after']['origin'][0]['custom_header']=bad_header
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN))
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
+        # Round 14 (1.4): the origin secret header is required, exact, and never echoed.
+        forwarded={'name':'X-Forwarded-Host','value':guard.FORWARDED_HOST}
+        wrong_secret='W'*48
+        for bad_header in [[forwarded], [forwarded,{'name':'X-Origin-Verify','value':wrong_secret}], [forwarded,{'name':'X-Origin-Verify','value':SECRET},{'name':'X-Test','value':'extra'}]]:
+            bad=copy.deepcopy(plan)
+            bad['resource_changes'][1]['change']['after']['origin'][0]['custom_header']=bad_header
+            errors=guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET)
+            self.assertTrue(errors)
+            self.assertNotIn(SECRET,'\n'.join(errors))
+            self.assertNotIn(wrong_secret,'\n'.join(errors))
+        reordered=copy.deepcopy(plan)
+        reordered['resource_changes'][1]['change']['after']['origin'][0]['custom_header']=list(reversed(guard.expected_custom_headers(SECRET)))
+        self.assertEqual(guard.validate(reordered,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
+        http_only=copy.deepcopy(plan)
+        http_only['resource_changes'][1]['change']['after']['origin'][0]['custom_origin_config'][0]['origin_protocol_policy']='http-only'
+        self.assertTrue(guard.validate(http_only,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
+        alb_origin=copy.deepcopy(plan)
+        alb_origin['resource_changes'][1]['change']['after']['origin'][0]['domain_name']='alb.example.amazonaws.com'
+        self.assertTrue(guard.validate(alb_origin,'alb.example.amazonaws.com',CERT_ARN,origin_verify=SECRET))
+        for missing in [None,'','short',SECRET+'!']:
+            self.assertIn('Origin verify secret (48 letters/digits) required',guard.validate(plan,ORIGIN_HOST,CERT_ARN,origin_verify=missing))
 
 class SeanshoreDomainEdgeTests(unittest.TestCase):
     def base_plan(self, cf_actions=None, function_actions=None, redirect_edge_host=False):
@@ -211,25 +235,25 @@ class SeanshoreDomainEdgeTests(unittest.TestCase):
         ]}
 
     def test_accepts_the_seanshore_alias_certificate_and_redirect_function_update(self):
-        self.assertEqual(guard.validate(self.base_plan(),'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(self.base_plan(),ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
         created=self.base_plan(function_actions=['create'])
-        self.assertEqual(guard.validate(created,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(created,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
         updated_function=self.base_plan(function_actions=['update'], redirect_edge_host=True)
-        self.assertEqual(guard.validate(updated_function,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(updated_function,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
 
     def test_first_creation_may_leave_only_the_function_arn_unknown(self):
         plan=self.base_plan(function_actions=['create'])
         plan['resource_changes'][1]['change']['after']['default_cache_behavior'][0]['function_association']=[{'event_type':'viewer-request','function_arn':None}]
         plan['resource_changes'][1]['change']['after_unknown']={'default_cache_behavior':[{'function_association':[{'function_arn':True}]}]}
-        self.assertEqual(guard.validate(plan,'alb.example.amazonaws.com',CERT_ARN),[])
+        self.assertEqual(guard.validate(plan,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET),[])
 
         not_created=copy.deepcopy(plan)
         not_created['resource_changes'][2]['change']['actions']=['no-op']
-        self.assertTrue(guard.validate(not_created,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(not_created,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         wider_unknown=copy.deepcopy(plan)
         wider_unknown['resource_changes'][1]['change']['after_unknown']={'default_cache_behavior':[{'function_association':True}]}
-        self.assertTrue(guard.validate(wider_unknown,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(wider_unknown,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
     def test_rejects_wrong_aliases_certificates_and_associations(self):
         for key,value in [
@@ -241,7 +265,7 @@ class SeanshoreDomainEdgeTests(unittest.TestCase):
         ]:
             bad=self.base_plan()
             bad['resource_changes'][1]['change']['after'][key]=value
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN), f'{key}={value!r} must be rejected')
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET), f'{key}={value!r} must be rejected')
 
         for association in [
             [],
@@ -251,19 +275,19 @@ class SeanshoreDomainEdgeTests(unittest.TestCase):
         ]:
             bad=self.base_plan()
             bad['resource_changes'][1]['change']['after']['default_cache_behavior'][0]['function_association']=association
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN))
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         lambda_edge=self.base_plan()
         lambda_edge['resource_changes'][1]['change']['after']['default_cache_behavior'][0]['lambda_function_association']=[{'event_type':'viewer-request','lambda_arn':'arn:aws:lambda:us-east-1:310356785722:function:x:1'}]
-        self.assertTrue(guard.validate(lambda_edge,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(lambda_edge,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         for wrong_cert in ['', 'arn:aws:acm:ap-south-1:310356785722:certificate/abc', 'arn:aws:acm:us-east-1:999999999999:certificate/abc']:
-            self.assertTrue(guard.validate(self.base_plan(),'alb.example.amazonaws.com',wrong_cert))
+            self.assertTrue(guard.validate(self.base_plan(),ORIGIN_HOST,wrong_cert,origin_verify=SECRET))
 
     def test_rejects_redirect_function_drift(self):
         missing=self.base_plan()
         missing['resource_changes']=missing['resource_changes'][:2]
-        self.assertTrue(guard.validate(missing,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(missing,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         for key,value in [
             ('name','sea-n-shore-staging-other'),('runtime','cloudfront-js-1.0'),('publish',False),
@@ -273,14 +297,14 @@ class SeanshoreDomainEdgeTests(unittest.TestCase):
         ]:
             bad=self.base_plan()
             bad['resource_changes'][2]['change']['after'][key]=value
-            self.assertTrue(guard.validate(bad,'alb.example.amazonaws.com',CERT_ARN), f'{key} drift must be rejected')
+            self.assertTrue(guard.validate(bad,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET), f'{key} drift must be rejected')
 
         unknown_code=self.base_plan(function_actions=['update'])
         unknown_code['resource_changes'][2]['change']['after_unknown']={'code':True}
-        self.assertTrue(guard.validate(unknown_code,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(unknown_code,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
         replaced=self.base_plan(function_actions=['delete','create'])
-        self.assertTrue(guard.validate(replaced,'alb.example.amazonaws.com',CERT_ARN))
+        self.assertTrue(guard.validate(replaced,ORIGIN_HOST,CERT_ARN,origin_verify=SECRET))
 
     def test_rendered_code_matches_the_template_for_both_switch_values(self):
         disabled=guard.rendered_function_code(False)
@@ -292,5 +316,73 @@ class SeanshoreDomainEdgeTests(unittest.TestCase):
         self.assertNotIn('${', disabled)
         self.assertNotIn('${', enabled)
 
+
+
+def ordered_behavior(path, cache_policy_id):
+    return {'path_pattern':path,'target_origin_id':'sea-n-shore-staging-alb','viewer_protocol_policy':'redirect-to-https','allowed_methods':['HEAD','GET'],'cached_methods':['GET','HEAD'],'compress':True,'cache_policy_id':cache_policy_id,'origin_request_policy_id':'','lambda_function_association':[],'function_association':[{'event_type':'viewer-request','function_arn':guard.FUNCTION_ARN}]}
+
+
+def image_policy_after(cookie_behavior='none', headers=('Accept',), queries=('url','w','q')):
+    return {'id':'image-policy-id','min_ttl':0,'default_ttl':86400,'max_ttl':31536000,'parameters_in_cache_key_and_forwarded_to_origin':[{'cookies_config':[{'cookie_behavior':cookie_behavior}],'headers_config':[{'header_behavior':'whitelist','headers':[{'items':list(headers)}]}],'query_strings_config':[{'query_string_behavior':'whitelist','query_strings':[{'items':list(queries)}]}]}]}
+
+
+class EdgeCachingTests(unittest.TestCase):
+    """Round 14 (3.1): only hashed assets, public brand images and optimized images are cached."""
+
+    def plan(self, behaviors, policy_actions=('no-op',), policy_after=None, unknown=None):
+        cf = cloudfront_after()
+        cf['ordered_cache_behavior'] = behaviors
+        change = {'actions':['update'],'after':cf}
+        if unknown is not None:
+            change['after_unknown'] = {'ordered_cache_behavior':unknown}
+        return {'resource_changes':[
+            {'address':'aws_wafv2_web_acl.edge','mode':'managed','change':{'actions':['no-op'],'after':{'id':guard.WAF_ID}}},
+            {'address':'aws_cloudfront_distribution.app','mode':'managed','change':change},
+            function_change(),
+            {'address':guard.NEXT_IMAGE_POLICY_ADDRESS,'mode':'managed','change':{'actions':list(policy_actions),'after':policy_after or image_policy_after()}},
+        ]}
+
+    def expected(self, image_policy='image-policy-id'):
+        return [ordered_behavior(path, guard.CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy) for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
+
+    def errors(self, plan):
+        return guard.validate(plan, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET)
+
+    def test_accepts_exactly_the_asset_and_image_behaviors(self):
+        self.assertEqual(self.errors(self.plan(self.expected())), [])
+        created = self.expected(image_policy=None)
+        unknown = [{} for _ in created]
+        unknown[1] = {'cache_policy_id': True}
+        self.assertEqual(self.errors(self.plan(created, policy_actions=('create',), unknown=unknown)), [])
+
+    def test_refuses_other_paths_order_methods_or_policies(self):
+        extra = self.expected() + [ordered_behavior('/*', guard.CACHING_OPTIMIZED_POLICY_ID)]
+        self.assertIn('Ordered cache behaviors must be exactly the static asset and image paths', self.errors(self.plan(extra)))
+        self.assertIn('Ordered cache behaviors must be exactly the static asset and image paths', self.errors(self.plan(list(reversed(self.expected())))))
+        post = self.expected(); post[0]['allowed_methods'] = ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']
+        self.assertTrue(any('GET/HEAD' in e for e in self.errors(self.plan(post))))
+        wrong_policy = self.expected(); wrong_policy[2]['cache_policy_id'] = 'some-other-policy'
+        self.assertIn('Cache policy mismatch for /brand/*', self.errors(self.plan(wrong_policy)))
+        no_redirect = self.expected(); no_redirect[0]['function_association'] = []
+        self.assertIn('Ordered behavior must keep the canonical-host redirect: /_next/static/*', self.errors(self.plan(no_redirect)))
+        unknown_origin = [{} for _ in self.expected()]; unknown_origin[0] = {'target_origin_id': True}
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: target_origin_id=true', self.errors(self.plan(self.expected(), unknown=unknown_origin)))
+
+    def test_accepts_provider_computed_ttl_and_grpc_fields_only(self):
+        # A real plan (edge run 37243020983) marks the new behaviors' TTLs and gRPC flag unknown.
+        computed = [{'default_ttl': True, 'max_ttl': True, 'grpc_config': [{'enabled': True}]} for _ in self.expected()]
+        self.assertEqual(self.errors(self.plan(self.expected(), unknown=computed)), [])
+        # Edge run 37244080639: the provider marks the whole gRPC block unknown.
+        whole_block = [{'default_ttl': True, 'max_ttl': True, 'grpc_config': True} for _ in self.expected()]
+        self.assertEqual(self.errors(self.plan(self.expected(), unknown=whole_block)), [])
+        grpc_on = self.expected(); grpc_on[0]['grpc_config'] = [{'enabled': True}]
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: grpc_config=[{"enabled": true}]', self.errors(self.plan(grpc_on, unknown=computed)))
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: grpc_config=true', self.errors(self.plan(grpc_on, unknown=whole_block)))
+        min_ttl = [dict(item, min_ttl=True) for item in computed]
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: min_ttl=true', self.errors(self.plan(self.expected(), unknown=min_ttl)))
+
+    def test_image_policy_never_keys_on_cookies(self):
+        for after in [image_policy_after(cookie_behavior='all'), image_policy_after(headers=('Accept','Cookie')), image_policy_after(queries=('url','w','q','token'))]:
+            self.assertIn('Image cache policy must key only on url, w, q and Accept, never cookies', self.errors(self.plan(self.expected(), policy_actions=('update',), policy_after=after)))
 
 if __name__ == '__main__': unittest.main()

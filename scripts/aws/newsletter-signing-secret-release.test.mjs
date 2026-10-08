@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('newsletter signing secret is isolated, random and injected into the web Terraform task', async () => {
   const terraformUrl = new URL('../../infra/aws/app/newsletter-email.tf', import.meta.url)
@@ -44,7 +45,7 @@ test('newsletter signing secret has a guarded one-shot Terraform release path', 
   assert.equal(existsSync(scriptUrl), true, 'missing newsletter signing secret runner')
   assert.equal(existsSync(actionUrl), true, 'missing newsletter signing secret action guard')
   assert.equal(existsSync(workflowUrl), true, 'missing newsletter signing secret workflow')
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

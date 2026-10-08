@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAwsOwnProfile } from './aws-queries'
+import { personaForProfile, personaOffersSeaService } from './profile-persona-rules'
 import {
   createProfileCredentialRecord,
   createProfileExperienceRecord,
   deleteProfileCredentialRecord,
   deleteProfileExperienceRecord,
+  getProfilePortfolio,
   updateProfileCredentialRecord,
   updateProfileExperienceRecord,
 } from './profile-portfolio-repository'
@@ -40,6 +42,8 @@ function success(previousState: ProfilePortfolioActionState): ProfilePortfolioAc
   return { success: true, revision: (previousState.revision ?? 0) + 1 }
 }
 
+const SEA_SERVICE_NOT_OFFERED = 'Sea service is for seafarer and cadet profiles. Choose the type that fits this role.'
+
 function revalidateProfile(slug: string) {
   revalidatePath('/profile')
   revalidatePath(`/people/${slug}`)
@@ -56,6 +60,10 @@ export async function createProfileExperience(
   const parsed = profileExperienceInputSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
     return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+  }
+  // Round 11: vessel details are only kept on sea service, which only seafarers and cadets add.
+  if (parsed.data.track === 'sea_service' && !personaOffersSeaService(personaForProfile(profile))) {
+    return validationFailure(previousState, { track: [SEA_SERVICE_NOT_OFFERED] })
   }
 
   try {
@@ -83,6 +91,17 @@ export async function updateProfileExperience(
   const parsed = profileExperienceInputSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
     return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+  }
+
+  if (parsed.data.track === 'sea_service' && !personaOffersSeaService(personaForProfile(profile))) {
+    // An existing sea-service record stays editable for any profile type, so nothing saved is lost.
+    try {
+      const portfolio = await getProfilePortfolio(user.id)
+      const existing = portfolio.experiences.find((record) => record.id === id.data)
+      if (existing?.track !== 'sea_service') return validationFailure(previousState, { track: [SEA_SERVICE_NOT_OFFERED] })
+    } catch {
+      return failure(previousState, 'We could not save this experience. Please try again.')
+    }
   }
 
   try {

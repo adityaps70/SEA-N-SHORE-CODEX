@@ -13,6 +13,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/features/feed/queries', () => ({ getFeedPage: vi.fn() }))
+vi.mock('@/features/roles/components/rank-selection-prompt', () => ({ RankSelectionPrompt: () => null }))
 vi.mock('@/features/network/queries', () => ({ getPeopleYouMayKnow: vi.fn() }))
 vi.mock('@/features/profiles/queries', () => ({ getOwnProfile: vi.fn() }))
 vi.mock('@/features/profiles/profile-portfolio-queries', () => ({ getOwnProfilePortfolio: vi.fn() }))

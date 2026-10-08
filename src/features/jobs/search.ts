@@ -1,11 +1,22 @@
 import { JOB_DISCOVERY_MODES, type JobDiscoveryMode } from './catalog'
 import type { JobSearchFilters, JobSort } from './types'
+import { departmentByKey, normaliseLegacyRank, roleByKey } from '@/features/roles/taxonomy'
 
 type SearchParamValue = string | string[] | undefined
 type JobSearchParams = Record<string, SearchParamValue>
 
 const DISCOVERY_MODES = new Set<JobDiscoveryMode>(JOB_DISCOVERY_MODES.map((mode) => mode.value))
-const SORTS = new Set<JobSort>(['recommended', 'recent', 'joining', 'salary'])
+const SORTS = new Set<JobSort>(['recommended', 'best', 'recent', 'joining', 'salary'])
+
+/** Rank filters are taxonomy keys; an old link or alert with a rank name is converted, unknown text dropped. */
+export function rankFilterKeys(values: readonly string[]): string[] {
+  return [...new Set(values.flatMap((value) => {
+    const role = roleByKey(value)
+    if (role) return role.other ? [] : [role.key]
+    const recognised = normaliseLegacyRank(value)
+    return recognised ? [recognised] : []
+  }))]
+}
 
 function first(value: SearchParamValue): string {
   return (Array.isArray(value) ? value[0] : value)?.trim() ?? ''
@@ -37,7 +48,8 @@ export function parseJobSearchParams(params: JobSearchParams): JobSearchFilters 
   const filters: JobSearchFilters = {
     query: first(params.q),
     mode,
-    ranks: list(params.rank),
+    department: departmentByKey(first(params.department)) ? first(params.department) : null,
+    ranks: rankFilterKeys(list(params.rank)),
     vesselTypes: list(params.vessel),
     minExperienceYears: numberOrNull(params.experience, { allowZero: true, max: 70 }),
     joiningWithinDays: numberOrNull(params.joining, { max: 365 }),

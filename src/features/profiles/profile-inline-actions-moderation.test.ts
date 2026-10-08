@@ -88,6 +88,7 @@ describe('profile inline automated moderation', () => {
       profileId,
       expect.objectContaining({ currentCompany: 'Beaufort Marine Services' }),
       true,
+      expect.objectContaining({ rankSubmitted: false }),
     )
   })
 
@@ -112,6 +113,7 @@ describe('profile inline automated moderation', () => {
       profileId,
       expect.objectContaining({ currentCompany: 'New Shipping Co' }),
       true,
+      expect.objectContaining({ rankSubmitted: false }),
     )
   })
 })

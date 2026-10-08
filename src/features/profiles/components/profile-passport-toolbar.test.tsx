@@ -37,21 +37,21 @@ describe('ProfilePassportToolbar phone "…" sheet', () => {
     fireEvent.click(more)
     const sheet = screen.getByRole('menu', { name: 'More profile actions' })
     const items = within(sheet).getAllByRole('menuitem')
+    // Without the header's in-place editor (not the owner's header) there is no edit row, and
+    // nothing in the sheet leaves for /profile/edit (round 11).
     expect(items.map((item) => item.textContent)).toEqual([
       'View public profile',
       'Download CV',
-      'Change username',
-      'Edit basic information and contact visibility',
     ])
     expect(within(sheet).getByRole('menuitem', { name: 'View public profile' })).toHaveAttribute('href', '/people/captain-example')
     expect(within(sheet).getByRole('menuitem', { name: 'Download CV' })).toHaveAttribute('href', '/api/profile/cv')
-    expect(within(sheet).getByRole('menuitem', { name: 'Change username' })).toHaveAttribute('href', '/profile/edit#identity')
+    for (const item of items) expect(item.getAttribute('href') ?? '').not.toContain('/profile/edit')
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('menu', { name: 'More profile actions' })).not.toBeInTheDocument()
   })
 
-  it('opens the inline basic-information editor (with contact visibility) from the sheet', () => {
+  it('opens the header card\'s inline editor (username and contact visibility included) from "Edit profile"', () => {
     const openEditor = vi.fn()
     render(
       <ProfileIdentityEditorContext.Provider value={openEditor}>
@@ -60,8 +60,10 @@ describe('ProfilePassportToolbar phone "…" sheet', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'More profile actions' }))
-    const edit = screen.getByRole('menuitem', { name: /Edit basic information/ })
+    const edit = screen.getByRole('menuitem', { name: /Edit profile/ })
+    expect(edit).toHaveTextContent('username')
     expect(edit).toHaveTextContent('contact visibility')
+    expect(edit).not.toHaveAttribute('href')
     fireEvent.click(edit)
     expect(openEditor).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('menu', { name: 'More profile actions' })).not.toBeInTheDocument()

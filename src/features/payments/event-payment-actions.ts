@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { userCan } from '@/features/access/server'
-import { canAccessPlatformAdmin } from '@/features/admin/access'
+import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import type { ConfirmCheckoutResult, StartCheckoutResult } from './checkout-types'
 import { loadCheckoutCustomer, PHONE_INVALID_MESSAGE, PHONE_REJECTED_MESSAGE, PHONE_REQUIRED_MESSAGE } from './customer-contact'
 import { EventRegistrationError, eventPaymentRepository } from './event-payment-repository'
@@ -158,7 +158,7 @@ export async function refundEventPaymentAction(orderId: string): Promise<RefundE
   try {
     const user = await requireAwsUser()
     const managed = await eventPaymentRepository.getOrderForManager(id.data, user.id)
-    const isAdmin = managed ? false : await canAccessPlatformAdmin(user.id)
+    const isAdmin = managed ? false : await canUsePlatformAdminAuthority(user.id)
     const order = managed ?? (isAdmin ? await eventPaymentRepository.getOrderById(id.data) : null)
     if (!order) return { ok: false, error: 'Only the event organiser or the Sea N Shore team can refund this payment.' }
 

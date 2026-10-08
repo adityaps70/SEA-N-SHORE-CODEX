@@ -38,7 +38,8 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
       match: profile ? scoreJobMatch(job, profile) : null,
     }))
 
-    if (filters.sort === 'recommended' || filters.mode === 'for-you') {
+    // "Best match" and For You order by the match score, jobs without a score (null) last.
+    if (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you') {
       items.sort((a, b) => {
         const scoreDelta = (b.match?.score ?? -1) - (a.match?.score ?? -1)
         if (scoreDelta !== 0) return scoreDelta

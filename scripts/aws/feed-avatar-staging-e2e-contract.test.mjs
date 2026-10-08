@@ -12,12 +12,15 @@ test('feed avatar staging proof preserves the primary failure and uses cleanup-s
   assert.match(source, /if \(cleanupErrors\.length\) throw new Error/)
 })
 
+// Rewritten in Round 15: the script now gives the chooser wait an explicit timeout and
+// filters the upload response with an early `!== 'POST'` return (8d7f25da, crop dialog), so the
+// old literal patterns no longer matched the same behaviour.
 test('feed avatar upload uses the real hydrated profile-photo chooser and waits for its server action', () => {
-  assert.match(source, /waitForEvent\('filechooser'\)/)
+  assert.match(source, /waitForEvent\('filechooser'(?:\)|, \{ timeout: [\d_]+ \}\))/)
   assert.match(source, /await addButton\.click\(\)/)
   assert.match(source, /await fileChooser\.setFiles/)
   assert.match(source, /waitForResponse/)
-  assert.match(source, /request\(\)\.method\(\) === 'POST'/)
+  assert.match(source, /request\(\)\.method\(\) === 'POST'|if \(response\.request\(\)\.method\(\) !== 'POST'\) return false/)
   assert.doesNotMatch(source, /input\.setInputFiles/)
   assert.doesNotMatch(source, /waitForTimeout\(3_000\)/)
 })

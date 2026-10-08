@@ -46,11 +46,11 @@ describe('LessonCompletionControl', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark complete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Complete & next' }))
 
     await waitFor(() => expect(mocks.completeLearningLesson).toHaveBeenCalledWith(slug, lessonId))
     expect(await screen.findByText('Completed')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Mark complete' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Complete & next' })).not.toBeInTheDocument()
     expect(mocks.push).toHaveBeenCalledWith(nextLessonHref)
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
@@ -76,9 +76,10 @@ describe('LessonCompletionControl', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark complete' }))
 
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce())
-    expect(mocks.push).not.toHaveBeenCalled()
     expect(await screen.findByText('Completed')).toBeInTheDocument()
+    // Round 14 (3.9): completeLearningLesson revalidates the lesson page, which re-renders the player.
+    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.push).not.toHaveBeenCalled()
   })
 
   it('renders persisted completed state without offering a duplicate completion action', () => {
@@ -92,7 +93,7 @@ describe('LessonCompletionControl', () => {
     )
 
     expect(screen.getByText('Completed')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Mark complete' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Complete & next' })).not.toBeInTheDocument()
     expect(mocks.completeLearningLesson).not.toHaveBeenCalled()
     expect(mocks.push).not.toHaveBeenCalled()
     expect(mocks.refresh).not.toHaveBeenCalled()
@@ -112,10 +113,10 @@ describe('LessonCompletionControl', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mark complete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Complete & next' }))
 
     expect(await screen.findByText('This lesson is not available in your learning enrollment.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Mark complete' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Complete & next' })).toBeInTheDocument()
     expect(screen.queryByText('Completed')).not.toBeInTheDocument()
     expect(mocks.push).not.toHaveBeenCalled()
     expect(mocks.refresh).not.toHaveBeenCalled()

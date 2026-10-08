@@ -29,7 +29,7 @@ describe('authorized admin navigation entry', () => {
   it('shows the desktop Admin entry inside the account menu only to administrators', () => {
     const { rerender } = render(
       <AppHeader
-        recentNotifications={[]}
+       
         unreadCount={0}
         messagingUnreadCount={0}
         canAccessAdmin={false}
@@ -41,7 +41,7 @@ describe('authorized admin navigation entry', () => {
 
     rerender(
       <AppHeader
-        recentNotifications={[]}
+       
         unreadCount={0}
         messagingUnreadCount={0}
         canAccessAdmin
@@ -66,7 +66,7 @@ describe('authorized admin navigation entry', () => {
   it('never lists Admin as a primary destination', () => {
     render(
       <AppHeader
-        recentNotifications={[]}
+       
         unreadCount={0}
         messagingUnreadCount={0}
         canAccessAdmin

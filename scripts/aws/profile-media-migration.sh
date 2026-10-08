@@ -19,7 +19,7 @@ ACTION_FILE="scripts/aws/profile-media-migration-action.txt"
 git diff --quiet HEAD -- "$MIGRATION_FILE" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported profile media migration action." >&2; exit 1 ;; esac
 
 python3 - "$MIGRATION_FILE" <<'PY'
@@ -65,7 +65,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$PROFILE_MEDIA_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$PROFILE_MEDIA_MIGRATION_EXPECTED_SHA" ]]
 SQL="$(cat "$MIGRATION_FILE")"
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" \
   --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$SQL" >/dev/null

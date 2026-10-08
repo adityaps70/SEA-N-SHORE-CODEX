@@ -1,23 +1,5 @@
 import Link from 'next/link'
-import {
-  Activity,
-  Ban,
-  BadgeCheck,
-  Banknote,
-  Building2,
-  ChevronRight,
-  Crown,
-  Download,
-  EyeOff,
-  LayoutGrid,
-  Lock,
-  Mail,
-  ShieldCheck,
-  Trash2,
-  UserRound,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react'
+import { Activity, BadgeCheck, Ban, Banknote, BellRing, Building2, ChevronRight, Crown, Download, EyeOff, KeyRound, LayoutGrid, Lock, Mail, ShieldCheck, Trash2, UserRound, Wallet, type LucideIcon } from 'lucide-react'
 
 type SettingsRowItem = {
   href: string
@@ -48,6 +30,7 @@ export function settingsGroups(input: { planLabel: string | null }): SettingsGro
       title: 'Sign in & security',
       rows: [
         { href: '/auth/forgot-password', label: 'Password & Google sign-in', icon: Lock },
+        { href: '/settings/security', label: 'Two-step verification', icon: KeyRound },
       ],
       note: 'Sensitive account actions ask you to confirm it’s you again.',
     },
@@ -61,7 +44,10 @@ export function settingsGroups(input: { planLabel: string | null }): SettingsGro
     },
     {
       title: 'Communications',
-      rows: [{ href: '/newsletter', label: 'Newsletter', icon: Mail }],
+      rows: [
+        { href: '/settings/notifications', label: 'Email notifications', icon: BellRing },
+        { href: '/newsletter', label: 'Newsletter', icon: Mail },
+      ],
     },
     {
       title: 'Data & privacy',

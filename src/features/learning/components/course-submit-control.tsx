@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { AlertCircle, CheckCircle2, Loader2, Send } from 'lucide-react'
 import { submitCourseForReview } from '../course-actions'
 import { useCourseEditSession } from './course-edit-session'
@@ -10,18 +9,21 @@ type Props = {
   courseId: string
   /** True when a reviewer asked for changes and this is a resubmission. */
   resubmission?: boolean
+  /** Changes to a published course (a draft revision), not a new course. */
+  revision?: boolean
 }
 
 type Phase = 'idle' | 'saving' | 'submitting'
 
-export function CourseSubmitControl({ courseId, resubmission = false }: Props) {
-  const router = useRouter()
+export function CourseSubmitControl({ courseId, resubmission = false, revision = false }: Props) {
   const session = useCourseEditSession()
   const [phase, setPhase] = useState<Phase>('idle')
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; copy: string } | null>(null)
   const pending = phase !== 'idle'
   const unsaved = session.unsavedLabels
-  const actionLabel = resubmission ? 'Resubmit for review' : 'Submit for review'
+  const actionLabel = revision
+    ? (resubmission ? 'Resubmit changes for review' : 'Submit changes for review')
+    : (resubmission ? 'Resubmit for review' : 'Submit for review')
 
   async function onSubmit() {
     setMessage(null)
@@ -50,12 +52,14 @@ export function CourseSubmitControl({ courseId, resubmission = false }: Props) {
 
     setMessage({
       tone: 'success',
-      copy: resubmission
-        ? 'Resubmitted for review with your latest changes. The reviewer will see what changed since their last review.'
-        : 'Submitted for review with your latest changes. Editing is locked while Sea N Shore reviews the course.',
+      copy: revision
+        ? 'Your changes were sent for review. Learners keep the live version until Sea N Shore approves them; then they replace it and learners’ progress carries over.'
+        : resubmission
+          ? 'Resubmitted for review with your latest changes. The reviewer will see what changed since their last review.'
+          : 'Submitted for review with your latest changes. Editing is locked while Sea N Shore reviews the course.',
     })
-    // Stay on the page so the result is visible; it re-renders in its "In review" state.
-    router.refresh()
+    // Stay on the page so the result is visible: submitting revalidated the editor, so it
+    // re-renders in its "In review" state.
   }
 
   return (
@@ -64,10 +68,14 @@ export function CourseSubmitControl({ courseId, resubmission = false }: Props) {
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Ready for quality review?</p>
           <h2 id={`course-submit-${courseId}`} className="mt-1 text-lg font-bold text-navy-950">
-            {resubmission ? 'Resubmit this course to Sea N Shore' : 'Submit this course to Sea N Shore'}
+            {revision
+              ? 'Submit these changes to Sea N Shore'
+              : resubmission ? 'Resubmit this course to Sea N Shore' : 'Submit this course to Sea N Shore'}
           </h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-            Any unsaved changes on this page are saved first, then the course is sent for review. While it is in review, editing is locked; you can withdraw it from review if you need to change something.
+            {revision
+              ? 'Any unsaved changes on this page are saved first. The reviewer sees exactly what you changed compared with the live course. Learners keep the live version until your changes are approved.'
+              : 'Any unsaved changes on this page are saved first, then the course is sent for review. While it is in review, editing is locked; you can withdraw it from review if you need to change something.'}
           </p>
           {unsaved.length > 0 ? (
             <p className="mt-2 text-sm font-semibold text-amber-900">

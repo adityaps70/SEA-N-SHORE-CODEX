@@ -28,6 +28,14 @@ type ProfileRow = QueryResultRow & {
   community_relationship?: string | null
   institution_name?: string | null
   specialization?: string | null
+  role_department_key?: string | null
+  role_key?: string | null
+  role_other_text?: string | null
+  cadet_stage_key?: string | null
+  cadet_course_key?: string | null
+  target_department_key?: string | null
+  target_role_key?: string | null
+  occupation_text?: string | null
   full_name: string
   avatar_path: string | null
   cover_path?: string | null
@@ -84,6 +92,14 @@ const PROFILE_SELECT = `
     p.community_relationship,
     p.institution_name,
     p.specialization,
+    p.role_department_key,
+    p.role_key,
+    p.role_other_text,
+    p.cadet_stage_key,
+    p.cadet_course_key,
+    p.target_department_key,
+    p.target_role_key,
+    p.occupation_text,
     p.full_name,
     p.avatar_path,
     p.cover_path,
@@ -175,6 +191,14 @@ function normalizePublicRow(row: ProfileRow): PublicProfileRow | null {
     community_relationship: row.community_relationship ?? null,
     institution_name: row.institution_name ?? null,
     specialization: row.specialization ?? null,
+    role_department_key: row.role_department_key ?? null,
+    role_key: row.role_key ?? null,
+    role_other_text: row.role_other_text ?? null,
+    cadet_stage_key: row.cadet_stage_key ?? null,
+    cadet_course_key: row.cadet_course_key ?? null,
+    target_department_key: row.target_department_key ?? null,
+    target_role_key: row.target_role_key ?? null,
+    occupation_text: row.occupation_text ?? null,
     full_name: row.full_name,
     avatar_path: row.avatar_path,
     cover_path: row.cover_path ?? null,
@@ -210,6 +234,53 @@ function requireAtMostOne(rows: readonly ProfileRow[]) {
     throw new Error('Unable to load this professional profile.')
   }
   return rows[0] ?? null
+}
+
+/**
+ * Round 14 (3.6): every token must appear in the stored, lower-cased profiles.search_text
+ * (migration 0067, kept current by triggers on profiles, maritime_profiles and profile_skills).
+ * One LIKE per token, not LIKE ALL, so the GIN trigram index can serve each of them.
+ */
+function storedSearchTextSql(tokenCount: number) {
+  return Array.from({ length: tokenCount }, (_, index) => `and p.search_text like ($2::text[])[${index + 1}]`)
+    .join('\n         ')
+}
+
+/** The text people search matched before migration 0067; public.profile_search_text() builds the same. */
+const LEGACY_SEARCH_TEXT_SQL = `
+         and lower(concat_ws(' ',
+           p.full_name,
+           p.slug,
+           p.location,
+           p.headline,
+           p.summary,
+           p.primary_identity,
+           p.primary_identity_family,
+           p.persona,
+           array_to_string(p.profile_intents, ' '),
+           p.community_relationship,
+           p.institution_name,
+           p.specialization,
+           p.role_other_text,
+           p.occupation_text,
+           array_to_string(p.secondary_identities, ' '),
+           mp.rank,
+           mp.current_company,
+           mp.current_vessel,
+           array_to_string(mp.vessel_types, ' '),
+           array_to_string(mp.trading_areas, ' '),
+           coalesce((
+             select string_agg(ps_search.skill, ' ' order by ps_search.skill)
+             from public.profile_skills ps_search
+             where ps_search.user_id = p.id
+           ), '')
+         )) like all($2::text[])
+       `
+
+function isMissingSearchTextColumn(error: unknown) {
+  return typeof error === 'object' && error !== null
+    && (error as { code?: unknown }).code === '42703'
+    && /search_text/.test(String((error as { message?: unknown }).message ?? ''))
 }
 
 function searchTokens(value?: string) {
@@ -335,53 +406,28 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
     const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
     const tokens = searchTokens(lookup.searchQuery)
     const hasSearch = tokens.length > 0
-    const searchSql = hasSearch
-      ? `
-         and lower(concat_ws(' ',
-           p.full_name,
-           p.slug,
-           p.location,
-           p.headline,
-           p.summary,
-           p.primary_identity,
-           p.primary_identity_family,
-           p.persona,
-           array_to_string(p.profile_intents, ' '),
-           p.community_relationship,
-           p.institution_name,
-           p.specialization,
-           array_to_string(p.secondary_identities, ' '),
-           mp.rank,
-           mp.current_company,
-           mp.current_vessel,
-           array_to_string(mp.vessel_types, ' '),
-           array_to_string(mp.trading_areas, ' '),
-           coalesce((
-             select string_agg(ps_search.skill, ' ' order by ps_search.skill)
-             from public.profile_skills ps_search
-             where ps_search.user_id = p.id
-           ), '')
-         )) like all($2::text[])
-       `
-      : ''
     const limitParameter = hasSearch ? 3 : 2
     const values: readonly unknown[] = hasSearch
       ? [lookup.viewerProfileId, tokens.map((token) => `%${token}%`), limit]
       : [lookup.viewerProfileId, limit]
-
-    const rows = await queryRows(
-      `${PROFILE_SELECT}
+    const discoverySql = (searchSql: string) => `${PROFILE_SELECT}
        where p.id <> $1
          and p.account_status = 'active'
          and p.onboarding_completed_at is not null
          ${blockVisibilitySql(1)}
          ${searchSql}
        order by p.updated_at desc, p.id asc
-       limit $${limitParameter}`,
-      values,
-    )
+       limit $${limitParameter}`
 
-    return mapPublicRows(rows)
+    if (!hasSearch) return mapPublicRows(await queryRows(discoverySql(''), values))
+
+    try {
+      return mapPublicRows(await queryRows(discoverySql(storedSearchTextSql(tokens.length)), values))
+    } catch (error) {
+      // Until migration 0067 adds profiles.search_text, search the same text built per query.
+      if (!isMissingSearchTextColumn(error)) throw error
+      return mapPublicRows(await queryRows(discoverySql(LEGACY_SEARCH_TEXT_SQL), values))
+    }
   }
 
   return {

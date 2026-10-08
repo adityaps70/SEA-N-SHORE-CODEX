@@ -25,14 +25,14 @@ git diff --quiet HEAD -- \
 
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in
   plan|repair-once|send-reset-once) ;;
   *) echo "Unsupported Cognito Google/native repair action." >&2; exit 1 ;;
 esac
 
 WORK_DIR="$(mktemp -d /var/tmp/sea-n-shore-cognito-link-repair.XXXXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \

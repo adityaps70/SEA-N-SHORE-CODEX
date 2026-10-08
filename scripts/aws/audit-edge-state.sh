@@ -38,7 +38,7 @@ umask 077
 EVIDENCE_DIR="$(mktemp -d)"
 STATE_JSON="$EVIDENCE_DIR/state.json"
 EDGE_JSON="$EVIDENCE_DIR/edge.json"
-trap 'rm -rf -- "$EVIDENCE_DIR"' EXIT
+trap 'rm -rf -- "$EVIDENCE_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 [[ "$ACCOUNT_ID" == "$EXPECTED_ACCOUNT_ID" ]] || {
@@ -177,6 +177,28 @@ while IFS=$'\t' read -r type state_name id live_name; do
         echo "aws_cloudfront_function.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
       fi
       ;;
+    aws_cloudfront_cache_policy)
+      # Read-only: the managed cache policy must exist under the same id and name as in state.
+      if [[ -z "$live_name" || "$live_name" == "null" ]]; then
+        LIVE_CHECK_FAILED=1
+        echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_SKIPPED id=$id reason=missing-name-in-state"
+        continue
+      fi
+      if aws cloudfront get-cache-policy --id "$id" --output json > "$EVIDENCE_DIR/edge-cache-policy.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
+        if jq -e --arg id "$id" --arg name "$live_name" '.CachePolicy.Id == $id and .CachePolicy.CachePolicyConfig.Name == $name' "$EVIDENCE_DIR/edge-cache-policy.json" >/dev/null; then
+          jq -r --arg address "aws_cloudfront_cache_policy.$state_name" '
+            "\($address) LIVE=true id=\(.CachePolicy.Id) name=\(.CachePolicy.CachePolicyConfig.Name) default_ttl=\(.CachePolicy.CachePolicyConfig.DefaultTTL)"
+          ' "$EVIDENCE_DIR/edge-cache-policy.json"
+        else
+          LIVE_CHECK_FAILED=1
+          echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_FAILED id=$id name=$live_name reason=unexpected-live-cache-policy"
+        fi
+      else
+        LIVE_CHECK_FAILED=1
+        ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+        echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
+      fi
+      ;;
     aws_wafv2_web_acl)
       if [[ -z "$live_name" || "$live_name" == "null" ]]; then
         LIVE_CHECK_FAILED=1
@@ -224,7 +246,8 @@ while IFS= read -r certificate_arn; do
 done < <(jq -r '.CertificateSummaryList[].CertificateArn' "$EVIDENCE_DIR/certificates.json")
 echo "ACM_CERTIFICATE_COUNT=$(jq '.CertificateSummaryList | length' "$EVIDENCE_DIR/certificates.json")"
 aws route53 list-hosted-zones --output json | jq '[.HostedZones[] | {Id,Name,Config}]'
-aws cloudfront get-distribution --id EF1K45UVP11XZ --output json | jq '.Distribution | {Id,Status,Origins:.DistributionConfig.Origins,Aliases:.DistributionConfig.Aliases}'
+# Header names only: CloudFront's X-Origin-Verify value is the ALB origin secret (Round 14, 1.4).
+aws cloudfront get-distribution --id EF1K45UVP11XZ --output json | jq '.Distribution | {Id,Status,Origins:[.DistributionConfig.Origins.Items[]? | {Id,DomainName,CustomOriginConfig,CustomHeaderNames:[.CustomHeaders.Items[]?.HeaderName]}],Aliases:.DistributionConfig.Aliases}'
 # Only resource identities/protocol fields from state; never dump raw state or secrets.
 jq '[.resources[] | select(.mode == "managed" and (.type | test("^aws_(lb_listener|acm_certificate|route53_record)$"))) | {type,name,instances:[.instances[] | {id:.attributes.id,port:.attributes.port,protocol:.attributes.protocol,certificate_arn:.attributes.certificate_arn}]}]' "$STATE_JSON"
 echo "ORIGIN HTTPS READINESS INVENTORY COMPLETE"

@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -47,6 +46,21 @@ function ContinueLink({ nextLessonHref }: { nextLessonHref?: string | null }) {
       Back to My Learning
       <ArrowRight className="h-4 w-4" aria-hidden="true" />
     </Link>
+  )
+}
+
+/** "Attempts left: 2", or "Unlimited attempts" when the trainer set no limit (stored as blank). */
+export function attemptsLeftLabel(maxAttempts: number | null, attemptsUsed: number) {
+  if (maxAttempts === null) return 'Unlimited attempts'
+  return `Attempts left: ${Math.max(0, maxAttempts - attemptsUsed)}`
+}
+
+function AttemptLimitNotice({ maxAttempts }: { maxAttempts: number }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white/80 p-4 text-sm leading-6 text-slate-800" role="status">
+      <p className="font-semibold text-slate-950">You’ve used all {maxAttempts} {maxAttempts === 1 ? 'attempt' : 'attempts'} for this quiz.</p>
+      <p className="mt-1">Your results are saved below. If you think you need another try, contact your trainer.</p>
+    </div>
   )
 }
 
@@ -97,13 +111,14 @@ export function QuizLessonActivity({
   initiallyCompleted,
   nextLessonHref = null,
 }: QuizLessonActivityProps) {
-  const router = useRouter()
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [result, setResult] = useState<LearnerQuizAttemptResult | null>(null)
   const [attemptHistory, setAttemptHistory] = useState<LearnerQuizAttemptSummary[]>(quiz.attemptHistory ?? [])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [attemptsUsed, setAttemptsUsed] = useState(quiz.attemptsUsed)
   const submissionKeyRef = useRef<string | null>(null)
+  const limitReached = quiz.maxAttempts !== null && attemptsUsed >= quiz.maxAttempts
 
   const allAnswered = quiz.questions.length > 0
     && quiz.questions.every((question) => Boolean(selected[question.id]))
@@ -129,11 +144,13 @@ export function QuizLessonActivity({
       const submission = await submitLearningQuiz(slug, lessonId, answers, submissionKey)
 
       if (!submission.ok) {
+        if (submission.limitReached && quiz.maxAttempts !== null) setAttemptsUsed(quiz.maxAttempts)
         setError(submission.error)
         return
       }
 
       submissionKeyRef.current = null
+      setAttemptsUsed((current) => Math.max(current, submission.attemptNumber))
       setAttemptHistory((current) => {
         if (current.some((attempt) => attempt.attemptId === submission.attemptId)) return current
         return [{
@@ -148,7 +165,6 @@ export function QuizLessonActivity({
         }, ...current]
       })
       setResult(submission)
-      router.refresh()
     } catch {
       setError('We could not submit this quiz. Please try again.')
     } finally {
@@ -241,20 +257,34 @@ export function QuizLessonActivity({
           })}
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap items-center gap-3">
           {result.passed ? (
             <ContinueLink nextLessonHref={nextLessonHref} />
+          ) : limitReached ? (
+            <div className="w-full"><AttemptLimitNotice maxAttempts={quiz.maxAttempts!} /></div>
           ) : (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-              Try again
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Try again
+              </button>
+              <span className="text-sm font-medium text-amber-900">{attemptsLeftLabel(quiz.maxAttempts, attemptsUsed)}</span>
+            </>
           )}
         </div>
+      </section>
+    )
+  }
+
+  if (limitReached) {
+    return (
+      <section className="space-y-4" aria-label="Quiz assessment">
+        <AttemptLimitNotice maxAttempts={quiz.maxAttempts!} />
+        <AttemptHistory history={attemptHistory} />
       </section>
     )
   }
@@ -267,9 +297,14 @@ export function QuizLessonActivity({
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Assessment</p>
             <p className="mt-1 text-sm font-medium text-slate-900">Pass mark {quiz.passPercentage}%</p>
           </div>
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-            {quiz.questions.length} {quiz.questions.length === 1 ? 'question' : 'questions'}
-          </span>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+              {quiz.questions.length} {quiz.questions.length === 1 ? 'question' : 'questions'}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+              {attemptsLeftLabel(quiz.maxAttempts, attemptsUsed)}
+            </span>
+          </div>
         </div>
         {quiz.instructions ? <p className="mt-3 text-sm leading-6 text-slate-600">{quiz.instructions}</p> : null}
       </div>

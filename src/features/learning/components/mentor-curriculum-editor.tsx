@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   ArrowDown,
@@ -40,6 +39,9 @@ import type {
   MentorMaterialCurriculum,
   MentorMaterialDraft,
 } from '../mentor-material-repository'
+import { ASSIGNMENT_DEFAULTS } from '../assignment-policy'
+import { plainTextToArticleHtml } from '../article-html'
+import { ArticleRichTextEditor } from './article-rich-text-editor'
 import type {
   MentorQuizDefinition,
   MentorQuizDefinitionInput,
@@ -62,6 +64,7 @@ type MaterialFormState = {
   summary: string
   articleBody: string
   assetPath: string
+  captionPath: string
   externalUrl: string
   durationSeconds: string
   isPreview: boolean
@@ -78,14 +81,24 @@ type MaterialFormState = {
   assignmentInstructions: string
   assignmentExtensions: string
   assignmentMaxUploadMb: string
+  assignmentMaxFiles: string
+  assignmentMaxPoints: string
+  assignmentPassingPercentage: string
 }
+
+/** New assignments accept common document, image and archive files, up to 20 MB and 5 files each. */
+const NEW_ASSIGNMENT_EXTENSIONS = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.zip'
+
 
 type QuizDraftState = {
   passPercentage: string
   instructions: string
+  // Saved questions and options keep their id, so saving updates them in place and learners'
+  // attempts stay attached; new ones have none until saved.
   questions: Array<{
+    id?: string
     prompt: string
-    options: Array<{ label: string; isCorrect: boolean }>
+    options: Array<{ id?: string; label: string; isCorrect: boolean }>
   }>
 }
 
@@ -131,6 +144,7 @@ function emptyMaterialState(): MaterialFormState {
     summary: '',
     articleBody: '',
     assetPath: '',
+    captionPath: '',
     externalUrl: '',
     durationSeconds: '',
     isPreview: false,
@@ -145,8 +159,11 @@ function emptyMaterialState(): MaterialFormState {
     maxAttempts: '',
     embedKind: 'youtube',
     assignmentInstructions: '',
-    assignmentExtensions: '.pdf,.doc,.docx,.jpg,.png',
-    assignmentMaxUploadMb: '10',
+    assignmentExtensions: NEW_ASSIGNMENT_EXTENSIONS,
+    assignmentMaxUploadMb: String(ASSIGNMENT_DEFAULTS.maxUploadBytes / (1024 * 1024)),
+    assignmentMaxFiles: String(ASSIGNMENT_DEFAULTS.maxFiles),
+    assignmentMaxPoints: String(ASSIGNMENT_DEFAULTS.maxPoints),
+    assignmentPassingPercentage: String(ASSIGNMENT_DEFAULTS.passingPercentage),
   }
 }
 
@@ -163,8 +180,12 @@ function materialStateFromPersisted(material: MentorMaterial): MaterialFormState
     title: material.title,
     materialType: material.materialType,
     summary: material.summary ?? '',
-    articleBody: material.articleBody ?? '',
+    // Articles written before rich text open as paragraphs; they are stored as HTML only once saved.
+    articleBody: material.articleFormat === 'html'
+      ? material.articleBody ?? ''
+      : plainTextToArticleHtml(material.articleBody ?? ''),
     assetPath: material.assetPath ?? '',
+    captionPath: material.captionPath ?? '',
     externalUrl: material.externalUrl ?? '',
     durationSeconds: material.durationSeconds === null ? '' : String(material.durationSeconds),
     isPreview: material.isPreview,
@@ -179,8 +200,13 @@ function materialStateFromPersisted(material: MentorMaterial): MaterialFormState
     maxAttempts: material.maxAttempts === null ? '' : String(material.maxAttempts),
     embedKind: material.embedKind ?? 'youtube',
     assignmentInstructions: material.assignment?.instructions ?? '',
-    assignmentExtensions: material.assignment?.acceptedExtensions.join(',') ?? '.pdf,.doc,.docx,.jpg,.png',
-    assignmentMaxUploadMb: material.assignment ? String(Math.max(1, Math.round(material.assignment.maxUploadBytes / (1024 * 1024)))) : '10',
+    assignmentExtensions: material.assignment?.acceptedExtensions.join(',') ?? NEW_ASSIGNMENT_EXTENSIONS,
+    assignmentMaxUploadMb: material.assignment
+      ? String(Math.max(1, Math.round(material.assignment.maxUploadBytes / (1024 * 1024))))
+      : String(ASSIGNMENT_DEFAULTS.maxUploadBytes / (1024 * 1024)),
+    assignmentMaxFiles: String(material.assignment?.maxFiles ?? ASSIGNMENT_DEFAULTS.maxFiles),
+    assignmentMaxPoints: String(material.assignment?.maxPoints ?? ASSIGNMENT_DEFAULTS.maxPoints),
+    assignmentPassingPercentage: String(material.assignment?.passingPercentage ?? ASSIGNMENT_DEFAULTS.passingPercentage),
   }
 }
 
@@ -203,14 +229,16 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
     .map((extension) => extension.trim().toLowerCase())
     .filter(Boolean)
     .map((extension) => extension.startsWith('.') ? extension : `.${extension}`)
-  const maxUploadMb = Math.max(1, numericOrNull(form.assignmentMaxUploadMb) ?? 10)
+  const maxUploadMb = Math.max(1, numericOrNull(form.assignmentMaxUploadMb) ?? ASSIGNMENT_DEFAULTS.maxUploadBytes / (1024 * 1024))
 
   return {
     title: form.title,
     materialType: form.materialType,
     summary: form.summary.trim() || null,
     articleBody: form.materialType === 'article' ? form.articleBody.trim() || null : null,
+    articleFormat: form.materialType === 'article' ? 'html' : 'plain',
     assetPath: form.assetPath.trim() || null,
+    captionPath: form.materialType === 'video' ? form.captionPath.trim() || null : null,
     externalUrl: form.externalUrl.trim() || null,
     durationSeconds: numericOrNull(form.durationSeconds),
     isPreview: form.isPreview,
@@ -229,6 +257,9 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
           instructions: form.assignmentInstructions.trim(),
           acceptedExtensions: assignmentExtensions,
           maxUploadBytes: Math.round(maxUploadMb * 1024 * 1024),
+          maxFiles: numericOrNull(form.assignmentMaxFiles) ?? ASSIGNMENT_DEFAULTS.maxFiles,
+          maxPoints: numericOrNull(form.assignmentMaxPoints) ?? ASSIGNMENT_DEFAULTS.maxPoints,
+          passingPercentage: numericOrNull(form.assignmentPassingPercentage) ?? ASSIGNMENT_DEFAULTS.passingPercentage,
         }
       : null,
   }
@@ -240,8 +271,9 @@ function quizStateFromPersisted(quiz: MentorQuizDefinition | null): QuizDraftSta
     passPercentage: String(quiz.passPercentage),
     instructions: quiz.instructions ?? '',
     questions: quiz.questions.map((question) => ({
+      id: question.id,
       prompt: question.prompt,
-      options: question.options.map((option) => ({ label: option.label, isCorrect: option.isCorrect })),
+      options: question.options.map((option) => ({ id: option.id, label: option.label, isCorrect: option.isCorrect })),
     })),
   }
 }
@@ -251,8 +283,9 @@ function quizPayload(draft: QuizDraftState): MentorQuizDefinitionInput {
     passPercentage: Number(draft.passPercentage),
     instructions: draft.instructions.trim() || null,
     questions: draft.questions.map((question) => ({
+      id: question.id ?? null,
       prompt: question.prompt,
-      options: question.options.map((option) => ({ label: option.label, isCorrect: option.isCorrect })),
+      options: question.options.map((option) => ({ id: option.id ?? null, label: option.label, isCorrect: option.isCorrect })),
     })),
   }
 }
@@ -353,10 +386,15 @@ function MaterialFields({
       </label>
 
       {form.materialType === 'article' ? (
-        <label className="text-sm font-semibold text-navy-950">
-          Article content
-          <textarea aria-label={`${prefix} material article content`} className={`${inputClassName()} min-h-44 resize-y`} value={form.articleBody} onChange={(event) => update('articleBody', event.target.value)} />
-        </label>
+        <div className="text-sm font-semibold text-navy-950">
+          <span id={`${prefix}-article-label`}>Article content</span>
+          <ArticleRichTextEditor
+            courseId={courseId}
+            ariaLabel={`${prefix} material article content`}
+            value={form.articleBody}
+            onChange={(html) => update('articleBody', html)}
+          />
+        </div>
       ) : null}
 
       {upload ? (
@@ -369,6 +407,19 @@ function MaterialFields({
           onChange={(storagePath) => update('assetPath', storagePath ?? '')}
           accept={learningMediaAccept(upload.kind)}
           previewType={upload.previewType}
+        />
+      ) : null}
+
+      {form.materialType === 'video' ? (
+        <LearningMediaUploadField
+          courseId={courseId}
+          kind="lesson_caption"
+          label="Captions (.vtt, optional)"
+          inputAriaLabel={`${prefix} captions file`}
+          value={form.captionPath.trim() || null}
+          onChange={(storagePath) => update('captionPath', storagePath ?? '')}
+          accept=".vtt,text/vtt"
+          previewType="file"
         />
       ) : null}
 
@@ -416,10 +467,23 @@ function MaterialFields({
               <input aria-label={`${prefix} assignment extensions`} className={inputClassName()} value={form.assignmentExtensions} onChange={(event) => update('assignmentExtensions', event.target.value)} placeholder=".pdf,.docx,.jpg" />
             </label>
             <label className="text-sm font-semibold text-navy-950">
-              Maximum upload size (MB)
+              Maximum upload size per file (MB)
               <input aria-label={`${prefix} assignment maximum upload MB`} type="number" min="1" max="100" className={inputClassName()} value={form.assignmentMaxUploadMb} onChange={(event) => update('assignmentMaxUploadMb', event.target.value)} />
             </label>
+            <label className="text-sm font-semibold text-navy-950">
+              Files per submission
+              <input aria-label={`${prefix} assignment files per submission`} type="number" min="1" max="10" className={inputClassName()} value={form.assignmentMaxFiles} onChange={(event) => update('assignmentMaxFiles', event.target.value)} />
+            </label>
+            <label className="text-sm font-semibold text-navy-950">
+              Points
+              <input aria-label={`${prefix} assignment points`} type="number" min="1" max="100000" className={inputClassName()} value={form.assignmentMaxPoints} onChange={(event) => update('assignmentMaxPoints', event.target.value)} />
+            </label>
+            <label className="text-sm font-semibold text-navy-950">
+              Pass mark (%)
+              <input aria-label={`${prefix} assignment pass mark`} type="number" min="1" max="100" className={inputClassName()} value={form.assignmentPassingPercentage} onChange={(event) => update('assignmentPassingPercentage', event.target.value)} />
+            </label>
           </div>
+          <p className="mt-2 text-xs leading-5 text-muted">Leave the extensions empty to accept any supported document, image or ZIP file.</p>
         </section>
       ) : null}
 
@@ -651,7 +715,6 @@ function QuizEditor({
 }
 
 export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false }: Props) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<Message>(null)
   const [newSectionTitle, setNewSectionTitle] = useState('')
@@ -711,7 +774,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       }
       afterSuccess?.()
       if (successCopy) setMessage({ tone: 'success', copy: successCopy })
-      router.refresh()
     })
   }
 
@@ -730,7 +792,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
     }
     setNewSectionTitle('')
     setMessage({ tone: 'success', copy: 'Section added.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -744,7 +805,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
     }
     setEditingSectionId(null)
     setMessage({ tone: 'success', copy: 'Section title saved.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -758,7 +818,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
     }
     setQuizEditingMaterialId(null)
     setMessage({ tone: 'success', copy: 'Quiz saved.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -796,12 +855,10 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       if (!processed.ok) {
         const copy = `Material saved, but SCORM processing failed: ${processed.error}`
         setMessage({ tone: 'error', copy })
-        router.refresh()
         return { ok: false, error: copy }
       }
     }
     setMessage({ tone: 'success', copy: 'Material created.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -824,12 +881,10 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       if (!processed.ok) {
         const copy = `Material saved, but SCORM processing failed: ${processed.error}`
         setMessage({ tone: 'error', copy })
-        router.refresh()
         return { ok: false, error: copy }
       }
     }
     setMessage({ tone: 'success', copy: 'Material changes saved.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -840,7 +895,7 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Learning experience</p>
           <h2 className="mt-1 text-2xl font-bold text-navy-950">Curriculum</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">Build Edmingle-style sections and first-class materials. Uploaded photos, videos, audio, PDFs and SCORM packages stay inside the Sea N Shore learner experience.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">Organise the course into sections and add its materials. Uploaded photos, videos, audio, PDFs and SCORM packages stay inside the Sea N Shore learner experience.</p>
         </div>
         <div className="min-w-64 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-xs leading-5 text-teal-950">
           <p className="font-bold">Course navigation</p>

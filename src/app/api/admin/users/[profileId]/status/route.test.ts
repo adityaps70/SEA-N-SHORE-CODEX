@@ -17,6 +17,7 @@ vi.mock('@/features/admin/runtime-user-control-service', () => ({
 }))
 
 import { POST } from './route'
+import { AdminSignInControlError } from '@/features/admin/sign-in-control-error'
 
 const adminId = '11111111-1111-4111-8111-111111111111'
 const profileId = '55555555-5555-4555-8555-555555555555'
@@ -67,6 +68,21 @@ describe('POST admin user status', () => {
       profileId,
       'Appeal reviewed and access restored.',
     )
+  })
+
+  it('says clearly when a suspension could not reach every sign-in method', async () => {
+    mocks.suspendAccount.mockRejectedValueOnce(new AdminSignInControlError('admin_user_cognito_suspend_incomplete', 1, 3))
+
+    const response = await POST(request({
+      action: 'suspend',
+      reason: 'Repeated unsafe recruitment messages.',
+    }), { params: Promise.resolve({ profileId }) })
+
+    expect(response.status).toBe(502)
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: 'The account is suspended, but 1 of 3 sign-in methods couldn’t be signed out. Suspend again to retry.',
+    })
   })
 
   it('rejects non-admin access before touching account controls', async () => {

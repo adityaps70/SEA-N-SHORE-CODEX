@@ -12,9 +12,10 @@ type AttentionItem = { label: string; count: number; href: string; urgent?: bool
 
 export default async function AdminPage() {
   const user = await requireAwsUser()
-  const [metrics, recentEvents] = await Promise.all([
+  const [metrics, recentEvents, otherRoles] = await Promise.all([
     adminRepository.getAdminDashboardMetrics(user.id),
     adminRepository.listAuditEvents(user.id, { targetType: 'all', limit: 8 }).catch(() => []),
+    adminRepository.listOtherRoleTexts(user.id, { days: 90, limit: 30 }).catch(() => []),
   ])
 
   const attention: AttentionItem[] = [
@@ -82,6 +83,35 @@ export default async function AdminPage() {
           </div>
         ))}
       </dl>
+
+      <AdminPanel>
+        <div className="border-b border-mist-100 px-5 py-3">
+          <h3 className="text-sm font-bold text-navy-950">Other ranks / roles</h3>
+          <p className="mt-0.5 text-xs text-muted">Typed for “Other (type your own)” in the last 90 days. Common ones can be added to the rank lists.</p>
+        </div>
+        {otherRoles.length ? (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted">
+                <th scope="col" className="px-5 py-2 font-semibold">Rank / role typed</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Profiles</th>
+                <th scope="col" className="px-5 py-2 text-right font-semibold">Jobs</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-mist-100">
+              {otherRoles.map((entry) => (
+                <tr key={entry.text}>
+                  <td className="max-w-0 truncate px-5 py-2 font-semibold text-navy-950">{entry.text}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-navy-950">{entry.profileCount}</td>
+                  <td className="px-5 py-2 text-right tabular-nums text-navy-950">{entry.jobCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="px-5 py-4 text-sm text-muted">Nobody has typed an “Other” rank or role in the last 90 days.</p>
+        )}
+      </AdminPanel>
 
       <AdminPanel>
         <div className="flex items-center justify-between border-b border-mist-100 px-5 py-3">

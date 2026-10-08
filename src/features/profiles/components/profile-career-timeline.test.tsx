@@ -79,7 +79,7 @@ describe('ProfileCareerTimeline', () => {
 
     fireEvent.change(screen.getByLabelText('Experience type'), { target: { value: 'shore_role' } })
 
-    expect(screen.getByLabelText('Organisation / company')).toBeInTheDocument()
+    expect(screen.getByLabelText('Organization')).toBeInTheDocument()
     expect(screen.getByLabelText('Location')).toBeInTheDocument()
     expect(screen.queryByLabelText('Vessel')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Vessel type')).not.toBeInTheDocument()
@@ -126,16 +126,13 @@ describe('ProfileCareerTimeline on phones', () => {
     expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument()
   })
 
-  it('puts a plus and a pencil at the section top right for the owner; the pencil reveals per-entry edit buttons on phones', () => {
+  it('puts a plus at the section top right and a pencil on every entry, on phones too (round 11)', () => {
     render(<ProfileCareerTimeline experiences={experiences} editable />)
     expect(screen.getByRole('button', { name: 'Add experience' })).toBeInTheDocument()
-    const pencil = screen.getByRole('button', { name: 'Edit experience entries' })
-    expect(pencil).toHaveClass('md:hidden')
-    expect(pencil).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByRole('button', { name: 'Edit Master' }).parentElement).toHaveClass('max-md:hidden')
-
-    fireEvent.click(pencil)
-    expect(pencil).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Edit Master' }).parentElement).not.toHaveClass('max-md:hidden')
+    expect(screen.queryByRole('button', { name: 'Edit experience entries' })).not.toBeInTheDocument()
+    const pencil = screen.getByRole('button', { name: 'Edit Master' })
+    expect(pencil).not.toHaveClass('max-md:hidden')
+    expect(pencil.parentElement).not.toHaveClass('max-md:hidden')
+    expect(screen.getByRole('button', { name: 'Edit Marine Superintendent' })).toBeInTheDocument()
   })
 })

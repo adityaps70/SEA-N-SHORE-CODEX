@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const workflowPath = '.github/workflows/aws-staging-deploy.yml'
 const actionPath = 'scripts/aws/staging-deploy-action.txt'
 
 test('staging deploy supports an explicit exact-head push trigger without weakening manual dispatch', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
 
   assert.ok(['plan', 'deploy-once'].includes(action), `Unexpected staging deploy action: ${action}`)
   assert.match(workflow, /workflow_dispatch:/)
@@ -126,4 +127,69 @@ test('staging deploy promotes outbox and notification workers with the same immu
   assert.match(workflow, /desiredCount/)
   assert.match(workflow, /runningCount/)
   assert.match(workflow, /pendingCount/)
+})
+
+test('staging deploy never shrinks the web task below 2048 MiB / 512 CPU (Round 13)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /\| \.memory = \(if \(\(\.memory \/\/ "0"\) \| tonumber\) < 2048 then "2048" else \.memory end\)/)
+  assert.match(workflow, /\| \.cpu = \(if \(\(\.cpu \/\/ "0"\) \| tonumber\) < 512 then "512" else \.cpu end\)/)
+})
+
+test('manual deploys ship only the live branch and a deployed SHA is never deployed twice (Round 14)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const dispatch = workflow.slice(workflow.indexOf('if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then'))
+  assert.match(dispatch.slice(0, 400), /\[\[ "\$GITHUB_REF" == "refs\/heads\/feat\/aws-native-phase-0-1" \]\] \|\| \{ echo "Manual deploys are allowed only from feat\/aws-native-phase-0-1\."/)
+  assert.match(workflow, /- name: Refuse a commit that is already deployed/)
+  assert.match(workflow, /if \[\[ "\$\{LIVE_IMAGE##\*:\}" == "\$\{GITHUB_SHA\}-"\* \]\]; then/)
+  assert.ok(workflow.indexOf('Refuse a commit that is already deployed') < workflow.indexOf('Build and push immutable application image'))
+})
+
+test('staging deploy turns ECS Exec off on the web service and verifies it', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const step = workflow.slice(workflow.indexOf('- name: Deploy ECS service and wait for stability'), workflow.indexOf('- name: Promote event worker task definitions'))
+
+  assert.match(step, /--service "\$ECS_SERVICE"[\s\S]*--disable-execute-command/)
+  assert.doesNotMatch(workflow, /--enable-execute-command/)
+  assert.match(step, /--query 'services\[0\]\.enableExecuteCommand' --output json/)
+  assert.match(step, /\[\[ "\$EXEC_ENABLED" == "false" \]\]/)
+  assert.match(step, /ECS_EXEC_DISABLED_VERIFIED=true/)
+  assert.match(readFileSync('infra/aws/app/main.tf', 'utf8'), /enable_execute_command = false/)
+})
+
+test('Round 15: the web task drops the phone OTP settings and gets HEALTH_CHECK_TOKEN from Secrets Manager', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  // Phone/SMS sign-in is retired: no OTP table or calling-code settings are set any more, and the
+  // copy of the live task definition strips any that are still there.
+  assert.doesNotMatch(workflow, /OTP_LIMITS_TABLE:|ALLOWED_PHONE_CALLING_CODES:|--arg OTP_LIMITS_TABLE|--arg ALLOWED_PHONE_CALLING_CODES/)
+  assert.doesNotMatch(workflow, /\{"name":"OTP_LIMITS_TABLE"|\{"name":"ALLOWED_PHONE_CALLING_CODES"/)
+  assert.match(workflow, /and \.name != "OTP_LIMITS_TABLE"\n\s+and \.name != "ALLOWED_PHONE_CALLING_CODES"/)
+
+  // The secret's ARN is resolved (never its value) before the build, and only for a real deploy.
+  assert.match(workflow, /HEALTH_CHECK_TOKEN_SECRET_NAME: sea-n-shore-staging\/health-check-token\n/)
+  const resolve = workflow.slice(workflow.indexOf('- name: Resolve health check token secret'), workflow.indexOf('- name: Login to Amazon ECR'))
+  assert.match(resolve, /if: env\.DEPLOY_TO_ECS == 'true'/)
+  assert.match(resolve, /aws secretsmanager describe-secret --secret-id "\$HEALTH_CHECK_TOKEN_SECRET_NAME" --query ARN --output text/)
+  assert.match(resolve, /secret:sea-n-shore-staging\/health-check-token-\[A-Za-z0-9\]\{6\}\$/)
+  assert.doesNotMatch(workflow, /get-secret-value|SecretString/)
+  assert.ok(workflow.indexOf('- name: Resolve health check token secret') < workflow.indexOf('Build and push immutable application image'))
+
+  // Web container only, same pattern as AURORA_USER / AURORA_PASSWORD.
+  const web = workflow.slice(workflow.indexOf('- name: Create new ECS task definition revision'), workflow.indexOf('- name: Deploy ECS service and wait for stability'))
+  assert.match(web, /--arg HEALTH_CHECK_TOKEN_SECRET "\$HEALTH_CHECK_TOKEN_SECRET_ARN"/)
+  assert.match(web, /and \.name != "HEALTH_CHECK_TOKEN"/)
+  assert.match(web, /\{"name":"AURORA_PASSWORD","valueFrom":\$AURORA_PASSWORD_SECRET\},\n\s+\{"name":"HEALTH_CHECK_TOKEN","valueFrom":\$HEALTH_CHECK_TOKEN_SECRET\}/)
+  const workers = workflow.slice(workflow.indexOf('- name: Promote event worker task definitions'), workflow.indexOf('- name: Deploy event workers and wait for stability'))
+  assert.doesNotMatch(workers, /HEALTH_CHECK_TOKEN/)
+})
+
+test('the job that waits for exact-head CI can read the Actions API (a job-level permissions block replaces the workflow one)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  // Each job is a two-space-indented key under jobs:; find the one that runs the exact-head CI wait.
+  const jobs = workflow.slice(workflow.indexOf('\njobs:\n')).split(/\n(?=  [a-z0-9_-]+:\n)/)
+  const waiting = jobs.filter((job) => job.includes('Wait for exact-head AWS Infrastructure CI'))
+  assert.ok(waiting.length > 0, 'a job waits for exact-head AWS Infrastructure CI')
+  for (const job of waiting) {
+    const block = job.match(/\n    permissions:\n((?:      [a-z-]+: [a-z]+\n)+)/)
+    if (block) assert.match(block[1], /actions: (read|write)/, 'a job-level permissions block must keep actions: read for the CI wait')
+  }
 })

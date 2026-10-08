@@ -23,8 +23,91 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  domain-bootstrap:
+  apply-gate:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      approval: ${{ steps.apply_guard.outputs.approval }}
+      skip: ${{ steps.plan_scope.outputs.skip }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the guard file
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            scripts/aws/seanshore-domain-bootstrap-action.txt
+            scripts/aws/arm-commit-guard.sh
+          sparse-checkout-cone-mode: false
+
+      # Round 16: runs that change AWS wait for the owner's approval in 'staging-apply';
+      # plans (and other read-only guard values) never wait.
+      - name: Decide whether this run changes AWS
+        id: apply_guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(cut -d' ' -f1 < scripts/aws/seanshore-domain-bootstrap-action.txt | tr -d '[:space:]')"
+          case "$ACTION" in
+            plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Guard action: $ACTION"
+
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/seanshore-domain-bootstrap-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
+
+      # Actions minutes: a plan (or discover) run only reads AWS, so it is skipped when this push changed none of
+      # this runner's own scripts or tests (only its guard file and/or this workflow, e.g. a rearm).
+      - name: Skip a plan run when none of this runner's scripts changed
+        id: plan_scope
+        env:
+          GUARD_FILE: scripts/aws/seanshore-domain-bootstrap-action.txt
+          RUNNER_FILES: "infra/aws/app/seanshore_domain.tf infra/aws/app/aws-native-variables.tf scripts/aws/seanshore-domain-bootstrap.sh scripts/aws/seanshore-domain-bootstrap.test.mjs"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP=false
+          ACTION="$(cut -d' ' -f1 < "$GUARD_FILE" | tr -d '[:space:]')"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then
+            SKIP="$(python3 -c '
+          import fnmatch, json, os, sys
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          commits = event.get("commits") or []
+          files = {f for c in commits for k in ("added", "modified", "removed") for f in (c.get(k) or [])}
+          watched = os.environ["RUNNER_FILES"].split()
+          # Only a complete, non-empty list of changed files can show that nothing of this runner changed.
+          complete = bool(commits) and len(commits) < 2048 and bool(files)
+          print("true" if complete and not any(fnmatch.fnmatch(f, p) for f in files for p in watched) else "false")
+          ')"
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          echo "Plan run skipped: $SKIP"
+
+  apply-approval:
+    needs: apply-gate
+    if: needs.apply-gate.outputs.approval == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    timeout-minutes: 10
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
+  domain-bootstrap:
+    needs:
+      - apply-gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && (needs.apply-approval.result == 'success' || needs.apply-approval.result == 'skipped') && (github.ref == 'refs/heads/feat/aws-native-phase-0-1') }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
@@ -33,7 +116,7 @@ jobs:
 
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Verify guarded domain bootstrap contract
         shell: bash
@@ -44,7 +127,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ACTION="$(tr -d '[:space:]' < scripts/aws/seanshore-domain-bootstrap-action.txt)"
+          ACTION="$(cut -d' ' -f1 < scripts/aws/seanshore-domain-bootstrap-action.txt | tr -d '[:space:]')"
           case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported seanshore domain bootstrap action: $ACTION" >&2; exit 1 ;; esac
           if [[ "$ACTION" == "apply-once" && "$GITHUB_EVENT_NAME" != "push" ]]; then
             echo "apply-once is allowed only from an exact branch push." >&2
@@ -80,7 +163,7 @@ jobs:
           [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || { echo "Branch moved after domain bootstrap started; refusing stale execution." >&2; exit 1; }
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -109,17 +192,16 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA"
           python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
           import json, shlex, sys
+          import os, sys; sys.path.insert(0, os.path.join(os.environ["GITHUB_WORKSPACE"], "scripts", "aws")); from ci_checkout import host_checkout
           sha = sys.argv[1]
           script = f"""set -euo pipefail
           umask 077
           WORK_DIR=$(mktemp -d /var/tmp/sea-n-shore-domain-bootstrap.XXXXXXXX)
-          trap 'rm -rf -- "$WORK_DIR"' EXIT
-          git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$WORK_DIR/repo"
-          cd "$WORK_DIR/repo"
-          git checkout --quiet --detach {sha}
-          test "$(git rev-parse HEAD)" = "{sha}"
+          trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          {host_checkout('$WORK_DIR', sha)}
           export SEANSHORE_DOMAIN_BOOTSTRAP_EXPECTED_SHA={sha}
           bash scripts/aws/seanshore-domain-bootstrap.sh
           """
@@ -154,3 +236,8 @@ jobs:
           else
             grep -q 'SEANSHORE_DOMAIN_BOOTSTRAP_APPLY_VERIFIED=true' <<<"$STDOUT_CONTENT"
           fi
+
+      - name: Delete the host checkout bundle
+        if: always()
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup

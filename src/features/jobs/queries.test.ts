@@ -48,7 +48,7 @@ describe('jobs queries', () => {
     const result = await queries.getJobsDiscovery({ mode: 'sea', rank: 'Chief Officer', vessel: 'Oil Tanker' })
 
     expect(repository.searchJobs).toHaveBeenCalledWith(expect.objectContaining({
-      mode: 'sea', ranks: ['Chief Officer'], vesselTypes: ['Oil Tanker'],
+      mode: 'sea', ranks: ['chief_officer'], vesselTypes: ['Oil Tanker'],
     }), 60, 0)
     expect(repository.getCandidateProfile).toHaveBeenCalledWith('viewer-1')
     expect(repository.getSavedJobIds).toHaveBeenCalledWith('viewer-1', ['job-1'])

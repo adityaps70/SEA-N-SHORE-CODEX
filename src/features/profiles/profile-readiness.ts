@@ -17,7 +17,11 @@ function hasText(value: string | null | undefined) {
 }
 
 export function getProfileReadiness(profile: PublicProfile): ProfileReadiness {
-  const maritime = profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
+  // Round 11: sea-service details are asked of seafarers only. An enthusiast or family member
+  // (stored with the legacy maritime_professional type) is not nagged for rank or vessels.
+  const maritime = profile.persona
+    ? profile.persona === 'seafarer'
+    : profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
   const checks: ReadinessCheck[] = [
     {
       complete: hasText(profile.avatarPath),

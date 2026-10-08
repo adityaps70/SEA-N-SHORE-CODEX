@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { FileText, IdCard, Target } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
@@ -61,6 +62,7 @@ export default async function HiringApplicantReviewPage({
   if (!review) notFound()
 
   const candidate = review.candidate
+  const matchDisplay = jobMatchDisplay(review.match)
   const profileHref = candidate.slug ? `/people/${candidate.slug}` : null
   const photoUrl = await applicantPhotoUrl(candidate.avatarPath)
   const dgProfile = candidate.accountActive && review.status !== 'withdrawn'
@@ -129,7 +131,7 @@ export default async function HiringApplicantReviewPage({
                   <p className="mt-1 text-xs font-semibold text-muted max-md:hidden">Applied {formatDateTime(review.appliedAt)}</p>
                   <p className="mt-1 text-[13px] text-muted md:hidden">Applied for {review.job.title} · {relativeTimeFrom(review.appliedAt) || formatDate(review.appliedAt)}</p>
                   <div className="mt-3 flex flex-wrap justify-center gap-2 md:hidden" aria-label="Applicant highlights">
-                    <span className={`${phoneChip} bg-ocean-50 text-ocean-800`}><Target aria-hidden="true" className="size-4" />{review.match.score}% match</span>
+                    <span className={`${phoneChip} bg-ocean-50 text-ocean-800`}><Target aria-hidden="true" className="size-4" />{matchDisplay ? matchDisplay.text : 'Not scored'}</span>
                     {cvHref ? <a href={cvHref} target="_blank" rel="noreferrer" className={`${phoneChip} bg-mist-50 text-navy-900 hover:bg-mist-100`}><FileText aria-hidden="true" className="size-4" />CV (PDF)</a> : null}
                     {dgHref ? <a href={dgHref} target="_blank" rel="noopener noreferrer" className={`${phoneChip} bg-mist-50 text-navy-900 hover:bg-mist-100`}><IdCard aria-hidden="true" className="size-4" />DG profile</a> : null}
                   </div>
@@ -142,8 +144,9 @@ export default async function HiringApplicantReviewPage({
               </div>
               <div className="rounded-2xl bg-navy-950 px-5 py-4 text-white max-md:hidden sm:text-right">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/60">Match</p>
-                <p className="mt-1 text-4xl font-black">{review.match.score}%</p>
-                <p className="mt-1 text-xs text-white/65">Structured maritime fit</p>
+                {/* Round 12: the same numbers and labels the candidate sees. */}
+                {matchDisplay && matchDisplay.band !== 'low' ? <p className="mt-1 text-4xl font-black">{matchDisplay.score}%</p> : <p className="mt-1 text-2xl font-black">{matchDisplay ? matchDisplay.label : 'Not scored'}</p>}
+                <p className="mt-1 text-xs text-white/65">{matchDisplay && matchDisplay.band !== 'low' ? matchDisplay.label : 'Structured maritime fit'}</p>
               </div>
             </div>
 

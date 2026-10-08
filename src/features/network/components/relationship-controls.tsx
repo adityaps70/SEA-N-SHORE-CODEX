@@ -5,7 +5,6 @@ import { Ban, Check, Clock3, Ellipsis, Flag, UserMinus, UserPlus, UserRoundCheck
 import { ActionMenu, ActionMenuItem } from '@/components/ui/action-menu'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { cn } from '@/lib/cn'
-import { useRouter } from 'next/navigation'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
   acceptConnectionRequest,
@@ -51,7 +50,6 @@ export function RelationshipControls({
   /** A window event name that opens the "…" menu, e.g. from the phone page bar's "…". */
   openMenuEvent?: string
 }) {
-  const router = useRouter()
   const canonicalRelationshipKey = relationshipStateKey(initialRelationship)
   const [lastCanonicalRelationshipKey, setLastCanonicalRelationshipKey] = useState(canonicalRelationshipKey)
   const [relationship, setRelationship] = useState(initialRelationship)
@@ -75,9 +73,12 @@ export function RelationshipControls({
     setAwaitingRefresh(false)
   }
 
+  /**
+   * Waits for the re-rendered relationship: every network action revalidates, and that already
+   * re-renders the current page in the action’s response (Round 14, 3.9: no extra route refresh).
+   */
   function refreshAfterSuccess() {
     setAwaitingRefresh(true)
-    router.refresh()
   }
 
   function toggleFollow() {
@@ -110,9 +111,7 @@ export function RelationshipControls({
         setRelationship(previous)
         setAwaitingRefresh(false)
         setError(result.error)
-        return
       }
-      router.refresh()
     })
   }
 
@@ -153,11 +152,7 @@ export function RelationshipControls({
     setError('')
     startTransition(async () => {
       const result = await blockProfile(profileId)
-      if (!result.ok) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
+      if (!result.ok) setError(result.error)
     })
   }
 

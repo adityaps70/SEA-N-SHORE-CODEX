@@ -7,6 +7,11 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`)
   }),
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+}))
+
+vi.mock('@/features/profiles/profile-inline-actions', () => ({
+  updateProfileCurrentOrganization: vi.fn(),
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({
@@ -24,6 +29,7 @@ vi.mock('@/features/access/server', () => ({
 }))
 
 vi.mock('@/features/profiles/queries', () => ({
+  getOwnRegisteredOrganization: vi.fn(async () => null),
   getProfileOrganizations: vi.fn(async () => [{
     id: '33333333-3333-4333-8333-333333333333',
     slug: 'example-shipping',
@@ -143,7 +149,10 @@ describe('My Profile page', () => {
     const organizations = screen.getByRole('region', { name: 'Organizations' })
     expect(organizations).toHaveTextContent('Owns or manages')
     expect(screen.getByRole('link', { name: /Example Shipping/ })).toHaveAttribute('href', '/organizations/example-shipping')
-    expect(screen.getByRole('link', { name: 'Manage organizations' })).toHaveAttribute('href', '/organizations')
+    // Round 11: a pencil chooses the current organization in place instead of a "Manage organizations" link.
+    expect(screen.queryByRole('link', { name: 'Manage organizations' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit organizations' })).toBeInTheDocument()
+    expect(document.querySelector('a[href^="/profile/edit"]')).toBeNull()
     expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Maritime Experience' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Experience' })).toBeInTheDocument()

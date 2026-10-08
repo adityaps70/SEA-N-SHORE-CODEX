@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { ACCESS_ROLE_LABELS } from '@/features/organizations/access-request-labels'
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole } from '@/features/organizations/types'
 import { reviewCompanyAccessRequest } from '../actions'
@@ -17,7 +16,6 @@ export function CompanyAccessReviewActions({
   requestId: string
   requestedRole?: CompanyAccessRequestRole
 }) {
-  const router = useRouter()
   const [note, setNote] = useState('')
   const [role, setRole] = useState<CompanyAccessRequestRole>(requestedRole)
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null)
@@ -33,7 +31,6 @@ export function CompanyAccessReviewActions({
           return
         }
         setFeedback({ ok: true, message: decision === 'approved' ? `Approved as ${ACCESS_ROLE_LABELS[role]}.` : 'Request declined.' })
-        router.refresh()
       } catch {
         setFeedback({ ok: false, message: 'The decision could not be saved. Check your connection and try again.' })
       }

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { guardAction } from '../../../scripts/aws/guard-value.mjs'
 
 const actionPath = 'scripts/aws/hiring-create-job-probe-action.txt'
 const workflowPath = '.github/workflows/aws-hiring-create-job-probe.yml'
@@ -12,7 +13,7 @@ describe('staging create-job diagnostic probe contract', () => {
       expect(existsSync(path)).toBe(true)
     }
 
-    const action = readFileSync(actionPath, 'utf8').trim()
+    const action = guardAction(readFileSync(actionPath, 'utf8'))
     const workflow = readFileSync(workflowPath, 'utf8')
     const wrapper = readFileSync(wrapperPath, 'utf8')
 

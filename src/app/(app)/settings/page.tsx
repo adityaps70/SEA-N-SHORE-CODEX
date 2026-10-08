@@ -1,12 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
-  Ban,
   BadgeCheck,
+  Ban,
+  BellRing,
   Building2,
   ChevronRight,
   CreditCard,
   History,
+  KeyRound,
   Landmark,
   LockKeyhole,
   Mail,
@@ -135,6 +137,17 @@ export default async function SettingsPage() {
             <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
+            href="/settings/notifications"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <BellRing aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Email notifications</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Choose whether course and learning updates also come by email.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
+          </Link>
+          <Link
             href="/newsletter"
             className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
@@ -162,6 +175,17 @@ export default async function SettingsPage() {
           >
             <p className="font-semibold text-navy-950">Privacy</p>
             <p className="mt-1 text-sm leading-5 text-muted">Read how profile, community, jobs, learning, and messaging data is used.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
+          </Link>
+          <Link
+            href="/settings/security"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <KeyRound aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Two-step verification</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Add an authenticator app code to your password sign-in.</p>
             <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
         </div>

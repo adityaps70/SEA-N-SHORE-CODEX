@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DOWNSCALE_MAX_EDGE_PX, DOWNSCALE_QUALITY, DOWNSCALE_SKIP_BYTES, downscaleImage } from './downscale-image'
 

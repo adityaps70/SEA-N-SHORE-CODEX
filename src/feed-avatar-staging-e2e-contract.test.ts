@@ -13,6 +13,9 @@ describe('feed avatar staging E2E harness contract', () => {
     expect(source).toContain("page.waitForEvent('filechooser'")
     expect(source).toContain('await addButton.click()')
     expect(source).toContain('await fileChooser.setFiles')
+    // Picking a photo opens the crop dialog (9d7be1dd); the upload posts only after Save.
+    expect(source).toContain("cropDialog.getByRole('button', { name: 'Save', exact: true }).click()")
+    expect(source.indexOf('cropDialog.getByRole')).toBeGreaterThan(source.indexOf('await fileChooser.setFiles'))
     expect(source).not.toContain('input.setInputFiles')
     expect(source).not.toContain('Promise.race')
     expect(source).toContain("name: 'Change profile photo'")

@@ -147,6 +147,16 @@ describe('learner quiz server action', () => {
     })
   })
 
+  it('tells the learner plainly when every attempt is used, and flags it so the quiz shows the limit', async () => {
+    mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('learning_attempt_limit_reached'))
+
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
+      ok: false,
+      error: 'You have used all your attempts for this quiz, so this answer was not submitted.',
+      limitReached: true,
+    })
+  })
+
   it('returns safe generic copy for unexpected quiz submission failures', async () => {
     mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('database_unavailable'))
 

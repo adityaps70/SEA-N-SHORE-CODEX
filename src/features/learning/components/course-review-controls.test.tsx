@@ -84,15 +84,36 @@ describe('CourseReviewControls', () => {
 
     await waitFor(() => expect(mocks.reviewCourse).toHaveBeenCalledTimes(1))
     expect(mocks.reviewCourse).toHaveBeenCalledWith(courseId, 'archived', null)
-    expect(await screen.findByText('Course archived. It has been removed from active marketplace circulation.')).toBeInTheDocument()
+    expect(await screen.findByText('Course archived. It is off the catalogue and closed to new learners; enrolled learners keep their access.')).toBeInTheDocument()
   })
 
   it('renders no mutation buttons for historical non-actionable statuses', () => {
-    const { rerender } = render(<CourseReviewControls courseId={courseId} status="changes_requested" />)
+    render(<CourseReviewControls courseId={courseId} status="changes_requested" />)
 
     expect(screen.queryAllByRole('button')).toHaveLength(0)
-    rerender(<CourseReviewControls courseId={courseId} status="archived" />)
-    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('offers only unarchive for an archived course, returning it to the catalogue', async () => {
+    mocks.reviewCourse.mockResolvedValueOnce({ ok: true, status: 'published' })
+    render(<CourseReviewControls courseId={courseId} status="archived" />)
+
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Unarchive course' }))
+
+    await waitFor(() => expect(mocks.reviewCourse).toHaveBeenCalledWith(courseId, 'published', null))
+    expect(await screen.findByText('Course unarchived. It is back in the catalogue and open to new learners.')).toBeInTheDocument()
+  })
+
+  it('reviews changes to a published course with approve-and-apply or request changes only', async () => {
+    mocks.reviewCourse.mockResolvedValueOnce({ ok: true, status: 'published' })
+    render(<CourseReviewControls courseId={courseId} status="submitted" revision />)
+
+    expect(screen.queryByRole('button', { name: 'Archive course' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Request changes' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve and apply changes' }))
+
+    await waitFor(() => expect(mocks.reviewCourse).toHaveBeenCalledWith(courseId, 'approved', null))
+    expect(await screen.findByText('Changes approved and applied to the live course. Learners keep their progress.')).toBeInTheDocument()
   })
 
   it('shows a safe server error without clearing reviewer feedback', async () => {

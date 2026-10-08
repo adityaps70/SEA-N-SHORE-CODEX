@@ -180,6 +180,14 @@ describe('type-dependent validation', () => {
     expect(shipping).toMatchObject({ fleetSize: 1200, vesselTypes: ['Bulk Carrier'], servicesOffered: [], languages: [], helpline24x7: null, accreditation: null })
   })
 
+  it('accepts only http(s) websites (Round 14, 2.14)', () => {
+    expect(fieldErrors(input({ website: 'https://harbourminds.org' })).website).toBeUndefined()
+    expect(fieldErrors(input({ website: 'http://harbourminds.org' })).website).toBeUndefined()
+    for (const website of ['javascript:alert(1)', 'data:text/html,hi', 'ftp://harbourminds.org']) {
+      expect(fieldErrors(input({ website })).website).toEqual(['Enter a complete website address, for example https://company.com.'])
+    }
+  })
+
   it('reads stored details defensively', () => {
     expect(parseOrganizationDetails(null)).toEqual({})
     expect(parseOrganizationDetails({ fleetSize: '12', languages: ['English', 3], helpline24x7: true })).toEqual({ languages: ['English'], helpline24x7: true })

@@ -23,12 +23,23 @@ export type CourseSnapshotDetails = {
   currency: string
   certificateEnabled: boolean
   courseFormat: string
+  /** Added in learning round A; absent from older snapshots. */
+  navigationMode?: string
 }
 
 export type CourseSnapshotQuiz = {
   passPercentage: number
   instructions: string | null
   questions: Array<{ prompt: string; options: Array<{ label: string; isCorrect: boolean }> }>
+}
+
+export type CourseSnapshotAssignment = {
+  instructions: string
+  acceptedExtensions: string[]
+  maxUploadBytes: number
+  maxFiles: number
+  maxPoints: number
+  passingPercentage: number
 }
 
 export type CourseSnapshotMaterial = {
@@ -44,6 +55,20 @@ export type CourseSnapshotMaterial = {
   completionRule: string
   assignmentInstructions: string | null
   quiz: CourseSnapshotQuiz | null
+  // Added in learning round A; absent from older snapshots, so only compared when both have them.
+  articleFormat?: string
+  durationSeconds?: number | null
+  isPreview?: boolean
+  isDownloadable?: boolean
+  releaseAt?: string | null
+  dripDelayDays?: number | null
+  prerequisiteId?: string | null
+  completionThreshold?: number | null
+  maxAttempts?: number | null
+  embedKind?: string | null
+  captionPath?: string | null
+  assignment?: CourseSnapshotAssignment | null
+  scorm?: { sourceZipPath: string | null; launchPath: string | null } | null
 }
 
 export type CourseSnapshotSection = {
@@ -82,6 +107,24 @@ export type SnapshotCurriculumRow = {
   quiz_id: string | null
   pass_percentage: string | number | null
   quiz_instructions?: string | null
+  article_format?: string | null
+  duration_seconds?: string | number | null
+  is_preview?: boolean | null
+  is_downloadable?: boolean | null
+  release_at?: string | Date | null
+  drip_delay_days?: string | number | null
+  prerequisite_lesson_id?: string | null
+  completion_threshold?: string | number | null
+  max_attempts?: string | number | null
+  embed_kind?: string | null
+  caption_path?: string | null
+  assignment_extensions?: string[] | null
+  assignment_max_upload_bytes?: string | number | null
+  assignment_max_files?: string | number | null
+  assignment_max_points?: string | number | null
+  assignment_passing_percentage?: string | number | null
+  scorm_source_zip_path?: string | null
+  scorm_launch_path?: string | null
   question_id: string | null
   question_prompt?: string | null
   option_id: string | null
@@ -126,7 +169,23 @@ export function snapshotDetailsFromRow(row: Record<string, unknown>): CourseSnap
     currency: text(row.currency),
     certificateEnabled: row.certificate_enabled === true,
     courseFormat: text(row.course_format),
+    navigationMode: row.navigation_mode === 'sequential' ? 'sequential' : 'free',
   }
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function nullableIso(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString()
+  }
+  return null
 }
 
 /** Builds the curriculum part of a snapshot from the joined submission-readiness rows. */
@@ -162,6 +221,30 @@ export function snapshotSectionsFromRows(rows: SnapshotCurriculumRow[]): CourseS
         assignmentInstructions: row.assignment_instructions,
         quiz: row.quiz_id && row.pass_percentage !== null
           ? { passPercentage: Number(row.pass_percentage), instructions: row.quiz_instructions ?? null, questions: [] }
+          : null,
+        articleFormat: row.article_format === 'html' ? 'html' : 'plain',
+        durationSeconds: nullableNumber(row.duration_seconds),
+        isPreview: row.is_preview === true,
+        isDownloadable: row.is_downloadable === true,
+        releaseAt: nullableIso(row.release_at),
+        dripDelayDays: nullableNumber(row.drip_delay_days),
+        prerequisiteId: row.prerequisite_lesson_id ?? null,
+        completionThreshold: nullableNumber(row.completion_threshold),
+        maxAttempts: nullableNumber(row.max_attempts),
+        embedKind: row.embed_kind ?? null,
+        captionPath: row.caption_path ?? null,
+        assignment: row.assignment_instructions === null || row.assignment_instructions === undefined
+          ? null
+          : {
+              instructions: row.assignment_instructions,
+              acceptedExtensions: list(row.assignment_extensions),
+              maxUploadBytes: numberOr(row.assignment_max_upload_bytes, 0),
+              maxFiles: numberOr(row.assignment_max_files, 0),
+              maxPoints: numberOr(row.assignment_max_points, 0),
+              passingPercentage: numberOr(row.assignment_passing_percentage, 0),
+            },
+        scorm: row.scorm_source_zip_path
+          ? { sourceZipPath: row.scorm_source_zip_path, launchPath: row.scorm_launch_path ?? null }
           : null,
       }
       materialById.set(row.lesson_id, material)
@@ -203,6 +286,7 @@ const DETAIL_LABELS: Array<[keyof CourseSnapshotDetails, string]> = [
   ['discountPriceMinor', 'Discount price'],
   ['currency', 'Currency'],
   ['certificateEnabled', 'Certificate'],
+  ['navigationMode', 'Navigation (free or in order)'],
 ]
 
 const MATERIAL_LABELS: Array<[keyof CourseSnapshotMaterial, string]> = [
@@ -217,10 +301,40 @@ const MATERIAL_LABELS: Array<[keyof CourseSnapshotMaterial, string]> = [
   ['completionRule', 'completion rule'],
   ['assignmentInstructions', 'assignment instructions'],
   ['quiz', 'quiz questions'],
+  ['articleFormat', 'article formatting'],
+  ['durationSeconds', 'duration'],
+  ['isPreview', 'free preview'],
+  ['isDownloadable', 'download setting'],
+  ['releaseAt', 'release date'],
+  ['dripDelayDays', 'drip delay'],
+  ['prerequisiteId', 'prerequisite'],
+  ['completionThreshold', 'completion threshold'],
+  ['maxAttempts', 'attempt limit'],
+  ['embedKind', 'embed provider'],
+  ['captionPath', 'captions'],
+  ['assignment', 'assignment settings'],
+  ['scorm', 'SCORM package'],
 ]
 
 function same(left: unknown, right: unknown) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+/**
+ * Fields added after a snapshot was stored are missing from it; comparing them would report a
+ * change that never happened, so a field is compared only when both snapshots carry it.
+ */
+function changed<T extends object>(previous: T, current: T, key: keyof T) {
+  if (!(key in previous) || !(key in current)) return false
+  return !same(previous[key], current[key])
+}
+
+/** The assignment instructions are reported on their own; this compares the other settings. */
+function assignmentSettings(value: CourseSnapshotAssignment | null | undefined) {
+  if (!value) return value
+  const { instructions: _instructions, ...settings } = value
+  void _instructions
+  return settings
 }
 
 export function isCourseReviewSnapshot(value: unknown): value is CourseReviewSnapshot {
@@ -234,7 +348,7 @@ export function diffCourseSnapshots(previous: CourseReviewSnapshot, current: Cou
   const changes: CourseReviewChange[] = []
 
   const changedDetails = DETAIL_LABELS
-    .filter(([key]) => !same(previous.details[key], current.details[key]))
+    .filter(([key]) => changed(previous.details, current.details, key))
     .map(([, label]) => label)
   if (changedDetails.length) {
     changes.push({ area: 'details', change: 'changed', label: 'Course details', fields: changedDetails })
@@ -264,7 +378,10 @@ export function diffCourseSnapshots(previous: CourseReviewSnapshot, current: Cou
         return
       }
       const fields = MATERIAL_LABELS
-        .filter(([key]) => !same(beforeMaterial.material[key], material[key]))
+        .filter(([key]) => key === 'assignment'
+          ? key in beforeMaterial.material && key in material
+            && !same(assignmentSettings(beforeMaterial.material.assignment), assignmentSettings(material.assignment))
+          : changed(beforeMaterial.material, material, key))
         .map(([, label]) => label)
       const moved = beforeMaterial.sectionId !== section.id || beforeMaterial.index !== materialIndex
       if (moved) fields.push(beforeMaterial.sectionId !== section.id ? 'moved to another section' : 'order')

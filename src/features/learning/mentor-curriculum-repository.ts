@@ -6,6 +6,7 @@ import {
 } from '@/lib/db/client'
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
 import { courseManagerAccessSql } from './course-access'
+import { lessonsWithLearnerHistory, retireLessons, retireSection, writeQuizQuestions } from './curriculum-history'
 
 export type MentorLessonType =
   | 'video'
@@ -33,9 +34,15 @@ export type MentorLessonDraft = {
 export type MentorQuizDefinitionInput = {
   passPercentage: number
   instructions: string | null
+  /**
+   * Questions and options carry their saved id, so re-saving a quiz updates them in place and
+   * learners' attempts (which reference them) survive. Items without an id are new.
+   */
   questions: Array<{
+    id?: string | null
     prompt: string
     options: Array<{
+      id?: string | null
       label: string
       isCorrect: boolean
     }>
@@ -402,14 +409,18 @@ export function createMentorCurriculumRepository(input: {
        from public.learning_courses course
        left join public.learning_course_sections section
          on section.course_id = course.id
+        and section.removed_at is null
        left join public.learning_lessons lesson
          on lesson.section_id = section.id
+        and lesson.removed_at is null
        left join public.learning_quizzes quiz
          on quiz.lesson_id = lesson.id
        left join public.learning_quiz_questions question
          on question.quiz_id = quiz.id
+        and question.removed_at is null
        left join public.learning_quiz_options option
          on option.question_id = question.id
+        and option.removed_at is null
        where course.id = $2
          and ${courseManagerAccessSql('course', '$1')}
        order by
@@ -433,7 +444,8 @@ export function createMentorCurriculumRepository(input: {
       const positionRows = await query(
         `select coalesce(max(position), -1) + 1 as next_position
          from public.learning_course_sections
-         where course_id = $1`,
+         where course_id = $1
+           and removed_at is null`,
         [courseId],
       ) as NextPositionRow[]
       const nextPosition = Number(positionRows[0]?.next_position ?? 0)
@@ -467,19 +479,41 @@ export function createMentorCurriculumRepository(input: {
   async function deleteSection(actorId: string, courseId: string, sectionId: string) {
     return transaction(async (query) => {
       await requireEditableOwnedCourse(query, actorId, courseId)
-      const deleted = await query(
-        `delete from public.learning_course_sections
+      const sectionRows = await query(
+        `select id
+         from public.learning_course_sections
          where id = $1
            and course_id = $2
-         returning id`,
+           and removed_at is null
+         for update`,
         [sectionId, courseId],
       ) as IdRow[]
-      if (!deleted[0]) throw new Error('section_not_found')
+      if (!sectionRows[0]) throw new Error('section_not_found')
+
+      // A section whose materials learners have history for is retired, never deleted.
+      const lessonRows = await query(
+        `select id from public.learning_lessons where section_id = $1`,
+        [sectionId],
+      ) as IdRow[]
+      const withHistory = await lessonsWithLearnerHistory(query, lessonRows.map((row) => row.id))
+      if (withHistory.size > 0) {
+        await retireSection(query, sectionId)
+      } else {
+        const deleted = await query(
+          `delete from public.learning_course_sections
+           where id = $1
+             and course_id = $2
+           returning id`,
+          [sectionId, courseId],
+        ) as IdRow[]
+        if (!deleted[0]) throw new Error('section_not_found')
+      }
 
       const remaining = await query(
         `select id, position
          from public.learning_course_sections
          where course_id = $1
+           and removed_at is null
          order by position asc, id asc
          for update`,
         [courseId],
@@ -502,6 +536,7 @@ export function createMentorCurriculumRepository(input: {
          from public.learning_course_sections
          where course_id = $1
            and id = $2
+           and removed_at is null
          limit 1`,
         [courseId, sectionId],
       ) as IdRow[]
@@ -510,7 +545,8 @@ export function createMentorCurriculumRepository(input: {
       const positionRows = await query(
         `select coalesce(max(position), -1) + 1 as next_position
          from public.learning_lessons
-         where section_id = $1`,
+         where section_id = $1
+           and removed_at is null`,
         [sectionId],
       ) as NextPositionRow[]
       const nextPosition = Number(positionRows[0]?.next_position ?? 0)
@@ -582,24 +618,32 @@ export function createMentorCurriculumRepository(input: {
            on section.id = lesson.section_id
          where lesson.id = $1
            and section.course_id = $2
+           and lesson.removed_at is null
          for update`,
         [lessonId, courseId],
       ) as LessonOwnershipRow[]
       const lesson = ownedRows[0]
       if (!lesson?.section_id) throw new Error('lesson_not_found')
 
-      const deleted = await query(
-        `delete from public.learning_lessons
-         where id = $1
-         returning id`,
-        [lessonId],
-      ) as IdRow[]
-      if (!deleted[0]) throw new Error('lesson_delete_failed')
+      // A material learners have history for is retired, never deleted.
+      const withHistory = await lessonsWithLearnerHistory(query, [lessonId])
+      if (withHistory.has(lessonId)) {
+        await retireLessons(query, [lessonId])
+      } else {
+        const deleted = await query(
+          `delete from public.learning_lessons
+           where id = $1
+           returning id`,
+          [lessonId],
+        ) as IdRow[]
+        if (!deleted[0]) throw new Error('lesson_delete_failed')
+      }
 
       const remaining = await query(
         `select id, position
          from public.learning_lessons
          where section_id = $1
+           and removed_at is null
          order by position asc, id asc
          for update`,
         [lesson.section_id],
@@ -621,6 +665,7 @@ export function createMentorCurriculumRepository(input: {
         `select id, position
          from public.learning_course_sections
          where course_id = $1
+           and removed_at is null
          order by position asc, id asc
          for update`,
         [courseId],
@@ -644,6 +689,7 @@ export function createMentorCurriculumRepository(input: {
            on section.id = lesson.section_id
          where lesson.id = $1
            and section.course_id = $2
+           and lesson.removed_at is null
          for update`,
         [lessonId, courseId],
       ) as LessonOwnershipRow[]
@@ -654,6 +700,7 @@ export function createMentorCurriculumRepository(input: {
         `select id, position
          from public.learning_lessons
          where section_id = $1
+           and removed_at is null
          order by position asc, id asc
          for update`,
         [lesson.section_id],
@@ -684,12 +731,8 @@ export function createMentorCurriculumRepository(input: {
       if (!lesson) throw new Error('lesson_not_found')
       if (lesson.lesson_type !== 'quiz') throw new Error('lesson_not_quiz')
 
-      await query(
-        `delete from public.learning_quizzes
-         where lesson_id = $1`,
-        [lessonId],
-      )
-
+      // Saved in place: the quiz, its questions and options keep their ids, so learners'
+      // attempts and answers stay attached when a trainer edits the quiz.
       const quizRows = await query(
         `insert into public.learning_quizzes (
            lesson_id,
@@ -699,44 +742,17 @@ export function createMentorCurriculumRepository(input: {
            updated_at
          )
          values ($1, $2, $3, now(), now())
+         on conflict (lesson_id) do update
+         set pass_percentage = excluded.pass_percentage,
+             instructions = excluded.instructions,
+             updated_at = now()
          returning id`,
         [lessonId, definition.passPercentage, definition.instructions],
       ) as IdRow[]
       const quiz = quizRows[0]
       if (!quiz) throw new Error('quiz_save_failed')
 
-      for (const [questionPosition, question] of definition.questions.entries()) {
-        const questionRows = await query(
-          `insert into public.learning_quiz_questions (
-             quiz_id,
-             prompt,
-             position,
-             created_at,
-             updated_at
-           )
-           values ($1, $2, $3, now(), now())
-           returning id`,
-          [quiz.id, question.prompt, questionPosition],
-        ) as IdRow[]
-        const savedQuestion = questionRows[0]
-        if (!savedQuestion) throw new Error('quiz_question_save_failed')
-
-        for (const [optionPosition, option] of question.options.entries()) {
-          await query(
-            `insert into public.learning_quiz_options (
-               question_id,
-               label,
-               position,
-               is_correct,
-               created_at,
-               updated_at
-             )
-             values ($1, $2, $3, $4, now(), now())
-             returning id`,
-            [savedQuestion.id, option.label, optionPosition, option.isCorrect],
-          )
-        }
-      }
+      await writeQuizQuestions(query, quiz.id, definition.questions)
 
       return true
     })

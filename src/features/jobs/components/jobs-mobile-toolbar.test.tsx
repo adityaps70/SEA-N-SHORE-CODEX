@@ -49,18 +49,20 @@ describe('JobsMobileToolbar (phones)', () => {
     fireEvent.click(screen.getByRole('button', { name: /All filters/ }))
 
     const sheet = screen.getByRole('dialog', { name: 'All filters' })
-    for (const heading of ['Sort by', 'Rank / position', 'Vessel type', 'Joining within', 'Experience and salary', 'Certificates and visas', 'Employer and apply']) {
+    for (const heading of ['Sort by', 'Department and rank', 'Vessel type', 'Joining within', 'Experience and salary', 'Certificates and visas', 'Employer and apply']) {
       expect(within(sheet).getByRole('heading', { name: heading })).toBeInTheDocument()
     }
     for (const sort of ['Recommended', 'Newest', 'Joining soonest', 'Highest salary']) {
       expect(within(sheet).getByRole('button', { name: sort })).toBeInTheDocument()
     }
-    expect(within(sheet).getByRole('button', { name: 'Chief Officer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(sheet).getByRole('combobox', { name: 'Rank / position' })).toHaveValue('chief_officer')
     const vessels = within(sheet).getByRole('group', { name: 'Vessel type' })
     expect(within(vessels).queryByRole('button', { name: 'AHTS' })).toBeNull()
     fireEvent.click(within(vessels).getByRole('button', { name: /more$/ }))
     expect(within(vessels).getByRole('button', { name: 'AHTS' })).toBeInTheDocument()
-    expect(within(within(sheet).getByRole('group', { name: 'Rank / position' })).getByRole('button', { name: /more$/ })).toBeInTheDocument()
+    // Round 12: Department → Rank selects from the shared taxonomy; Rank waits for a department.
+    expect(within(sheet).getByRole('combobox', { name: 'Department' })).toHaveValue('deck_officers')
+    expect(within(sheet).getByRole('combobox', { name: 'Rank / position' })).toBeEnabled()
     expect(within(sheet).getByLabelText('Experience (years)')).toBeInTheDocument()
     expect(within(sheet).getByLabelText('Minimum salary')).toBeInTheDocument()
     expect(within(sheet).getByLabelText('Certificate')).toBeInTheDocument()
@@ -92,6 +94,9 @@ describe('JobsMobileToolbar (phones)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All filters' }))
     const sheet = screen.getByRole('dialog', { name: 'All filters' })
     expect(within(sheet).getByText('Vessel type does not apply to shore jobs.')).toBeInTheDocument()
-    expect(within(sheet).getByRole('heading', { name: 'Role / position' })).toBeInTheDocument()
+    expect(within(sheet).getByRole('heading', { name: 'Department and role' })).toBeInTheDocument()
+    const departments = Array.from((within(sheet).getByRole('combobox', { name: 'Department' }) as HTMLSelectElement).options).map((option) => option.value)
+    expect(departments).toContain('technical_fleet')
+    expect(departments).not.toContain('deck_officers')
   })
 })
