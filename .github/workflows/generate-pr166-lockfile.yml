@@ -24,4 +24,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package-lock.json
           git commit -m "Lock npm dependencies for deterministic Docker and Vitest installs"
+          git fetch origin chatgpt/community-direct-s3-20261009
+          git rebase origin/chatgpt/community-direct-s3-20261009
           git push origin HEAD:chatgpt/community-direct-s3-20261009
