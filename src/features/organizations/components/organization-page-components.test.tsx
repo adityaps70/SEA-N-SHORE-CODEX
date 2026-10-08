@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   followOrganizationAction: vi.fn(),
   unfollowOrganizationAction: vi.fn(),
   updateOrganizationBranding: vi.fn(),
+  requestOrganizationMediaUploadAction: vi.fn(),
+  completeOrganizationMediaUploadAction: vi.fn(),
   cropImageToFile: vi.fn(),
 }))
 
@@ -33,7 +35,7 @@ vi.mock('@/features/organizations/follow-actions', () => ({
   followOrganizationAction: mocks.followOrganizationAction,
   unfollowOrganizationAction: mocks.unfollowOrganizationAction,
 }))
-vi.mock('@/features/organizations/workspace-actions', () => ({ updateOrganizationBranding: mocks.updateOrganizationBranding }))
+vi.mock('@/features/organizations/workspace-actions', () => ({ updateOrganizationBranding: mocks.updateOrganizationBranding, requestOrganizationMediaUploadAction: mocks.requestOrganizationMediaUploadAction, completeOrganizationMediaUploadAction: mocks.completeOrganizationMediaUploadAction }))
 
 import { OrganizationBrandingForm } from './organization-branding-form'
 import { OrganizationFollowButton } from './organization-follow-button'
@@ -206,6 +208,9 @@ describe('OrganizationBrandingForm', () => {
     const cropped = new File([new Uint8Array(1024)], 'logo.webp', { type: 'image/webp' })
 
     beforeEach(() => {
+      mocks.requestOrganizationMediaUploadAction.mockResolvedValue({ success: true, key: 'organizations/c1/logo-demo.webp', uploadUrl: 'https://s3.example/presigned' })
+      mocks.completeOrganizationMediaUploadAction.mockResolvedValue({ success: true })
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
       vi.stubGlobal('URL', Object.assign(URL, {
         createObjectURL: vi.fn((file: File) => `blob:https://seanshore.example/${file.name}`),
         revokeObjectURL: vi.fn(),
@@ -244,7 +249,9 @@ describe('OrganizationBrandingForm', () => {
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
       expect(mocks.cropImageToFile).toHaveBeenCalledWith(original, { x: 0, y: 0, width: 600, height: 600 }, { maxEdge: 2048 })
-      expect(input.files?.[0]).toBe(cropped)
+      expect(mocks.requestOrganizationMediaUploadAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'logo', contentType: 'image/webp', size: cropped.size }))
+      expect(mocks.completeOrganizationMediaUploadAction).toHaveBeenCalled()
+      expect(screen.getByRole('status')).toHaveTextContent('Logo updated')
       const preview = document.querySelector('img[src="blob:https://seanshore.example/logo.webp"]')
       expect(preview).not.toBeNull()
     })
@@ -258,8 +265,8 @@ describe('OrganizationBrandingForm', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(input.files?.[0]).toBe(original)
-      expect(document.querySelector('img[src="blob:https://seanshore.example/logo.png"]')).not.toBeNull()
+      expect(mocks.requestOrganizationMediaUploadAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cover', contentType: 'image/webp' }))
+      expect(screen.getByRole('status')).toHaveTextContent('Cover updated')
     })
 
     it('clears the picker and shows no preview when the crop is cancelled', () => {
