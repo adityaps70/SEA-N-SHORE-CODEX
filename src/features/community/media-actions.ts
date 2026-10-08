@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { canAccessPlatformAdmin } from '@/features/admin/access'
+import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { removeCommunityMedia } from './media-service'
 import { buildCommunityMediaKey, isCommunityMediaKind, validateCommunityImage, type CommunityMediaKind } from './media'
@@ -20,7 +20,7 @@ const FORBIDDEN = 'Only the owner and moderators of this group can change its im
 async function canManageCommunityMedia(userId: string, groupId: string) {
   const membership = await communityRepository.getMembership(groupId, userId)
   if (membership?.status === 'active' && isGroupAdminRole(membership.role)) return true
-  return canAccessPlatformAdmin(userId)
+  return canUsePlatformAdminAuthority(userId)
 }
 
 function revalidateCommunityMedia() {
