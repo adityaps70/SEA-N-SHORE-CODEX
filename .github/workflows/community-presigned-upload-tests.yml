@@ -15,4 +15,5 @@ jobs:
           node-version: '22'
       - run: npm install -g npm@11.6.0
       - run: npm ci
+      - run: npm run typecheck
       - run: npx vitest run src/features/community src/features/organizations
