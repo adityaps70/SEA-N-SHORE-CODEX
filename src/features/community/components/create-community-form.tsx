@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { ImageUp } from 'lucide-react'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
@@ -68,6 +69,8 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
   const [iconPreview, previewIcon] = usePreview()
   const [cropping, setCropping] = useState<{ kind: CommunityMediaKind; file: File } | null>(null)
   const [cropUploadError, setCropUploadError] = useState('')
+  const [uploadNotice, setUploadNotice] = useState(false)
+  const uploadRunning = useRef(false)
   const coverInputRef = useRef<HTMLInputElement>(null)
   const iconInputRef = useRef<HTMLInputElement>(null)
   const preselected = initialAs && identities.some((identity) => identity.value === initialAs) ? initialAs : null
@@ -102,6 +105,10 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
 
   function cancelCrop() {
     if (!cropping) return
+    if (createdGroup) {
+      finishWithNotice(createdGroup)
+      return
+    }
     setCropUploadError('')
     const input = inputFor(cropping.kind)
     if (input) input.value = ''
@@ -119,9 +126,45 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     if (createdGroup) {
       await uploadOne(createdGroup.id, kind, scaled)
       if (!completedKinds.current.includes(kind)) completedKinds.current.push(kind)
-      if (completedKinds.current.length === Object.keys(selectedImages.current).length) router.push(`/community/${createdGroup.slug}`)
+      setCropping(null)
+      await uploadRemaining(createdGroup)
+      return
     }
     setCropping(null)
+  }
+
+  function finishWithNotice(group: { id: string; slug: string }) {
+    setUploading(false)
+    setCropping(null)
+    setCropUploadError('')
+    setUploadNotice(true)
+    // Keep the destination available even when client-side navigation is unavailable.
+    router.push(`/community/${group.slug}?mediaUpload=failed`)
+  }
+
+  async function uploadRemaining(group: { id: string; slug: string }) {
+    if (uploadRunning.current) return
+    uploadRunning.current = true
+    setUploading(true)
+    try {
+      for (const kind of ['cover', 'icon'] as const) {
+        if (completedKinds.current.includes(kind)) continue
+        const file = selectedImages.current[kind]
+        if (!file) continue
+        try {
+          await uploadOne(group.id, kind, file)
+          completedKinds.current.push(kind)
+        } catch {
+          setCropUploadError('Upload failed, try again')
+          setCropping({ kind, file })
+          return
+        }
+      }
+      router.push(`/community/${group.slug}`)
+    } finally {
+      uploadRunning.current = false
+      setUploading(false)
+    }
   }
 
   async function uploadOne(groupId: string, kind: CommunityMediaKind, file: File) {
@@ -137,25 +180,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     if (!state?.ok || createdGroup) return
     const group = { id: state.id, slug: state.slug }
     setCreatedGroup(group)
-    const uploadPending = async () => {
-      setUploading(true)
-      for (const kind of ['cover', 'icon'] as const) {
-        const file = selectedImages.current[kind]
-        if (!file) continue
-        try {
-          await uploadOne(group.id, kind, file)
-          completedKinds.current.push(kind)
-        } catch {
-          // Restore this crop dialog so the upload error is shown there, once, on retry.
-          setCropUploadError('Upload failed, try again')
-          setCropping({ kind, file })
-          setUploading(false)
-          return
-        }
-      }
-      router.push(`/community/${group.slug}`)
-    }
-    void uploadPending()
+    void uploadRemaining(group)
   }, [state, createdGroup, router])
 
   const error = cropping ? null : clientError ?? (state && !state.ok ? state.error : null)
@@ -281,6 +306,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
         </div>
       </section>
 
+      {uploadNotice && createdGroup ? <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-sm">Community created. The banner/photo didn’t upload — you can add it from the community page. <Link href={`/community/${createdGroup.slug}`} className="underline">Open community</Link></p> : null}
       {error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
       <div className="flex flex-wrap items-center gap-3">
