@@ -64,6 +64,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
   const [state, formAction, pending] = useActionState(updateOrganizationBranding, initialState)
   const [clientError, setClientError] = useState<string | null>(null)
   const [mediaUploading, setMediaUploading] = useState(false)
+  const [mediaSuccess, setMediaSuccess] = useState<BrandingImageKind | null>(null)
   const [logoPreview, previewLogo] = usePreview()
   const [coverPreview, previewCover] = usePreview()
   const [cropping, setCropping] = useState<{ kind: BrandingImageKind; file: File } | null>(null)
@@ -90,6 +91,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
   async function uploadMedia(kind: BrandingImageKind, file: File) {
     setMediaUploading(true)
     setClientError(null)
+    setMediaSuccess(null)
     try {
       const ticket = await requestOrganizationMediaUploadAction({
         companyId: workspace.id, kind, contentType: file.type, size: file.size,
@@ -102,6 +104,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
       const complete = await completeOrganizationMediaUploadAction({ companyId: workspace.id, kind, key: ticket.key })
       if (!complete.success) throw new Error('Upload failed, try again')
       previewFor(kind)(file)
+      setMediaSuccess(kind)
       if (kind === 'cover') setRemoveCover(false)
       const input = inputFor(kind)
       if (input) input.value = ''
@@ -164,6 +167,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
 
       {state.success && !clientError ? <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">Page details saved. Members see the changes on your organization page now.</p> : null}
 
+      {mediaSuccess ? <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{mediaSuccess === "logo" ? "Logo updated" : "Cover updated"}</p> : null}
       <section aria-labelledby="branding-images-heading" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <h2 id="branding-images-heading" className="text-base font-bold text-navy-950">Logo and cover image</h2>
         <div className="mt-4 overflow-hidden rounded-2xl border border-mist-100">
