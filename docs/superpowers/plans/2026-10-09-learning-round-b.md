@@ -32,8 +32,10 @@ Owner decisions (9 October):
 - [x] `aws-learning-round-b-migration.yml` + `learning-round-b-migration.sh` + guard (plan) + contract test; the
       runner allows exactly the three relaxations, the widened email kind check and the two backfill links
 - [x] Applies cleanly to every earlier migration in PGlite
-- [ ] Plan run on the merged head (previews 0073 in a rolled-back transaction, prints backfill counts)
-- [ ] Arm PR (owner merges and approves), migrate-once, rearm to plan
+- [x] Plan run on the merged head (previews 0073 in a rolled-back transaction, prints backfill counts)
+- [x] Arm PR #177 (owner merged and approved), migrate-once in run 37944729794 (applied and verified: 3 banks,
+      53 bank questions, 0 unlinked live questions), rearm to plan (`330c70bb`). The run shows red only because the
+      workflow's evidence check required the plan-only PLAN_VERIFIED line (see "Runner template" below).
 
 Backfill: every trainer with a live course gets a bank; every live quiz question of a live course is copied into it
 with its options (`imported_from_question_id` = the original), and the quiz question links to its copy
@@ -91,6 +93,7 @@ B5 — certificates on the profile
 - [x] Jobs matching counts visible Sea N Shore certificates as verified
 
 PR 1: [#175](https://github.com/adityaps70/SEA-N-SHORE-CODEX/pull/175), merged as `b042c7a5`.
+PR 2: [#176](https://github.com/adityaps70/SEA-N-SHORE-CODEX/pull/176), merged as `d9b289f0`.
 
 Also in PR 2:
 - Studio course editor → Certificate panel (works on drafts and draft revisions; reviewers see "Certificate design,
@@ -102,10 +105,23 @@ Follow-up before the deploy (owner, 9 October): Step 0 found a passed quiz could
 action (only the attempt limit was checked), and #175 had not fixed it.
 - [x] Once a learner has passed, the server refuses new attempts (start, save, submit) with `quiz_already_passed`;
       a retry of the passing submission (same key) still returns it. Real-SQL tests for plain, timed and graded quizzes.
+      [#178](https://github.com/adityaps70/SEA-N-SHORE-CODEX/pull/178), merged as `70b18870`.
+
+Runner template (owner, 9 October): the round A list repair and round B runners required the plan-only
+`PLAN_VERIFIED` line on every run, so their successful apply runs went red. Both runners are finished and stay as
+they are.
+- [x] `scripts/aws/templates/guarded-migration/`: a runner template (workflow, runner, contract test, `render.mjs`)
+      whose evidence check requires only each path's own last line (plan → `PLAN_ONLY_NO_APPLY`, apply →
+      `APPLY_VERIFIED=true`, nothing pending → `ALREADY_APPLIED=true`)
+- [x] `guarded-migration-template.test.mjs` (Infra CI): renders a sample runner, runs its contract test, and runs
+      the evidence check against plan, apply and nothing-pending output; it fails if the old check comes back
 
 ## Release
 
-- [ ] One guarded migration (0072–0073), one deploy, rearm, Remote Verify green
+- [x] One guarded migration (0072–0073)
+- [ ] One deploy, rearm, Remote Verify green. First attempt: arm #179 (deploy-once `70b18870`), run 37995597045
+      failed before deploying (Docker Hub auth 504 while resolving `docker/dockerfile:1.7`; no image pushed, nothing
+      on AWS changed); rearmed to plan (`8c9550f0`). A new arm follows the template PR.
 - [ ] Live checks on seanshore.in (CSV import of 20, timed draw of 10 with shuffle taken twice, subjective grading
       issues the certificate, profile and verification page, hide removes it from the public profile, old quizzes,
       attempts and certificates unchanged)
