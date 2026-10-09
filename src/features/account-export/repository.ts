@@ -332,6 +332,20 @@ select jsonb_build_object(
       where quiz.lesson_id in (select id from owned_lessons)
     )
   ), '[]'::jsonb),
+  'learningQuestionBankAuthored', coalesce((
+    select jsonb_agg(to_jsonb(question) || jsonb_build_object('options', coalesce((
+      select jsonb_agg(to_jsonb(option_row) order by option_row.position)
+      from public.learning_quiz_options option_row
+      where option_row.question_id = question.id
+    ), '[]'::jsonb)))
+    from public.learning_quiz_questions question
+    where question.bank_id in (
+      select bank.id
+      from public.learning_question_banks bank
+      join public.learning_mentors mentor on mentor.id = bank.mentor_id
+      where mentor.user_id = $1
+    )
+  ), '[]'::jsonb),
   'learningQuizOptionsAuthored', coalesce((
     select jsonb_agg(to_jsonb(option_row))
     from public.learning_quiz_options option_row

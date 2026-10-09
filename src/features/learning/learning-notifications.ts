@@ -22,6 +22,8 @@ export const LEARNING_NOTIFICATION_KINDS = [
   'course_approved',
   'course_changes_requested',
   'submissions_to_grade',
+  'quiz_graded',
+  'certificate_expiring',
 ] as const
 export type LearningNotificationKind = (typeof LEARNING_NOTIFICATION_KINDS)[number]
 
@@ -40,6 +42,9 @@ export type LearningNotificationDetails = {
   verificationCode?: string | null
   /** course_approved / course_changes_requested for changes to a published course. */
   revision?: boolean
+  /** certificate_expiring: when it expires, and how many days were left when the reminder went out. */
+  expiresAt?: string | null
+  daysLeft?: number
 }
 
 export type LearningNotificationInput = {
@@ -184,6 +189,40 @@ export async function notifyAssignmentGraded(query: Query, input: { attemptId: s
         passed: row.passed === null ? null : Boolean(row.passed),
       },
       dedupeKey: `learning_assignment_graded:${input.attemptId}`,
+    })
+  }, false)
+}
+
+/** A trainer graded the written answers of a quiz attempt. */
+export async function notifyQuizGraded(query: Query, input: { attemptId: string }) {
+  return guarded(query, 'quiz_graded', true, async () => {
+    const rows = await query(
+      `select attempt.learner_id, attempt.percentage, attempt.passed, lesson.id as lesson_id, lesson.title as lesson_title,
+              course.id as course_id, course.title as course_title, course.slug as course_slug
+       from public.learning_quiz_attempts attempt
+       inner join public.learning_quizzes quiz on quiz.id = attempt.quiz_id
+       inner join public.learning_lessons lesson on lesson.id = quiz.lesson_id
+       inner join public.learning_course_sections section on section.id = lesson.section_id
+       inner join public.learning_courses course on course.id = section.course_id
+       where attempt.id = $1 and attempt.status = 'completed'`,
+      [input.attemptId],
+    )
+    const row = rows[0]
+    if (!row) return false
+    return writeNotification(query, {
+      recipientId: String(row.learner_id),
+      kind: 'quiz_graded',
+      courseId: String(row.course_id),
+      lessonId: String(row.lesson_id),
+      details: {
+        courseTitle: String(row.course_title),
+        courseSlug: String(row.course_slug),
+        lessonId: String(row.lesson_id),
+        lessonTitle: String(row.lesson_title),
+        percentage: Number(row.percentage),
+        passed: Boolean(row.passed),
+      },
+      dedupeKey: `learning_quiz_graded:${input.attemptId}`,
     })
   }, false)
 }

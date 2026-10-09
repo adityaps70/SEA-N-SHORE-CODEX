@@ -42,10 +42,7 @@ import type {
 import { ASSIGNMENT_DEFAULTS } from '../assignment-policy'
 import { plainTextToArticleHtml } from '../article-html'
 import { ArticleRichTextEditor } from './article-rich-text-editor'
-import type {
-  MentorQuizDefinition,
-  MentorQuizDefinitionInput,
-} from '../mentor-curriculum-repository'
+import { QuizEditor, quizStateFromPersisted, quizPayload, type QuizDraftState } from './mentor-quiz-editor'
 import { processCurriculumScormPackage } from '../scorm-authoring-actions'
 import { learningMediaAccept, type LearningMediaKind } from '../media-policy'
 import { LearningMediaUploadField } from './learning-media-upload-field'
@@ -89,18 +86,6 @@ type MaterialFormState = {
 /** New assignments accept common document, image and archive files, up to 20 MB and 5 files each. */
 const NEW_ASSIGNMENT_EXTENSIONS = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.zip'
 
-
-type QuizDraftState = {
-  passPercentage: string
-  instructions: string
-  // Saved questions and options keep their id, so saving updates them in place and learners'
-  // attempts stay attached; new ones have none until saved.
-  questions: Array<{
-    id?: string
-    prompt: string
-    options: Array<{ id?: string; label: string; isCorrect: boolean }>
-  }>
-}
 
 type ActionResult =
   | { ok: true }
@@ -265,40 +250,6 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
   }
 }
 
-function quizStateFromPersisted(quiz: MentorQuizDefinition | null): QuizDraftState {
-  if (!quiz) return { passPercentage: '80', instructions: '', questions: [] }
-  return {
-    passPercentage: String(quiz.passPercentage),
-    instructions: quiz.instructions ?? '',
-    questions: quiz.questions.map((question) => ({
-      id: question.id,
-      prompt: question.prompt,
-      options: question.options.map((option) => ({ id: option.id, label: option.label, isCorrect: option.isCorrect })),
-    })),
-  }
-}
-
-function quizPayload(draft: QuizDraftState): MentorQuizDefinitionInput {
-  return {
-    passPercentage: Number(draft.passPercentage),
-    instructions: draft.instructions.trim() || null,
-    questions: draft.questions.map((question) => ({
-      id: question.id ?? null,
-      prompt: question.prompt,
-      options: question.options.map((option) => ({ id: option.id ?? null, label: option.label, isCorrect: option.isCorrect })),
-    })),
-  }
-}
-
-function moveArrayItem<T>(items: T[], index: number, direction: 'up' | 'down') {
-  const target = direction === 'up' ? index - 1 : index + 1
-  if (target < 0 || target >= items.length) return items
-  const next = [...items]
-  const currentValue = next[index]!
-  next[index] = next[target]!
-  next[target] = currentValue
-  return next
-}
 
 function uploadConfiguration(type: MaterialType): null | {
   kind: LearningMediaKind
@@ -578,142 +529,6 @@ function MaterialFields({
   )
 }
 
-function QuizEditor({
-  courseId,
-  material,
-  draft,
-  setDraft,
-  pending,
-  onSave,
-  onCancel,
-}: {
-  courseId: string
-  material: MentorMaterial
-  draft: QuizDraftState
-  setDraft: (next: QuizDraftState) => void
-  pending: boolean
-  onSave: (courseId: string, materialId: string, input: MentorQuizDefinitionInput) => void
-  onCancel: () => void
-}) {
-  function updateQuestion(questionIndex: number, prompt: string) {
-    setDraft({ ...draft, questions: draft.questions.map((question, index) => index === questionIndex ? { ...question, prompt } : question) })
-  }
-
-  function updateOption(questionIndex: number, optionIndex: number, label: string) {
-    setDraft({
-      ...draft,
-      questions: draft.questions.map((question, index) => index === questionIndex
-        ? { ...question, options: question.options.map((option, innerIndex) => innerIndex === optionIndex ? { ...option, label } : option) }
-        : question),
-    })
-  }
-
-  function markCorrect(questionIndex: number, optionIndex: number) {
-    setDraft({
-      ...draft,
-      questions: draft.questions.map((question, index) => index === questionIndex
-        ? { ...question, options: question.options.map((option, innerIndex) => ({ ...option, isCorrect: innerIndex === optionIndex })) }
-        : question),
-    })
-  }
-
-  function addQuestion() {
-    setDraft({
-      ...draft,
-      questions: [...draft.questions, {
-        prompt: '',
-        options: [{ label: '', isCorrect: false }, { label: '', isCorrect: false }],
-      }],
-    })
-  }
-
-  function removeQuestion(questionIndex: number) {
-    setDraft({ ...draft, questions: draft.questions.filter((_, index) => index !== questionIndex) })
-  }
-
-  function moveQuestion(questionIndex: number, direction: 'up' | 'down') {
-    setDraft({ ...draft, questions: moveArrayItem(draft.questions, questionIndex, direction) })
-  }
-
-  function addOption(questionIndex: number) {
-    setDraft({ ...draft, questions: draft.questions.map((question, index) => index === questionIndex ? { ...question, options: [...question.options, { label: '', isCorrect: false }] } : question) })
-  }
-
-  function removeOption(questionIndex: number, optionIndex: number) {
-    setDraft({ ...draft, questions: draft.questions.map((question, index) => index === questionIndex ? { ...question, options: question.options.filter((_, innerIndex) => innerIndex !== optionIndex) } : question) })
-  }
-
-  function moveOption(questionIndex: number, optionIndex: number, direction: 'up' | 'down') {
-    setDraft({ ...draft, questions: draft.questions.map((question, index) => index === questionIndex ? { ...question, options: moveArrayItem(question.options, optionIndex, direction) } : question) })
-  }
-
-  return (
-    <section className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/60 p-4 sm:p-5" aria-label={`Quiz editor ${material.title}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-sky-700"><FileQuestion className="size-4" aria-hidden="true" /> Assessment editor</p>
-          <h4 className="mt-1 font-bold text-navy-950">{material.title}</h4>
-          <p className="mt-1 text-xs leading-5 text-muted">Correct answers stay in trainer/admin authoring data and are never returned in the learner quiz read model.</p>
-        </div>
-        <button type="button" onClick={onCancel} className="rounded-lg p-2 text-muted hover:bg-white" aria-label={`Close quiz editor ${material.title}`}><X className="size-4" aria-hidden="true" /></button>
-      </div>
-
-      <div className="mt-4 grid gap-4 md:grid-cols-[180px_1fr]">
-        <label className="text-sm font-semibold text-navy-950">
-          Pass percentage
-          <input aria-label="Quiz pass percentage" type="number" min="1" max="100" step="1" className={inputClassName()} value={draft.passPercentage} onChange={(event) => setDraft({ ...draft, passPercentage: event.target.value })} />
-        </label>
-        <label className="text-sm font-semibold text-navy-950">
-          Instructions <span className="font-normal text-muted">(optional)</span>
-          <textarea aria-label="Quiz instructions" className={`${inputClassName()} min-h-20 resize-y`} value={draft.instructions} onChange={(event) => setDraft({ ...draft, instructions: event.target.value })} />
-        </label>
-      </div>
-
-      <div className="mt-5 space-y-4">
-        {draft.questions.map((question, questionIndex) => (
-          <section key={questionIndex} className="rounded-2xl border border-mist-200 bg-white p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-bold text-navy-950">Question {questionIndex + 1}</p>
-              <div className="flex items-center gap-1">
-                <button type="button" aria-label={`Move question ${questionIndex + 1} up`} disabled={pending || questionIndex === 0} onClick={() => moveQuestion(questionIndex, 'up')} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowUp className="size-4" /></button>
-                <button type="button" aria-label={`Move question ${questionIndex + 1} down`} disabled={pending || questionIndex === draft.questions.length - 1} onClick={() => moveQuestion(questionIndex, 'down')} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowDown className="size-4" /></button>
-                <button type="button" aria-label={`Remove question ${questionIndex + 1}`} disabled={pending} onClick={() => removeQuestion(questionIndex)} className="rounded-lg p-2 text-rose-700 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="size-4" /></button>
-              </div>
-            </div>
-            <label className="mt-3 block text-sm font-semibold text-navy-950">
-              Prompt
-              <textarea aria-label={`Question ${questionIndex + 1} prompt`} className={`${inputClassName()} min-h-20 resize-y`} value={question.prompt} onChange={(event) => updateQuestion(questionIndex, event.target.value)} />
-            </label>
-            <div className="mt-4 space-y-2">
-              {question.options.map((option, optionIndex) => (
-                <div key={optionIndex} className="grid gap-2 rounded-xl border border-mist-100 bg-mist-50/50 p-3 md:grid-cols-[auto_1fr_auto] md:items-center">
-                  <label className="flex items-center gap-2 text-xs font-bold text-navy-950">
-                    <input aria-label={`Question ${questionIndex + 1} option ${optionIndex + 1} correct`} type="radio" name={`quiz-${material.id}-question-${questionIndex}-correct`} checked={option.isCorrect} onChange={() => markCorrect(questionIndex, optionIndex)} /> Correct
-                  </label>
-                  <input aria-label={`Question ${questionIndex + 1} option ${optionIndex + 1}`} className="min-h-10 rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm text-navy-950 outline-none focus:border-teal-500" value={option.label} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} />
-                  <div className="flex items-center justify-end gap-1">
-                    <button type="button" aria-label={`Move question ${questionIndex + 1} option ${optionIndex + 1} up`} disabled={optionIndex === 0} onClick={() => moveOption(questionIndex, optionIndex, 'up')} className="grid size-9 place-items-center rounded-lg text-muted transition-colors enabled:hover:bg-mist-100 enabled:hover:text-navy-950 disabled:cursor-not-allowed disabled:opacity-30"><ArrowUp className="size-3.5" /></button>
-                    <button type="button" aria-label={`Move question ${questionIndex + 1} option ${optionIndex + 1} down`} disabled={optionIndex === question.options.length - 1} onClick={() => moveOption(questionIndex, optionIndex, 'down')} className="grid size-9 place-items-center rounded-lg text-muted transition-colors enabled:hover:bg-mist-100 enabled:hover:text-navy-950 disabled:cursor-not-allowed disabled:opacity-30"><ArrowDown className="size-3.5" /></button>
-                    <button type="button" aria-label={`Remove question ${questionIndex + 1} option ${optionIndex + 1}`} onClick={() => removeOption(questionIndex, optionIndex)} className="grid size-9 place-items-center rounded-lg text-rose-700 transition-colors hover:bg-rose-50"><Trash2 className="size-3.5" /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button type="button" aria-label={`Add option to question ${questionIndex + 1}`} onClick={() => addOption(questionIndex)} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-navy-950 hover:bg-mist-50"><Plus className="size-3.5" /> Add answer option</button>
-          </section>
-        ))}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <button type="button" onClick={addQuestion} className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50"><Plus className="size-4" /> Add question</button>
-        <button type="button" disabled={pending} onClick={() => onSave(courseId, material.id, quizPayload(draft))} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-900 disabled:opacity-60">
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save quiz
-        </button>
-      </div>
-    </section>
-  )
-}
-
 export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false }: Props) {
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<Message>(null)
@@ -727,7 +542,7 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
   const [editingMaterial, setEditingMaterial] = useState<MaterialFormState>(emptyMaterialState)
   const [confirmDeleteMaterialId, setConfirmDeleteMaterialId] = useState<string | null>(null)
   const [quizEditingMaterialId, setQuizEditingMaterialId] = useState<string | null>(null)
-  const [quizDraft, setQuizDraft] = useState<QuizDraftState>({ passPercentage: '80', instructions: '', questions: [] })
+  const [quizDraft, setQuizDraft] = useState<QuizDraftState>(() => quizStateFromPersisted(null))
 
   const allMaterials = useMemo(() => curriculum.sections.flatMap((section) => section.materials), [curriculum.sections])
 

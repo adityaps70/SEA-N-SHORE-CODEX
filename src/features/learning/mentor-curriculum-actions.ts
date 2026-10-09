@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { quizDefinitionSchema } from './quiz-question-schema'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
@@ -67,26 +68,8 @@ const lessonSchema = z.object({
   }
 })
 
-const quizSchema = z.object({
-  passPercentage: z.number().int().min(1).max(100),
-  instructions: nullableText(4000),
-  questions: z.array(z.object({
-    id: z.string().uuid().nullable().optional(),
-    prompt: z.string().trim().min(1, 'Quiz question prompt is required.').max(4000),
-    options: z.array(z.object({
-      id: z.string().uuid().nullable().optional(),
-      label: z.string().trim().min(1, 'Quiz answer text is required.').max(2000),
-      isCorrect: z.boolean(),
-    })).min(2, 'Each quiz question needs at least two answer options.').max(20),
-  })).min(1, 'Add at least one quiz question.').max(100),
-}).superRefine((quiz, context) => {
-  for (const [questionIndex, question] of quiz.questions.entries()) {
-    const correctCount = question.options.filter((option) => option.isCorrect).length
-    if (correctCount !== 1) {
-      context.addIssue({ code: 'custom', path: ['questions', questionIndex, 'options'], message: 'Each quiz question must have exactly one correct answer.' })
-    }
-  }
-})
+// Round B: every question type, marks, tags and the quiz settings (one schema with the question bank).
+const quizSchema = quizDefinitionSchema
 
 const sectionTitleSchema = z.string().trim().min(1, 'Section title is required.').max(180)
 

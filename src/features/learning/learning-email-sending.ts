@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { finalizeExpiredQuizSessions } from './learner-quiz-repository'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
 import { LEARNING_EMAIL_FROM, learningEmail } from './learning-email'
@@ -269,7 +270,15 @@ export function createLearningDigestSweep(input: { transaction?: Transaction; no
       const now = input.now?.() ?? new Date()
       const released = await sweepReleasedLessons(transaction, { now })
       const submissions = await sweepSubmissionsToGrade(transaction, { now })
-      return { releasedNoticed: released.noticed, releasedNotified: released.notified, submissions: submissions.submissions, trainersNotified: submissions.notified }
+      // Learning round B: timed quiz attempts whose time ran out while the learner was away.
+      const quizSessions = await finalizeExpiredQuizSessions(transaction)
+      return {
+        releasedNoticed: released.noticed,
+        releasedNotified: released.notified,
+        submissions: submissions.submissions,
+        trainersNotified: submissions.notified,
+        expiredQuizAttempts: quizSessions.finalized,
+      }
     },
   }
 }

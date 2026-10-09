@@ -17,6 +17,10 @@ vi.mock('@/features/learning/repository', () => ({
 vi.mock('@/features/learning/assignment-grading-repository', () => ({
   assignmentGradingRepository: { listForMentor: mocks.listForMentor },
 }))
+// Learning round B: written quiz answers share the grading queue; none in these cases.
+vi.mock('@/features/learning/quiz-grading-repository', () => ({
+  quizGradingRepository: { listForMentor: async () => [] },
+}))
 vi.mock('@/features/organizations/repository', () => ({
   organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
 }))

@@ -169,6 +169,9 @@ function readinessErrorCopy(error: CourseSubmissionReadinessError) {
   if (error.code === 'course_quiz_questions_missing') return `Quiz “${materialTitle}” needs at least one question.`
   if (error.code === 'course_quiz_options_invalid') return `Question ${questionNumber} in quiz “${materialTitle}” needs at least two answer options.`
   if (error.code === 'course_quiz_correct_answer_invalid') return `Question ${questionNumber} in quiz “${materialTitle}” must have exactly one correct answer.`
+  if (error.code === 'course_quiz_correct_answers_missing') return `Question ${questionNumber} in quiz “${materialTitle}” needs at least one correct answer.`
+  if (error.code === 'course_quiz_accepted_answers_missing') return `Question ${questionNumber} in quiz “${materialTitle}” needs at least one accepted answer.`
+  if (error.code === 'course_quiz_draw_too_large') return `Quiz “${materialTitle}” draws more questions than it has.`
   return 'Review the published curriculum materials and try again.'
 }
 
