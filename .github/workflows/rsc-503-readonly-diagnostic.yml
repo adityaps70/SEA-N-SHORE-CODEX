@@ -128,7 +128,7 @@ jobs:
                   print("METRIC", name, "NO_DATA (not zero)", flush=True)
           
           def search(ns, metric, dimensions, term, stat):
-              expr = "SEARCH('{" + ns + "," + dimensions + '} MetricName="' + metric + '" AND "' + term + '", ' + "'" + stat + "', 300)"
+              expr = "SEARCH('{%s,%s} MetricName=%s AND %s', '%s', 300)" % (ns, dimensions, json.dumps(metric), json.dumps(term), stat)
               return {"Id": "search", "Expression": expr, "Period": 300, "ReturnData": True}
           
           def direct(ns, metric, dimensions, stat):
