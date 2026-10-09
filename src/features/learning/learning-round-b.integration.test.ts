@@ -304,6 +304,66 @@ describe('marks and the answer policy', () => {
   }, 120_000)
 })
 
+describe('a passed quiz is finished', () => {
+  it('refuses further submissions once passed, while a retry of the passing submission still returns it', async () => {
+    const setup = await quizWithQuestions(2)
+    const learner = await enrollLearner(db.query, setup.course.courseId, 'Fixture Learner R')
+    const right = setup.questions.map((question) => ({ questionId: question.id, optionId: question.correct }))
+    const wrong = setup.questions.map((question) => ({ questionId: question.id, optionId: question.wrong }))
+    const repository = learnerRepository()
+
+    // A failed attempt may be followed by another; the pass ends the quiz.
+    await repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, wrong)
+    const key = crypto.randomUUID()
+    const passed = await repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, right, key)
+    expect(passed).toMatchObject({ passed: true, attemptNumber: 2 })
+
+    await expect(repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, wrong)).rejects.toThrow('quiz_already_passed')
+    await expect(repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, right)).rejects.toThrow('quiz_already_passed')
+    // The network retry of the passing submission is answered from the stored attempt, not refused.
+    expect(await repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, right, key)).toMatchObject({ attemptId: passed.attemptId, passed: true })
+
+    const attempts = await db.query(`select attempt_number, passed from public.learning_quiz_attempts where enrollment_id = $1 order by attempt_number`, [learner.enrollmentId])
+    expect(attempts).toEqual([{ attempt_number: 1, passed: false }, { attempt_number: 2, passed: true }])
+    expect(await db.query(`select attempts_used from public.learning_progress where enrollment_id = $1 and lesson_id = $2`, [learner.enrollmentId, setup.lessonId])).toEqual([{ attempts_used: 2 }])
+  }, 120_000)
+
+  it('refuses a new timed attempt, and answers to one, once the quiz is passed', async () => {
+    const setup = await quizWithQuestions(2, { time_limit_minutes: 10, shuffle_questions: true })
+    const learner = await enrollLearner(db.query, setup.course.courseId, 'Fixture Learner S')
+    const repository = learnerRepository()
+    const session = await repository.startQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId)
+    const right = setup.questions.map((question) => ({ questionId: question.id, optionId: question.correct }))
+    expect(await repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, right, crypto.randomUUID(), session.id)).toMatchObject({ passed: true })
+
+    await expect(repository.startQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId)).rejects.toThrow('quiz_already_passed')
+    await expect(repository.saveQuizAnswers(learner.learnerId, setup.course.slug, setup.lessonId, session.id, right)).rejects.toThrow('quiz_already_passed')
+    await expect(repository.submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, right, crypto.randomUUID(), session.id)).rejects.toThrow('quiz_already_passed')
+    expect(await db.query(`select count(*)::int as count from public.learning_quiz_attempt_sessions where enrollment_id = $1`, [learner.enrollmentId])).toEqual([{ count: 1 }])
+    expect(await db.query(`select count(*)::int as count from public.learning_quiz_attempts where enrollment_id = $1`, [learner.enrollmentId])).toEqual([{ count: 1 }])
+  }, 120_000)
+
+  it('refuses further submissions once a trainer’s grade passes an attempt with a written answer', async () => {
+    const setup = await quizWithQuestions(2)
+    const [single, written] = setup.questions
+    await db.query(`update public.learning_quiz_questions set question_type = 'subjective' where id = $1`, [written!.id])
+    await db.query(`delete from public.learning_quiz_options where question_id = $1`, [written!.id])
+    const learner = await enrollLearner(db.query, setup.course.courseId, 'Fixture Learner T')
+    const answers = [{ questionId: single!.id, optionId: single!.correct }, { questionId: written!.id, text: 'A fixture written answer.' }]
+    const submitted = await learnerRepository().submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, answers)
+    const trainer = await db.query(
+      `select mentor.user_id from public.learning_courses course inner join public.learning_mentors mentor on mentor.id = course.mentor_id where course.id = $1`,
+      [setup.course.courseId],
+    )
+    const grading = createQuizGradingRepository({ query: db.query, transaction: db.transaction })
+    const review = await grading.getForMentor(String(trainer[0]!.user_id), submitted.attemptId)
+    const pending = review!.answers.find((answer) => answer.gradingStatus === 'pending')!
+    expect(await grading.grade(String(trainer[0]!.user_id), submitted.attemptId, [{ answerId: pending.id, points: 1, feedback: null }])).toMatchObject({ passed: true })
+
+    await expect(learnerRepository().submitQuizAttempt(learner.learnerId, setup.course.slug, setup.lessonId, answers)).rejects.toThrow('quiz_already_passed')
+  }, 120_000)
+})
+
 describe('written answers', () => {
   it('waits for the trainer, then the grade completes the material and issues the certificate', async () => {
     const setup = await quizWithQuestions(2)

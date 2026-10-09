@@ -49,7 +49,10 @@ function quizError(error: unknown) {
     if (error.message === 'quiz_session_closed') {
       return 'This attempt has already been submitted. Reload the page to see your result.'
     }
-    if (error.message === 'quiz_session_stale') {
+    if (error.message === 'quiz_already_passed') {
+      return 'You have already passed this quiz, so this answer was not submitted.'
+    }
+        if (error.message === 'quiz_session_stale') {
       return 'Your trainer updated this quiz while you were answering. Reload the page to start again; this attempt is not counted.'
     }
     if (error.message === 'quiz_time_up') {
@@ -127,6 +130,9 @@ export async function startLearningQuiz(
   } catch (error) {
     if (error instanceof Error && error.message === 'learning_attempt_limit_reached') {
       return { ok: false, error: 'You have used all your attempts for this quiz.', limitReached: true }
+    }
+    if (error instanceof Error && error.message === 'quiz_already_passed') {
+      return { ok: false, error: 'You have already passed this quiz.' }
     }
     const message = quizError(error)
     return { ok: false, error: message === 'We could not submit this quiz. Please try again.' ? 'We could not start this quiz. Please try again.' : message }

@@ -98,6 +98,11 @@ Also in PR 2:
 - A certificate copies the design, serial prefix, validity and signatory when issued; later course edits never
   change it. My Learning shows the download as soon as a certificate exists (final-quiz courses).
 
+Follow-up before the deploy (owner, 9 October): Step 0 found a passed quiz could be resubmitted through the server
+action (only the attempt limit was checked), and #175 had not fixed it.
+- [x] Once a learner has passed, the server refuses new attempts (start, save, submit) with `quiz_already_passed`;
+      a retry of the passing submission (same key) still returns it. Real-SQL tests for plain, timed and graded quizzes.
+
 ## Release
 
 - [ ] One guarded migration (0072–0073), one deploy, rearm, Remote Verify green
