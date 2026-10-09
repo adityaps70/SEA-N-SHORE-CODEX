@@ -157,6 +157,15 @@ describe('learner quiz server action', () => {
     })
   })
 
+  it('tells the learner the quiz is already passed when the server refuses another attempt', async () => {
+    mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('quiz_already_passed'))
+
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
+      ok: false,
+      error: 'You have already passed this quiz, so this answer was not submitted.',
+    })
+  })
+
   it('returns safe generic copy for unexpected quiz submission failures', async () => {
     mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('database_unavailable'))
 

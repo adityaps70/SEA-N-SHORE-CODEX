@@ -223,6 +223,25 @@ describe('learner quiz repository', () => {
     expect(writes).toEqual([])
   })
 
+  it('refuses a new attempt once the learner has passed, before writing anything', async () => {
+    const writes: string[] = []
+    const repository = createLearnerQuizRepository({
+      transaction: async (work) => work(async (text) => {
+        if (/^(insert|update)/i.test(text.trim())) writes.push(text)
+        if (text.includes('from public.learning_quizzes quiz')) return [{ ...accessRow()[0], attempts_used: 1, any_passed: true }]
+        if (text.includes('from public.learning_quiz_questions question')) return questionRows()
+        if (text.includes('from public.learning_quiz_options option')) return scoringOptionRows()
+        return []
+      }),
+    })
+
+    await expect(repository.submitQuizAttempt(learnerId, slug, lessonId, [
+      { questionId: questionOneId, optionId: optionOneCorrectId },
+      { questionId: questionTwoId, optionId: optionTwoCorrectId },
+    ])).rejects.toThrow('quiz_already_passed')
+    expect(writes).toEqual([])
+  })
+
   it('allows a learner to retry after a failed attempt by inserting a new immutable attempt', async () => {
     let attemptNumber = 0
     const attemptIds: string[] = []

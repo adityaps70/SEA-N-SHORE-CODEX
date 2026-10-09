@@ -796,6 +796,8 @@ export function createLearnerQuizRepository(input: {
       if (!access) throw new Error('quiz_not_accessible')
       const settings = settingsOf(access)
       if (!needsSession(settings)) throw new Error('quiz_session_not_needed')
+      // A passed quiz is finished: no further attempts.
+      if (access.any_passed) throw new Error('quiz_already_passed')
 
       const open = await loadOpenSession(query, access.enrollment_id, access.quiz_id, true)
       if (open?.stale) await closeStaleSession(query, open.id)
@@ -846,6 +848,7 @@ export function createLearnerQuizRepository(input: {
   async function lockedSession(query: QuizQuery, learnerId: string, slug: string, lessonId: string, sessionId: string) {
     const access = (await query(quizAccessQuery(true), [learnerId, slug, lessonId]) as QuizAccessRow[])[0]
     if (!access) throw new Error('quiz_not_accessible')
+    if (access.any_passed) throw new Error('quiz_already_passed')
     const session = await loadOpenSession(query, access.enrollment_id, access.quiz_id, true)
     if (session?.stale) throw new Error('quiz_session_stale')
     return { access, session: session && session.id === sessionId && session.learner_id === learnerId ? session : null }
@@ -963,6 +966,9 @@ export function createLearnerQuizRepository(input: {
           ...(summary.autoSubmitted ? { autoSubmitted: true } : {}),
         }
       }
+
+      // A passed quiz is finished: no further attempts (a retry of the passing submission is answered above).
+      if (access.any_passed) throw new Error('quiz_already_passed')
 
       if (needsSession(settingsOf(access))) {
         const session = sessionId ? await loadOpenSession(query, access.enrollment_id, access.quiz_id, true) : null
