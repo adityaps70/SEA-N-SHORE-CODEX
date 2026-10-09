@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""24-hour read-only CloudFront/WAF/ALB/ECS/CloudWatch correlation. No API mutations."""
+import datetime as datetime
+import json
+import os
+import re
+import subprocess
+import tempfile
+from collections import defaultdict
+UTC = datetime.timezone.utc
+end = datetime.datetime.now(UTC).replace(second=0,microsecond=0)
+start = end-datetime.timedelta(hours=24)
+region = os.environ.get("AWS_REGION","ap-south-1")
+cluster = os.environ["ECS_CLUSTER"]
+service = os.environ["ECS_SERVICE"]
+def iso(d):
+    return d.strftime("%Y-%m-%dT%H:%M:%SZ")
+def timeparse(v):
+    return datetime.datetime.fromisoformat(v.replace("Z","+00:00")).astimezone(UTC)
+def aws(api,action,*args,at=None,optional=False):
+    p=subprocess.run(["aws",api,action,*map(str,args),"--region",at or region,"--output","json"],text=True,capture_output=True,timeout=150)
+    if p.returncode:
+        print("QUERY_ERROR",api,action,repr(p.stderr.strip().splitlines()[-1:])[:320],flush=True)
+        if optional: return {}
+        raise RuntimeError(api+" "+action+" failed")
+    return json.loads(p.stdout or "{}")
+print("UTC_WINDOW",iso(start),iso(end),flush=True)
+print("ACCOUNT",aws("sts","get-caller-identity").get("Account"))
+svc=aws("ecs","describe-services","--cluster",cluster,"--services",service)["services"][0]
+print("WEB_ECS_SERVICE",svc["serviceName"],"running",svc.get("runningCount"),"desired",svc.get("desiredCount"),"pending",svc.get("pendingCount"))
+tg=svc["loadBalancers"][0]["targetGroupArn"]
+alb=aws("elbv2","describe-load-balancers","--names","sea-n-shore-staging-alb")["LoadBalancers"][0]
+ldim=alb["LoadBalancerArn"].split(":loadbalancer/")[1]
+tdim=tg.split(":targetgroup/")[1]
+for entry in aws("elbv2","describe-target-health","--target-group-arn",tg).get("TargetHealthDescriptions",[]):
+    th=entry["TargetHealth"]
+    print("CURRENT_TARGET",entry["Target"]["Id"],th.get("State"),th.get("Reason","-"))
+definition=aws("ecs","describe-task-definition","--task-definition",svc["taskDefinition"])["taskDefinition"]
+web=next((c for c in definition["containerDefinitions"] if c.get("name")=="web"),None)
+if not web:
+    web=next((c for c in definition["containerDefinitions"] if c.get("logConfiguration",{}).get("logDriver")=="awslogs"),None)
+loggroup=(web or {}).get("logConfiguration",{}).get("options",{}).get("awslogs-group")
+print("TASK_DEFINITION",definition["family"],definition["revision"],"CPU",definition.get("cpu"),"MEMORY",definition.get("memory"))
+print("LOG_GROUP",loggroup or "missing")
+distributions=aws("cloudfront","list-distributions",at="us-east-1").get("DistributionList",{}).get("Items",[])
+dist=next((d for d in distributions if "seanshore.in" in d.get("Aliases",{}).get("Items",[])),None)
+if not dist: raise RuntimeError("CloudFront distribution for seanshore.in not found")
+print("DISTRIBUTION",dist["Id"])
+qregional=[]; qglobal=[]
+def add(ident,ns,metric,dims,stat="Sum",global_metric=False):
+    dest=qglobal if global_metric else qregional
+    dest.append({"Id":ident,"MetricStat":{"Metric":{"Namespace":ns,"MetricName":metric,"Dimensions":[{"Name":k,"Value":v} for k,v in dims.items()]},"Period":300,"Stat":stat},"ReturnData":True})
+add("cf5xx","AWS/CloudFront","5xxErrorRate",{"DistributionId":dist["Id"],"Region":"Global"},"Average",True)
+add("originlat","AWS/CloudFront","OriginLatency",{"DistributionId":dist["Id"],"Region":"Global"},"Average",True)
+add("alb503","AWS/ApplicationELB","HTTPCode_ELB_503_Count",{"LoadBalancer":ldim})
+add("target5xx","AWS/ApplicationELB","HTTPCode_Target_5XX_Count",{"LoadBalancer":ldim,"TargetGroup":tdim})
+add("healthymin","AWS/ApplicationELB","HealthyHostCount",{"LoadBalancer":ldim,"TargetGroup":tdim},"Minimum")
+add("healthymax","AWS/ApplicationELB","HealthyHostCount",{"LoadBalancer":ldim,"TargetGroup":tdim},"Maximum")
+add("unhealthymax","AWS/ApplicationELB","UnHealthyHostCount",{"LoadBalancer":ldim,"TargetGroup":tdim},"Maximum")
+add("ecscpu","AWS/ECS","CPUUtilization",{"ClusterName":cluster,"ServiceName":service},"Average")
+add("ecsmem","AWS/ECS","MemoryUtilization",{"ClusterName":cluster,"ServiceName":service},"Average")
+aclarn=dist.get("WebACLId")
+if aclarn:
+    acl_list=aws("wafv2","list-web-acls","--scope","CLOUDFRONT",at="us-east-1",optional=True).get("WebACLs",[])
+    found=next((a for a in acl_list if a.get("ARN")==aclarn or a.get("Name")=="sea-n-shore-staging-edge"),None)
+    if found:
+        acl=aws("wafv2","get-web-acl","--scope","CLOUDFRONT","--name",found["Name"],"--id",found["Id"],at="us-east-1",optional=True).get("WebACL",{})
+        rate=next((r for r in acl.get("Rules",[]) if r["Name"]=="PerIpRateLimit"),None)
+        if rate:
+            print("WAF_RATE_RULE",rate["Name"],"threshold",rate.get("Statement",{}).get("RateBasedStatement",{}).get("Limit"))
+            add("wafblocked","AWS/WAFV2","BlockedRequests",{"WebACL":acl["VisibilityConfig"]["MetricName"],"Rule":rate["VisibilityConfig"]["MetricName"],"Region":"CloudFront"},global_metric=True)
+def get_metrics(queries,at):
+    if not queries:return {}
+    with tempfile.NamedTemporaryFile(mode="w",suffix=".json",delete=False) as f:
+        json.dump(queries,f); path=f.name
+    try: data=aws("cloudwatch","get-metric-data","--start-time",iso(start),"--end-time",iso(end),"--metric-data-queries","file://"+path,at=at)
+    finally: os.unlink(path)
+    out={}
+    for row in data.get("MetricDataResults",[]):
+        out[row["Id"]]={timeparse(t).strftime("%Y-%m-%dT%H:%MZ"):float(v) for t,v in zip(row.get("Timestamps",[]),row.get("Values",[]))}
+    return out
+metrics={**get_metrics(qregional,region),**get_metrics(qglobal,"us-east-1")}
+print("=== 24H METRIC TOTALS ===")
+for name,points in metrics.items():
+    values=list(points.values())
+    print("METRIC",name,"points",len(values),"sum",round(sum(values),3) if values else "N/A","max",round(max(values),3) if values else "N/A","min",round(min(values),3) if values else "N/A")
+print("=== ALIGNED 5-MINUTE UTC BUCKETS (ANOMALIES) ===")
+bins=defaultdict(dict)
+for name,points in metrics.items():
+    for key,value in points.items(): bins[key][name]=value
+for key,vals in sorted(bins.items()):
+    if (vals.get("cf5xx",0)>0 or vals.get("alb503",0)>0 or vals.get("target5xx",0)>0 or vals.get("wafblocked",0)>0 or vals.get("healthymin",1)==0 or vals.get("unhealthymax",0)>0 or vals.get("ecsmem",0)>75 or vals.get("ecscpu",0)>75):
+        print("BUCKET",key," ".join(k+"="+str(round(v,2)) for k,v in sorted(vals.items())))
+print("=== ECS SERVICE EVENTS (LAST 24H) ===")
+for event in svc.get("events",[]):
+    try: when=timeparse(event["createdAt"])
+    except (KeyError,TypeError,ValueError): continue
+    if when >= start: print("SERVICE_EVENT",iso(when),event.get("message","").replace("\n"," ")[:320])
+print("=== STOPPED ECS WEB TASKS (AWS RETENTION LIMITED) ===")
+stopped=aws("ecs","list-tasks","--cluster",cluster,"--service-name",service,"--desired-status","STOPPED")
+ids=stopped.get("taskArns",[])[:100]
+for offset in range(0,len(ids),100):
+    for task in aws("ecs","describe-tasks","--cluster",cluster,"--tasks",*ids[offset:offset+100]).get("tasks",[]):
+        if not task.get("stoppedAt") or timeparse(task["stoppedAt"])<start: continue
+        print("STOPPED_TASK",iso(timeparse(task["stoppedAt"])),"code",task.get("stopCode"),"reason",str(task.get("stoppedReason",""))[:240])
+        for c in task.get("containers",[]): print("STOPPED_CONTAINER",c.get("name"),"exit",c.get("exitCode"),"reason",str(c.get("reason",""))[:240])
+print("STOPPED_TASKS_LISTED",len(ids))
+print("=== WEB APP LOG ERROR/503 SAMPLES (MAX 500) ===")
+if loggroup:
+    logs=aws("logs","filter-log-events","--log-group-name",loggroup,"--start-time",int(start.timestamp()*1000),"--filter-pattern","?ERROR ?Error ?503 ?OOM ?ECONNRESET ?timeout","--limit",500,optional=True)
+    counts=defaultdict(int)
+    for e in logs.get("events",[]):
+        when=datetime.datetime.fromtimestamp(e["timestamp"]/1000,UTC)
+        counts[when.strftime("%Y-%m-%dT%H:%MZ")]+=1
+        message=e.get("message","").replace("\n"," ").replace("\r"," ")
+        message=re.sub(r"[\w.+%-]+@[\w.-]+\.[A-Za-z]{2,}","[email]",message)
+        message=re.sub(r"(?i)(authorization|cookie|password|secret|token)[\s=:]+[^\s,;]+",r"\1=[redacted]",message)
+        message=re.sub(r"(?:\d{1,3}\.){3}\d{1,3}","[ip]",message)
+        print("APP_LOG",iso(when),message[:360])
+    print("ERROR_LOG_MINUTE_COUNTS",json.dumps(dict(sorted(counts.items()))))
+    print("ERROR_LOG_SAMPLE_SIZE",len(logs.get("events",[])),"PAGINATION_TRUNCATED",bool(logs.get("nextToken")))
+else: print("APP_LOG_UNAVAILABLE")
+print("READ_ONLY_DIAGNOSTIC_COMPLETE=true")
