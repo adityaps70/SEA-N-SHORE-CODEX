@@ -57,7 +57,19 @@ export const COURSE_CURRICULUM_ROWS_SQL = `select
    lesson.summary as lesson_summary,
    quiz.instructions as quiz_instructions,
    question.prompt as question_prompt,
-   option.label as option_label
+   option.label as option_label,
+   lesson.certificate_final,
+   quiz.time_limit_minutes,
+   quiz.shuffle_questions,
+   quiz.shuffle_options,
+   quiz.draw_count,
+   quiz.answer_policy,
+   question.question_type,
+   question.marks,
+   question.negative_marks,
+   question.explanation,
+   question.accepted_answers,
+   question.answers_case_sensitive
  from public.learning_course_sections section
  left join public.learning_lessons lesson
    on lesson.section_id = section.id

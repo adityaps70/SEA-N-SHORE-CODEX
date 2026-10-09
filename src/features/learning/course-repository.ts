@@ -9,6 +9,7 @@ import {
   type CourseReviewSnapshot,
 } from './course-review-snapshot'
 import { loadCourseCurriculumRows } from './course-snapshot-query'
+import { questionTypeOf, type QuestionType } from './quiz-model'
 import { liveCourseSql } from './course-publication'
 
 type CourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -129,6 +130,9 @@ type SubmissionReadinessRow = QueryResultRow & {
   quiz_instructions?: string | null
   question_prompt?: string | null
   option_label?: string | null
+  question_type?: string | null
+  accepted_answers?: string[] | null
+  draw_count?: string | number | null
 }
 
 type ReadinessMaterial = {
@@ -161,8 +165,11 @@ type ReadinessMaterial = {
   quiz: null | {
     id: string
     passPercentage: number
+    drawCount: number | null
     questions: Map<string, {
       position: number
+      type: QuestionType
+      acceptedAnswers: number
       options: Map<string, boolean>
     }>
   }
@@ -190,6 +197,9 @@ export type CourseSubmissionReadinessCode =
   | 'course_quiz_questions_missing'
   | 'course_quiz_options_invalid'
   | 'course_quiz_correct_answer_invalid'
+  | 'course_quiz_correct_answers_missing'
+  | 'course_quiz_accepted_answers_missing'
+  | 'course_quiz_draw_too_large'
 
 export class CourseSubmissionReadinessError extends Error {
   readonly code: CourseSubmissionReadinessCode
@@ -447,6 +457,7 @@ function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
           ? {
               id: row.quiz_id,
               passPercentage: Number(row.pass_percentage),
+              drawCount: row.draw_count === null || row.draw_count === undefined ? null : Number(row.draw_count),
               questions: new Map(),
             }
           : null,
@@ -459,6 +470,8 @@ function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
     if (!question) {
       question = {
         position: Number(row.question_position),
+        type: questionTypeOf(row.question_type),
+        acceptedAnswers: row.accepted_answers?.length ?? 0,
         options: new Map(),
       }
       material.quiz.questions.set(row.question_id, question)
@@ -575,19 +588,25 @@ function validateQuiz(material: ReadinessMaterial) {
 
   for (const question of material.quiz.questions.values()) {
     const questionNumber = question.position + 1
+    const details = { materialTitle: material.title, questionNumber }
+    if (question.type === 'fill_blank') {
+      if (question.acceptedAnswers === 0) throw new CourseSubmissionReadinessError('course_quiz_accepted_answers_missing', details)
+      continue
+    }
+    if (question.type === 'subjective') continue
     if (question.options.size < 2) {
-      throw new CourseSubmissionReadinessError('course_quiz_options_invalid', {
-        materialTitle: material.title,
-        questionNumber,
-      })
+      throw new CourseSubmissionReadinessError('course_quiz_options_invalid', details)
     }
     const correctAnswers = [...question.options.values()].filter(Boolean).length
-    if (correctAnswers !== 1) {
-      throw new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', {
-        materialTitle: material.title,
-        questionNumber,
-      })
+    if (question.type === 'multiple_choice' ? correctAnswers < 1 : correctAnswers !== 1) {
+      throw new CourseSubmissionReadinessError(
+        question.type === 'multiple_choice' ? 'course_quiz_correct_answers_missing' : 'course_quiz_correct_answer_invalid',
+        details,
+      )
     }
+  }
+  if (material.quiz.drawCount !== null && material.quiz.drawCount > material.quiz.questions.size) {
+    throw new CourseSubmissionReadinessError('course_quiz_draw_too_large', { materialTitle: material.title })
   }
 }
 

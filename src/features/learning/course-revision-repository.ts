@@ -3,6 +3,7 @@ import { withTransaction as databaseTransaction, type DatabaseQueryClient } from
 import { courseManagerAccessSql } from './course-access'
 import { diffCourseSnapshots, type CourseReviewSnapshot } from './course-review-snapshot'
 import { loadCourseSnapshot } from './course-snapshot-query'
+import { questionDetailsFromRow, quizSettingsFromRow, saveQuizSettings } from './quiz-definition'
 import { MOVE_ASIDE_OFFSET, retireLessons, retireSection, writeQuizQuestions } from './curriculum-history'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 
@@ -68,6 +69,7 @@ const LESSON_CONTENT_COLUMNS = [
   'title', 'lesson_type', 'summary', 'article_body', 'article_format', 'asset_path', 'external_url',
   'duration_seconds', 'is_preview', 'is_downloadable', 'is_published', 'release_mode', 'release_at',
   'drip_delay_days', 'completion_rule', 'completion_threshold', 'max_attempts', 'embed_kind', 'caption_path',
+  'certificate_final',
 ] as const
 
 /** Course detail columns a revision edits; the slug, owner and status stay with the live course. */
@@ -75,6 +77,17 @@ const COURSE_DETAIL_COLUMNS = [
   'title', 'subtitle', 'description', 'category', 'level', 'language', 'thumbnail_path', 'trailer_path',
   'learning_outcomes', 'requirements', 'target_audience', 'price_minor', 'discount_price_minor', 'currency',
   'access_type', 'certificate_enabled', 'course_format', 'navigation_mode',
+  'certificate_template', 'certificate_logo_path', 'certificate_signature_path', 'certificate_signatory_name',
+  'certificate_signatory_title', 'certificate_serial_prefix', 'certificate_validity_months', 'certificate_issue_trigger',
+] as const
+
+/** Round B quiz settings, copied with the quiz. */
+const QUIZ_SETTING_COLUMNS = ['time_limit_minutes', 'shuffle_questions', 'shuffle_options', 'draw_count', 'answer_policy'] as const
+
+/** Round B question columns, copied with each question. */
+const QUESTION_DETAIL_COLUMNS = [
+  'question_type', 'marks', 'negative_marks', 'explanation', 'accepted_answers', 'answers_case_sensitive',
+  'topic', 'difficulty', 'department_key', 'role_key', 'source_question_id',
 ] as const
 
 const ASSIGNMENT_COLUMNS = [
@@ -164,8 +177,8 @@ async function cloneCourseIntoRevision(query: Query, liveCourseId: string) {
   )
 
   await query(
-    `insert into public.learning_quizzes (lesson_id, pass_percentage, instructions, created_at, updated_at)
-     select revision_lesson.id, quiz.pass_percentage, quiz.instructions, now(), now()
+    `insert into public.learning_quizzes (lesson_id, pass_percentage, instructions, ${QUIZ_SETTING_COLUMNS.join(', ')}, created_at, updated_at)
+     select revision_lesson.id, quiz.pass_percentage, quiz.instructions, ${QUIZ_SETTING_COLUMNS.map((column) => `quiz.${column}`).join(', ')}, now(), now()
      from public.learning_quizzes quiz
      inner join public.learning_lessons revision_lesson on revision_lesson.revision_source_id = quiz.lesson_id
      inner join public.learning_course_sections revision_section
@@ -175,10 +188,10 @@ async function cloneCourseIntoRevision(query: Query, liveCourseId: string) {
   )
 
   await query(
-    `insert into public.learning_quiz_questions (quiz_id, prompt, position, revision_source_id, created_at, updated_at)
+    `insert into public.learning_quiz_questions (quiz_id, prompt, position, revision_source_id, ${QUESTION_DETAIL_COLUMNS.join(', ')}, created_at, updated_at)
      select revision_quiz.id, question.prompt,
             (row_number() over (partition by question.quiz_id order by question.position, question.id) - 1)::integer,
-            question.id, now(), now()
+            question.id, ${QUESTION_DETAIL_COLUMNS.map((column) => `question.${column}`).join(', ')}, now(), now()
      from public.learning_quiz_questions question
      inner join public.learning_quizzes live_quiz on live_quiz.id = question.quiz_id
      inner join public.learning_lessons revision_lesson on revision_lesson.revision_source_id = live_quiz.lesson_id
@@ -466,9 +479,9 @@ export async function applyCourseRevisionWithQuery(query: Query, revisionCourseI
 
 async function applyQuiz(query: Query, revisionLessonId: string, liveLessonId: string) {
   const revisionQuiz = await query(
-    `select id, pass_percentage, instructions from public.learning_quizzes where lesson_id = $1`,
+    `select id, pass_percentage, instructions, ${QUIZ_SETTING_COLUMNS.join(', ')} from public.learning_quizzes where lesson_id = $1`,
     [revisionLessonId],
-  ) as Array<IdRow & { pass_percentage: number; instructions: string | null }>
+  ) as Array<IdRow & { pass_percentage: number; instructions: string | null } & Parameters<typeof quizSettingsFromRow>[0]>
   const quiz = revisionQuiz[0]
   if (!quiz) return
 
@@ -484,6 +497,7 @@ async function applyQuiz(query: Query, revisionLessonId: string, liveLessonId: s
   ) as IdRow[]
   const liveQuizId = liveQuiz[0]?.id
   if (!liveQuizId) throw new Error('course_revision_apply_failed')
+  await saveQuizSettings(query, liveQuizId, quizSettingsFromRow(quiz))
 
   const liveQuestions = await query(
     `select id from public.learning_quiz_questions where quiz_id = $1 and removed_at is null`,
@@ -500,7 +514,7 @@ async function applyQuiz(query: Query, revisionLessonId: string, liveLessonId: s
   const liveOptionIds = new Set(liveOptions.map((row) => row.id))
 
   const questions = await query(
-    `select id, quiz_id, prompt, revision_source_id
+    `select id, quiz_id, prompt, revision_source_id, ${QUESTION_DETAIL_COLUMNS.join(', ')}
      from public.learning_quiz_questions
      where quiz_id = $1 and removed_at is null
      order by position asc, id asc`,
@@ -524,6 +538,7 @@ async function applyQuiz(query: Query, revisionLessonId: string, liveLessonId: s
     return {
       id: liveQuestionId,
       prompt: question.prompt,
+      ...questionDetailsFromRow(question),
       options: options
         .filter((option) => option.question_id === question.id)
         .map((option) => ({

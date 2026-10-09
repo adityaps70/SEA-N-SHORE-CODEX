@@ -78,6 +78,8 @@ describe('learner quiz repository', () => {
             { id: optionOneCorrectId, label: 'Verify evidence and actual practice', position: 0 },
             { id: optionOneWrongId, label: 'Prepare paperwork only', position: 1 },
           ],
+          type: 'single_choice',
+          marks: 1,
         },
         {
           id: questionTwoId,
@@ -87,8 +89,16 @@ describe('learner quiz repository', () => {
             { id: optionTwoCorrectId, label: 'The whole shipboard team', position: 0 },
             { id: optionTwoWrongId, label: 'Only the Master', position: 1 },
           ],
+          type: 'single_choice',
+          marks: 1,
         },
       ],
+      // A quiz saved before round B: untimed, unshuffled, every question, answers shown after each attempt.
+      settings: { timeLimitMinutes: null, shuffleQuestions: false, shuffleOptions: false, drawCount: null, answerPolicy: 'after_each_attempt' },
+      usesSessions: false,
+      questionCount: 2,
+      session: null,
+      awaitingGrading: false,
     })
 
     expect(seen[0]?.values).toEqual([learnerId, slug, lessonId])

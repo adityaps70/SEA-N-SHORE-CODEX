@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { loadQuizDetails } from './quiz-definition'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
 import { courseManagerAccessSql } from './course-access'
@@ -380,7 +381,9 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
                 option.position asc nulls last, option.id asc nulls last`,
       [actorId, courseId],
     ) as Row[]
-    return build(rows)
+    const curriculum = build(rows)
+    if (curriculum) await loadQuizDetails(queryRows, curriculum.sections.flatMap((section) => section.materials.map((material) => material.quiz)))
+    return curriculum
   }
 
   async function createMaterial(actorId: string, courseId: string, sectionId: string, draft: MentorMaterialDraft) {

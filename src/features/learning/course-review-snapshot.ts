@@ -69,6 +69,27 @@ export type CourseSnapshotMaterial = {
   captionPath?: string | null
   assignment?: CourseSnapshotAssignment | null
   scorm?: { sourceZipPath: string | null; launchPath: string | null } | null
+  // Added in learning round B; absent from older snapshots.
+  quizSettings?: CourseSnapshotQuizSettings | null
+  quizQuestionDetails?: CourseSnapshotQuestionDetails[]
+  certificateFinal?: boolean
+}
+
+export type CourseSnapshotQuizSettings = {
+  timeLimitMinutes: number | null
+  shuffleQuestions: boolean
+  shuffleOptions: boolean
+  drawCount: number | null
+  answerPolicy: string
+}
+
+export type CourseSnapshotQuestionDetails = {
+  type: string
+  marks: number
+  negativeMarks: number
+  explanation: string | null
+  acceptedAnswers: string[]
+  caseSensitive: boolean
 }
 
 export type CourseSnapshotSection = {
@@ -130,6 +151,19 @@ export type SnapshotCurriculumRow = {
   option_id: string | null
   option_label?: string | null
   option_is_correct: boolean | null
+  // Learning round B columns.
+  time_limit_minutes?: string | number | null
+  shuffle_questions?: boolean | null
+  shuffle_options?: boolean | null
+  draw_count?: string | number | null
+  answer_policy?: string | null
+  question_type?: string | null
+  marks?: string | number | null
+  negative_marks?: string | number | null
+  explanation?: string | null
+  accepted_answers?: string[] | null
+  answers_case_sensitive?: boolean | null
+  certificate_final?: boolean | null
 }
 
 function text(value: unknown): string {
@@ -246,6 +280,22 @@ export function snapshotSectionsFromRows(rows: SnapshotCurriculumRow[]): CourseS
         scorm: row.scorm_source_zip_path
           ? { sourceZipPath: row.scorm_source_zip_path, launchPath: row.scorm_launch_path ?? null }
           : null,
+        // Round B fields only when the rows carry them, so snapshots built before them compare as unchanged.
+        ...(row.answer_policy !== undefined
+          ? {
+              quizSettings: row.quiz_id
+                ? {
+                    timeLimitMinutes: nullableNumber(row.time_limit_minutes),
+                    shuffleQuestions: row.shuffle_questions === true,
+                    shuffleOptions: row.shuffle_options === true,
+                    drawCount: nullableNumber(row.draw_count),
+                    answerPolicy: row.answer_policy ?? 'after_each_attempt',
+                  }
+                : null,
+            }
+          : {}),
+        ...(row.question_type !== undefined ? { quizQuestionDetails: [] } : {}),
+        ...(row.certificate_final !== undefined ? { certificateFinal: row.certificate_final === true } : {}),
       }
       materialById.set(row.lesson_id, material)
       section.materials.push(material)
@@ -257,6 +307,14 @@ export function snapshotSectionsFromRows(rows: SnapshotCurriculumRow[]): CourseS
       question = { prompt: row.question_prompt ?? '', options: [] }
       questionById.set(row.question_id, question)
       material.quiz.questions.push(question)
+      material.quizQuestionDetails?.push({
+        type: row.question_type ?? 'single_choice',
+        marks: numberOr(row.marks, 1),
+        negativeMarks: numberOr(row.negative_marks, 0),
+        explanation: row.explanation ?? null,
+        acceptedAnswers: list(row.accepted_answers),
+        caseSensitive: row.answers_case_sensitive === true,
+      })
     }
     if (row.option_id && !seenOptions.has(row.option_id)) {
       seenOptions.add(row.option_id)
@@ -314,6 +372,9 @@ const MATERIAL_LABELS: Array<[keyof CourseSnapshotMaterial, string]> = [
   ['captionPath', 'captions'],
   ['assignment', 'assignment settings'],
   ['scorm', 'SCORM package'],
+  ['quizSettings', 'quiz settings (timer, shuffle, draw, answers shown)'],
+  ['quizQuestionDetails', 'question types, marks and accepted answers'],
+  ['certificateFinal', 'final quiz for the certificate'],
 ]
 
 function same(left: unknown, right: unknown) {

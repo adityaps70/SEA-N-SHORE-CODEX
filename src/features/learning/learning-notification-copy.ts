@@ -95,6 +95,28 @@ export function learningNotificationCopy(kind: LearningNotificationKind, details
         subject: `Changes requested for ${course}`,
         action: 'See the reviewer’s note',
       }
+    case 'quiz_graded': {
+      const score = typeof details.percentage === 'number' ? `${details.percentage}%` : 'graded'
+      const outcome = details.passed === true ? 'passed' : details.passed === false ? 'not passed yet; you can try again if attempts remain' : null
+      return {
+        message: `Your trainer graded your answers to ${quoted(details.lessonTitle)} in ${course}: ${score}${outcome ? `, ${outcome}` : ''}.`,
+        path: playerPath(details),
+        subject: `Your quiz in ${course} was graded`,
+        action: 'See your result',
+      }
+    }
+    case 'certificate_expiring': {
+      const days = details.daysLeft ?? 30
+      const when = details.expiresAt
+        ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(details.expiresAt))
+        : `in ${days} days`
+      return {
+        message: `Your certificate for ${course} expires ${details.expiresAt ? `on ${when}` : when}. Renew it by taking the course again.`,
+        path: details.verificationCode ? `/certificates/${details.verificationCode}` : '/learn/my-learning',
+        subject: `Your ${course} certificate expires in ${days} days`,
+        action: 'View your certificate',
+      }
+    }
     case 'submissions_to_grade': {
       const count = details.count ?? 1
       return {

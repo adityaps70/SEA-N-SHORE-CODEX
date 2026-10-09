@@ -6,7 +6,9 @@ import {
 } from '@/lib/db/client'
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
 import { courseManagerAccessSql } from './course-access'
-import { lessonsWithLearnerHistory, retireLessons, retireSection, writeQuizQuestions } from './curriculum-history'
+import { lessonsWithLearnerHistory, retireLessons, retireSection, writeQuizQuestions, type QuizQuestionInput } from './curriculum-history'
+import { loadQuizDetails, saveQuizSettings, type MentorQuizQuestionDetails } from './quiz-definition'
+import type { QuizSettingsInput } from './quiz-question-schema'
 
 export type MentorLessonType =
   | 'video'
@@ -38,16 +40,8 @@ export type MentorQuizDefinitionInput = {
    * Questions and options carry their saved id, so re-saving a quiz updates them in place and
    * learners' attempts (which reference them) survive. Items without an id are new.
    */
-  questions: Array<{
-    id?: string | null
-    prompt: string
-    options: Array<{
-      id?: string | null
-      label: string
-      isCorrect: boolean
-    }>
-  }>
-}
+  questions: QuizQuestionInput[]
+} & Partial<QuizSettingsInput>
 
 export type MentorQuizOption = {
   id: string
@@ -56,19 +50,20 @@ export type MentorQuizOption = {
   isCorrect: boolean
 }
 
+/** Round B fields are filled by the repositories; fixtures may leave them out (single-correct, 1 mark). */
 export type MentorQuizQuestion = {
   id: string
   prompt: string
   position: number
   options: MentorQuizOption[]
-}
+} & Partial<MentorQuizQuestionDetails>
 
 export type MentorQuizDefinition = {
   id: string
   passPercentage: number
   instructions: string | null
   questions: MentorQuizQuestion[]
-}
+} & Partial<QuizSettingsInput>
 
 export type MentorCurriculumLesson = MentorLessonDraft & {
   id: string
@@ -435,7 +430,9 @@ export function createMentorCurriculumRepository(input: {
       [actorId, courseId],
     ) as CurriculumRow[]
 
-    return buildCurriculum(rows)
+    const curriculum = buildCurriculum(rows)
+    if (curriculum) await loadQuizDetails(queryRows, curriculum.sections.flatMap((section) => section.lessons.map((lesson) => lesson.quiz)))
+    return curriculum
   }
 
   async function createSection(actorId: string, courseId: string, title: string) {
@@ -752,6 +749,7 @@ export function createMentorCurriculumRepository(input: {
       const quiz = quizRows[0]
       if (!quiz) throw new Error('quiz_save_failed')
 
+      await saveQuizSettings(query, quiz.id, definition)
       await writeQuizQuestions(query, quiz.id, definition.questions)
 
       return true

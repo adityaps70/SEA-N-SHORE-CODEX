@@ -32,6 +32,9 @@ export type NetworkNotificationType =
   | 'learning_course_approved'
   | 'learning_course_changes_requested'
   | 'learning_submissions_to_grade'
+  /** Learning round B: written quiz answers graded; a certificate expires in 30 or 7 days. */
+  | 'learning_quiz_graded'
+  | 'learning_certificate_expiring'
 
 export type NotificationActor = {
   id: string

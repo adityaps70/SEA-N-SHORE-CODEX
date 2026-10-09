@@ -23,6 +23,7 @@ export const NOTIFICATION_FILTER_TYPES: Record<Exclude<NotificationFilter, 'all'
   learning: [
     'learning_enrolled', 'learning_lessons_released', 'learning_assignment_graded', 'learning_certificate_issued',
     'learning_course_approved', 'learning_course_changes_requested', 'learning_submissions_to_grade',
+    'learning_quiz_graded', 'learning_certificate_expiring',
   ],
 }
 

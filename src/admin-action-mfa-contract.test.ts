@@ -32,6 +32,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/learning/course-payment-actions.ts', ['refundCoursePaymentAction']],
   ['src/features/payments/event-payment-actions.ts', ['refundEventPaymentAction']],
   ['src/features/learning/enrollment-actions.ts', ['openCourseAsTeamMember']],
+  // Learning round B: an administrator may open a trainer's question bank (admin authority is one branch).
+  ['src/features/learning/question-bank-actions.ts', ['saveBankQuestion', 'deleteBankQuestion', 'importBankQuestionsCsv', 'listBankQuestionsForQuiz']],
 ]
 
 /** Bodies of the top-level functions in a module, by name. */

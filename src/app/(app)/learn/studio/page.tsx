@@ -1,7 +1,22 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Plus, Receipt, Wallet } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  BarChart3,
+  BookOpen,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock3,
+  Eye,
+  FilePenLine,
+  Library,
+  Plus,
+  Receipt,
+  Wallet,
+} from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
@@ -144,6 +159,7 @@ export default async function MentorStudioPage() {
               { kind: 'link', href: '/learn/studio/sales', label: 'Course sales', icon: <Receipt aria-hidden="true" /> },
               { kind: 'link', href: '/settings/earnings', label: 'Earnings & payouts', icon: <Wallet aria-hidden="true" /> },
               { kind: 'link', href: '/learn/studio/assignments', label: 'Review assignments', icon: <ClipboardCheck aria-hidden="true" /> },
+              { kind: 'link', href: '/learn/studio/question-bank', label: 'Question bank', icon: <Library aria-hidden="true" /> },
               { kind: 'link', href: '/learn/teach', label: 'Trainer verification', icon: <BadgeCheck aria-hidden="true" /> },
             ]}
           />
@@ -172,6 +188,12 @@ export default async function MentorStudioPage() {
             className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
           >
             <Wallet aria-hidden="true" className="size-4" /> Earnings &amp; payouts
+          </Link>
+          <Link
+            href="/learn/studio/question-bank"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
+          >
+            <Library aria-hidden="true" className="size-4" /> Question bank
           </Link>
           <Link
             href="/learn/studio/assignments"

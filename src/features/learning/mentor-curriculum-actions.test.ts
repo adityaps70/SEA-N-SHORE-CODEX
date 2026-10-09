@@ -178,15 +178,31 @@ describe('mentor curriculum server actions', () => {
   it('normalizes and persists a valid quiz definition without exposing learner scoring logic', async () => {
     await expect(saveCurriculumQuiz(courseId, lessonId, validQuiz())).resolves.toEqual({ ok: true })
 
+    // A quiz saved without round B fields is a plain single-correct quiz, 1 mark a question.
     expect(mocks.saveQuizDefinition).toHaveBeenCalledWith('user-1', courseId, lessonId, {
       passPercentage: 80,
       instructions: 'Choose the best answer.',
+      timeLimitMinutes: null,
+      shuffleQuestions: false,
+      shuffleOptions: false,
+      drawCount: null,
+      answerPolicy: 'after_each_attempt',
       questions: [{
+        type: 'single_choice',
         prompt: 'What should be prepared before inspection?',
         options: [
           { label: 'Only certificates', isCorrect: false },
           { label: 'Evidence, procedures and crew readiness', isCorrect: true },
         ],
+        marks: 1,
+        negativeMarks: 0,
+        explanation: null,
+        acceptedAnswers: [],
+        caseSensitive: false,
+        topic: null,
+        difficulty: null,
+        departmentKey: null,
+        roleKey: null,
       }],
     })
   })

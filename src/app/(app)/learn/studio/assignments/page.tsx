@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, CheckCircle2, Clock3 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Clock3, PenLine } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
+import { quizGradingRepository } from '@/features/learning/quiz-grading-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 
@@ -27,8 +28,13 @@ export default async function MentorAssignmentsPage() {
     || organization.role === 'lms_manager')
   if (!hasActiveMentor && !hasOrganizationLmsAccess) return redirect('/learn/teach')
 
-  const attempts = await assignmentGradingRepository.listForMentor(user.id)
+  const [attempts, quizAttempts] = await Promise.all([
+    assignmentGradingRepository.listForMentor(user.id),
+    quizGradingRepository.listForMentor(user.id),
+  ])
   const pending = attempts.filter((attempt) => attempt.status === 'submitted')
+  const pendingQuizzes = quizAttempts.filter((attempt) => attempt.status === 'awaiting_grading')
+  const gradedQuizzes = quizAttempts.filter((attempt) => attempt.status === 'completed')
   const graded = attempts.filter((attempt) => attempt.status === 'graded')
 
   return (
@@ -44,6 +50,7 @@ export default async function MentorAssignmentsPage() {
         <div className="mt-5 flex flex-wrap gap-3 text-sm font-semibold">
           <span className="rounded-full bg-white/10 px-3 py-1.5">{pending.length} awaiting review</span>
           <span className="rounded-full bg-white/10 px-3 py-1.5">{graded.length} graded</span>
+          {pendingQuizzes.length ? <span className="rounded-full bg-white/10 px-3 py-1.5">{pendingQuizzes.length} quiz {pendingQuizzes.length === 1 ? 'attempt' : 'attempts'} with written answers</span> : null}
         </div>
       </section>
 
@@ -84,6 +91,53 @@ export default async function MentorAssignmentsPage() {
           <div className="mt-4 rounded-2xl border border-dashed border-mist-200 bg-white p-6 text-sm text-muted">No assignment submissions are waiting for review.</div>
         )}
       </section>
+
+      {pendingQuizzes.length || gradedQuizzes.length ? (
+        <section className="mt-8" aria-label="Quiz answers to grade">
+          <div className="flex items-center gap-2">
+            <PenLine className="size-5 text-amber-700" aria-hidden="true" />
+            <h2 className="text-xl font-bold text-navy-950">Written quiz answers</h2>
+          </div>
+          {pendingQuizzes.length ? (
+            <div className="mt-4 space-y-3">
+              {pendingQuizzes.map((attempt) => (
+                <article key={attempt.id} className="flex flex-wrap items-center justify-between gap-4 rounded-[1.5rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)]">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-teal-700">{attempt.courseTitle}</p>
+                    <h3 className="mt-1 text-lg font-bold text-navy-950">{attempt.lessonTitle}</h3>
+                    <p className="mt-2 text-sm font-bold text-navy-950">{attempt.learnerName}</p>
+                    <p className="mt-1 text-sm text-muted">Attempt {attempt.attemptNumber} · Submitted {dateLabel(attempt.submittedAt)} · {attempt.pendingAnswers} written {attempt.pendingAnswers === 1 ? 'answer' : 'answers'}</p>
+                  </div>
+                  <Link
+                    href={`/learn/studio/assignments/quiz/${attempt.id}`}
+                    aria-label={`Grade ${attempt.learnerName} quiz answers`}
+                    className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+                  >
+                    Grade answers <ArrowRight className="size-4" aria-hidden="true" />
+                  </Link>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-dashed border-mist-200 bg-white p-6 text-sm text-muted">No written quiz answers are waiting.</div>
+          )}
+          {gradedQuizzes.length ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {gradedQuizzes.slice(0, 20).map((attempt) => (
+                <Link key={attempt.id} href={`/learn/studio/assignments/quiz/${attempt.id}`} className="rounded-2xl border border-mist-200 bg-white p-4 transition hover:border-teal-300">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-navy-950">{attempt.learnerName}</p>
+                      <p className="mt-1 text-sm text-muted">{attempt.courseTitle} · {attempt.lessonTitle}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${attempt.passed ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>{attempt.passed ? 'Passed' : 'Not passed'} · {attempt.percentage}%</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {graded.length ? (
         <section className="mt-8">

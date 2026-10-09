@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import type { Difficulty, QuestionType } from './quiz-model'
 
 /**
  * Learner history is never deleted. A section, material, quiz question or answer option that
@@ -106,7 +107,10 @@ export async function optionsWithAnswers(query: Query, optionIds: readonly strin
      where option.id = any($1::uuid[])
        and exists (
          select 1 from public.learning_quiz_attempt_answers answer
-         where answer.selected_option_id = option.id or answer.correct_option_id = option.id
+         where answer.selected_option_id = option.id
+            or answer.correct_option_id = option.id
+            or option.id = any(answer.selected_option_ids)
+            or option.id = any(answer.correct_option_ids)
        )`,
     [optionIds],
   ) as IdRow[]
@@ -179,13 +183,45 @@ export type QuizQuestionInput = {
   id?: string | null
   prompt: string
   options: Array<{ id?: string | null; label: string; isCorrect: boolean }>
+  /** Round B fields; a question saved without them is single-correct, 1 mark, untagged. */
+  type?: QuestionType
+  marks?: number
+  negativeMarks?: number
+  explanation?: string | null
+  acceptedAnswers?: readonly string[]
+  caseSensitive?: boolean
+  topic?: string | null
+  difficulty?: Difficulty | null
+  departmentKey?: string | null
+  roleKey?: string | null
+  sourceQuestionId?: string | null
+}
+
+type ExistingQuestionRow = IdRow & { question_type: string | null }
+
+/** The round B columns of a question, in the order the write statements use them ($4 onward). */
+function questionColumns(question: QuizQuestionInput) {
+  return [
+    question.type ?? 'single_choice',
+    question.marks ?? 1,
+    question.negativeMarks ?? 0,
+    question.explanation ?? null,
+    [...(question.acceptedAnswers ?? [])],
+    question.caseSensitive ?? false,
+    question.topic ?? null,
+    question.difficulty ?? null,
+    question.departmentKey ?? null,
+    question.roleKey ?? null,
+    question.sourceQuestionId ?? null,
+  ]
 }
 
 /**
  * Writes a quiz's questions and options in place: items with a known id are updated (so attempts
  * and answers that reference them stay valid), new items are inserted, and items no longer listed
  * are removed (retired if answered). Applying a revision passes the live ids, so the same path
- * updates the live quiz in place.
+ * updates the live quiz in place. A question whose type changes after learners answered it is
+ * retired and saved as a new question, so earlier answers keep the meaning they were scored with.
  */
 export async function writeQuizQuestions(
   query: Query,
@@ -193,10 +229,15 @@ export async function writeQuizQuestions(
   questions: readonly QuizQuestionInput[],
 ) {
   const existing = await query(
-    `select id from public.learning_quiz_questions where quiz_id = $1 and removed_at is null for update`,
+    `select id, question_type from public.learning_quiz_questions where quiz_id = $1 and removed_at is null for update`,
     [quizId],
-  ) as IdRow[]
+  ) as ExistingQuestionRow[]
   const existingIds = new Set(existing.map((row) => row.id))
+  const existingTypes = new Map(existing.map((row) => [row.id, row.question_type ?? 'single_choice']))
+  const typeChanged = questions
+    .filter((question) => question.id && existingIds.has(question.id) && (question.type ?? 'single_choice') !== existingTypes.get(question.id))
+    .map((question) => question.id!)
+  const answeredTypeChanges = await questionsWithAnswers(query, typeChanged)
   await query(
     `update public.learning_quiz_questions
      set position = position + $2
@@ -207,21 +248,28 @@ export async function writeQuizQuestions(
   const kept = new Set<string>()
   for (const [position, question] of questions.entries()) {
     let questionId: string
-    if (question.id && existingIds.has(question.id) && !kept.has(question.id)) {
+    if (question.id && existingIds.has(question.id) && !kept.has(question.id) && !answeredTypeChanges.has(question.id)) {
       questionId = question.id
       await query(
         `update public.learning_quiz_questions
-         set prompt = $2, position = $3, updated_at = now()
+         set prompt = $2, position = $3, updated_at = now(),
+             question_type = $4, marks = $5, negative_marks = $6, explanation = $7, accepted_answers = $8::text[],
+             answers_case_sensitive = $9, topic = $10, difficulty = $11, department_key = $12, role_key = $13,
+             source_question_id = $14
          where id = $1
          returning id`,
-        [questionId, question.prompt, position],
+        [questionId, question.prompt, position, ...questionColumns(question)],
       )
     } else {
       const inserted = await query(
-        `insert into public.learning_quiz_questions (quiz_id, prompt, position, created_at, updated_at)
-         values ($1, $2, $3, now(), now())
+        `insert into public.learning_quiz_questions (
+           quiz_id, prompt, position, created_at, updated_at,
+           question_type, marks, negative_marks, explanation, accepted_answers,
+           answers_case_sensitive, topic, difficulty, department_key, role_key, source_question_id
+         )
+         values ($1, $2, $3, now(), now(), $4, $5, $6, $7, $8::text[], $9, $10, $11, $12, $13, $14)
          returning id`,
-        [quizId, question.prompt, position],
+        [quizId, question.prompt, position, ...questionColumns(question)],
       ) as IdRow[]
       if (!inserted[0]) throw new Error('quiz_question_save_failed')
       questionId = inserted[0].id
@@ -240,7 +288,7 @@ async function writeQuizOptions(query: Query, questionId: string, options: QuizQ
     [questionId],
   ) as IdRow[]
   const existingIds = new Set(existing.map((row) => row.id))
-  // No two options may be correct at once (unique index), so clear first and set below.
+  // Correct answers are cleared first and set below (single-answer types allow one at a time).
   await query(
     `update public.learning_quiz_options
      set position = case when removed_at is null and position < $2 then position + $2 else position end,
