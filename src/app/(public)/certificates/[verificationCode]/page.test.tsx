@@ -42,6 +42,26 @@ describe('/certificates/[verificationCode]', () => {
     expect(screen.getByText('SNS-2026-A1B2C3D4E5F6')).toBeInTheDocument()
   })
 
+  it('shows holder, course, issue date, valid until and Valid for a certificate with an expiry (round B)', async () => {
+    mocks.getCertificateByVerificationCode.mockResolvedValue({ ...certificate, templateKey: 'formal', serialNumber: 'SNS-SIRE-2026-1A2B3C4D', expiresAt: '2099-01-31T00:00:00.000Z', signatoryName: null, signatoryTitle: null })
+    render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
+    expect(screen.getByText('Certificate holder')).toBeInTheDocument()
+    expect(screen.getByText('SNS-SIRE-2026-1A2B3C4D')).toBeInTheDocument()
+    expect(screen.getByText('31 January 2099')).toBeInTheDocument()
+    expect(screen.getByText('Valid')).toHaveAttribute('data-certificate-status', 'valid')
+  })
+
+  it('says Expired once the validity has passed, and "No expiry" for certificates without one', async () => {
+    mocks.getCertificateByVerificationCode.mockResolvedValue({ ...certificate, expiresAt: '2026-01-31T00:00:00.000Z' })
+    render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
+    expect(screen.getByText('Expired on 31 January 2026')).toHaveAttribute('data-certificate-status', 'expired')
+    cleanup()
+    mocks.getCertificateByVerificationCode.mockResolvedValue(certificate)
+    render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
+    expect(screen.getByText('No expiry')).toBeInTheDocument()
+    expect(screen.getByText('Valid')).toBeInTheDocument()
+  })
+
   it('fails closed with an honest invalid certificate state', async () => {
     mocks.getCertificateByVerificationCode.mockResolvedValue(null)
     render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))

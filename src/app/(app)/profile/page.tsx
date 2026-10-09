@@ -42,7 +42,7 @@ export default async function OwnProfilePage({
   const user = await requireAwsUser()
   const [profile, portfolio, recommendations, access, organizations, networkSummary, dgProfile] = await Promise.all([
     getOwnProfile(),
-    getOwnProfilePortfolio(),
+    getOwnProfilePortfolio({ withCertificates: true }),
     getPeopleYouMayKnow(3),
     getAccessContext(user.id),
     getProfileOrganizations(user.id),
@@ -94,7 +94,7 @@ export default async function OwnProfilePage({
           organisationAccount={profile.identityRoot === 'organisation'}
         />
         <ProfileCareerTimeline experiences={portfolio.experiences} editable persona={persona} />
-        <ProfileCredentialWallet credentials={portfolio.credentials} editable persona={persona} />
+        <ProfileCredentialWallet credentials={portfolio.credentials} learningCertificates={portfolio.learningCertificates} editable persona={persona} />
         {isSeafarer || dgProfile ? <ProfileDgDocumentCard profileId={profile.id} document={dgProfile} /> : null}
         {/* Phones: membership and verifications live in Settings → Plan & billing. */}
         <div className="min-w-0 max-md:hidden">

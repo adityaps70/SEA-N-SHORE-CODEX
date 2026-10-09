@@ -21,6 +21,8 @@ import type { CredentialVerificationState, ProfileCredentialRecord } from '../pr
 import { ProfileCardFieldError, ProfileCardForm, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
 import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection } from './profile-section'
 import { PhoneShowAll } from './profile-show-all'
+import { setCertificateHiddenFromProfile } from '@/features/learning/certificate-profile-actions'
+import type { ProfileLearningCertificate } from '@/features/learning/certificate-repository'
 
 const initialActionState: ProfilePortfolioActionState = {}
 
@@ -249,6 +251,58 @@ function CredentialEntry({
   )
 }
 
+function isoDateLabel(value: string | null) {
+  return value ? dateLabel(value.slice(0, 10)) : null
+}
+
+/** A certificate earned on Sea N Shore: verified by us, linked to its public verification page (round B, B5). */
+function LearningCertificateEntry({ certificate, editable }: { certificate: ProfileLearningCertificate; editable: boolean }) {
+  const [hidden, setHidden] = useState(certificate.hidden)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
+  const expired = certificate.expired
+  const expiry = certificate.expiresAt ? isoDateLabel(certificate.expiresAt) : 'No expiry'
+
+  function toggle() {
+    setError(null)
+    const next = !hidden
+    startTransition(async () => {
+      const result = await setCertificateHiddenFromProfile(certificate.certificateId, next)
+      if (result.ok) setHidden(next)
+      else setError(result.error)
+    })
+  }
+
+  return (
+    <article className={`rounded-2xl border border-mist-100 bg-white p-4 shadow-sm max-md:rounded-none max-md:border-0 max-md:p-0 max-md:shadow-none sm:p-5 ${hidden ? 'opacity-70' : ''}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800">
+          <BadgeCheck aria-hidden="true" className="size-3.5" />Verified by Sea N Shore
+        </span>
+        {expired ? <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">Expired</span> : null}
+        {editable && hidden ? <span className="rounded-full border border-mist-200 bg-mist-50 px-2.5 py-1 text-xs font-semibold text-muted">Hidden from your profile</span> : null}
+      </div>
+      <h3 className="mt-3 text-base font-semibold leading-6 text-navy-950">{certificate.courseTitle}</h3>
+      <p className="mt-1 text-sm text-ink">{certificate.issuer} · Sea N Shore Learning</p>
+      <div className="mt-1 flex flex-wrap items-baseline gap-1 text-sm text-muted">
+        <span>Certificate no.</span>
+        <span className="font-medium text-ink">{certificate.number}</span>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-mist-100 pt-3 text-sm text-muted">
+        <span className="inline-flex items-center gap-1.5"><CalendarDays aria-hidden="true" className="size-4" />Issued {isoDateLabel(certificate.issuedAt)}</span>
+        <span className="inline-flex items-center gap-1.5"><FileCheck2 aria-hidden="true" className="size-4" />{certificate.expiresAt ? `${expired ? 'Expired' : 'Expires'} ${expiry}` : expiry}</span>
+        <a href={`/certificates/${certificate.verificationCode}`} className="font-semibold text-ocean-700 underline-offset-2 hover:underline">Verify</a>
+        {editable ? (
+          <button type="button" onClick={toggle} disabled={pending} aria-pressed={hidden} className="ml-auto min-h-9 rounded-full border border-mist-200 px-3 text-xs font-semibold text-navy-950 hover:border-ocean-300 disabled:opacity-60">
+            {hidden ? 'Show on profile' : 'Hide from profile'}
+          </button>
+        ) : null}
+      </div>
+      {error ? <p className="mt-2 text-sm text-red-700" role="alert">{error}</p> : null}
+    </article>
+  )
+}
+
 /**
  * Licences & Credentials. Maritime enthusiasts and seafarer families are not asked for credentials
  * (round 11): the card only shows for them when they already have some, editable and deletable,
@@ -256,10 +310,13 @@ function CredentialEntry({
  */
 export function ProfileCredentialWallet({
   credentials,
+  learningCertificates = [],
   editable = false,
   persona = null,
 }: {
   credentials: ProfileCredentialRecord[]
+  /** Sea N Shore certificates: the public profile passes only those the member shows. */
+  learningCertificates?: ProfileLearningCertificate[]
   editable?: boolean
   /** The owner's profile type; null keeps the card for everyone. */
   persona?: Persona | null
@@ -268,7 +325,7 @@ export function ProfileCredentialWallet({
   const canAdd = editable && (!persona || personaUsesCredentials(persona))
   const adding = canAdd && adderEditing
 
-  if (credentials.length === 0 && !canAdd) return null
+  if (credentials.length === 0 && learningCertificates.length === 0 && !canAdd) return null
 
   return (
     <ProfileSection
@@ -282,6 +339,17 @@ export function ProfileCredentialWallet({
       ) : null}
     >
       {adding ? <CredentialEditor cardId="credential:new" onClose={closeAdder} onDirty={markAdderDirty} /> : null}
+
+      {learningCertificates.length ? (
+        <div className="mt-6 max-md:mt-4" aria-label="Sea N Shore certificates" role="group">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Sea N Shore certificates</p>
+          <div className="mt-3 grid gap-3 max-md:gap-5 lg:grid-cols-2">
+            {learningCertificates.map((certificate) => (
+              <LearningCertificateEntry key={certificate.certificateId} certificate={certificate} editable={editable} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {credentials.length ? (
         <PhoneShowAll noun="credentials" className="mt-6 grid gap-3 max-md:mt-4 max-md:gap-5 lg:grid-cols-2" itemClassName="contents">

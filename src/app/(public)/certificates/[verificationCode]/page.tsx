@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { BadgeCheck, ShieldCheck, XCircle } from 'lucide-react'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { certificateRepository } from '@/features/learning/certificate-repository'
+import { certificateDisplayNumber, certificateValidity } from '@/features/learning/certificate-settings'
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat('en-IN', {
@@ -60,6 +61,7 @@ export default async function CertificateVerificationPage({
     isVisitor(),
   ])
   const joinBar = visitor ? <JoinBar /> : null
+  const validity = certificateValidity(certificate?.expiresAt ?? null)
 
   if (!certificate) {
     return (
@@ -91,13 +93,19 @@ export default async function CertificateVerificationPage({
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Certificate verified</h1>
                 <p className="mt-2 text-sm leading-6 text-white/70">This completion record matches an immutable Sea N Shore Learning certificate.</p>
+                <p
+                  className={`mt-4 inline-flex rounded-full px-3 py-1 text-sm font-bold ${validity.status === 'valid' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}
+                  data-certificate-status={validity.status}
+                >
+                  {validity.status === 'valid' ? 'Valid' : `Expired on ${dateLabel(validity.expiresAt!)}`}
+                </p>
               </div>
             </div>
           </div>
 
           <div className="grid gap-6 p-6 sm:p-10 md:grid-cols-2">
             <section>
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Learner</p>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Certificate holder</p>
               <p className="mt-2 text-xl font-bold text-navy-950">{certificate.learnerName}</p>
             </section>
             <section>
@@ -110,7 +118,7 @@ export default async function CertificateVerificationPage({
             </section>
             <section>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Certificate number</p>
-              <p className="mt-2 font-mono text-sm font-bold text-navy-950">{certificate.certificateNumber}</p>
+              <p className="mt-2 font-mono text-sm font-bold text-navy-950">{certificateDisplayNumber(certificate)}</p>
             </section>
             <section>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Completed</p>
@@ -120,6 +128,16 @@ export default async function CertificateVerificationPage({
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Issued</p>
               <p className="mt-2 font-semibold text-navy-950">{dateLabel(certificate.issuedAt)}</p>
             </section>
+            <section>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Valid until</p>
+              <p className="mt-2 font-semibold text-navy-950">{certificate.expiresAt ? dateLabel(certificate.expiresAt) : 'No expiry'}</p>
+            </section>
+            {certificate.signatoryName ? (
+              <section>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Signed by</p>
+                <p className="mt-2 font-semibold text-navy-950">{certificate.signatoryName}{certificate.signatoryTitle ? `, ${certificate.signatoryTitle}` : ''}</p>
+              </section>
+            ) : null}
           </div>
         </section>
       </main>

@@ -10,6 +10,7 @@ import {
 } from './course-review-snapshot'
 import { loadCourseCurriculumRows } from './course-snapshot-query'
 import { questionTypeOf, type QuestionType } from './quiz-model'
+import { certificateSettingsFromRow, type CourseCertificateSettings } from './certificate-settings'
 import { liveCourseSql } from './course-publication'
 
 type CourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -37,6 +38,7 @@ type OwnedCourseRow = QueryResultRow & {
   open_revision_status?: string | null
 }
 type OwnedCourseDetailRow = QueryResultRow & {
+  certificate_template?: string | null
   id: string
   slug: string
   title: string
@@ -302,6 +304,8 @@ export type CourseLastReview = {
 }
 
 export type MentorOwnedCourseDetail = CourseDraftInput & {
+  /** Learning round B (B4): how the certificate looks and when it is issued. */
+  certificate?: CourseCertificateSettings
   id: string
   status: CourseStatus
   adminReviewNote: string | null
@@ -767,7 +771,23 @@ export function createCourseRepository(input: {
          case when course.company_id is null then creator.slug else company.slug end as publisher_slug,
          not ${planVisibleSql('course', 'course')} as hidden_for_plan,
          open_revision.id as open_revision_id,
-         open_revision.status as open_revision_status
+         open_revision.status as open_revision_status,
+         course.certificate_template,
+         course.certificate_logo_path,
+         course.certificate_signature_path,
+         course.certificate_signatory_name,
+         course.certificate_signatory_title,
+         course.certificate_serial_prefix,
+         course.certificate_validity_months,
+         course.certificate_issue_trigger,
+         (
+           select lesson.id
+           from public.learning_course_sections section
+           inner join public.learning_lessons lesson on lesson.section_id = section.id and lesson.removed_at is null
+           where section.course_id = course.id and section.removed_at is null and lesson.certificate_final = true
+           order by section.position asc, lesson.position asc
+           limit 1
+         ) as certificate_final_lesson_id
        from public.learning_courses course
        join public.profiles creator on creator.id = course.created_by_user_id
        left join public.companies company on company.id = course.company_id
@@ -894,6 +914,8 @@ export function createCourseRepository(input: {
       accessType: row.access_type,
       certificateEnabled: row.certificate_enabled,
       courseFormat: row.course_format,
+      // Round B: present when the row carries the certificate columns.
+      ...(row.certificate_template !== undefined ? { certificate: certificateSettingsFromRow(row) } : {}),
       status: asCourseStatus(row.status),
       adminReviewNote: row.admin_review_note,
       updatedAt: isoDateTime(row.updated_at),

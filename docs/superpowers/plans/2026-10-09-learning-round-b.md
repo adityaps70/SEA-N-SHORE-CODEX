@@ -79,16 +79,24 @@ Also in PR 1:
 ## PR 2: B4 + B5
 
 B4 — certificate builder
-- [ ] Three new layouts plus the original, logo and signature image, signatory, serial prefix, validity
-- [ ] Issue on course completion or on passing a chosen final quiz
-- [ ] Renewal reminders 30 and 7 days before expiry (Learning emails, members can opt out)
-- [ ] Verification page: holder, course, issued, valid until, Valid / Expired
-- [ ] Existing certificates keep their design, number and link, with no expiry
+- [x] Three new layouts plus the original, logo and signature image, signatory, serial prefix, validity
+- [x] Issue on course completion or on passing a chosen final quiz
+- [x] Renewal reminders 30 and 7 days before expiry (Learning emails, members can opt out)
+- [x] Verification page: holder, course, issued, valid until, Valid / Expired
+- [x] Existing certificates keep their design, number and link, with no expiry
 
 B5 — certificates on the profile
-- [ ] Credentials show Sea N Shore certificates: issuer, issued, expiry, link to the verification page, "Expired"
-- [ ] The member can hide any of them (shown by default)
-- [ ] Jobs matching counts visible Sea N Shore certificates as verified
+- [x] Credentials show Sea N Shore certificates: issuer, issued, expiry, link to the verification page, "Expired"
+- [x] The member can hide any of them (shown by default)
+- [x] Jobs matching counts visible Sea N Shore certificates as verified
+
+PR 1: [#175](https://github.com/adityaps70/SEA-N-SHORE-CODEX/pull/175), merged as `b042c7a5`.
+
+Also in PR 2:
+- Studio course editor → Certificate panel (works on drafts and draft revisions; reviewers see "Certificate design,
+  validity and issuing" in the change list). Logo and signature are new learning media kinds (PNG/JPEG, 2 MB).
+- A certificate copies the design, serial prefix, validity and signatory when issued; later course edits never
+  change it. My Learning shows the download as soon as a certificate exists (final-quiz courses).
 
 ## Release
 

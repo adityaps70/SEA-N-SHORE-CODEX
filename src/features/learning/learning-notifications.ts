@@ -455,3 +455,57 @@ export async function sweepSubmissionsToGrade(transaction: <T>(work: (query: Que
     return { submissions: fresh.length, notified }
   })
 }
+
+type ExpiringCertificateRow = QueryResultRow & {
+  id: string
+  learner_id: string
+  course_id: string
+  course_title: string
+  course_slug: string | null
+  verification_code: string
+  expires_at: string | Date
+}
+
+/**
+ * Hourly (learning round B, B4): a reminder 30 days and again 7 days before a certificate expires, in-app and by
+ * Learning email (members can turn Learning emails off). Each reminder is sent once (its dedupe key); a certificate
+ * first seen inside the last 7 days gets only the 7-day reminder.
+ */
+export async function sweepExpiringCertificates(transaction: <T>(work: (query: Query) => Promise<T>) => Promise<T>, input: { now?: Date; limit?: number } = {}) {
+  const now = input.now ?? new Date()
+  return transaction(async (query) => {
+    const rows = await query(
+      `select certificate.id, certificate.learner_id, certificate.course_id, certificate.course_title,
+              course.slug as course_slug, certificate.verification_code, certificate.expires_at
+       from public.learning_certificates certificate
+       left join public.learning_courses course on course.id = certificate.course_id
+       where certificate.expires_at is not null
+         and certificate.expires_at > $1::timestamptz
+         and certificate.expires_at <= $1::timestamptz + interval '30 days'
+       order by certificate.expires_at asc, certificate.id asc
+       limit $2`,
+      [now.toISOString(), input.limit ?? 1000],
+    ) as ExpiringCertificateRow[]
+    let notified = 0
+    for (const row of rows) {
+      const expiresAt = new Date(row.expires_at)
+      const daysLeft = Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+      const stage = daysLeft <= 7 ? 7 : 30
+      const ok = await recordLearningNotification(query, {
+        recipientId: row.learner_id,
+        kind: 'certificate_expiring',
+        courseId: row.course_id,
+        details: {
+          courseTitle: row.course_title,
+          courseSlug: row.course_slug ?? '',
+          verificationCode: row.verification_code,
+          expiresAt: expiresAt.toISOString(),
+          daysLeft: stage,
+        },
+        dedupeKey: `learning_certificate_expiring:${row.id}:${stage}`,
+      }, { inTransaction: true })
+      if (ok) notified += 1
+    }
+    return { expiring: rows.length, notified }
+  })
+}

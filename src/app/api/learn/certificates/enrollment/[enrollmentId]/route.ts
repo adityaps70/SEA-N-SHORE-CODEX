@@ -1,7 +1,20 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { buildLearningCertificatePdf } from '@/features/learning/certificate-pdf'
+import { buildLearningCertificatePdf, type CertificateImage } from '@/features/learning/certificate-pdf'
 import { certificateRepository } from '@/features/learning/certificate-repository'
+import { certificateDisplayNumber } from '@/features/learning/certificate-settings'
+import { getMediaObject } from '@/lib/aws/storage'
 import { siteUrlFor } from '@/lib/site-url'
+
+/** The logo or signature copied onto the certificate; a missing picture never stops the download. */
+async function readImage(path: string | null | undefined): Promise<CertificateImage | null> {
+  if (!path) return null
+  try {
+    const object = await getMediaObject({ key: path, maxBytes: 2 * 1024 * 1024 })
+    return { bytes: object.body, contentType: object.contentType }
+  } catch {
+    return null
+  }
+}
 
 export async function GET(
   _request: Request,
@@ -15,13 +28,14 @@ export async function GET(
     if (!certificate) return new Response('Certificate not available', { status: 404 })
 
     const verificationUrl = siteUrlFor(`/certificates/${certificate.verificationCode}`).toString()
-    const bytes = await buildLearningCertificatePdf({ certificate, verificationUrl })
+    const [logo, signature] = await Promise.all([readImage(certificate.logoPath), readImage(certificate.signaturePath)])
+    const bytes = await buildLearningCertificatePdf({ certificate, verificationUrl, images: { logo, signature } })
 
     return new Response(Buffer.from(bytes), {
       status: 200,
       headers: {
         'content-type': 'application/pdf',
-        'content-disposition': `attachment; filename="${certificate.certificateNumber}.pdf"`,
+        'content-disposition': `attachment; filename="${certificateDisplayNumber(certificate)}.pdf"`,
         'cache-control': 'private, no-store',
       },
     })

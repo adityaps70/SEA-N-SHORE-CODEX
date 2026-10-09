@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { candidateCredentialsSql } from './candidate-credentials-sql'
 import { query as databaseQuery } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import type { JobApplicationCvReference } from './application-media'
@@ -484,15 +485,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
            from public.profile_skills ps
            where ps.user_id = p.id
          ), '{}'::text[]) as skills,
-         coalesce((
-           select json_agg(json_build_object(
-             'name', pc.name,
-             'expires_at', pc.expires_on,
-             'verified', pc.verification_state = 'verified'
-           ) order by pc.sort_order asc, pc.issued_on desc nulls last, pc.name asc)
-           from public.profile_credentials pc
-           where pc.profile_id = p.id and pc.verification_state <> 'rejected'
-         ), '[]'::json) as credentials,
+         ${candidateCredentialsSql('p')} as credentials,
          coalesce((
            select array_agg(pv.visa_type order by pv.visa_type)
            from public.profile_visas pv

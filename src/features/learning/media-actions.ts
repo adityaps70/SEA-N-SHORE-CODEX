@@ -26,6 +26,8 @@ const kindSchema = z.enum([
   'lesson_resource',
   'scorm_package',
   'lesson_caption',
+  'certificate_logo',
+  'certificate_signature',
 ])
 const storagePathSchema = z.string().min(1).max(1024)
 

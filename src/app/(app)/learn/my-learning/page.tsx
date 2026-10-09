@@ -25,7 +25,8 @@ function formatLabel(format: LearnerCourseEnrollment['courseFormat']) {
 
 function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment }) {
   const completed = enrollment.enrollmentStatus === 'completed'
-  const certificateAvailable = completed && enrollment.certificateEnabled
+  // A course that issues on its final quiz has a certificate before every material is complete (round B).
+  const certificateAvailable = (completed && enrollment.certificateEnabled) || Boolean(enrollment.certificateId)
 
   return (
     <article

@@ -6,6 +6,7 @@ import {
   type LearnerProgressQuery,
 } from './learner-progress-repository'
 import { learnerCourseAccessSql } from './course-publication'
+import { issueCertificateForFinalQuizWithQuery } from './certificate-repository'
 import {
   QUIZ_SUBMIT_GRACE_SECONDS,
   QuizAnswerError,
@@ -614,6 +615,8 @@ export function createLearnerQuizRepository(input: {
     }
 
     const completion = passed ? await completeLesson(query, learnerId, context.slug, context.lessonId) : null
+    // A course that issues its certificate on this final quiz issues it now (round B, B4).
+    if (passed) await issueCertificateForFinalQuizWithQuery(query, access.enrollment_id, access.lesson_id)
     const reveal = mayRevealAnswers(answerPolicyOf(access.answer_policy), {
       anyPassed: passed || Boolean(access.any_passed),
       attemptsUsed: attemptNumber,
