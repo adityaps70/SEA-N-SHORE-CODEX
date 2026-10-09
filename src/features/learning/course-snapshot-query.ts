@@ -103,7 +103,9 @@ export const COURSE_SNAPSHOT_DETAIL_COLUMNS = `course.slug, course.title, course
   course.category, course.level, course.language, course.thumbnail_path, course.trailer_path,
   course.learning_outcomes, course.requirements, course.target_audience, course.price_minor,
   course.discount_price_minor, course.currency, course.access_type, course.certificate_enabled,
-  course.course_format, course.navigation_mode`
+  course.course_format, course.navigation_mode, course.certificate_template, course.certificate_logo_path,
+  course.certificate_signature_path, course.certificate_signatory_name, course.certificate_signatory_title,
+  course.certificate_serial_prefix, course.certificate_validity_months, course.certificate_issue_trigger`
 
 export async function loadCourseCurriculumRows<T extends QueryResultRow = SnapshotCurriculumRow & QueryResultRow>(
   query: Query,

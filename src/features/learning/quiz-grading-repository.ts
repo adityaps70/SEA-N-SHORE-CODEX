@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { courseManagerAccessSql } from './course-access'
+import { issueCertificateForFinalQuizWithQuery } from './certificate-repository'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 import { notifyQuizGraded } from './learning-notifications'
 import { attemptTotals, questionTypeOf, roundMarks, type QuestionType } from './quiz-model'
@@ -242,6 +243,7 @@ export function createQuizGradingRepository(input: { query?: Query; transaction?
           [attempt.enrollment_id, attempt.lesson_id],
         )
         enrollmentCompleted = (await finalizeEnrollmentIfComplete(query, String(attempt.enrollment_id), String(attempt.course_id))).enrollmentCompleted
+        await issueCertificateForFinalQuizWithQuery(query, String(attempt.enrollment_id), String(attempt.lesson_id))
       }
       await notifyQuizGraded(query, { attemptId })
       return { attemptId, percentage: totals.percentage, passed, scorePoints: totals.scorePoints, maxPoints: totals.maxPoints, enrollmentCompleted }

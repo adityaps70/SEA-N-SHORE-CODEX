@@ -11,6 +11,8 @@ import { CourseSubmitControl } from '@/features/learning/components/course-submi
 import { CourseWithdrawControl } from '@/features/learning/components/course-withdraw-control'
 import { CourseRevisionDiscardControl, CourseRevisionStartControl } from '@/features/learning/components/course-revision-controls'
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
+import { CertificateSettingsPanel } from '@/features/learning/components/certificate-settings-panel'
+import { DEFAULT_CERTIFICATE_SETTINGS } from '@/features/learning/certificate-settings'
 import {
   courseRepository,
   type CourseDraftInput,
@@ -265,6 +267,16 @@ export default async function EditMentorCoursePage({
             readOnly={!editable}
             slugLocked={isRevision}
             sellerFees={{ default: sellerFee }}
+          />
+        </div>
+
+        <div className="mt-5">
+          <CertificateSettingsPanel
+            courseId={course.id}
+            initial={course.certificate ?? DEFAULT_CERTIFICATE_SETTINGS}
+            certificateEnabled={course.certificateEnabled}
+            quizzes={curriculum.sections.flatMap((section) => section.materials.filter((material) => material.materialType === 'quiz').map((material) => ({ id: material.id, title: material.title })))}
+            readOnly={!editable}
           />
         </div>
 

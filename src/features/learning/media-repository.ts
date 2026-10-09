@@ -49,6 +49,8 @@ export function createLearningMediaRepository() {
            and (
              course.thumbnail_path = $3
              or course.trailer_path = $3
+             or course.certificate_logo_path = $3
+             or course.certificate_signature_path = $3
              or exists (
                select 1
                from public.learning_course_sections section

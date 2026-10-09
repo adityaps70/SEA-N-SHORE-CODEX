@@ -101,7 +101,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         <ProfileOrganizations organizations={organizations} />
 
         <ProfileCareerTimeline experiences={portfolio.experiences} />
-        <ProfileCredentialWallet credentials={portfolio.credentials} />
+        <ProfileCredentialWallet credentials={portfolio.credentials} learningCertificates={portfolio.learningCertificates} />
         {dgProfile && dgProfile.reason !== 'owner' ? (
           <ProfileDgDocumentViewerCard
             profileId={profile.id}

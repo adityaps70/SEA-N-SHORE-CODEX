@@ -25,6 +25,17 @@ export type CourseSnapshotDetails = {
   courseFormat: string
   /** Added in learning round A; absent from older snapshots. */
   navigationMode?: string
+  /** Added in learning round B; absent from older snapshots. */
+  certificateDesign?: {
+    template: string
+    logoPath: string | null
+    signaturePath: string | null
+    signatoryName: string | null
+    signatoryTitle: string | null
+    serialPrefix: string | null
+    validityMonths: number | null
+    issueTrigger: string
+  }
 }
 
 export type CourseSnapshotQuiz = {
@@ -204,6 +215,20 @@ export function snapshotDetailsFromRow(row: Record<string, unknown>): CourseSnap
     certificateEnabled: row.certificate_enabled === true,
     courseFormat: text(row.course_format),
     navigationMode: row.navigation_mode === 'sequential' ? 'sequential' : 'free',
+    ...(row.certificate_template !== undefined
+      ? {
+          certificateDesign: {
+            template: text(row.certificate_template) || 'classic',
+            logoPath: nullableText(row.certificate_logo_path),
+            signaturePath: nullableText(row.certificate_signature_path),
+            signatoryName: nullableText(row.certificate_signatory_name),
+            signatoryTitle: nullableText(row.certificate_signatory_title),
+            serialPrefix: nullableText(row.certificate_serial_prefix),
+            validityMonths: nullableNumber(row.certificate_validity_months),
+            issueTrigger: text(row.certificate_issue_trigger) || 'course_completion',
+          },
+        }
+      : {}),
   }
 }
 
@@ -345,6 +370,7 @@ const DETAIL_LABELS: Array<[keyof CourseSnapshotDetails, string]> = [
   ['currency', 'Currency'],
   ['certificateEnabled', 'Certificate'],
   ['navigationMode', 'Navigation (free or in order)'],
+  ['certificateDesign', 'Certificate design, validity and issuing'],
 ]
 
 const MATERIAL_LABELS: Array<[keyof CourseSnapshotMaterial, string]> = [

@@ -31,3 +31,39 @@ describe('learning certificate pdf', () => {
     expect(document.getAuthor()).toBe('Sea N Shore Global Shipping Community')
   })
 })
+
+// A 1×1 PNG, standing in for a course's logo and signature.
+const PNG = Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'))
+
+describe('learning certificate pdf layouts (round B)', () => {
+  it.each(['classic', 'modern', 'formal', 'minimal'] as const)('builds the %s layout with logo, signature, serial and expiry', async (templateKey) => {
+    const bytes = await buildLearningCertificatePdf({
+      certificate: {
+        ...certificate,
+        templateKey,
+        serialNumber: 'SNS-SIRE-2026-1A2B3C4D',
+        expiresAt: '2028-09-15T08:01:00.000Z',
+        logoPath: 'learning/x/logo.png',
+        signaturePath: 'learning/x/signature.png',
+        signatoryName: 'Capt. Fixture Signatory',
+        signatoryTitle: 'Course director',
+        hiddenFromProfile: false,
+        // A very long name must still fit the page.
+        learnerName: 'Fixture Learner With An Exceptionally Long Name For Layout Testing Purposes',
+      },
+      verificationUrl: 'https://seanshore.in/certificates/55555555-5555-4555-8555-555555555555',
+      images: { logo: { bytes: PNG, contentType: 'image/png' }, signature: { bytes: PNG, contentType: 'image/png' } },
+    })
+    const document = await PDFDocument.load(bytes)
+    expect(document.getPageCount()).toBe(1)
+  })
+
+  it('still builds when a picture cannot be read', async () => {
+    const bytes = await buildLearningCertificatePdf({
+      certificate: { ...certificate, templateKey: 'modern', serialNumber: null, expiresAt: null, logoPath: 'x', signaturePath: null, signatoryName: null, signatoryTitle: null, hiddenFromProfile: false },
+      verificationUrl: 'https://seanshore.in/certificates/x',
+      images: { logo: { bytes: Uint8Array.from([1, 2, 3]), contentType: 'image/png' } },
+    })
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1)
+  })
+})

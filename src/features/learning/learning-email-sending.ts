@@ -3,7 +3,7 @@ import { finalizeExpiredQuizSessions } from './learner-quiz-repository'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
 import { LEARNING_EMAIL_FROM, learningEmail } from './learning-email'
-import { LEARNING_NOTIFICATION_KINDS, sweepReleasedLessons, sweepSubmissionsToGrade, type LearningNotificationDetails, type LearningNotificationKind } from './learning-notifications'
+import { LEARNING_NOTIFICATION_KINDS, sweepReleasedLessons, sweepSubmissionsToGrade, type LearningNotificationDetails, type LearningNotificationKind, sweepExpiringCertificates } from './learning-notifications'
 
 /**
  * Sends the queued learning notification emails (learning round A, A6) from the outbox worker,
@@ -272,12 +272,15 @@ export function createLearningDigestSweep(input: { transaction?: Transaction; no
       const submissions = await sweepSubmissionsToGrade(transaction, { now })
       // Learning round B: timed quiz attempts whose time ran out while the learner was away.
       const quizSessions = await finalizeExpiredQuizSessions(transaction)
+      // Learning round B: certificate renewal reminders, 30 and 7 days before expiry.
+      const expiring = await sweepExpiringCertificates(transaction, { now })
       return {
         releasedNoticed: released.noticed,
         releasedNotified: released.notified,
         submissions: submissions.submissions,
         trainersNotified: submissions.notified,
         expiredQuizAttempts: quizSessions.finalized,
+        certificateReminders: expiring.notified,
       }
     },
   }

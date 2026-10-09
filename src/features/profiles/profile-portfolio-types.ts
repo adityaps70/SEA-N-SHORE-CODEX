@@ -1,3 +1,4 @@
+import type { ProfileLearningCertificate } from '@/features/learning/certificate-repository'
 export const profileExperienceTracks = [
   'sea_service',
   'shore_role',
@@ -51,4 +52,6 @@ export type ProfileCredentialRecord = {
 export type ProfilePortfolio = {
   experiences: ProfileExperienceRecord[]
   credentials: ProfileCredentialRecord[]
+  /** Learning round B (B5): Sea N Shore certificates, when the caller asked for them. */
+  learningCertificates?: ProfileLearningCertificate[]
 }
