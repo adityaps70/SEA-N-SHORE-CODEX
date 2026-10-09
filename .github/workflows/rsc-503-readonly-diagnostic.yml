@@ -1,0 +1,50 @@
+name: RSC 503 Read-only AWS Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Required only to authenticate GitHub OIDC with AWS; no GitHub repo write rights.
+
+jobs:
+  last-24h-503:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    env:
+      AWS_REGION: ap-south-1
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+    steps:
+      - name: Checkout diagnostic script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Require staging ECS variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ECS_CLUSTER"
+          test -n "$ECS_SERVICE"
+      - name: Assume existing diagnostic OIDC role with read-only session policy
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+          role-session-name: rsc503-readonly
+          allowed-account-ids: '310356785722'
+          # Intersects with the existing role: denies all AWS mutations even if the
+          # same base role is used by deployment workflows. No new IAM grants.
+          inline-session-policy: >-
+            {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":[
+            "sts:GetCallerIdentity",
+            "cloudfront:ListDistributions",
+            "wafv2:ListWebACLs","wafv2:GetWebACL",
+            "cloudwatch:GetMetricData",
+            "elasticloadbalancing:DescribeLoadBalancers","elasticloadbalancing:DescribeTargetHealth",
+            "ecs:DescribeServices","ecs:DescribeTaskDefinition","ecs:DescribeTasks","ecs:ListTasks",
+            "logs:FilterLogEvents"],"Resource":"*"}]}
+      - name: Correlate 24-hour CloudFront WAF ALB ECS and application evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/aws/rsc-503-readonly-diagnostic.py
