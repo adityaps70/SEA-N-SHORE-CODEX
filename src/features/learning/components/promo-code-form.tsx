@@ -146,6 +146,7 @@ export function PromoCodeForm({ courses, canCodeAllCourses }: { courses: Array<{
         </label>
         <label className="text-sm font-semibold text-navy-950">Valid from <span className="font-normal text-muted">(optional)</span>
           <input type="date" className={fieldClass(Boolean(error('validFrom')))} value={form.validFrom} onChange={(event) => set('validFrom', event.target.value)} />
+          {error('validFrom') ? <span className="mt-1 block text-xs font-medium text-red-700">{error('validFrom')}</span> : null}
         </label>
         <label className="text-sm font-semibold text-navy-950">Valid until <span className="font-normal text-muted">(optional)</span>
           <input type="date" className={fieldClass(Boolean(error('validUntil')))} value={form.validUntil} onChange={(event) => set('validUntil', event.target.value)} />
