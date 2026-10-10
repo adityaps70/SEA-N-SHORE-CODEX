@@ -119,10 +119,19 @@ they are.
 ## Release
 
 - [x] One guarded migration (0072–0073)
-- [ ] One deploy, rearm, Remote Verify green. First attempt: arm #179 (deploy-once `70b18870`), run 37995597045
+- [x] One deploy, rearm, Remote Verify green. First attempt: arm #179 (deploy-once `70b18870`), run 37995597045
       failed before deploying (Docker Hub auth 504 while resolving `docker/dockerfile:1.7`; no image pushed, nothing
-      on AWS changed); rearmed to plan (`8c9550f0`). A new arm follows the template PR.
-- [ ] Live checks on seanshore.in (CSV import of 20, timed draw of 10 with shuffle taken twice, subjective grading
+      on AWS changed); rearmed to plan (`8c9550f0`). Deploy: arm #181 (deploy-once `ddb2b8f3`), run 38000964308:
+      web :239→:240, outbox :121→:122, notification :120→:121; rearmed to plan (`bbc90460`); Remote Verify
+      38002162968, Google Auth Live Verify and Logo Browser Verify green
+- [x] Signed-out checks on seanshore.in: home, /learn, the SIRE 2.0 course page (canonical, Course JSON-LD),
+      robots.txt, sitemap.xml; Studio → Question bank and Assignments redirect to sign-in; the bank export answers
+      401 signed out; the CSV template downloads (no member data); an unknown verification code shows "Certificate
+      not verified"
+- [ ] Signed-in checks (owner): CSV import of 20, timed draw of 10 with shuffle taken twice, subjective grading
       issues the certificate, profile and verification page, hide removes it from the public profile, old quizzes,
-      attempts and certificates unchanged)
+      attempts and certificates unchanged
+- Found, not fixed (needs a deploy): a verification link whose code is not a UUID (e.g. `/certificates/abc`)
+      answers 500 instead of "Certificate not verified"; the column has been `uuid` since 0018, so this predates
+      round B
 - [ ] Report
