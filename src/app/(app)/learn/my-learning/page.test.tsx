@@ -11,11 +11,13 @@ const mocks = vi.hoisted(() => ({
   listLearnerPurchases: vi.fn(),
   listForLearner: vi.fn(),
   getResumeCourse: vi.fn(),
+  claimInvitations: vi.fn(async () => 0),
 }))
 
 vi.mock('@/features/learning/certificate-repository', () => ({ certificateRepository: { listForLearner: mocks.listForLearner } }))
 vi.mock('@/features/learning/learner-home-repository', () => ({ learnerHomeRepository: { getResumeCourse: mocks.getResumeCourse } }))
 
+vi.mock('@/features/learning/course-roster-repository', () => ({ courseInvitationClaims: { forProfile: mocks.claimInvitations } }))
 vi.mock('@/features/learning/course-payment-repository', () => ({ coursePaymentRepository: { listLearnerPurchases: mocks.listLearnerPurchases } }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))

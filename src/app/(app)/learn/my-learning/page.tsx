@@ -9,6 +9,7 @@ import { formatLearningDate, LearnerCertificatesList, ResumeCourseCard } from '@
 import { myLearningTabFrom } from '@/features/learning/components/my-learning-tab-names'
 import { MyLearningTabs } from '@/features/learning/components/my-learning-tabs'
 import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
+import { courseInvitationClaims } from '@/features/learning/course-roster-repository'
 import {
   enrollmentRepository,
   type LearnerCourseEnrollment,
@@ -165,6 +166,8 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
     requireAwsUser(),
     searchParams ?? Promise.resolve<{ tab?: string | string[] }>({}),
   ])
+  // Round C (C1): a course a trainer invited this email address to is enrolled before the list loads.
+  await courseInvitationClaims.forProfile(user.id).catch(logLoadFailure('course_invitation_claim_failed'))
   const [enrollments, purchases, certificates, resume] = await Promise.all([
     enrollmentRepository.listLearnerEnrollments(user.id),
     coursePaymentRepository.listLearnerPurchases(user.id).catch(logLoadFailure('learner_purchases_load_failed')),

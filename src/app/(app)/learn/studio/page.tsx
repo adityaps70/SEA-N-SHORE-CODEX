@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Library, Plus, Receipt, Tag, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Library, Plus, Receipt, Tag, Users, Wallet } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
@@ -78,6 +78,16 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
           <span>{course.accessType === 'free' ? 'Free' : 'Paid'}</span>
         </div>
         {editable || livePublished ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {livePublished ? (
+              <Link
+                href={`/learn/studio/courses/${course.id}/learners`}
+                aria-label={`Learners of ${course.title}`}
+                className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+              >
+                <Users aria-hidden="true" className="size-4" /> Learners
+              </Link>
+            ) : null}
           <Link
             href={`/learn/studio/courses/${course.openRevision?.courseId ?? course.id}/edit`}
             aria-label={`Edit ${course.title}`}
@@ -85,6 +95,7 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
           >
             <FilePenLine aria-hidden="true" className="size-4" /> Edit course
           </Link>
+          </div>
         ) : (
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-2 text-sm font-semibold text-muted">
