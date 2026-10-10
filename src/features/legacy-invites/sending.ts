@@ -1,4 +1,5 @@
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { withEmailSuppression } from '@/lib/email/suppression'
 import { LEGACY_INVITE_FROM, legacyInviteEmail } from './email'
 import { legacyInviteRepository, type LegacyInviteDelivery } from './repository'
 
@@ -21,7 +22,7 @@ export function createLegacyInviteWorker(input: {
   async function resolveClient() {
     if (client !== undefined) return client
     const key = await (input.loadApiKey ?? loadResendApiKey)()
-    client = key ? createResendEmailClient({ apiKey: key }) : null
+    client = key ? withEmailSuppression(createResendEmailClient({ apiKey: key })) : null
     return client
   }
 

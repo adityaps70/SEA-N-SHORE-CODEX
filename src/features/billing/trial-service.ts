@@ -1,6 +1,7 @@
 import { withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { getNewsletterConfig, newsletterSendingStatus } from '@/features/newsletter/config'
 import { createSesV2Client } from '@/features/newsletter/ses-client'
+import { emailSuppressions } from '@/lib/email/suppression'
 import { logBillingEvent } from './cashfree-subscriptions'
 import { syncPlanContentVisibility } from './plan-visibility'
 import { TRIAL_REMINDER_DAYS, type BillingSubject } from './plans'
@@ -26,6 +27,7 @@ export function createTrialReminderMailer(env: Record<string, string | undefined
   if (!newsletterSendingStatus(config).enabled || !config.fromAddress) return null
   const client = createSesV2Client({ region: config.region })
   return async ({ to, subject, text }) => {
+    if (await emailSuppressions.isSuppressed(to)) return false
     await client.sendEmail({
       from: config.fromAddress!,
       to,

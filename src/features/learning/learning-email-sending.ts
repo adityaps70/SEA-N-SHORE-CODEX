@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { finalizeExpiredQuizSessions } from './learner-quiz-repository'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { withEmailSuppression } from '@/lib/email/suppression'
 import { LEARNING_EMAIL_FROM, learningEmail } from './learning-email'
 import { LEARNING_NOTIFICATION_KINDS, sweepReleasedLessons, sweepSubmissionsToGrade, type LearningNotificationDetails, type LearningNotificationKind, sweepExpiringCertificates } from './learning-notifications'
 
@@ -202,7 +203,7 @@ export function createLearningEmailWorker(input: {
   async function resolveClient() {
     if (client !== undefined) return client
     const key = await (input.loadApiKey ?? loadResendApiKey)()
-    client = key ? createResendEmailClient({ apiKey: key }) : null
+    client = key ? withEmailSuppression(createResendEmailClient({ apiKey: key })) : null
     return client
   }
 

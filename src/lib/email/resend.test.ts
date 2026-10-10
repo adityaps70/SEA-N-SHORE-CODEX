@@ -135,3 +135,37 @@ describe('Resend email client', () => {
     expect(resendApiKeyFromSecretString(JSON.stringify({ RESEND_API_KEY: 'not-a-key' }))).toBeNull()
   })
 })
+
+describe('Resend read calls for delivery status', () => {
+  it('fetches one email’s last event with a GET and the bearer key', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ object: 'email', id: 'e-1', to: ['A@Example.com'], last_event: 'delivered', created_at: '2026-10-03 10:00:00+00' }))
+    const client = createResendEmailClient({ apiKey: 're_test_key', fetch: fetchMock })
+    await expect(client.getEmail('e-1')).resolves.toEqual({ id: 'e-1', lastEvent: 'delivered', to: ['A@Example.com'], createdAt: '2026-10-03 10:00:00+00' })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.resend.com/emails/e-1')
+    expect(init.method).toBe('GET')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer re_test_key')
+    await expect(client.getEmail('../domains')).rejects.toMatchObject({ code: 'invalid_email_id' })
+  })
+
+  it('reports a rate limit as retryable and a sending-only key as not', async () => {
+    const limited = createResendEmailClient({ apiKey: 're_test_key', fetch: vi.fn(async () => jsonResponse({ name: 'rate_limit_exceeded', message: 'Too many' }, 429)) })
+    await expect(limited.getEmail('e-1')).rejects.toMatchObject({ status: 429, retryable: true })
+    const restricted = createResendEmailClient({ apiKey: 're_test_key', fetch: vi.fn(async () => jsonResponse({ name: 'restricted_api_key', message: 'Sending only' }, 401)) })
+    await expect(restricted.getEmail('e-1')).rejects.toMatchObject({ status: 401, retryable: false })
+  })
+
+  it('pages through the suppression list with limit and after', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      object: 'list',
+      has_more: true,
+      data: [{ id: 's1', email: 'A@Example.com', origin: 'bounce', source_id: 'e1' }, { id: '', email: 'skip@example.com' }],
+    }))
+    const client = createResendEmailClient({ apiKey: 're_test_key', fetch: fetchMock })
+    await expect(client.listSuppressions({ after: 's0', limit: 500 })).resolves.toEqual({
+      data: [{ id: 's1', email: 'a@example.com', origin: 'bounce', sourceId: 'e1' }],
+      hasMore: true,
+    })
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('https://api.resend.com/suppressions?limit=100&after=s0')
+  })
+})

@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { withEmailSuppression } from '@/lib/email/suppression'
 import { LEARNING_EMAIL_FROM, learningEmailSiteUrl } from '../learning-email'
 import { consentWording, INVITATION_DAYS } from './crew-rules'
 
@@ -132,7 +133,7 @@ export function createCompanyInvitationWorker(input: {
   async function resolveClient() {
     if (client !== undefined) return client
     const key = await (input.loadApiKey ?? loadResendApiKey)()
-    client = key ? createResendEmailClient({ apiKey: key }) : null
+    client = key ? withEmailSuppression(createResendEmailClient({ apiKey: key })) : null
     return client
   }
 

@@ -1,4 +1,5 @@
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { withEmailSuppression } from '@/lib/email/suppression'
 import { getNewsletterConfig, newsletterSendingStatus, type NewsletterConfig, type NewsletterSendingStatus } from './config'
 import { campaignEmail, confirmationEmail } from './emails'
 import { newsletterRepository, type NewsletterRepository, type NewsletterSubscriber } from './repository'
@@ -41,7 +42,7 @@ export function createNewsletterSender(deps: Deps = {}) {
     if (cachedClient) return cachedClient
     const apiKey = await (deps.loadApiKey ?? loadResendApiKey)()
     if (!apiKey) return null
-    cachedClient = createResendEmailClient({ apiKey })
+    cachedClient = withEmailSuppression(createResendEmailClient({ apiKey }))
     return cachedClient
   }
 

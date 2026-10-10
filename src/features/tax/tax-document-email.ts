@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { withEmailSuppression } from '@/lib/email/suppression'
 import { learningEmailSiteUrl } from '@/features/learning/learning-email'
 import { taxMoney } from './gst'
 import { buildCreditNotePdf, buildTaxInvoicePdf, taxDocumentDate, taxDocumentFileName } from './tax-document-pdf'
@@ -173,7 +174,7 @@ export function createTaxDocumentEmailWorker(input: {
   async function resolveClient() {
     if (client !== undefined) return client
     const key = await (input.loadApiKey ?? loadResendApiKey)()
-    client = key ? createResendEmailClient({ apiKey: key }) : null
+    client = key ? withEmailSuppression(createResendEmailClient({ apiKey: key })) : null
     return client
   }
 

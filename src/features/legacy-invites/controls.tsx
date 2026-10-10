@@ -3,12 +3,34 @@
 import { useState, useTransition } from 'react'
 import {
   cancelPreparedLegacyInvites,
+  cancelPreparedLegacyReminders,
   prepareLegacyInviteBatch,
+  prepareLegacyReminderBatch,
   startPreparedLegacyInvites,
+  startPreparedLegacyReminders,
   stopUnsentLegacyInvites,
+  stopUnsentLegacyReminders,
 } from '@/features/legacy-invites/admin-actions'
 
+const MODES = {
+  invite: {
+    noun: 'legacy invitation',
+    prepare: prepareLegacyInviteBatch,
+    start: startPreparedLegacyInvites,
+    cancel: cancelPreparedLegacyInvites,
+    stop: stopUnsentLegacyInvites,
+  },
+  reminder: {
+    noun: 'second reminder',
+    prepare: prepareLegacyReminderBatch,
+    start: startPreparedLegacyReminders,
+    cancel: cancelPreparedLegacyReminders,
+    stop: stopUnsentLegacyReminders,
+  },
+} as const
+
 export function LegacyInviteControls(props: {
+  mode?: keyof typeof MODES
   prepared: number
   queued: number
   failed: number
@@ -16,7 +38,9 @@ export function LegacyInviteControls(props: {
 }) {
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
-  const unsent = props.queued + props.failed
+  const mode = MODES[props.mode ?? 'invite']
+  // A failed second reminder is final (never retried), so only queued ones can be stopped.
+  const unsent = props.queued + (props.mode === 'reminder' ? 0 : props.failed)
 
   function run(action: () => Promise<void>, confirmation: string, success: string) {
     if (!window.confirm(confirmation)) return
@@ -38,7 +62,7 @@ export function LegacyInviteControls(props: {
         <p className="text-sm font-semibold text-navy-950">1. Prepare recipients — this does not send email</p>
         <div className="mt-2 flex flex-wrap gap-2">
           {[10, 50, 100].map((limit) => (
-            <form key={limit} action={prepareLegacyInviteBatch}>
+            <form key={limit} action={mode.prepare}>
               <input type="hidden" name="limit" value={limit} />
               <button
                 type="submit"
@@ -57,9 +81,9 @@ export function LegacyInviteControls(props: {
           type="button"
           disabled={pending || props.prepared === 0}
           onClick={() => run(
-            startPreparedLegacyInvites,
-            `Start sending ${props.prepared} prepared legacy invitation(s)? Once a message is handed to Resend it cannot be recalled.`,
-            'Prepared invitations moved to the send queue.',
+            mode.start,
+            `Start sending ${props.prepared} prepared ${mode.noun}(s)? Once a message is handed to Resend it cannot be recalled.`,
+            `Prepared ${mode.noun}s moved to the send queue.`,
           )}
           className="min-h-10 rounded-xl bg-ocean-700 px-4 text-sm font-bold text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -70,9 +94,9 @@ export function LegacyInviteControls(props: {
           type="button"
           disabled={pending || props.prepared === 0}
           onClick={() => run(
-            cancelPreparedLegacyInvites,
-            `Cancel all ${props.prepared} prepared invitation(s)? No email will be sent to them.`,
-            'Prepared invitations cancelled.',
+            mode.cancel,
+            `Cancel all ${props.prepared} prepared ${mode.noun}(s)? No email will be sent to them.`,
+            `Prepared ${mode.noun}s cancelled.`,
           )}
           className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -83,9 +107,9 @@ export function LegacyInviteControls(props: {
           type="button"
           disabled={pending || unsent === 0}
           onClick={() => run(
-            stopUnsentLegacyInvites,
-            `Stop ${unsent} queued/retry invitation(s)? Messages already in Sending or already accepted by Resend cannot be recalled.`,
-            'Remaining queued/retry invitations stopped.',
+            mode.stop,
+            `Stop ${unsent} queued/retry ${mode.noun}(s)? Messages already in Sending or already accepted by Resend cannot be recalled.`,
+            `Remaining queued/retry ${mode.noun}s stopped.`,
           )}
           className="min-h-10 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
         >

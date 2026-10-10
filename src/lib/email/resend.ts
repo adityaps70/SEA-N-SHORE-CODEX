@@ -180,7 +180,65 @@ export function createResendEmailClient(options: { apiKey: string; fetch?: Fetch
       if (!messageId) throw new ResendApiError('invalid_response', 502, 'Resend returned no email id')
       return { messageId }
     },
+
+    /** One sent email's current status. `lastEvent` is Resend's `last_event`, e.g. "delivered" or "bounced". */
+    async getEmail(id: string): Promise<ResendEmailStatus> {
+      if (!/^[A-Za-z0-9-]{1,100}$/.test(id)) throw new ResendApiError('invalid_email_id', 400, 'Resend email id is malformed')
+      const body = await getJson(`https://api.resend.com/emails/${id}`)
+      const to = Array.isArray(body.to) ? body.to.map(clean).filter(Boolean) : []
+      return { id: clean(body.id) || id, lastEvent: clean(body.last_event) || null, to, createdAt: clean(body.created_at) || null }
+    },
+
+    /** One page of the team's suppression list, newest first. Pass the last id of a page as `after` for the next. */
+    async listSuppressions(input: { after?: string; limit?: number } = {}): Promise<{ data: ResendSuppression[]; hasMore: boolean }> {
+      const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(100, Math.floor(input.limit ?? 100)))) })
+      if (input.after) params.set('after', input.after)
+      const body = await getJson(`https://api.resend.com/suppressions?${params}`)
+      const data = Array.isArray(body.data) ? body.data : []
+      return {
+        data: data
+          .map((row: Record<string, unknown>) => ({
+            id: clean(row?.id),
+            email: clean(row?.email).toLowerCase(),
+            origin: clean(row?.origin) || null,
+            sourceId: clean(row?.source_id) || null,
+          }))
+          .filter((row: ResendSuppression) => row.id && row.email),
+        hasMore: body.has_more === true,
+      }
+    },
+  }
+
+  async function getJson(url: string): Promise<Record<string, unknown>> {
+    let response: Response
+    try {
+      response = await send(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: 'Bearer ' + apiKey },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        cache: 'no-store',
+      })
+    } catch {
+      throw new ResendApiError('network_error', 0, 'Resend request failed')
+    }
+    const text = await response.text()
+    let body: Record<string, unknown> | null = null
+    try {
+      body = text ? JSON.parse(text) as Record<string, unknown> : null
+    } catch {
+      body = null
+    }
+    if (!response.ok) {
+      const code = clean(body?.name) || 'http_' + response.status
+      const message = clean(body?.message) || 'Resend returned HTTP ' + response.status
+      throw new ResendApiError(code, response.status, message.slice(0, 300))
+    }
+    if (!body) throw new ResendApiError('invalid_response', 502, 'Resend returned no JSON body')
+    return body
   }
 }
+
+export type ResendEmailStatus = { id: string; lastEvent: string | null; to: string[]; createdAt: string | null }
+export type ResendSuppression = { id: string; email: string; origin: string | null; sourceId: string | null }
 
 export type ResendEmailClient = ReturnType<typeof createResendEmailClient>
