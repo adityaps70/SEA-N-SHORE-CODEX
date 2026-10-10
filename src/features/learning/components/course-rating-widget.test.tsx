@@ -43,7 +43,8 @@ describe('CourseRatingWidget (learning round C)', () => {
 
     await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(courseId, { rating: 4, body: 'Clear and practical.' }))
     expect(await screen.findByText(/It will appear on the course page once Sea N Shore approves it/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Update rating' })).toBeDisabled()
+    // The saved state renders after the transition ends; wait for it rather than racing it under a busy test run.
+    expect(await screen.findByRole('button', { name: 'Update rating' })).toBeDisabled()
   })
 
   it('shows the status of an existing review and the server’s plain message under the field', async () => {

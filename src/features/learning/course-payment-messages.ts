@@ -74,3 +74,55 @@ export function courseViewerResult(outcome: CourseCheckoutOutcome | null, course
       return { ...back, state: 'not_paid', title: 'No payment was made', message: 'The payment was not completed, so no money was taken. Go back to the course to try again.' }
   }
 }
+
+function seatsLabel(quantity: number) {
+  return `${quantity} ${quantity === 1 ? 'seat' : 'seats'}`
+}
+
+/** D3: plain words for a company's seat pack checkout (the seats are the company's; nobody is enrolled). */
+export function seatConfirmResult(outcome: CourseCheckoutOutcome): ConfirmCheckoutResult {
+  const amount = formatMoney(outcome.order.amountMinor, outcome.order.currency)
+  const seats = seatsLabel(outcome.order.seatPack?.quantity ?? 0)
+  switch (outcome.state) {
+    case 'enrolled':
+      return { ok: true, state: 'paid', message: `Payment of ${amount} received. ${seats} of ${outcome.order.courseTitle} are ready to assign to your crew.` }
+    case 'refunded':
+      return { ok: false, state: 'refunded', error: `We received your payment but could not add the seats. ${courseRefundReasonLabel(outcome.order.refundDueReason)} The full ${amount} has been refunded to the original payment method (usually 5–7 working days).` }
+    case 'refund_due':
+      return { ok: false, state: 'refund_due', error: `We received your payment but could not add the seats. ${courseRefundReasonLabel(outcome.reason)} The Sea N Shore team will refund the full ${amount}.` }
+    case 'processing':
+      return { ok: false, state: 'processing', error: `Your bank hasn't confirmed the payment of ${amount} yet. The seats are added automatically as soon as it does. Refresh this page in a minute to check.` }
+    case 'failed':
+      return { ok: false, state: 'failed', error: `The payment didn't go through${outcome.message ? `: ${outcome.message.replace(/\.$/, '')}` : ''}. No money was taken. You can try again or use a different payment method.` }
+    case 'expired':
+      return { ok: false, state: 'expired', error: 'This checkout expired before it was paid. No money was taken. Start again to buy the seats.' }
+    case 'not_paid':
+    default:
+      return { ok: false, state: 'not_paid', error: 'The payment window closed before the payment was made. No money was taken. You can buy the seats whenever you are ready.' }
+  }
+}
+
+/** D3: what /payments/return shows for a seat pack, sending the buyer back to the company's training page. */
+export function seatViewerResult(outcome: CourseCheckoutOutcome, companySlug: string | null): ViewerConfirmResult {
+  const { order } = outcome
+  const amount = formatMoney(order.amountMinor, order.currency)
+  const seats = seatsLabel(order.seatPack?.quantity ?? 0)
+  const back = { returnHref: companySlug ? `/organizations/${companySlug}/training?view=seats` : '/organizations', returnLabel: 'Back to company training' }
+  switch (outcome.state) {
+    case 'enrolled':
+      return { ...back, state: 'paid', title: 'Payment received: seats added', message: `We received ${amount} for ${seats} of ${order.courseTitle}. Assign them to your crew from the company training page.` }
+    case 'refunded':
+      return { ...back, state: 'refunded', title: 'Your payment was refunded', message: `We received ${amount} but could not add the seats. ${courseRefundReasonLabel(order.refundDueReason)} The full amount is on its way back to the original payment method (usually 5–7 working days).` }
+    case 'refund_due':
+      return { ...back, state: 'refund_due', title: 'Payment received, seats not added', message: `We received ${amount} but could not add the seats. ${courseRefundReasonLabel(outcome.reason)} The Sea N Shore team will refund the full amount.` }
+    case 'processing':
+      return { ...back, state: 'processing', title: 'Waiting for your bank', message: `Your bank has not confirmed the payment of ${amount} yet. This usually takes a minute. Check again shortly. If it goes through, the seats are added automatically.` }
+    case 'failed':
+      return { ...back, state: 'failed', title: "The payment didn't go through", message: `${outcome.message ? `${outcome.message.replace(/\.$/, '')}. ` : ''}No money was taken. Go back to company training to try again.` }
+    case 'expired':
+      return { ...back, state: 'expired', title: 'This checkout has expired', message: 'No money was taken. Go back to company training and start again to buy the seats.' }
+    case 'not_paid':
+    default:
+      return { ...back, state: 'not_paid', title: 'No payment was made', message: 'The payment was not completed, so no money was taken. Go back to company training to try again.' }
+  }
+}
