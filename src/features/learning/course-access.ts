@@ -30,3 +30,26 @@ export function courseManagerAccessSql(courseAlias: string, actorParam: string) 
 export function enrollmentAccessOpenSql(enrollmentAlias = 'enrollment') {
   return `(${enrollmentAlias}.access_expires_at is null or ${enrollmentAlias}.access_expires_at > now())`
 }
+
+/**
+ * Round D: who may run one batch (its learners, sessions, attendance and recordings): the course's managers (as
+ * above), the batch's manager, or one of its instructors. `batchAlias` is a public.learning_course_batches row. Batch
+ * staff do not get course editing, prices or other batches. Platform admins are allowed by the caller, as for courses.
+ */
+export function batchStaffAccessSql(batchAlias: string, actorParam: string) {
+  return `(
+    ${batchAlias}.manager_profile_id = ${actorParam}
+    or exists (
+      select 1
+      from public.learning_batch_instructors access_bi
+      where access_bi.batch_id = ${batchAlias}.id
+        and access_bi.profile_id = ${actorParam}
+    )
+    or exists (
+      select 1
+      from public.learning_courses access_bc
+      where access_bc.id = ${batchAlias}.course_id
+        and ${courseManagerAccessSql('access_bc', actorParam)}
+    )
+  )`
+}
