@@ -5,6 +5,9 @@ import { coursePaymentRepository } from './course-payment-repository'
 import { coursePurchaseBlockerMessage, courseRefundReasonLabel } from './course-payment-rules'
 import { coursePrice, formatCourseAmount, type CoursePriceSource } from './course-pricing'
 import type { LearnerEnrollment } from './enrollment-repository'
+import type { CoursePlanOffer } from './components/course-plan-checkout'
+import { coursePlanRepository } from './course-plan-repository'
+import { accessHasExpired, accessPeriodLabel, planPrice, type CoursePlan } from './course-plans'
 
 const OFF: PaymentCapabilities = { configured: false, provider: null, currencies: [] }
 
@@ -19,6 +22,26 @@ export function formatPurchaseTime(value: string) {
     minute: '2-digit',
     timeZone: 'Asia/Kolkata',
   }).format(date)
+}
+
+function dateLabel(value: string) {
+  return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(value))
+}
+
+/** The plans on sale, as the course page shows them (prices always from the server's plan rows). */
+export function planOffers(plans: CoursePlan[]): CoursePlanOffer[] {
+  return plans.flatMap((plan) => {
+    const price = planPrice(plan)
+    if (!price) return []
+    return [{
+      id: plan.id,
+      name: plan.name,
+      priceLabel: formatCourseAmount(price.amountMinor, price.currency),
+      listLabel: price.discountPriceMinor === null ? null : formatCourseAmount(price.listPriceMinor, price.currency),
+      accessLabel: accessPeriodLabel(plan.accessMonths),
+      currency: price.currency,
+    }]
+  })
 }
 
 async function capabilities(log: (message: string) => void) {
@@ -51,8 +74,15 @@ export async function loadCoursePurchaseState(input: {
   const hasEnrollment = enrollment?.status === 'active' || enrollment?.status === 'completed'
   const teamEnrollment = enrollment?.enrollmentSource === 'admin'
 
-  if (hasEnrollment && (!teamEnrollment || onTeam)) {
-    return { kind: 'enrolled', viaTeam: teamEnrollment, completed: enrollment?.status === 'completed' }
+  // Round C (C3): time-limited access that has ended is renewed here; access still running shows its end date.
+  const accessEnded = hasEnrollment && !teamEnrollment && accessHasExpired(enrollment?.accessExpiresAt)
+  if (hasEnrollment && (!teamEnrollment || onTeam) && !accessEnded) {
+    return {
+      kind: 'enrolled',
+      viaTeam: teamEnrollment,
+      completed: enrollment?.status === 'completed',
+      accessUntilLabel: !teamEnrollment && enrollment?.accessExpiresAt ? dateLabel(enrollment.accessExpiresAt) : null,
+    }
   }
   if (onTeam) {
     return { kind: 'team', reason: isManager ? 'You manage this course' : 'Sea N Shore team access' }
@@ -72,6 +102,11 @@ export async function loadCoursePurchaseState(input: {
     }
   }
 
+  const plans = await coursePlanRepository.list(course.id).catch((error: unknown) => {
+    log(error instanceof Error ? error.message : 'course_plans_failed')
+    return [] as CoursePlan[]
+  })
+  const offers = planOffers(plans)
   const price = coursePrice(course)
   const payments = await capabilities(log)
   const blockedMessage = !price
@@ -83,7 +118,9 @@ export async function loadCoursePurchaseState(input: {
 
   return {
     kind: 'buy',
-    priceLabel: formatCourseAmount(price?.amountMinor ?? course.priceMinor, price?.currency ?? course.currency),
+    priceLabel: offers[0]?.priceLabel ?? formatCourseAmount(price?.amountMinor ?? course.priceMinor, price?.currency ?? course.currency),
+    plans: offers,
+    renewal: accessEnded && enrollment?.accessExpiresAt ? { endedLabel: dateLabel(enrollment.accessExpiresAt) } : null,
     configured: payments.configured,
     blockedMessage,
     pending: open

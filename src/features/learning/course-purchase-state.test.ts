@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   isCourseManager: vi.fn(),
   getRefundDueOrder: vi.fn(),
   getRecentOpenOrder: vi.fn(),
+  listPlans: vi.fn(),
 }))
 
 vi.mock('@/lib/db/client', () => ({ query: vi.fn(), withTransaction: vi.fn() }))
@@ -18,6 +19,8 @@ vi.mock('./course-payment-repository', () => ({
     getRecentOpenOrder: mocks.getRecentOpenOrder,
   },
 }))
+
+vi.mock('./course-plan-repository', () => ({ coursePlanRepository: { list: mocks.listPlans } }))
 
 import { loadCoursePurchaseState } from './course-purchase-state'
 import { coursePrice, courseSellerNet, discountPercent, formatFeePercent } from './course-pricing'
@@ -36,12 +39,16 @@ beforeEach(() => {
   mocks.getPaymentCapabilities.mockResolvedValue({ configured: true, provider: 'cashfree', currencies: ['INR'] })
   mocks.getRefundDueOrder.mockResolvedValue(null)
   mocks.getRecentOpenOrder.mockResolvedValue(null)
+  mocks.listPlans.mockResolvedValue([standardPlan])
 })
+
+const standardPlan = { id: 'plan-standard', name: 'Standard', priceMinor: 500000, discountPriceMinor: 400000, currency: 'INR', accessMonths: null, position: 0 }
+const standardOffer = { id: 'plan-standard', name: 'Standard', priceLabel: '₹4,000', listLabel: '₹5,000', accessLabel: 'Lifetime access', currency: 'INR' }
 
 describe('course purchase state', () => {
   it('offers Buy course at the discounted price when payments are on', async () => {
     await expect(loadCoursePurchaseState({ userId, course, enrollment: null })).resolves.toEqual({
-      kind: 'buy', priceLabel: '₹4,000', configured: true, blockedMessage: undefined, pending: null,
+      kind: 'buy', priceLabel: '₹4,000', plans: [standardOffer], renewal: null, configured: true, blockedMessage: undefined, pending: null,
     })
   })
 
@@ -67,7 +74,7 @@ describe('course purchase state', () => {
   })
 
   it('sends enrolled learners to the course, and gives the course team access without buying', async () => {
-    await expect(loadCoursePurchaseState({ userId, course, enrollment: enrollment() })).resolves.toEqual({ kind: 'enrolled', viaTeam: false, completed: false })
+    await expect(loadCoursePurchaseState({ userId, course, enrollment: enrollment() })).resolves.toEqual({ kind: 'enrolled', viaTeam: false, completed: false, accessUntilLabel: null })
     mocks.isCourseManager.mockResolvedValueOnce(true)
     await expect(loadCoursePurchaseState({ userId, course, enrollment: null })).resolves.toEqual({ kind: 'team', reason: 'You manage this course' })
     mocks.canAccessPlatformAdmin.mockResolvedValueOnce(true)
@@ -81,6 +88,25 @@ describe('course purchase state', () => {
   it('offers buying again after a refund, but not after access was removed for another reason', async () => {
     await expect(loadCoursePurchaseState({ userId, course, enrollment: enrollment({ status: 'revoked' }) })).resolves.toMatchObject({ kind: 'buy' })
     await expect(loadCoursePurchaseState({ userId, course, enrollment: enrollment({ status: 'revoked', enrollmentSource: 'free' }) })).resolves.toMatchObject({ kind: 'revoked' })
+  })
+
+  it('offers every plan, shows when time-limited access ends, and offers renewal once it has ended (round C)', async () => {
+    mocks.listPlans.mockResolvedValue([
+      standardPlan,
+      { id: 'plan-six', name: 'Self-paced', priceMinor: 150000, discountPriceMinor: null, currency: 'INR', accessMonths: 6, position: 1 },
+    ])
+    await expect(loadCoursePurchaseState({ userId, course, enrollment: null })).resolves.toMatchObject({
+      kind: 'buy',
+      plans: [standardOffer, { id: 'plan-six', name: 'Self-paced', priceLabel: '₹1,500', listLabel: null, accessLabel: '6 months of access' }],
+      renewal: null,
+    })
+    await expect(loadCoursePurchaseState({ userId, course, enrollment: enrollment({ accessExpiresAt: '2099-03-01T00:00:00.000Z' }) }))
+      .resolves.toEqual({ kind: 'enrolled', viaTeam: false, completed: false, accessUntilLabel: '1 March 2099' })
+    await expect(loadCoursePurchaseState({ userId, course, enrollment: enrollment({ accessExpiresAt: '2020-03-01T00:00:00.000Z' }) }))
+      .resolves.toMatchObject({ kind: 'buy', renewal: { endedLabel: '1 March 2020' } })
+    // A plan that cannot be charged (no valid price) is not offered.
+    mocks.listPlans.mockResolvedValue([{ ...standardPlan, priceMinor: 50, discountPriceMinor: null }])
+    await expect(loadCoursePurchaseState({ userId, course, enrollment: null })).resolves.toMatchObject({ plans: [] })
   })
 
   it('tells the learner when a payment arrived but a refund is due', async () => {

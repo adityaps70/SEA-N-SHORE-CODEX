@@ -107,9 +107,11 @@ describe('learning enrollment repository', () => {
       enrolledAt: '2026-09-14T12:00:00.000Z',
       completedAt: null,
       revokedAt: null,
+      accessExpiresAt: null,
     })
 
     expect(seen[0]?.values).toEqual([learnerId, courseId])
+    expect(seen[0]?.text).toContain('enrollment.access_expires_at')
     expect(seen[0]?.text).toContain('enrollment.learner_id = $1')
     expect(seen[0]?.text).toContain('enrollment.course_id = $2')
   })

@@ -6,7 +6,7 @@ import { notifyEnrolled } from './learning-notifications'
 type EnrollmentQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
 type EnrollmentStatus = 'active' | 'completed' | 'revoked'
-type EnrollmentSource = 'free' | 'purchase' | 'admin'
+type EnrollmentSource = 'free' | 'purchase' | 'admin' | 'trainer'
 type CourseLevel = 'beginner' | 'intermediate' | 'advanced' | 'all_levels'
 type CourseFormat = 'recorded' | 'live_cohort' | 'hybrid'
 
@@ -17,6 +17,7 @@ type EnrollmentRow = QueryResultRow & {
   enrolled_at: string | Date
   completed_at: string | Date | null
   revoked_at: string | Date | null
+  access_expires_at?: string | Date | null
 }
 
 type LearnerCourseRow = QueryResultRow & {
@@ -48,6 +49,8 @@ export type LearnerEnrollment = {
   enrolledAt: string
   completedAt: string | null
   revokedAt: string | null
+  /** Round C (C3): when time-limited access ends; null = lifetime. */
+  accessExpiresAt: string | null
 }
 
 export type LearnerCourseEnrollment = {
@@ -87,7 +90,7 @@ function asEnrollmentStatus(value: string): EnrollmentStatus {
 }
 
 function asEnrollmentSource(value: string): EnrollmentSource {
-  if (value === 'free' || value === 'purchase' || value === 'admin') return value
+  if (value === 'free' || value === 'purchase' || value === 'admin' || value === 'trainer') return value
   throw new Error('enrollment_source_invalid')
 }
 
@@ -99,6 +102,7 @@ function mapEnrollment(row: EnrollmentRow): LearnerEnrollment {
     enrolledAt: isoDateTime(row.enrolled_at),
     completedAt: nullableIsoDateTime(row.completed_at),
     revokedAt: nullableIsoDateTime(row.revoked_at),
+    accessExpiresAt: nullableIsoDateTime(row.access_expires_at ?? null),
   }
 }
 
@@ -113,7 +117,8 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          enrollment.enrollment_source,
          enrollment.enrolled_at,
          enrollment.completed_at,
-         enrollment.revoked_at
+         enrollment.revoked_at,
+         enrollment.access_expires_at
        from public.learning_enrollments enrollment
        where enrollment.learner_id = $1
          and enrollment.course_id = $2

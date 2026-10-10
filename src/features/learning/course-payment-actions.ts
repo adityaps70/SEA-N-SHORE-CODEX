@@ -22,11 +22,16 @@ import { coursePaymentRepository, CoursePurchaseError } from './course-payment-r
 import { COURSE_PAYMENTS_NOT_CONFIGURED_HELP, coursePurchaseBlockerMessage } from './course-payment-rules'
 import { coursePaymentService } from './course-payment-runtime'
 import { coursePurchasePaths } from './course-payment-service'
+import { promoRefusalMessage } from './promo-codes'
+import { accessPeriodLabel } from './course-plans'
 
 export type RefundCoursePaymentResult = { ok: true; message: string } | { ok: false; error: string }
 
 const uuidSchema = z.string().uuid()
 const phoneSchema = z.string().trim().max(30).optional()
+/** Round C: a plan id and the promo code text as typed (the price is always worked out on the server). */
+const planSchema = z.string().uuid().nullable().optional()
+const promoCodeSchema = z.string().trim().max(40).nullable().optional()
 const confirmSchema = z.object({
   courseId: z.string().uuid(),
   orderId: z.string().uuid(),
@@ -52,6 +57,8 @@ function checkoutError(error: unknown) {
   if (error instanceof CoursePurchaseError) {
     if (error.code === 'checkout_in_progress') return 'Your checkout is already being prepared. Wait a moment and try again.'
     if (error.code === 'order_not_found') return 'We could not find this checkout. Select Buy course again.'
+    if (error.code === 'plan_not_found') return 'This plan is no longer on sale. Refresh the page and choose a plan.'
+    if (error.code.startsWith('promo_')) return promoRefusalMessage(error.code)
     return coursePurchaseBlockerMessage(error.code)
   }
   return 'We could not start the payment. No money was taken. Please try again.'
@@ -61,11 +68,18 @@ function checkoutError(error: unknown) {
  * Creates (or reuses) the learner's order for a paid course and opens the gateway
  * checkout. The price always comes from the course row on the server.
  */
-export async function startCourseCheckoutAction(courseId: string, options: { phone?: string } = {}): Promise<StartCheckoutResult> {
+export async function startCourseCheckoutAction(
+  courseId: string,
+  options: { phone?: string; planId?: string | null; promoCode?: string | null } = {},
+): Promise<StartCheckoutResult> {
   const id = uuidSchema.safeParse(courseId)
   const phone = phoneSchema.safeParse(options.phone)
+  const plan = planSchema.safeParse(options.planId)
+  const promo = promoCodeSchema.safeParse(options.promoCode)
   if (!id.success) return { ok: false, error: coursePurchaseBlockerMessage('course_not_found') }
   if (!phone.success) return { ok: false, error: PHONE_INVALID_MESSAGE, needsPhone: true }
+  if (!plan.success) return { ok: false, error: 'This plan is no longer on sale. Refresh the page and choose a plan.' }
+  if (!promo.success) return { ok: false, error: promoRefusalMessage('promo_not_found') }
   try {
     const user = await requireAwsUser()
     if (!await userCan(user.id, 'course.enroll')) {
@@ -76,7 +90,13 @@ export async function startCourseCheckoutAction(courseId: string, options: { pho
     }
     const { customer, invalidPhone } = await loadCheckoutCustomer(user, phone.data)
     if (invalidPhone) return { ok: false, error: PHONE_INVALID_MESSAGE, needsPhone: true }
-    const checkout = await coursePaymentService.startCheckout({ profileId: user.id, courseId: id.data, customer })
+    const checkout = await coursePaymentService.startCheckout({
+      profileId: user.id,
+      courseId: id.data,
+      customer,
+      planId: plan.data ?? null,
+      promoCode: promo.data || null,
+    })
     return {
       ok: true,
       checkout: {
@@ -172,5 +192,50 @@ export async function refundCoursePaymentAction(orderId: string): Promise<Refund
     }
     console.error('course_payment_refund_action_failed', { message: error instanceof Error ? error.message : null })
     return { ok: false, error: 'We could not refund this purchase just now. Nothing was refunded. Please try again in a few minutes.' }
+  }
+}
+
+export type CoursePriceQuoteResult =
+  | {
+      ok: true
+      planName: string
+      accessLabel: string
+      listLabel: string
+      /** The plan's sale price, when it has one. */
+      saleLabel: string | null
+      codeLabel: string | null
+      discountLabel: string | null
+      totalLabel: string
+      amountMinor: number
+    }
+  | { ok: false; error: string }
+
+/**
+ * What the buyer would pay for a plan with a promo code, worked out on the server exactly as checkout does (no use
+ * is reserved). For the course page's "Apply" button; the checkout re-checks everything when it starts.
+ */
+export async function previewCoursePriceAction(courseId: string, options: { planId?: string | null; promoCode?: string | null } = {}): Promise<CoursePriceQuoteResult> {
+  const id = uuidSchema.safeParse(courseId)
+  const plan = planSchema.safeParse(options.planId)
+  const promo = promoCodeSchema.safeParse(options.promoCode)
+  if (!id.success || !plan.success) return { ok: false, error: coursePurchaseBlockerMessage('course_not_found') }
+  if (!promo.success) return { ok: false, error: promoRefusalMessage('promo_not_found') }
+  try {
+    const user = await requireAwsUser()
+    const quote = await coursePaymentRepository.previewCheckout({ profileId: user.id, courseId: id.data, planId: plan.data ?? null, promoCode: promo.data || null })
+    return {
+      ok: true,
+      planName: quote.plan.name,
+      accessLabel: accessPeriodLabel(quote.plan.accessMonths),
+      listLabel: formatMoney(quote.listPriceMinor, quote.currency),
+      saleLabel: quote.discountPriceMinor === null ? null : formatMoney(quote.discountPriceMinor, quote.currency),
+      codeLabel: quote.promo?.code ?? null,
+      discountLabel: quote.promo ? `−${formatMoney(quote.promo.discountMinor, quote.currency)}` : null,
+      totalLabel: formatMoney(quote.amountMinor, quote.currency),
+      amountMinor: quote.amountMinor,
+    }
+  } catch (error) {
+    if (!(error instanceof CoursePurchaseError)) console.error('course_price_preview_failed', { message: error instanceof Error ? error.message : null })
+    return { ok: false, error: checkoutError(error) }
   }
 }

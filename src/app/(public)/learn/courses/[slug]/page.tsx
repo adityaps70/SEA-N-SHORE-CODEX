@@ -128,7 +128,12 @@ function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: Co
   if (isFree) return initiallyEnrolled ? { kind: 'continue', label: completed ? 'Review course' : 'Continue learning' } : { kind: 'enroll' }
   if (!purchase) return null
   if (purchase.kind === 'enrolled') return { kind: 'continue', label: purchase.completed ? 'Review course' : 'Continue learning' }
-  if (purchase.kind === 'buy' && purchase.configured && !purchase.blockedMessage) return { kind: 'buy', priceLabel: purchase.priceLabel }
+  if (purchase.kind === 'buy' && purchase.configured && !purchase.blockedMessage) {
+    // Round C: a choice of plans, or a renewal, is made in the "Course access" card.
+    if (purchase.renewal) return { kind: 'choose', label: 'Renew access' }
+    if ((purchase.plans?.length ?? 0) > 1) return { kind: 'choose', label: 'See plans' }
+    return { kind: 'buy', priceLabel: purchase.priceLabel }
+  }
   return null
 }
 

@@ -15,6 +15,8 @@ export type CourseActionBarMode =
   | { kind: 'enroll' }
   | { kind: 'continue'; label: 'Continue learning' | 'Review course' }
   | { kind: 'buy'; priceLabel: string }
+  /** Round C: several plans (or a renewal) are chosen in the "Course access" card. */
+  | { kind: 'choose'; label: string }
 
 const PRIMARY =
   'inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-bold text-white transition hover:bg-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60'
@@ -49,6 +51,12 @@ export function CourseActionBar({
       <Link href={learnHref} className={PRIMARY}>
         {mode.kind === 'continue' ? mode.label : 'Continue learning'} <ArrowRight aria-hidden="true" className="size-4" />
       </Link>
+    )
+  } else if (mode.kind === 'choose') {
+    action = (
+      <a href="#course-access" className={PRIMARY}>
+        {mode.label} <ArrowRight aria-hidden="true" className="size-4" />
+      </a>
     )
   } else if (mode.kind === 'enroll') {
     action = (
