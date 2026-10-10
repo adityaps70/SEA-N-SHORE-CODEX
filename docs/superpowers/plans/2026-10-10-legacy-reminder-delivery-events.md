@@ -26,6 +26,23 @@ Additive only. No existing check is relaxed and no existing row is changed.
 - `legacy_profile_invite_reminders` holds the reminders. Two unique indexes (one on the invitation, one on the
   lower-cased email) make "one per person, ever" a database rule. Each row has its own `unsubscribe_token`.
 
+## Resend keys (owner's rule, 10 October)
+
+The production key (`sea-n-shore/resend`) has "Sending access" only. The owner created a full-access key and stored it
+in plaintext as `sea-n-shore/resend-admin`.
+
+- The **admin key** is used only to create the webhook, update domain tracking, run the 3 October status backfill and
+  run the 6-hourly suppression sync. The webhook runner on the bootstrap host and the outbox worker's
+  `email-delivery/backfill.ts` are its only readers. That module never sends.
+- **Sending** stays on the sending-only key, for every email.
+- Neither key is ever printed.
+- `src/lib/email/resend-admin-key-contract.test.ts` pins this boundary.
+- Both actions of the webhook runner first confirm the admin secret can be read (`ADMIN_SECRET_READABLE=true`) and
+  stop before any other call if it cannot.
+- **Least privilege (follow-up, not changed here).** The existing runtime grant `sea-n-shore/resend*` lets both the
+  web task role and the outbox worker role read the admin key. Only the worker needs it. Narrowing the web task's
+  grant to the exact sending-key ARN would need a Terraform IAM change through its own guarded runner.
+
 ## Design decisions made while building
 
 - **Webhook endpoint.** `POST /api/email/resend/webhook` verifies the Svix signature over the raw body:
@@ -47,7 +64,8 @@ Additive only. No existing check is relaxed and no existing row is changed.
 - **No tracking pixels.** Open and click tracking are Resend domain settings. With them on, Resend would add a pixel
   and rewrite the claim link whatever the template says. The plan run reports both flags for `mail.seanshore.in`,
   and the apply run turns them off. Nothing in the app reads opens or clicks.
-- **Backfill in the outbox worker, not on the host.** The worker already holds the Resend key and database access.
+- **Backfill in the outbox worker, not on the host.** The worker has database access and can read the admin key
+  under its existing grant.
   It fetches each settled invitation's status once: sent more than a day ago, with no recorded event. It fetches
   about 20 every 20 seconds, 250 ms apart, which is roughly 4 a second against Resend's 10 a second team limit, and
   stops a sweep on 429. All 4,547 take about an hour and a half after the deploy. A webhook event always wins over a
@@ -71,6 +89,9 @@ Additive only. No existing check is relaxed and no existing row is changed.
   8. opted out (unsubscribed from the reminder or from the newsletter).
 
   Every rule is checked again for each person just before sending.
+- **First-invitation worker fix.** When a sweep stopped on a retryable error, the invitations it had claimed but
+  not tried stayed in `sending` for good. No sweep picks that status up and Stop cannot cancel it. They now go back
+  to the queue with their attempt refunded. The reminder worker does the same.
 - **One reminder, ever.** A cancelled reminder can be prepared again only if no send was ever attempted. A failed
   reminder is final and is never retried after a non-retryable error. A retryable error (429, 5xx) re-queues it,
   with up to 3 attempts. When a sweep stops on a retryable error, the reminders it claimed but never tried go back to
@@ -87,7 +108,10 @@ Additive only. No existing check is relaxed and no existing row is changed.
 - [x] Status backfill and suppression-list sync in the outbox worker
 - [x] Second reminder: eligibility with exclusion counts, Prepare / Start / Cancel / Stop, template, worker (5 per
   sweep), unsubscribe page and one-click endpoint
-- [x] Guarded runner `resend-delivery-webhook` (webhook, secret, domain tracking off, signed probe)
+- [x] Guarded runner `resend-delivery-webhook` (admin key read first; webhook, secret, domain tracking off, signed
+  probe)
+- [x] Backfill and suppression sync on the admin key; sending stays on the sending-only key
+- [x] First-invitation worker: claimed-but-untried invitations go back to the queue after a retryable error
 - [x] Tests: signature checks, eligibility rules on the real schema, one-per-person, unsubscribe, webhook handler,
   backfill, runner contract
 - [ ] Feature PR, migration arm, deploy arm, webhook arm, rearms, Remote Verify

@@ -1,4 +1,5 @@
 export const DEFAULT_RESEND_SECRET_ID = 'sea-n-shore/resend'
+export const DEFAULT_RESEND_ADMIN_SECRET_ID = 'sea-n-shore/resend-admin'
 
 type Environment = Record<string, string | undefined>
 type SecretLoader = (secretId: string) => Promise<string | null>
@@ -9,8 +10,6 @@ const REQUEST_TIMEOUT_MS = 10_000
 const CACHE_TTL_MS = 5 * 60_000
 const RETRY_TTL_MS = 30_000
 const PERMANENT_SECRET_ERRORS = new Set(['ResourceNotFoundException', 'AccessDeniedException', 'AccessDenied'])
-
-let cachedApiKey: { value: string | null; expiresAt: number } | null = null
 
 function clean(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
@@ -48,6 +47,41 @@ async function loadSecretFromSecretsManager(secretId: string) {
   return response.SecretString ?? null
 }
 
+type KeyCache = { value: string | null; expiresAt: number } | null
+
+async function loadKey(
+  cache: { current: KeyCache },
+  fromEnvironment: string | undefined,
+  secretId: string | null,
+  options: { loadSecret?: SecretLoader; now?: () => number; useCache?: boolean },
+  label: string,
+) {
+  const direct = plausibleApiKey(fromEnvironment)
+  if (direct) return direct
+  if (!secretId) return null
+
+  const now = options.now ?? Date.now
+  const useCache = options.useCache ?? true
+  if (useCache && cache.current && cache.current.expiresAt > now()) return cache.current.value
+
+  try {
+    const value = resendApiKeyFromSecretString(await (options.loadSecret ?? loadSecretFromSecretsManager)(secretId))
+    if (!value) console.error(`${label}_incomplete`)
+    if (useCache) cache.current = { value, expiresAt: now() + (value ? CACHE_TTL_MS : RETRY_TTL_MS) }
+    return value
+  } catch (error) {
+    const name = error instanceof Error ? error.name : null
+    console.error(`${label}_unavailable`, { name })
+    const ttl = name && PERMANENT_SECRET_ERRORS.has(name) ? CACHE_TTL_MS : RETRY_TTL_MS
+    if (useCache) cache.current = { value: null, expiresAt: now() + ttl }
+    return null
+  }
+}
+
+const sendingKeyCache: { current: KeyCache } = { current: null }
+const adminKeyCache: { current: KeyCache } = { current: null }
+
+/** The production sending key ("Sending access" only). Every email is sent with this key. */
 export async function loadResendApiKey(options: {
   environment?: Environment
   loadSecret?: SecretLoader
@@ -55,32 +89,33 @@ export async function loadResendApiKey(options: {
   useCache?: boolean
 } = {}) {
   const environment = options.environment ?? process.env
-  const fromEnvironment = plausibleApiKey(environment.RESEND_API_KEY)
-  if (fromEnvironment) return fromEnvironment
+  return loadKey(sendingKeyCache, environment.RESEND_API_KEY, resendSecretId(environment), options, 'resend_secret')
+}
 
-  const secretId = resendSecretId(environment)
-  if (!secretId) return null
+export function resendAdminSecretId(environment: Environment = process.env) {
+  const explicit = clean(environment.RESEND_ADMIN_SECRET_ID)
+  if (explicit) return explicit
+  return environment.NODE_ENV === 'production' ? DEFAULT_RESEND_ADMIN_SECRET_ID : null
+}
 
-  const now = options.now ?? Date.now
-  const useCache = options.useCache ?? true
-  if (useCache && cachedApiKey && cachedApiKey.expiresAt > now()) return cachedApiKey.value
-
-  try {
-    const value = resendApiKeyFromSecretString(await (options.loadSecret ?? loadSecretFromSecretsManager)(secretId))
-    if (!value) console.error('resend_secret_incomplete')
-    if (useCache) cachedApiKey = { value, expiresAt: now() + (value ? CACHE_TTL_MS : RETRY_TTL_MS) }
-    return value
-  } catch (error) {
-    const name = error instanceof Error ? error.name : null
-    console.error('resend_secret_unavailable', { name })
-    const ttl = name && PERMANENT_SECRET_ERRORS.has(name) ? CACHE_TTL_MS : RETRY_TTL_MS
-    if (useCache) cachedApiKey = { value: null, expiresAt: now() + ttl }
-    return null
-  }
+/**
+ * The full-access key ("sea-n-shore/resend-admin", the key in plaintext). Used ONLY to read delivery status and
+ * the suppression list (the outbox worker's backfill and sync) and by the webhook runner on the bootstrap host.
+ * Never used to send.
+ */
+export async function loadResendAdminApiKey(options: {
+  environment?: Environment
+  loadSecret?: SecretLoader
+  now?: () => number
+  useCache?: boolean
+} = {}) {
+  const environment = options.environment ?? process.env
+  return loadKey(adminKeyCache, environment.RESEND_ADMIN_API_KEY, resendAdminSecretId(environment), options, 'resend_admin_secret')
 }
 
 export function resetResendApiKeyCache() {
-  cachedApiKey = null
+  sendingKeyCache.current = null
+  adminKeyCache.current = null
 }
 
 export class ResendApiError extends Error {

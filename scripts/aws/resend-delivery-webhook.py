@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Creates the Resend delivery-event webhook for seanshore.in and stores its signing secret in Secrets Manager.
 
-Run by scripts/aws/resend-delivery-webhook.sh on the bootstrap host (never directly). Neither the Resend API key nor
-the webhook signing secret is ever printed, logged, put on a command line or written outside a 0600 temporary file
-that is deleted on exit.
+Run by scripts/aws/resend-delivery-webhook.sh on the bootstrap host (never directly). It uses only the full-access
+admin key ("sea-n-shore/resend-admin", the key in plaintext); the production sending key is never read here. Neither
+key nor the webhook signing secret is ever printed, logged, put on a command line or written outside a 0600
+temporary file that is deleted on exit.
+
+Both actions first confirm the admin secret can be read, before anything else.
 
   plan        read-only: what exists at Resend and in Secrets Manager, whether the endpoint is live, domain tracking
   apply-once  1. make sure the Secrets Manager secret exists (placeholder first, so a missing permission stops the run
@@ -26,7 +29,7 @@ import urllib.error
 import urllib.request
 
 MARKER = "RESEND_DELIVERY_WEBHOOK"
-API_KEY_SECRET = "sea-n-shore/resend"
+ADMIN_KEY_SECRET = "sea-n-shore/resend-admin"
 WEBHOOK_SECRET = "sea-n-shore/resend-webhook-signing"
 SENDING_DOMAIN = "mail.seanshore.in"
 EVENTS = [
@@ -74,18 +77,18 @@ def aws(*args, input_file=None, check=True):
     return result
 
 
-def resend_api_key():
-    result = aws("secretsmanager", "get-secret-value", "--secret-id", API_KEY_SECRET, "--query", "SecretString", "--output", "text")
-    raw = result.stdout.strip()
-    key = raw
-    if not raw.startswith("re_"):
-        try:
-            parsed = json.loads(raw)
-            key = str(parsed.get("RESEND_API_KEY") or parsed.get("api_key") or parsed.get("apiKey") or "")
-        except ValueError:
-            key = ""
-    if not key.startswith("re_") or len(key) < 8:
-        fail("The Resend API key secret is missing or malformed.")
+def resend_admin_key():
+    """The full-access key, stored in plaintext. Read first; nothing else happens if it cannot be read."""
+    result = aws("secretsmanager", "get-secret-value", "--secret-id", ADMIN_KEY_SECRET, "--query", "SecretString", "--output", "text", check=False)
+    if result.returncode != 0:
+        out("ADMIN_SECRET_READABLE=false")
+        reason = "it does not exist" if "ResourceNotFoundException" in result.stderr else "access was refused or failed"
+        fail(f"Cannot read the Resend admin key secret {ADMIN_KEY_SECRET}: {reason}.")
+    key = result.stdout.strip()
+    if not key.startswith("re_") or len(key) < 8 or any(character.isspace() for character in key):
+        out("ADMIN_SECRET_READABLE=false")
+        fail(f"The Resend admin key secret {ADMIN_KEY_SECRET} is not a plaintext Resend API key.")
+    out("ADMIN_SECRET_READABLE=true")
     return key
 
 
@@ -124,7 +127,7 @@ def resend(method, path, key, body=None):
     status, payload = request(method, RESEND_API + path, key=key, body=body)
     if status in (401, 403):
         out("KEY_CANNOT_MANAGE=true")
-        fail(f"The stored Resend key may not {method} {path.split('?')[0]} (HTTP {status}); it needs full access.")
+        fail(f"The Resend admin key may not {method} {path.split('?')[0]} (HTTP {status}); it needs full access.")
     if status >= 400:
         fail(f"Resend {method} {path.split('?')[0]} returned HTTP {status}: {str(payload.get('message', ''))[:200]}")
     return payload
@@ -207,11 +210,10 @@ def main():
     action = sys.argv[1] if len(sys.argv) > 1 else ""
     if action not in ("plan", "apply-once"):
         fail("Unsupported action.")
+    key = resend_admin_key()
     out(f"ACTION={action}")
     out(f"ENDPOINT={ENDPOINT}")
     out("EVENTS=" + ",".join(EVENTS))
-
-    key = resend_api_key()
     hooks = endpoint_webhooks(key)
     if len(hooks) > 1:
         fail(f"{len(hooks)} Resend webhooks already point at {ENDPOINT}; remove the extras by hand first.")

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createLegacyInviteRepository } from './repository'
 import { legacyInviteEmail } from './email'
 import { createLegacyInviteWorker } from './sending'
+import { ResendApiError } from '@/lib/email/resend'
 
 describe('legacy profile invitations', () => {
   it('can build worker email without importing the strict browser environment', () => {
@@ -103,5 +104,30 @@ describe('legacy profile invitations', () => {
     }))
     expect(repository.markSent).toHaveBeenCalledWith('invite-1', 'resend-1')
     expect(repository.markSkipped).toHaveBeenCalledWith('invite-2', 'legacy_profile_no_longer_eligible')
+  })
+
+  it('returns claimed-but-untried invitations to the queue when a sweep stops on a retryable Resend error', async () => {
+    const delivery = (id: string) => ({
+      id,
+      profileId: `p-${id}`,
+      email: `${id}@example.com`,
+      fullName: 'Member',
+      claimToken: '11111111-1111-4111-8111-111111111111',
+      attempts: 1,
+      stillEligible: true,
+    })
+    const repository = {
+      claimBatch: vi.fn(async () => [delivery('invite-1'), delivery('invite-2'), delivery('invite-3')]),
+      markSent: vi.fn(),
+      markSkipped: vi.fn(),
+      markFailed: vi.fn(),
+      release: vi.fn(),
+    }
+    const resend = { sendEmail: vi.fn(async () => { throw new ResendApiError('rate_limit_exceeded', 429, 'Too many requests') }) }
+    const inviteWorker = createLegacyInviteWorker({ repository: repository as never, resend })
+    await expect(inviteWorker.runSweep(5)).resolves.toMatchObject({ claimed: 3, sent: 0, retrying: 1 })
+    expect(resend.sendEmail).toHaveBeenCalledTimes(1)
+    expect(repository.markFailed).toHaveBeenCalledWith('invite-1', expect.stringContaining('rate_limit_exceeded'), true)
+    expect(repository.release.mock.calls).toEqual([['invite-2'], ['invite-3']])
   })
 })

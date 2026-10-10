@@ -2,7 +2,8 @@
 # Guarded runner: creates the Resend delivery-event webhook for https://seanshore.in/api/email/resend/webhook and
 # stores its signing secret in Secrets Manager as sea-n-shore/resend-webhook-signing (read at runtime under the
 # existing sea-n-shore/resend* grant). Runs on the bootstrap host through SSM; the logic is in
-# resend-delivery-webhook.py. Neither the Resend API key nor the signing secret is ever printed.
+# resend-delivery-webhook.py. It uses only the full-access admin key (sea-n-shore/resend-admin) and first confirms
+# it can read it. Neither the key nor the signing secret is ever printed.
 #
 #   plan              read-only report        -> RESEND_DELIVERY_WEBHOOK_PLAN_ONLY_NO_APPLY
 #   apply-once <sha>  create, store, verify   -> RESEND_DELIVERY_WEBHOOK_APPLY_VERIFIED=true

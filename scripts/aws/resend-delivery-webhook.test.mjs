@@ -17,7 +17,9 @@ const run = promisify(execFile)
 const SCRIPT = new URL('./resend-delivery-webhook.py', import.meta.url).pathname
 const ENDPOINT = 'https://seanshore.in/api/email/resend/webhook'
 const EVENTS = ['email.delivered', 'email.bounced', 'email.complained', 'email.delivery_delayed', 'email.failed', 'email.suppressed']
-const API_KEY = 're_test_' + randomBytes(8).toString('hex')
+// The full-access admin key the runner must use, and the production sending key it must never touch.
+const API_KEY = 're_test_admin_' + randomBytes(8).toString('hex')
+const SENDING_KEY = 're_test_sending_' + randomBytes(8).toString('hex')
 
 function fakeWorld(order, { endpointLive = true, keyCanManage = true, tracking = { open: true, click: true } } = {}) {
   const state = { webhooks: [], requests: [], domain: { id: 'dom-1', name: 'mail.seanshore.in', open_tracking: tracking.open, click_tracking: tracking.click }, storedSecret: null }
@@ -27,7 +29,7 @@ function fakeWorld(order, { endpointLive = true, keyCanManage = true, tracking =
     req.on('end', () => {
       const send = (status, payload) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(payload)) }
       const url = new URL(req.url, 'http://127.0.0.1')
-      state.requests.push({ method: req.method, path: url.pathname, body })
+      state.requests.push({ method: req.method, path: url.pathname, body, auth: req.headers.authorization ?? null })
       appendFileSync(order, `resend ${req.method} ${url.pathname}\n`)
       if (url.pathname === '/api/email/resend/webhook') {
         if (!endpointLive) return send(404, {})
@@ -59,10 +61,13 @@ function fakeWorld(order, { endpointLive = true, keyCanManage = true, tracking =
   return { server, state }
 }
 
-function fakeAws(dir, order) {
+function fakeAws(dir, order, { adminSecret = true } = {}) {
   const store = path.join(dir, 'secrets.json')
   const log = path.join(dir, 'aws-argv.log')
-  writeFileSync(store, JSON.stringify({ 'sea-n-shore/resend': JSON.stringify({ RESEND_API_KEY: API_KEY }) }))
+  writeFileSync(store, JSON.stringify({
+    'sea-n-shore/resend': JSON.stringify({ RESEND_API_KEY: SENDING_KEY }),
+    ...(adminSecret ? { 'sea-n-shore/resend-admin': API_KEY } : {}),
+  }))
   writeFileSync(path.join(dir, 'aws.py'), `
 import json, sys
 store, log = ${JSON.stringify(store)}, ${JSON.stringify(log)}
@@ -106,7 +111,7 @@ async function withWorld(options, body) {
   const world = fakeWorld(order, options)
   await new Promise((resolve) => world.server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${world.server.address().port}`
-  const aws = fakeAws(dir, order)
+  const aws = fakeAws(dir, order, options)
   // The endpoint fake reads the secret the runner stored, as the app would.
   const sync = setInterval(() => {
     try {
@@ -135,7 +140,7 @@ async function withWorld(options, body) {
 }
 
 function assertNoSecrets(texts, state) {
-  const secrets = [API_KEY, ...state.webhooks.map((hook) => hook.signing_secret)]
+  const secrets = [API_KEY, SENDING_KEY, ...state.webhooks.map((hook) => hook.signing_secret)]
   for (const text of texts) for (const secret of secrets) assert.ok(!text.includes(secret), 'a secret value was printed or passed on a command line')
 }
 
@@ -201,7 +206,36 @@ test('apply creates one webhook for the six events, stores its secret without pr
   })
 })
 
-test('a sending-only Resend key stops the run with a clear reason', async () => {
+test('both actions read the admin key first, and never read or use the sending key', async () => {
+  await withWorld({}, async ({ exec, state, aws }) => {
+    for (const action of ['plan', 'apply-once']) {
+      const result = await exec(action)
+      assert.equal(result.code, 0, result.stderr)
+      assert.equal(result.stdout.trim().split('\n')[0], 'RESEND_DELIVERY_WEBHOOK_ADMIN_SECRET_READABLE=true')
+    }
+    const calls = aws.argv().trim().split('\n').map((line) => JSON.parse(line))
+    assert.deepEqual(calls[0].slice(0, 4), ['secretsmanager', 'get-secret-value', '--secret-id', 'sea-n-shore/resend-admin'])
+    assert.ok(!calls.some((args) => args.includes('sea-n-shore/resend')), 'the sending key secret is never read')
+    assert.ok(aws.order()[0] === 'aws get-secret-value', 'the admin secret is read before any request to Resend')
+    const resendCalls = state.requests.filter((request) => !request.path.startsWith('/api/'))
+    assert.ok(resendCalls.length > 0)
+    assert.ok(resendCalls.every((request) => request.auth === `Bearer ${API_KEY}`), 'every Resend call uses the admin key')
+    assert.ok(state.requests.every((request) => request.auth !== `Bearer ${SENDING_KEY}`), 'the sending key is never sent anywhere')
+  })
+})
+
+test('a missing admin secret stops the plan before anything else, with no request to Resend', async () => {
+  await withWorld({ adminSecret: false }, async ({ exec, state, aws }) => {
+    const result = await exec('plan')
+    assert.notEqual(result.code, 0)
+    assert.equal(result.stdout.trim(), 'RESEND_DELIVERY_WEBHOOK_ADMIN_SECRET_READABLE=false')
+    assert.match(result.stderr, /sea-n-shore\/resend-admin: it does not exist/)
+    assert.equal(state.requests.length, 0)
+    assert.equal(aws.argv().trim().split('\n').length, 1)
+  })
+})
+
+test('an admin key without full access stops the run with a clear reason', async () => {
   await withWorld({ keyCanManage: false }, async ({ exec, state }) => {
     const result = await exec('apply-once')
     assert.notEqual(result.code, 0)

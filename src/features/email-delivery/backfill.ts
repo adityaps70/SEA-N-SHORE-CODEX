@@ -1,4 +1,4 @@
-import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { createResendEmailClient, loadResendAdminApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
 import { normalizeEmail } from '@/lib/email/suppression'
 import { backfillEvent } from './events'
 import { emailDeliveryRepository } from './repository'
@@ -18,6 +18,9 @@ function forbidden(error: unknown) {
  * Delivery status backfill for legacy invitations sent before the webhook existed (the 4,547 sent on 3 October),
  * and a sync of Resend's suppression list into the do-not-email list. Both only read from Resend. The outbox worker
  * runs them on a timer; each invitation is fetched once and the work stops by itself when nothing is left.
+ *
+ * Reading email status and the suppression list needs a full-access key, so this uses the admin key
+ * ("sea-n-shore/resend-admin"), never the sending key. Its client only reads: this module never sends.
  */
 export function createDeliveryBackfillWorker(input: {
   repository?: typeof emailDeliveryRepository
@@ -32,13 +35,13 @@ export function createDeliveryBackfillWorker(input: {
   const spacing = input.spacingMs ?? BACKFILL_SPACING_MS
   const log = input.log ?? ((message: string, details?: Record<string, unknown>) => console.error(message, details ?? {}))
   let client: Reader | null | undefined = input.resend
-  // The stored key may be a sending-only key, which cannot read emails or suppressions. Stop asking after a refusal.
+  // If the admin key is refused (revoked, or swapped for a sending-only key), stop asking until the next restart.
   let statusReadsRefused = false
   let suppressionReadsRefused = false
 
   async function resolveClient() {
     if (client !== undefined) return client
-    const key = await (input.loadApiKey ?? loadResendApiKey)()
+    const key = await (input.loadApiKey ?? loadResendAdminApiKey)()
     client = key ? createResendEmailClient({ apiKey: key }) : null
     return client
   }

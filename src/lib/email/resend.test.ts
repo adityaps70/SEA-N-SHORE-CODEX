@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createResendEmailClient,
+  DEFAULT_RESEND_ADMIN_SECRET_ID,
   DEFAULT_RESEND_SECRET_ID,
+  loadResendAdminApiKey,
   loadResendApiKey,
   resendApiKeyFromSecretString,
   resendSecretId,
@@ -167,5 +169,32 @@ describe('Resend read calls for delivery status', () => {
       hasMore: true,
     })
     expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('https://api.resend.com/suppressions?limit=100&after=s0')
+  })
+})
+
+describe('the full-access admin key', () => {
+  it('reads sea-n-shore/resend-admin (plaintext) in production, with its own cache, separate from the sending key', async () => {
+    const secrets: Record<string, string> = {
+      'sea-n-shore/resend': JSON.stringify({ RESEND_API_KEY: 're_sending_only' }),
+      'sea-n-shore/resend-admin': 're_full_access',
+    }
+    const loadSecret = vi.fn(async (id: string) => secrets[id] ?? null)
+    const environment = { NODE_ENV: 'production' }
+    expect(DEFAULT_RESEND_ADMIN_SECRET_ID).toBe('sea-n-shore/resend-admin')
+    // The existing runtime grant is "sea-n-shore/resend*", which covers the admin secret's name.
+    expect(DEFAULT_RESEND_ADMIN_SECRET_ID.startsWith(DEFAULT_RESEND_SECRET_ID)).toBe(true)
+    await expect(loadResendApiKey({ environment, loadSecret })).resolves.toBe('re_sending_only')
+    await expect(loadResendAdminApiKey({ environment, loadSecret })).resolves.toBe('re_full_access')
+    await expect(loadResendApiKey({ environment, loadSecret })).resolves.toBe('re_sending_only')
+    expect(loadSecret.mock.calls).toEqual([['sea-n-shore/resend'], ['sea-n-shore/resend-admin']])
+  })
+
+  it('returns null without logging the key when the admin secret is missing', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = Object.assign(new Error('not found'), { name: 'ResourceNotFoundException' })
+    await expect(loadResendAdminApiKey({ environment: { NODE_ENV: 'production' }, loadSecret: async () => { throw error }, useCache: false })).resolves.toBeNull()
+    expect(log).toHaveBeenCalledWith('resend_admin_secret_unavailable', { name: 'ResourceNotFoundException' })
+    log.mockRestore()
+    await expect(loadResendAdminApiKey({ environment: { NODE_ENV: 'test' }, useCache: false })).resolves.toBeNull()
   })
 })

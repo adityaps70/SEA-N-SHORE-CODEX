@@ -272,6 +272,15 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
       })
     },
 
+    /** Returns a claimed invitation that was not tried to the queue, as if it had not been claimed. */
+    async release(id: string) {
+      await queryRows(`
+        update public.legacy_profile_invites
+        set status = 'queued', attempts = greatest(0, attempts - 1), updated_at = now()
+        where id = $1 and status = 'sending'
+      `, [id])
+    },
+
     async markSent(id: string, messageId: string) {
       await queryRows(`
         update public.legacy_profile_invites
