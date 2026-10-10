@@ -118,6 +118,9 @@ media bucket, linked from My Learning → Purchases and emailed with the payment
     web :240 → :241, outbox worker :122 → :123, notification worker :121 → :122. Deploy guard rearmed to plan (2e739345).
   - Remote Verify 38037221357 green right after the deploy. The re-run after the migration (38042373553) failed on
     2 `database_query_failed` lines logged before the migration (its log window starts at the deployment, 08:06 UTC).
-    Fresh deploy arm PR #186 opened so a new window can confirm a clean run.
-- [ ] Live checks on seanshore.in
-- [ ] Report
+    The re-run at 10:57 still showed only those 2 lines after 539 more events (no new errors after the migration).
+  - Round C deploy: arm PR #186 (owner merged and approved), run 38046770266 on 0514179b: web :241 → :242, outbox worker
+    :123 → :124, notification worker :122 → :123. Remote Verify 38047592414 green; logo and Google sign-in checks green.
+    Deploy guard rearmed to plan (ee40e6c2).
+- [x] Live checks on seanshore.in (signed out: home, /learn, course page 200; /certificates/abc 404 with the not-verified page; signed-in checks are for the owner)
+- [x] Report
