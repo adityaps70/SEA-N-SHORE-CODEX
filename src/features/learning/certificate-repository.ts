@@ -3,6 +3,7 @@ import { query as databaseQuery, withTransaction as databaseTransaction, type Da
 import { coursePublisherNameSql } from './course-publication'
 import { notifyCertificateIssued } from './learning-notifications'
 import { CERTIFICATE_TEMPLATES, type CertificateTemplate } from './certificate-settings'
+import { attendanceRuleMetSql } from './sessions/attendance-sql'
 
 const VERIFICATION_CODE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -329,6 +330,7 @@ export async function issueCertificateForCompletedEnrollmentWithQuery(
        and enrollment.status = 'completed'
        and enrollment.completed_at is not null
        and course.certificate_enabled = true
+       and ${attendanceRuleMetSql()}
      limit 1`,
     [enrollmentId],
   ) as IssueContextRow[]
@@ -362,6 +364,7 @@ export async function issueCertificateForFinalQuizWithQuery(
        and enrollment.status in ('active', 'completed')
        and course.certificate_enabled = true
        and course.certificate_issue_trigger = 'final_quiz'
+       and ${attendanceRuleMetSql()}
      limit 1`,
     [enrollmentId, lessonId],
   ) as IssueContextRow[]

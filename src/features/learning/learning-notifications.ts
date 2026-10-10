@@ -26,6 +26,7 @@ export const LEARNING_NOTIFICATION_KINDS = [
   'quiz_graded',
   'certificate_expiring',
   'announcement',
+  'session_reminder',
 ] as const
 export type LearningNotificationKind = (typeof LEARNING_NOTIFICATION_KINDS)[number]
 
@@ -54,6 +55,13 @@ export type LearningNotificationDetails = {
   announcementId?: string
   announcementTitle?: string
   announcementExcerpt?: string
+  /** session_reminder (round D): the live session, its start in the recipient's time zone, and which reminder. */
+  sessionId?: string
+  sessionTitle?: string
+  startsAt?: string
+  durationMinutes?: number
+  timeZone?: string
+  stage?: '24h' | '1h'
 }
 
 export type LearningNotificationInput = {

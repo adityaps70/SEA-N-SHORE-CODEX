@@ -21,6 +21,15 @@ built until the owner approves it. Owner merges every arm PR.
 Owner decisions (10 October):
 - The migration may relax exactly one check: the Learning email kind also allows 'session_reminder'.
 
+Decisions made while building:
+- The attendance rule counts every scheduled session of the batch, future ones included, so a certificate waits until
+  enough sessions have actually been attended; excused sessions are left out; a learner who used Join counts as present
+  until a trainer marks otherwise; a batch with no sessions never holds a certificate back.
+- The 24-hour reminder goes out from 24 hours to 1 hour before the start (so a late joiner still gets one); the 1-hour
+  reminder in the last hour. The sweep runs every 5 minutes; the learning email worker sends within a minute.
+- Recordings up to 2 GB (MP4 or WebM), private, opened through a short-lived signed link; or a pasted https link.
+- PR 1 (D1 + migrations) is #191, merged as bca7b803.
+
 ## Migrations (one guarded runner for the round, from the template)
 
 - `0077_learning_round_d_notification_types.sql`: enum value `learning_session_reminder` (its own file: a new enum
@@ -104,13 +113,13 @@ Owner decisions (10 October):
 - [x] D1 enrol/buy into a batch (course page, free enrolment, checkout, trainer enrol, invitations), seat limit
 - [x] D1 drip from batch start (shared helper, TS and SQL)
 - [x] D1 roster batch filter and CSV
-- [ ] D2 session calendar: one-off and recurring, edit/cancel, meeting links
-- [ ] D2 member time zone and clear zone display
-- [ ] D2 Upcoming sessions (player Sessions tab, My Learning) and .ics
-- [ ] D2 reminder emails 24 h and 1 h before
-- [ ] D2 Join tracking, attendance marking, minimum attendance for the certificate
-- [ ] D2 recordings (link or upload)
-- [ ] Zoom/Meet automatic link creation: note for the owner (not built)
-- [ ] D3 design sent to the owner (not built until approved)
+- [x] D2 session calendar: one-off and recurring, edit/cancel, meeting links
+- [x] D2 member time zone and clear zone display
+- [x] D2 Upcoming sessions (player Sessions tab, My Learning) and .ics
+- [x] D2 reminder emails 24 h and 1 h before
+- [x] D2 Join tracking, attendance marking, minimum attendance for the certificate
+- [x] D2 recordings (link or upload)
+- [x] Zoom/Meet automatic link creation: note for the owner (not built)
+- [x] D3 design sent to the owner (not built until approved)
 - [ ] PR 1 (D1 + migrations), PR 2 (D2), one guarded migration, one deploy, rearm, Remote Verify
 - [ ] Live checks on seanshore.in and report

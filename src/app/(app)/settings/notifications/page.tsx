@@ -6,6 +6,8 @@ import { backLinkClass } from '@/components/ui/interactive-styles'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { createLearningEmailPreferences } from '@/features/learning/learning-email-sending'
 import { LearningEmailToggle } from './learning-email-toggle'
+import { memberTimeZoneRepository } from '@/features/learning/sessions/member-time-zone'
+import { TimeZoneSetting } from '@/features/learning/sessions/components/time-zone-setting'
 
 export const metadata: Metadata = { title: 'Email notifications · Settings' }
 export const dynamic = 'force-dynamic'
@@ -15,7 +17,10 @@ const preferences = createLearningEmailPreferences()
 /** Settings → Email notifications (learning round A): which notifications also come by email. */
 export default async function EmailNotificationsPage() {
   const user = await requireAwsUser()
-  const learningEnabled = await preferences.learningEmailsEnabled(user.id)
+  const [learningEnabled, timeZone] = await Promise.all([
+    preferences.learningEmailsEnabled(user.id),
+    memberTimeZoneRepository.get(user.id).catch(() => ({ timeZone: null, source: 'auto' as const })),
+  ])
 
   return (
     <main className="mx-auto w-full max-w-3xl space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
@@ -34,6 +39,9 @@ export default async function EmailNotificationsPage() {
         <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Learning</h2>
         <div className="mt-2">
           <LearningEmailToggle initiallyEnabled={learningEnabled} />
+        </div>
+        <div className="mt-5 border-t border-mist-100 pt-5">
+          <TimeZoneSetting initialSource={timeZone.source} initialZone={timeZone.timeZone} />
         </div>
       </section>
       <p className="text-sm leading-6 text-muted max-md:px-0">

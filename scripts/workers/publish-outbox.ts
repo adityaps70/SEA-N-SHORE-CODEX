@@ -12,6 +12,7 @@ import { createTaxDocumentEmailWorker } from '../../src/features/tax/tax-documen
 import { issueMissingTaxDocuments } from '../../src/features/tax/tax-document-repository'
 import { withTransaction } from '../../src/lib/db/client'
 import { batchRepository } from '../../src/features/learning/batches/batch-repository'
+import { SESSION_REMINDER_SWEEP_MS, sweepSessionReminders } from '../../src/features/learning/sessions/session-reminders'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -61,6 +62,8 @@ const taxDocumentEmailWorker = createTaxDocumentEmailWorker()
 // Round D: move course batches along (upcoming → running → completed) once an hour.
 const BATCH_STATUS_SWEEP_MS = 60 * 60 * 1000
 let nextBatchStatusSweepAt = 0
+// Round D: queue live-session reminders (1 day and 1 hour before) every 5 minutes; the learning email sweep sends them.
+let nextSessionReminderSweepAt = 0
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -235,6 +238,20 @@ async function runBatchStatusSweepIfDue() {
   }
 }
 
+async function runSessionReminderSweepIfDue() {
+  const now = Date.now()
+  if (now < nextSessionReminderSweepAt) return
+  nextSessionReminderSweepAt = now + SESSION_REMINDER_SWEEP_MS
+
+  try {
+    // Counts only: no names, addresses or session titles in the logs.
+    const result = await sweepSessionReminders()
+    if (result.queued > 0) console.info('[learning_session_reminder_sweep]', result)
+  } catch (error) {
+    console.error('[learning_session_reminder_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -255,6 +272,7 @@ async function main() {
       await runTaxDocumentIssueSweepIfDue()
       await runTaxDocumentEmailSweepIfDue()
       await runBatchStatusSweepIfDue()
+      await runSessionReminderSweepIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

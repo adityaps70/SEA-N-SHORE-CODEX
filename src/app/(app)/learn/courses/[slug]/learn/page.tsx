@@ -25,10 +25,13 @@ import { CourseAnnouncementsList } from '@/features/learning/components/course-a
 import { CourseDiscussButton } from '@/features/learning/components/course-discuss-button'
 import { CourseRatingWidget } from '@/features/learning/components/course-rating-widget'
 import { PlayerTabs } from '@/features/learning/components/player-tabs'
+import { sessionRepository } from '@/features/learning/sessions/session-repository'
+import { LearnerSessionsPanel } from '@/features/learning/sessions/components/learner-sessions-panel'
+import { DeviceTimeZoneSync } from '@/features/learning/sessions/components/device-time-zone-sync'
 
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
-  searchParams?: Promise<{ lesson?: string; tab?: string }>
+  searchParams?: Promise<{ lesson?: string; tab?: string; join?: string }>
 }
 
 function lessonHref(slug: string, lessonId: string) {
@@ -65,7 +68,7 @@ function PhoneCourseProgress({ percent, completed, total }: { percent: number; c
 export default async function LearnerCoursePage({ params, searchParams }: LearnerCoursePageProps) {
   const [{ slug }, query, user] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve<{ lesson?: string; tab?: string }>({}),
+    searchParams ?? Promise.resolve<{ lesson?: string; tab?: string; join?: string }>({}),
     requireAwsUser(),
   ])
 
@@ -104,6 +107,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     ? await renderArticleHtml(selectedLesson.articleBody, (path) => createMediaReadUrl(path))
     : null
   // Learning round C: rating, announcements and the course community. Conveniences: the player works without them.
+  // Round D: the learner's live sessions when they are in a batch (a convenience: the player works without it).
+  const batchSessions = await sessionRepository.listForLearner(user.id, course.courseId).catch(() => null)
+  const attendanceRule = batchSessions?.minAttendancePercent !== null && batchSessions?.minAttendancePercent !== undefined
+    ? await sessionRepository.certificateAttendance(user.id, course.courseId).catch(() => null)
+    : null
   const [ratingEligibility, announcements, discussion] = await Promise.all([
     courseRatingRepository.getEligibility(user.id, course.courseId).catch(() => null),
     courseAnnouncementRepository.listForLearner(user.id, course.courseId).catch(() => null),
@@ -239,6 +247,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Course completed</h2>
               <p className="mt-2 text-sm leading-6 text-slate-700">All {course.totalLessons} published materials are complete. You can continue reviewing the curriculum below.</p>
               {course.certificateEnabled ? <p className="mt-2 text-sm text-slate-600">Your eligible Sea N Shore certificate is issued from the completed enrollment.</p> : null}
+              {course.certificateEnabled && attendanceRule && attendanceRule.attended * 100 < attendanceRule.required * attendanceRule.total ? (
+                <p className="mt-2 text-sm font-semibold text-amber-900">
+                  Attend at least {attendanceRule.required}% of live sessions for your certificate (now {attendanceRule.percent}%: {attendanceRule.attended} of {attendanceRule.total}).
+                </p>
+              ) : null}
             </div>
             <Link href="/learn/my-learning" className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
               Back to My Learning
@@ -261,9 +274,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
         </nav>
 
         <main>
+          {batchSessions ? <DeviceTimeZoneSync /> : null}
           <PlayerTabs
-            initialTab={query.tab === 'announcements' ? 'announcements' : 'lesson'}
+            initialTab={query.tab === 'announcements' ? 'announcements' : query.tab === 'sessions' ? 'sessions' : 'lesson'}
             announcementCount={courseAnnouncements.length}
+            sessions={batchSessions ? <LearnerSessionsPanel data={batchSessions} joinNotice={query.join ?? null} /> : undefined}
             lesson={(
               <>
                 {selectedLesson ? (
