@@ -3,6 +3,7 @@ import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/c
 import { requirePaymentsAdmin } from '@/features/payouts/admin-guard'
 import { PaymentsAdminTabs } from '@/features/payouts/components/admin/payments-admin-tabs'
 import { readClient } from '@/features/payouts/payout-runtime'
+import { GstExportPanel } from '@/features/tax/components/gst-export-panel'
 import { LutForm, TdsSettingsForm } from '@/features/tax/components/tax-settings-forms'
 import { COURSE_SAC, financialYearOf, GST_SUPPLIER } from '@/features/tax/gst'
 import { getTaxSettings, listLutRegistrations } from '@/features/tax/tax-settings'
@@ -42,6 +43,8 @@ export default async function AdminPaymentTaxPage() {
           <dd>{COURSE_SAC} · GST 18% included in course prices (Maharashtra: CGST 9% + SGST 9%; other states: IGST 18%)</dd>
         </dl>
       </AdminPanel>
+
+      <GstExportPanel />
 
       <AdminPanel>
         <div className="border-b border-mist-100 px-5 py-3">

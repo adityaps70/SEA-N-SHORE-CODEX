@@ -145,7 +145,7 @@ describe('tax invoice content', () => {
       { label: 'Taxable value', value: 'USD 49.50' },
       { label: 'IGST 0% (export under LUT)', value: 'USD 0.00' },
     ])
-    expect(exported.notes[0]).toBe('IGST 0% — supply meant for export under LUT without payment of IGST (LUT ARN AD2703260000001).')
+    expect(exported.notes).toEqual(['IGST 0% — supply meant for export under LUT without payment of IGST (LUT ARN AD2703260000001).'])
     expect(exported.amountInWords).toBe('US Dollars Forty Nine and Fifty Cents Only')
   })
 

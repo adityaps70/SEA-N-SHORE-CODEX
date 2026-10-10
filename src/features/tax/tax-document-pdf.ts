@@ -234,7 +234,7 @@ export function taxInvoiceContent(invoice: TaxInvoice): TaxDocumentContent {
     line: { description: invoice.description, sac: invoice.sac, taxable: taxMoney(invoice.taxableMinor, invoice.currency) },
     taxRows: taxRows(invoice, invoice),
     total: { label: 'Total (invoice value)', value: taxMoney(invoice.totalMinor, invoice.currency) },
-    notes: [...lutNote(invoice), PRICES_INCLUDE_GST],
+    notes: invoice.supplyType === 'export_lut' ? lutNote(invoice) : [PRICES_INCLUDE_GST],
     amountInWords: amountInWords(invoice.totalMinor, invoice.currency),
     footer: 'This is a computer-generated invoice and needs no signature.',
   }
