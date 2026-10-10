@@ -50,6 +50,19 @@ export type ProfileLearningCertificate = {
   expired: boolean
 }
 
+/** A certificate on the learner's own My Learning page (learning round C, C6). */
+export type LearnerCertificateSummary = {
+  certificateId: string
+  enrollmentId: string
+  courseTitle: string
+  issuedAt: string
+  /** Null: never expires. */
+  expiresAt: string | null
+  verificationCode: string
+  /** Worked out on the server when the list was read. */
+  expired: boolean
+}
+
 export type PublicLearningCertificate = Omit<LearningCertificate, 'enrollmentId' | 'courseId' | 'learnerId' | 'logoPath' | 'signaturePath' | 'hiddenFromProfile'>
 
 type EligibleEnrollmentRow = QueryResultRow & {
@@ -442,6 +455,29 @@ export function createCertificateRepository(input: {
     })
   }
 
+  /** Every certificate the learner holds, newest first, for their own My Learning page (round C, C6). */
+  async function listForLearner(learnerId: string): Promise<LearnerCertificateSummary[]> {
+    const rows = await queryRows(
+      `${CERTIFICATE_SELECT}
+       where certificate.learner_id = $1
+       order by certificate.issued_at desc, certificate.id desc`,
+      [learnerId],
+    ) as CertificateRow[]
+    return rows.map((row) => {
+      const certificate = mapCertificate(row)
+      const expiresAt = certificate.expiresAt ?? null
+      return {
+        certificateId: certificate.certificateId,
+        enrollmentId: certificate.enrollmentId,
+        courseTitle: certificate.courseTitle,
+        issuedAt: certificate.issuedAt,
+        expiresAt,
+        verificationCode: certificate.verificationCode,
+        expired: expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false,
+      }
+    })
+  }
+
   /** The member shows or hides one of their own certificates on their profile. */
   async function setHiddenFromProfile(learnerId: string, certificateId: string, hidden: boolean) {
     const rows = await queryRows(
@@ -456,6 +492,7 @@ export function createCertificateRepository(input: {
 
   return {
     listForProfile,
+    listForLearner,
     setHiddenFromProfile,
     ensureCertificateForEnrollment,
     getCertificateForLearner,
