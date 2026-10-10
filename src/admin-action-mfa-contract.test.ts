@@ -29,6 +29,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites']],
   ['src/features/newsletter/admin-actions.ts', ['adminUnsubscribeSubscriber', 'queueNewsletterCampaign']],
   ['src/features/payouts/admin-actions.ts', ['updateFeeSettingsAction', 'setFeeOverrideAction', 'removeFeeOverrideAction', 'searchSellersAction', 'sendPayoutAction', 'refreshPayoutStatusAction', 'retryPayoutAction', 'cancelPayoutAction']],
+  // C4: admin review of course sellers' monthly invoices.
+  ['src/features/payouts/seller-invoice-admin-actions.ts', ['approveSellerInvoiceAction', 'rejectSellerInvoiceAction']],
   ['src/features/learning/course-payment-actions.ts', ['refundCoursePaymentAction']],
   ['src/features/payments/event-payment-actions.ts', ['refundEventPaymentAction']],
   ['src/features/learning/enrollment-actions.ts', ['openCourseAsTeamMember']],
@@ -80,7 +82,7 @@ describe('platform-admin server actions are MFA-gated (Round 15)', () => {
 
   it('lists every exported action of the admin-only modules', () => {
     const adminOnly = ADMIN_ACTION_MODULES.filter(([path]) => /(^src\/features\/admin\/|admin-actions\.ts$)/.test(path))
-    expect(adminOnly.length).toBe(8)
+    expect(adminOnly.length).toBe(9)
     for (const [path, names] of adminOnly) {
       const exported = [...read(path).matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1])
       expect(exported.sort(), path).toEqual([...names].sort())

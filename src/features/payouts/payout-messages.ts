@@ -1,8 +1,11 @@
 import { PayoutError } from './payout-repository'
 import { formatExactMoney } from './payout-rules'
+import { listPeriods } from './seller-invoice-rules'
+import { SellerInvoiceError } from './seller-invoices'
 import { PayoutProviderError, PayoutsNotConfiguredError, type PayoutOutcome } from './payout-service'
 
 /** Plain-language messages for payout results and failures (seller and admin screens). */
+
 
 export function sellerPayoutErrorMessage(error: unknown) {
   if (error instanceof PayoutsNotConfiguredError) return 'Payouts are not switched on yet, so payout details cannot be saved. Nothing was saved.'
@@ -28,6 +31,9 @@ export function adminPayoutErrorMessage(error: unknown, context: { minPayoutMino
       case 'payout_in_progress': return 'This payout was handed to Cashfree less than 2 minutes ago. Wait a moment, then select Check status.'
       case 'nothing_to_pay': return 'There is nothing to pay: refunds after earlier payouts cancel out this seller\'s new earnings. Nothing was sent.'
       case 'below_minimum': return `The balance is below the minimum payout${context.minPayoutMinor ? ` of ${formatExactMoney(context.minPayoutMinor)}` : ''}. Nothing was sent; it will be payable once it reaches the minimum.`
+      case 'invoice_missing': return `This seller's course earnings for ${listPeriods(error.periods)} can't be paid until their invoice for ${error.periods.length > 1 ? 'those months' : 'that month'} is approved. Nothing was sent. Review it under Payments → Seller invoices, or ask the seller to upload it on their Earnings page.`
+      case 'pan_missing': return "This seller hasn't added their PAN yet, so course earnings can't be paid (TDS needs it). Nothing was sent. Ask them to add their tax details under Settings → Payout details."
+      case 'tds_rate_unset': return 'The TDS rate for course payouts is not set yet, so course earnings cannot be paid. Nothing was sent. Set it under Payments → Tax first.'
       case 'balance_changed': return 'The balance changed after you opened this review (a new sale became available or a refund came in). Nothing was sent. Check the updated amount and send again.'
       case 'payout_not_found': return "We couldn't find this payout. Refresh the page."
       case 'payout_not_cancellable': return 'Only a payout that Cashfree never received can be cancelled. Check its status instead.'
@@ -43,11 +49,12 @@ export function adminPayoutErrorMessage(error: unknown, context: { minPayoutMino
 
 export function payoutOutcomeMessage(outcome: PayoutOutcome, sellerName: string) {
   const amount = formatExactMoney(outcome.payout.amountMinor)
+  const tds = outcome.payout.tdsMinor > 0 ? ` (after ${formatExactMoney(outcome.payout.tdsMinor)} TDS)` : ''
   switch (outcome.state) {
     case 'success':
-      return `${amount} was paid to ${sellerName}.${outcome.payout.utr ? ` Bank reference (UTR): ${outcome.payout.utr}.` : ''}`
+      return `${amount}${tds} was paid to ${sellerName}.${outcome.payout.utr ? ` Bank reference (UTR): ${outcome.payout.utr}.` : ''}`
     case 'processing':
-      return `${amount} is on its way to ${sellerName}. Cashfree accepted the transfer; banks usually complete it within minutes, sometimes by the next working day. This page updates when Cashfree confirms.`
+      return `${amount}${tds} is on its way to ${sellerName}. Cashfree accepted the transfer; banks usually complete it within minutes, sometimes by the next working day. This page updates when Cashfree confirms.`
     case 'failed':
       return `The transfer of ${amount} to ${sellerName} did not go through${outcome.payout.failureReason ? ` (${outcome.payout.failureReason.replace(/\.$/, '')})` : ''}. The earnings are back in their available balance, so you can send a new payout once the problem is fixed.`
     case 'reversed':
@@ -62,4 +69,29 @@ export function payoutOutcomeMessage(outcome: PayoutOutcome, sellerName: string)
     default:
       return `Cashfree did not confirm the transfer of ${amount} yet. The earnings stay reserved for this payout. Select Check status in a minute to see whether Cashfree received it.`
   }
+}
+
+export function sellerInvoiceErrorMessage(error: unknown) {
+  if (error instanceof SellerInvoiceError) {
+    switch (error.code) {
+      case 'tax_details_missing': return 'Add your tax details (PAN and GST registration) under Settings → Payout details first, so we know which document to ask for. Nothing was uploaded.'
+      case 'period_invalid': return 'Choose the month this invoice is for.'
+      case 'period_open': return 'This month has not ended yet. Invoice it once the month is over, so the amount covers every sale.'
+      case 'nothing_to_invoice': return 'There is nothing to invoice for this month: refunds cancel out its course earnings.'
+      case 'already_submitted': return 'An invoice for this month is already waiting for review. You can replace it only if it is rejected.'
+      case 'already_approved': return 'The invoice for this month is already approved and cannot be changed.'
+      case 'amount_mismatch': return `The invoice amount must be exactly ${formatExactMoney(error.expectedMinor ?? 0)}, your course earnings for this month after the platform fee. Correct the amount on your invoice and enter it again. Nothing was uploaded.`
+      default: return "We couldn't save this invoice. Nothing was changed. Please try again."
+    }
+  }
+  return "We couldn't save this invoice. Nothing was changed. Please try again."
+}
+
+export function adminSellerInvoiceErrorMessage(error: unknown) {
+  if (error instanceof SellerInvoiceError) {
+    if (error.code === 'not_found') return "We couldn't find this invoice. Refresh the page."
+    if (error.code === 'not_submitted') return 'This invoice was already reviewed. Refresh the page to see its status.'
+    if (error.code === 'amount_changed') return `The seller's course earnings for this month are now ${formatExactMoney(error.expectedMinor ?? 0)} (a sale was refunded after they invoiced), so this invoice no longer matches. Reject it and ask for a new invoice for the new amount.`
+  }
+  return "We couldn't save your review. Nothing was changed. Please try again."
 }

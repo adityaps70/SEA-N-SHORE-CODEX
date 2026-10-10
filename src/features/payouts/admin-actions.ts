@@ -146,10 +146,11 @@ const sendSchema = z.object({
   sellerKey: z.string(),
   earningIds: z.array(z.string().uuid()).min(1).max(2000),
   expectedTotalMinor: z.number().int().safe(),
+  expectedTdsMinor: z.number().int().safe().min(0).optional(),
 })
 
 /** Admin: "Send ₹X via Cashfree" from the review screen. Double-click and retry safe. */
-export async function sendPayoutAction(input: { sellerKey: string; earningIds: string[]; expectedTotalMinor: number }): Promise<PayoutActionResult> {
+export async function sendPayoutAction(input: { sellerKey: string; earningIds: string[]; expectedTotalMinor: number; expectedTdsMinor?: number }): Promise<PayoutActionResult> {
   const parsed = sendSchema.safeParse(input)
   const seller = parseSellerKey(input?.sellerKey)
   if (!parsed.success || !seller) return { ok: false, error: 'This review is out of date. Nothing was sent. Reload the page and review the payout again.' }
@@ -162,6 +163,7 @@ export async function sendPayoutAction(input: { sellerKey: string; earningIds: s
       seller,
       earningIds: parsed.data.earningIds,
       expectedTotalMinor: parsed.data.expectedTotalMinor,
+      ...(parsed.data.expectedTdsMinor === undefined ? {} : { expectedTdsMinor: parsed.data.expectedTdsMinor }),
     })
     return await outcomeResult(outcome, seller)
   } catch (error) {

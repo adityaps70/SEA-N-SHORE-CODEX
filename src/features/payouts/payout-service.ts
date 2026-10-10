@@ -261,7 +261,7 @@ export function createPayoutService(deps: PayoutServiceDeps) {
    * the earnings in one transaction, then calls Cashfree. A second click returns the
    * payout that is already open instead of creating another.
    */
-  async function sendPayout(input: { actorProfileId: string; seller: Seller; earningIds: string[]; expectedTotalMinor: number }): Promise<PayoutOutcome> {
+  async function sendPayout(input: { actorProfileId: string; seller: Seller; earningIds: string[]; expectedTotalMinor: number; expectedTdsMinor?: number }): Promise<PayoutOutcome> {
     const client = await requireClient()
     const actor: PayoutActor = { type: 'admin', profileId: input.actorProfileId }
     const settings = await getPayoutSettings(deps.read)
@@ -270,6 +270,7 @@ export function createPayoutService(deps: PayoutServiceDeps) {
       seller: input.seller,
       earningIds: input.earningIds,
       expectedTotalMinor: input.expectedTotalMinor,
+      ...(input.expectedTdsMinor === undefined ? {} : { expectedTdsMinor: input.expectedTdsMinor }),
       minPayoutMinor: settings.minPayoutMinor,
       actorProfileId: input.actorProfileId,
       now: now(),

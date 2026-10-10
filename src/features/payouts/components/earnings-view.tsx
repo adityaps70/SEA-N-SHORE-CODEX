@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { Info, Wallet } from 'lucide-react'
 import { textLinkClass } from '@/components/ui/interactive-styles'
 import type { SellerBalance } from '@/features/payments/earnings'
@@ -10,6 +11,7 @@ import {
   PAYOUT_STATUS_LABELS,
   SOURCE_TYPE_LABELS,
 } from '../payout-rules'
+import { formatRateBasisPoints } from '../tds'
 import { formatDay, StatTile, StatusChip } from './money-ui'
 
 export type EarningsViewProps = {
@@ -26,6 +28,8 @@ export type EarningsViewProps = {
   payoutsConfigured: boolean
   hasPayoutAccount: boolean
   payoutDetailsHref: string
+  /** Monthly course invoices (C4), rendered after "How you get paid". */
+  invoiceSection?: ReactNode
 }
 
 function emptyBalance(): SellerBalance {
@@ -107,6 +111,14 @@ function PayoutRow({ payout }: { payout: PayoutLine }) {
           <time dateTime={payout.createdAt}>{formatDay(payout.createdAt)}</time>
           {payout.account ? ` · to ${payout.account.summary}` : ''}
         </p>
+        {payout.tdsFinancialYear && payout.grossMinor !== null ? (
+          <p className="mt-0.5 break-words text-xs text-navy-800">
+            Earnings <span className="font-semibold tabular-nums">{formatExactMoney(payout.grossMinor)}</span>
+            {' − '}TDS <span className="font-semibold tabular-nums">{formatExactMoney(payout.tdsMinor)}</span>
+            {' '}(section {payout.tdsSection}, {formatRateBasisPoints(payout.tdsRateBasisPoints)}, on {formatExactMoney(payout.tdsBaseMinor)} of course earnings)
+            {' = '}paid <span className="font-semibold tabular-nums">{formatExactMoney(payout.amountMinor)}</span>
+          </p>
+        ) : null}
         {payout.utr ? <p className="mt-0.5 break-all text-xs text-navy-800">Bank reference (UTR): <span className="font-semibold">{payout.utr}</span></p> : null}
         {payout.status === 'failed' || payout.status === 'reversed'
           ? <p className="mt-0.5 text-xs leading-5 text-red-700">This payout didn&apos;t reach you, so the amount is back in your ready-for-payout balance. Check your payout details.</p>
@@ -153,8 +165,13 @@ export function EarningsView(props: EarningsViewProps) {
             The Sea N Shore team reviews and sends payouts to your saved payout details; the minimum payout is {formatExactMoney(props.minPayoutMinor)}.
             If a buyer is refunded after you were paid, that amount is deducted from your next payout.
           </p>
+          <p className="mt-2">
+            Courses: you supply your course to Sea N Shore, so each month&apos;s course earnings are paid once your invoice for that month is approved, and TDS is deducted from course payouts against your PAN (shown on each payout below). Event-ticket earnings need no invoice and carry no TDS.
+          </p>
         </div>
       </section>
+
+      {props.invoiceSection ?? null}
 
       <section className="overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)]">
         <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-mist-100 px-5 py-4">

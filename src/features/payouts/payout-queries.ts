@@ -12,6 +12,7 @@ import {
   type PayoutAccount,
 } from './payout-repository'
 import { maskPayoutAccount, type MaskedPayoutAccount, type PayoutMethod, type PayoutStatus } from './payout-rules'
+import { awaitingInvoiceSql, courseEarningSql, indiaMonthSql, payableEarningSql, readyEarningSql } from './course-payable'
 
 /**
  * Read-only queries behind the seller earnings page and the admin payments console.
@@ -81,6 +82,8 @@ export type EarningLine = {
   availableAt: string
   payoutId: string | null
   note: string | null
+  /** Calendar month in India (YYYY-MM) the earning belongs to: the period of a course seller's invoice. */
+  period?: string | null
 }
 
 type EarningLineRow = QueryResultRow & {
@@ -99,6 +102,7 @@ type EarningLineRow = QueryResultRow & {
   available_at: string | Date
   payout_id: string | null
   reversed_reason: string | null
+  period?: string | null
 }
 
 const EARNING_LINE_SELECT = `
@@ -107,6 +111,7 @@ const EARNING_LINE_SELECT = `
     coalesce(orig.source_type, e.source_type) as base_source_type,
     coalesce(orig.source_id, e.source_id) as base_source_id,
     epo.event_title,
+    ${indiaMonthSql('e')} as period,
     case when e.source_type = 'adjustment' then e.created_at else coalesce(epo.paid_at, e.created_at) end as sold_at
   from public.seller_earnings e
   left join public.seller_earnings orig on e.source_type = 'adjustment' and orig.id = e.adjusts_earning_id
@@ -176,6 +181,7 @@ async function mapEarningLines(client: DatabaseQueryClient, rows: EarningLineRow
       availableAt: iso(row.available_at)!,
       payoutId: row.payout_id,
       note: row.reversed_reason,
+      period: row.period ?? null,
     }
   })
 }
@@ -193,12 +199,26 @@ export async function listSellerEarnings(client: DatabaseQueryClient, seller: Se
   return { lines, hasMore: result.rows.length > limit }
 }
 
-/** What a payout for this seller would include right now (call releaseAvailableEarnings first). */
+/**
+ * What a payout for this seller would include right now (call releaseAvailableEarnings first). Uses the same
+ * course invoice gate as createPayout (course-payable.ts).
+ */
 export async function listPayableEarningLines(client: DatabaseQueryClient, seller: Seller) {
   const [profileId, companyId] = sellerParams(seller)
   const result = await client.query<EarningLineRow>(`
     ${EARNING_LINE_SELECT}
-    where ${sellerFilter('e', 1, 2)} and e.status = 'available' and e.currency = 'INR' and e.payout_id is null
+    where ${sellerFilter('e', 1, 2)} and ${readyEarningSql('e')} and ${payableEarningSql('e')}
+    order by e.created_at asc, e.id asc
+  `, [profileId, companyId])
+  return mapEarningLines(client, result.rows)
+}
+
+/** Ready course earnings held back until their month's seller invoice is approved (for the admin review). */
+export async function listAwaitingInvoiceLines(client: DatabaseQueryClient, seller: Seller) {
+  const [profileId, companyId] = sellerParams(seller)
+  const result = await client.query<EarningLineRow>(`
+    ${EARNING_LINE_SELECT}
+    where ${sellerFilter('e', 1, 2)} and ${readyEarningSql('e')} and ${awaitingInvoiceSql('e')}
     order by e.created_at asc, e.id asc
   `, [profileId, companyId])
   return mapEarningLines(client, result.rows)
@@ -282,23 +302,53 @@ export async function getPayoutLine(client: DatabaseQueryClient, payoutId: strin
 export type PayoutQueueLine = {
   sellerIdentity: SellerIdentity
   currency: string
+  /** What a payout would include now (after the course invoice gate). */
   availableMinor: number
   earningCount: number
+  /** The course part of availableMinor (TDS applies to it). */
+  courseMinor?: number
+  /** Course earnings held back until their month's seller invoice is approved. */
+  awaitingInvoiceMinor?: number
+  /** The months (YYYY-MM, oldest first) of those held-back earnings. */
+  awaitingPeriods?: string[]
+  /** Whether the seller has saved tax details (PAN). */
+  hasTaxProfile?: boolean
   account: (PayoutAccount & { masked: MaskedPayoutAccount }) | null
   openPayout: { id: string; status: PayoutStatus } | null
 }
 
-/** Sellers with money ready for a payout (call releaseAvailableEarnings first, in the same transaction). */
+/**
+ * Sellers with money ready for a payout, or course earnings waiting for an approved invoice (call
+ * releaseAvailableEarnings first, in the same transaction). Uses the same gate as createPayout.
+ */
 export async function listPayoutQueue(client: DatabaseQueryClient): Promise<PayoutQueueLine[]> {
   const result = await client.query<QueryResultRow & Record<string, unknown>>(`
-    with balances as (
-      select seller_profile_id, seller_company_id, currency, sum(net_minor) as available_minor, count(*)::int as earning_count
-      from public.seller_earnings
-      where status = 'available' and payout_id is null
+    with ready as (
+      select e.seller_profile_id, e.seller_company_id, e.currency, e.net_minor,
+        ${payableEarningSql('e')} as payable,
+        ${courseEarningSql('e')} as is_course,
+        ${indiaMonthSql('e')} as period
+      from public.seller_earnings e
+      where e.status = 'available' and e.payout_id is null
+    ),
+    balances as (
+      select seller_profile_id, seller_company_id, currency,
+        coalesce(sum(net_minor) filter (where payable), 0) as available_minor,
+        count(*) filter (where payable)::int as earning_count,
+        coalesce(sum(net_minor) filter (where payable and is_course), 0) as course_minor,
+        coalesce(sum(net_minor) filter (where not payable), 0) as awaiting_minor,
+        coalesce(array_agg(distinct period) filter (where not payable), '{}'::text[]) as awaiting_periods
+      from ready
       group by seller_profile_id, seller_company_id, currency
-      having sum(net_minor) <> 0
+      having coalesce(sum(net_minor) filter (where payable), 0) <> 0 or bool_or(not payable)
     )
     select b.seller_profile_id, b.seller_company_id, b.currency, b.available_minor, b.earning_count,
+      b.course_minor, b.awaiting_minor, b.awaiting_periods,
+      exists (
+        select 1 from public.payout_tax_profiles tp
+        where (b.seller_profile_id is not null and tp.seller_profile_id = b.seller_profile_id)
+           or (b.seller_company_id is not null and tp.seller_company_id = b.seller_company_id)
+      ) as has_tax_profile,
       ${NAME_COLUMNS},
       ${ACCOUNT_COLUMNS.split(',').map((column) => `pa.${column.trim()} as account_${column.trim()}`).join(', ')},
       op.id as open_payout_id, op.status as open_payout_status
@@ -325,6 +375,10 @@ export async function listPayoutQueue(client: DatabaseQueryClient): Promise<Payo
       currency: String(row.currency),
       availableMinor: num(row.available_minor as string),
       earningCount: num(row.earning_count as number),
+      courseMinor: num(row.course_minor as string),
+      awaitingInvoiceMinor: num(row.awaiting_minor as string),
+      awaitingPeriods: (Array.isArray(row.awaiting_periods) ? (row.awaiting_periods as unknown[]).map(String) : []).sort(),
+      hasTaxProfile: Boolean(row.has_tax_profile),
       account: account ? { ...account, masked: maskPayoutAccount(account) } : null,
       openPayout: row.open_payout_id ? { id: String(row.open_payout_id), status: row.open_payout_status as PayoutStatus } : null,
     }

@@ -9,7 +9,10 @@ import { getPlatformFeeSettings, getSellerBalance, releaseAvailableEarnings } fr
 import { EarningsView } from '@/features/payouts/components/earnings-view'
 import { SellerSwitcher } from '@/features/payouts/components/money-ui'
 import { getSellerFeePercent, listSellerEarnings, listSellerPayouts } from '@/features/payouts/payout-queries'
+import { SellerInvoiceMonths } from '@/features/payouts/components/seller-invoice-months'
 import { getActivePayoutAccount, getPayoutSettings } from '@/features/payouts/payout-repository'
+import { getPayoutTaxProfile } from '@/features/payouts/payout-tax'
+import { listSellerInvoiceMonths } from '@/features/payouts/seller-invoices'
 import { arePayoutsConfigured, readClient } from '@/features/payouts/payout-runtime'
 import { loadSellerOptions, single } from '@/features/payouts/seller-context'
 
@@ -26,7 +29,7 @@ export default async function EarningsPage({ searchParams }: { searchParams: Sea
   // Sales whose hold period has passed become "ready for payout" before we read.
   const data = await withTransaction(async (tx) => {
     await releaseAvailableEarnings(tx)
-    const [balances, sales, payouts, feeSettings, override, payoutSettings, account] = await Promise.all([
+    const [balances, sales, payouts, feeSettings, override, payoutSettings, account, invoiceMonths, taxProfile] = await Promise.all([
       getSellerBalance(active.seller, { client: tx }),
       listSellerEarnings(tx, active.seller, { limit: 100 }),
       listSellerPayouts(tx, active.seller, 50),
@@ -34,8 +37,10 @@ export default async function EarningsPage({ searchParams }: { searchParams: Sea
       getSellerFeePercent(tx, active.seller),
       getPayoutSettings(tx),
       getActivePayoutAccount(tx, active.seller),
+      listSellerInvoiceMonths(tx, active.seller),
+      getPayoutTaxProfile(tx, active.seller),
     ])
-    return { balances, sales, payouts, feeSettings, override, payoutSettings, account }
+    return { balances, sales, payouts, feeSettings, override, payoutSettings, account, invoiceMonths, taxProfile }
   })
   const configured = await arePayoutsConfigured()
   const payoutDetailsHref = '/settings/payouts'
@@ -83,6 +88,15 @@ export default async function EarningsPage({ searchParams }: { searchParams: Sea
         payoutsConfigured={configured}
         hasPayoutAccount={Boolean(data.account)}
         payoutDetailsHref={payoutDetailsHref}
+        invoiceSection={data.invoiceMonths.length || data.taxProfile ? (
+          <SellerInvoiceMonths
+            sellerKey={active.key}
+            kind={active.kind}
+            months={data.invoiceMonths}
+            gstRegistered={data.taxProfile ? data.taxProfile.gstRegistered : null}
+            taxDetailsHref={payoutDetailsHref}
+          />
+        ) : null}
       />
     </main>
   )

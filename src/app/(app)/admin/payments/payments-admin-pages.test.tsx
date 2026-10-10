@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   account: null as unknown,
   open: null as unknown,
   payments: [] as unknown[],
+  awaiting: [] as unknown[],
+  tdsRate: 1000 as number | null,
+  taxPlan: null as unknown,
+  invoices: { submitted: [] as unknown[], reviewed: [] as unknown[] },
   release: vi.fn(async () => 0),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
 }))
@@ -53,16 +57,32 @@ vi.mock('@/features/payouts/payout-queries', () => ({
   listFeeOverrides: async () => [],
   getSellerIdentity: async () => ({ seller: { profileId: USER }, name: 'Arjun Rao', slug: 'arjun', kind: 'profile' }),
   listPayableEarningLines: async () => mocks.lines,
+  listAwaitingInvoiceLines: async () => mocks.awaiting,
   listRecentPayments: async () => ({ lines: mocks.payments, unavailable: [] }),
   PAYMENT_TYPES: ['event', 'course', 'plan'],
   PAYMENT_STATUSES: ['paid', 'pending', 'failed', 'refunded', 'cancelled'],
 }))
+
+vi.mock('@/features/tax/tax-settings', () => ({
+  getTaxSettings: async () => ({ tdsSection: '194J', tdsRateBasisPoints: mocks.tdsRate, tdsThresholdMinor: null, updatedAt: null }),
+}))
+vi.mock('@/features/payouts/payout-tax', () => ({
+  planPayoutTax: async (_client: unknown, input: { grossMinor: number; coursePartMinor: number }) => mocks.taxPlan ?? {
+    grossMinor: input.grossMinor, coursePartMinor: input.coursePartMinor, applies: false, blocker: null, section: null, rateBasisPoints: null,
+    thresholdMinor: null, financialYear: null, pan: null, tds: null, tdsMinor: 0, netMinor: input.grossMinor,
+  },
+}))
+vi.mock('@/features/payouts/seller-invoices', () => ({
+  listSellerInvoicesForReview: async (_client: unknown, options: { status: 'submitted' | 'reviewed' }) => mocks.invoices[options.status],
+}))
+vi.mock('@/features/payouts/seller-invoice-admin-actions', () => ({ approveSellerInvoiceAction: vi.fn(), rejectSellerInvoiceAction: vi.fn() }))
 
 import AdminPaymentsOverviewPage from './page'
 import AdminPaymentFeesPage from './fees/page'
 import AdminPayoutsQueuePage from './payouts/page'
 import ReviewPayoutPage from './payouts/review/page'
 import AdminPaymentsListPage from './transactions/page'
+import AdminSellerInvoicesPage from './seller-invoices/page'
 
 const bankAccount = {
   id: 'a', seller: { profileId: USER }, method: 'bank', holderName: 'Arjun Rao', ifsc: 'HDFC0000001', last4: '1772', vpa: null,
@@ -87,6 +107,10 @@ beforeEach(() => {
   mocks.account = null
   mocks.open = null
   mocks.payments = []
+  mocks.awaiting = []
+  mocks.tdsRate = 1000
+  mocks.taxPlan = null
+  mocks.invoices = { submitted: [], reviewed: [] }
   vi.clearAllMocks()
 })
 afterEach(() => cleanup())
@@ -173,5 +197,93 @@ describe('Admin → Payments', () => {
     expect(screen.getByText(/hasn't added payout details yet/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /via Cashfree/ })).not.toBeInTheDocument()
     await expect(ReviewPayoutPage({ searchParams: Promise.resolve({ seller: 'bogus' }) })).rejects.toThrow('NEXT_NOT_FOUND')
+  })
+})
+
+describe('Admin → Payments: course invoices and TDS (C4)', () => {
+  const courseLine = { id: 'e2', sourceType: 'course_purchase', baseSourceType: 'course_purchase', title: 'ECDIS Refresher', soldAt: '2026-08-02T10:00:00.000Z', currency: 'INR', grossMinor: 200000, feePercent: '10.00', feeMinor: 20000, netMinor: 180000, status: 'available', availableAt: '2026-08-09T10:00:00.000Z', payoutId: null, note: null, period: '2026-08' }
+
+  it('queue says why a seller cannot be paid yet: no approved invoice, no PAN, no TDS rate', async () => {
+    mocks.queue = [
+      queueLine({ availableMinor: 0, earningCount: 0, courseMinor: 0, awaitingInvoiceMinor: 180000, awaitingPeriods: ['2026-08', '2026-09'], hasTaxProfile: true }),
+      queueLine({ sellerIdentity: { seller: { companyId: COMPANY }, name: 'Blue Anchor Shipping', slug: 'blue-anchor', kind: 'organization' }, courseMinor: 62874, hasTaxProfile: false }),
+    ]
+    render(await AdminPayoutsQueuePage())
+    expect(screen.getByText('No approved invoice for August 2026 and September 2026')).toBeInTheDocument()
+    expect(screen.getByText(/Not included: ₹1,800.00 of course earnings waiting for the seller's invoice for August 2026 and September 2026/)).toBeInTheDocument()
+    expect(screen.getByText("Waiting for the seller's PAN")).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Create payout' })).not.toBeInTheDocument()
+    cleanup()
+    mocks.tdsRate = null
+    mocks.queue = [queueLine({ courseMinor: 62874, hasTaxProfile: true })]
+    render(await AdminPayoutsQueuePage())
+    expect(screen.getByText(/TDS rate not set/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Create payout' })).not.toBeInTheDocument()
+  })
+
+  it('review shows gross, TDS and net, and sends the net amount', async () => {
+    mocks.account = bankAccount
+    mocks.lines = [courseLine]
+    mocks.taxPlan = {
+      grossMinor: 180000, coursePartMinor: 180000, applies: true, blocker: null, section: '194J', rateBasisPoints: 1000, thresholdMinor: null,
+      financialYear: '2026-27', pan: 'ABCDE1234F', tds: { tdsBaseMinor: 180000, fyGrossMinor: 180000, thresholdCrossed: true, targetMinor: 18000, tdsMinor: 18000 },
+      tdsMinor: 18000, netMinor: 162000,
+    }
+    render(await ReviewPayoutPage({ searchParams: Promise.resolve({ seller: `profile:${USER}` }) }))
+    expect(screen.getByRole('heading', { name: 'TDS on course earnings' })).toBeInTheDocument()
+    expect(screen.getByText('TDS deducted').closest('div')).toHaveTextContent('₹180.00')
+    expect(screen.getByText('Net transferred').closest('div')).toHaveTextContent('₹1,620.00')
+    expect(screen.getByText(/Section 194J at 10%, from the first rupee/)).toBeInTheDocument()
+    expect(screen.queryByText('ABCDE1234F')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send ₹1,620.00 via Cashfree' })).toBeInTheDocument()
+  })
+
+  it('review refuses while the PAN or TDS rate is missing, or the month has no approved invoice', async () => {
+    mocks.account = bankAccount
+    mocks.lines = [courseLine]
+    mocks.taxPlan = { grossMinor: 180000, coursePartMinor: 180000, applies: true, blocker: 'pan_missing', section: '194J', rateBasisPoints: 1000, thresholdMinor: null, financialYear: '2026-27', pan: null, tds: null, tdsMinor: 0, netMinor: 180000 }
+    render(await ReviewPayoutPage({ searchParams: Promise.resolve({ seller: `profile:${USER}` }) }))
+    expect(screen.getByText(/hasn't added their PAN yet/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /via Cashfree/ })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.taxPlan = { ...(mocks.taxPlan as object), blocker: 'tds_rate_unset' }
+    render(await ReviewPayoutPage({ searchParams: Promise.resolve({ seller: `profile:${USER}` }) }))
+    expect(screen.getByText(/TDS rate for course payouts is not set yet/)).toBeInTheDocument()
+    cleanup()
+
+    mocks.taxPlan = null
+    mocks.lines = []
+    mocks.awaiting = [courseLine]
+    render(await ReviewPayoutPage({ searchParams: Promise.resolve({ seller: `profile:${USER}` }) }))
+    expect(screen.getByText(/can't be paid until their invoice for August 2026 is approved/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Review seller invoices' })).toHaveAttribute('href', '/admin/payments/seller-invoices')
+    expect(screen.queryByRole('button', { name: /via Cashfree/ })).not.toBeInTheDocument()
+  })
+
+  it('seller invoices page lists invoices to review with amount vs expected, a private file link, and Approve / Reject', async () => {
+    const invoice = {
+      id: '99999999-9999-4999-8999-999999999999', seller: { profileId: USER }, period: '2026-08', kind: 'tax_invoice', documentNumber: 'INV-0042',
+      amountMinor: 180000, expectedAmountMinor: 180000, storagePath: 'seller-invoices/x', fileName: 'invoice-aug.pdf', contentType: 'application/pdf', sizeBytes: 20480,
+      status: 'submitted', reviewNote: null, reviewedAt: null, createdAt: '2026-09-02T10:00:00.000Z',
+      sellerName: 'Arjun Rao', sellerKind: 'profile', sellerSlug: 'arjun', currentExpectedMinor: 180000, gstRegistered: true,
+    }
+    mocks.invoices = {
+      submitted: [invoice, { ...invoice, id: '88888888-8888-4888-8888-888888888888', period: '2026-07', currentExpectedMinor: 150000 }],
+      reviewed: [{ ...invoice, id: '77777777-7777-4777-8777-777777777777', period: '2026-06', status: 'rejected', reviewNote: 'Total must be ₹1,800.00', reviewedAt: '2026-07-03T10:00:00.000Z' }],
+    }
+    render(await AdminSellerInvoicesPage())
+    expect(screen.getByRole('link', { name: 'Seller invoices' })).toHaveAttribute('href', '/admin/payments/seller-invoices')
+    const links = screen.getAllByRole('link', { name: 'Open invoice-aug.pdf' })
+    expect(links[0]).toHaveAttribute('href', `/api/payouts/seller-invoices/${invoice.id}`)
+    expect(screen.getByRole('button', { name: 'Approve invoice for Arjun Rao, August 2026' })).toBeInTheDocument()
+    // July changed after it was sent: only rejecting is offered.
+    expect(screen.queryByRole('button', { name: 'Approve invoice for Arjun Rao, July 2026' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reject invoice for Arjun Rao, July 2026' })).toBeInTheDocument()
+    expect(screen.getByText(/Changed since it was sent/)).toBeInTheDocument()
+    expect(screen.getByText('Total must be ₹1,800.00')).toBeInTheDocument()
+
+    mocks.admin = false
+    await expect(AdminSellerInvoicesPage()).rejects.toThrow('NEXT_NOT_FOUND')
   })
 })

@@ -10,6 +10,7 @@ import { PayoutStatusActions } from '@/features/payouts/components/admin/payout-
 import { getPayoutLine, listPayoutAudit, listPayoutEarningLines } from '@/features/payouts/payout-queries'
 import { formatExactMoney, formatPercentLabel, PAYOUT_STATUS_LABELS, SOURCE_TYPE_LABELS } from '@/features/payouts/payout-rules'
 import { readClient } from '@/features/payouts/payout-runtime'
+import { formatRateBasisPoints } from '@/features/payouts/tds'
 
 export const metadata: Metadata = { title: 'Payout · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -38,7 +39,14 @@ export default async function AdminPayoutDetailPage({ params }: { params: Promis
   const status = PAYOUT_STATUS_LABELS[payout.status]
 
   const facts = [
-    { label: 'Amount', value: formatExactMoney(payout.amountMinor) },
+    { label: payout.tdsMinor > 0 ? 'Amount transferred (net)' : 'Amount', value: formatExactMoney(payout.amountMinor) },
+    ...(payout.tdsFinancialYear ? [
+      { label: 'Gross (all earnings)', value: formatExactMoney(payout.grossMinor ?? payout.amountMinor) },
+      {
+        label: 'TDS',
+        value: `${formatExactMoney(payout.tdsMinor)} · section ${payout.tdsSection ?? '—'} at ${formatRateBasisPoints(payout.tdsRateBasisPoints)} on ${formatExactMoney(payout.tdsBaseMinor)} of course earnings (FY ${payout.tdsFinancialYear})`,
+      },
+    ] : []),
     { label: 'Paid to', value: payout.account ? `${payout.account.summary} (${payout.account.holderName})` : '—' },
     { label: 'Bank reference (UTR)', value: payout.utr ?? '—' },
     { label: 'Transfer ID', value: payout.transferId },

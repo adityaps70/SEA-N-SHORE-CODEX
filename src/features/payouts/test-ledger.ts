@@ -16,6 +16,10 @@ export type Ledger = {
   audits: Row[]
   members: Array<{ company_id: string; user_id: string; role: string }>
   minPayoutMinor: number
+  /** public.platform_tax_settings (C4). */
+  taxSettings: Row
+  /** public.payout_tax_profiles (C4). */
+  taxProfiles: Row[]
 }
 
 export const SELLER_ID = '44444444-4444-4444-8444-444444444444'
@@ -62,19 +66,36 @@ function sellerMatches(row: Row, profileId: unknown, companyId: unknown) {
 }
 
 function payoutRow(values: unknown[]): Row {
-  const [id, profileId, companyId, accountId, amount, transferId, mode, approvedBy] = values
+  const [id, profileId, companyId, accountId, amount, transferId, mode, approvedBy, gross, tdsBase, tds, section, rate, year, pan] = values
   const now = new Date().toISOString()
   return {
     id, seller_profile_id: profileId, seller_company_id: companyId, payout_account_id: accountId, amount_minor: amount, currency: 'INR',
     status: 'draft', transfer_id: transferId, transfer_mode: mode, cf_transfer_id: null, provider_status: null, provider_status_code: null,
     utr: null, failure_reason: null, dispatch_attempts: 1, last_dispatch_at: now, approved_by: approvedBy, approved_at: now, sent_at: null,
     completed_at: null, last_checked_at: null, created_at: now, updated_at: now,
+    gross_minor: gross ?? null, tds_base_minor: tdsBase ?? 0, tds_minor: tds ?? 0, tds_section: section ?? null,
+    tds_rate_basis_points: rate ?? null, tds_financial_year: year ?? null, seller_pan: pan ?? null,
   }
+}
+
+/**
+ * Course earnings (C4) in the fake: source_type 'course_purchase', or `course: true` on an adjustment. A positive
+ * course earning is payable only with `invoice_approved: true` (the real SQL checks the month's approved invoice).
+ */
+function isCourse(row: Row) {
+  return row.source_type === 'course_purchase' || row.course === true
+}
+
+function isPayable(row: Row) {
+  return !isCourse(row) || Number(row.net_minor) <= 0 || row.invoice_approved === true
 }
 
 export function createLedger(initial: Partial<Ledger> = {}) {
   const ledger: Ledger = {
-    accounts: [], payouts: [], earnings: [], items: [], audits: [], members: [], minPayoutMinor: 10000, ...initial,
+    accounts: [], payouts: [], earnings: [], items: [], audits: [], members: [], minPayoutMinor: 10000,
+    taxSettings: { tds_section: '194J', tds_rate_basis_points: null, tds_threshold_minor: null, updated_at: null },
+    taxProfiles: [],
+    ...initial,
   }
 
   const calls: Array<[string, unknown[]]> = []
@@ -173,8 +194,31 @@ export function createLedger(initial: Partial<Ledger> = {}) {
     if (text.startsWith('update public.payouts set last_checked_at')) return { rows: [] }
 
     // earnings
-    if (text.startsWith('select id, net_minor from public.seller_earnings')) {
-      return { rows: ledger.earnings.filter((row) => sellerMatches(row, values[0], values[1]) && row.status === 'available' && row.currency === 'INR' && !row.payout_id) }
+    const ready = (row: Row) => sellerMatches(row, values[0], values[1]) && row.status === 'available' && row.currency === 'INR' && !row.payout_id
+    if (text.startsWith('select e.id, e.net_minor, (e.source_type')) {
+      return { rows: ledger.earnings.filter((row) => ready(row) && isPayable(row)).map((row) => ({ ...row, is_course: isCourse(row) })) }
+    }
+    if (text.startsWith('select e.id, e.net_minor, to_char(')) {
+      return { rows: ledger.earnings.filter((row) => ready(row) && !isPayable(row)).map((row) => ({ ...row, period: row.period ?? '2026-09' })) }
+    }
+
+    // tax (C4)
+    if (text.startsWith('select tds_section, tds_rate_basis_points')) return { rows: [ledger.taxSettings] }
+    if (text.startsWith('select legal_name, pan, gst_registered')) {
+      return { rows: ledger.taxProfiles.filter((row) => sellerMatches(row, values[0], values[1])).slice(0, 1) }
+    }
+    if (text.startsWith('select coalesce(sum(t.course_part), 0) as course_minor')) {
+      const payouts = ledger.payouts.filter((row) => sellerMatches(row, values[0], values[1]) && ['processing', 'success'].includes(String(row.status)) && (row.tds_financial_year ?? values[2]) === values[2])
+      let courseMinor = 0
+      let tdsMinor = 0
+      for (const payout of payouts) {
+        tdsMinor += Number(payout.tds_minor ?? 0)
+        for (const item of ledger.items.filter((candidate) => candidate.payout_id === payout.id)) {
+          const row = ledger.earnings.find((candidate) => candidate.id === item.earning_id)
+          if (row && isCourse(row)) courseMinor += Number(row.net_minor)
+        }
+      }
+      return { rows: [{ course_minor: courseMinor, tds_minor: tdsMinor }] }
     }
     if (text.startsWith('with items as')) {
       const [payoutId, ids] = values as [string, string[]]
