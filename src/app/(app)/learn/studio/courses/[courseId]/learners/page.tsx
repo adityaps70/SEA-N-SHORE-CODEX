@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, Download, Mail, Users } from 'lucide-react'
+import { ArrowLeft, Download, Mail, Megaphone, Users } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { CourseAnnouncementComposer } from '@/features/learning/components/course-announcement-composer'
 import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CancelInvitationButton, CourseRosterEnrolForm } from '@/features/learning/components/course-roster-enrol-form'
@@ -108,6 +109,20 @@ export default async function CourseLearnersPage({ params }: { params: Promise<{
           ) : <p className="mt-2 text-sm text-muted">No invitations waiting.</p>}
         </section>
       </div>
+
+      {active.length ? (
+        <section aria-labelledby="message-all-heading" className="mt-5 rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
+          <h2 id="message-all-heading" className="flex items-center gap-2 text-base font-bold text-navy-950">
+            <Megaphone aria-hidden="true" className="size-4 text-teal-700" /> Message all learners
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Posted as a course announcement: learners see it in the course and get one email (unless they turned learning emails off). Up to three a day per course.
+          </p>
+          <div className="mt-3">
+            <CourseAnnouncementComposer courseId={course.id} />
+          </div>
+        </section>
+      ) : null}
 
       <section aria-labelledby="roster-heading" className="mt-6">
         <h2 id="roster-heading" className="text-lg font-bold text-navy-950">Roster</h2>
