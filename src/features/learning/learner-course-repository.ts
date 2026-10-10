@@ -36,6 +36,7 @@ export type LearnerCourseRow = QueryResultRow & {
   enrollment_status: string
   enrollment_source?: string | null
   enrolled_at: string | Date
+  access_expires_at?: string | Date | null
   course_id: string
   slug: string
   title: string
@@ -150,8 +151,11 @@ export type LearnerCourseSection = {
 export type LearnerCourse = {
   enrollmentId: string
   enrollmentStatus: EnrollmentStatus
-  /** 'admin' = course team access (owner, organization learning manager, platform admin). */
-  enrollmentSource?: 'free' | 'purchase' | 'admin'
+  /** 'admin' = course team access (owner, organization learning manager, platform admin); 'trainer' = enrolled by a trainer. */
+  enrollmentSource?: 'free' | 'purchase' | 'admin' | 'trainer'
+  /** Round C (C3): when time-limited access ends (null = lifetime), and whether it already has. */
+  accessExpiresAt?: string | null
+  accessExpired?: boolean
   courseId: string
   slug: string
   title: string
@@ -256,6 +260,7 @@ export function createLearnerCourseRepository(input: {
          enrollment.status as enrollment_status,
          enrollment.enrollment_source,
          enrollment.enrolled_at,
+         enrollment.access_expires_at,
          course.id as course_id,
          course.slug,
          course.title,
@@ -458,6 +463,15 @@ export function createLearnerCourseRepository(input: {
         }
       }
     }
+    // Round C (C3): access that has ended keeps the outline, progress and results; every material stays closed.
+    const accessExpiresAt = first.access_expires_at ? asDate(first.access_expires_at) : null
+    const accessExpired = Boolean(accessExpiresAt && accessExpiresAt.getTime() <= currentTime.getTime())
+    if (accessExpired) {
+      for (const lesson of orderedLessons) {
+        lesson.isAvailable = false
+        lesson.lockReason = 'access_expired'
+      }
+    }
     orderedLessons.forEach(redactLockedMaterial)
 
     const totalLessons = orderedLessons.length
@@ -469,7 +483,11 @@ export function createLearnerCourseRepository(input: {
     return {
       enrollmentId: first.enrollment_id,
       enrollmentStatus: asEnrollmentStatus(first.enrollment_status),
-      enrollmentSource: first.enrollment_source === 'purchase' || first.enrollment_source === 'admin' ? first.enrollment_source : 'free',
+      enrollmentSource: first.enrollment_source === 'purchase' || first.enrollment_source === 'admin' || first.enrollment_source === 'trainer'
+        ? first.enrollment_source
+        : 'free',
+      accessExpiresAt: accessExpiresAt ? accessExpiresAt.toISOString() : null,
+      accessExpired,
       courseId: first.course_id,
       slug: first.slug,
       title: first.title,

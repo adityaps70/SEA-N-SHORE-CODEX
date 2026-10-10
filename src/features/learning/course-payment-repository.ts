@@ -7,6 +7,11 @@ import type { EventPaymentOrderStatus, PaymentCurrency, PaymentProviderName } fr
 import { courseManagerAccessSql } from './course-access'
 import { coursePrice, type CoursePrice } from './course-pricing'
 import { courseOpenToNewLearnersSql } from './course-publication'
+import { listStoredPlansWithQuery } from './course-plan-repository'
+import { DEFAULT_PLAN_NAME, planPrice, type AccessMonths, type CoursePlan } from './course-plans'
+import { lockedPromoDiscount, lockPromoCodeForCourse, promoUsageRefusal, redeemPromoUse, releasePromoUse, reservePromoUse, type LockedPromoCode } from './promo-code-repository'
+import { normalisePromoCode, type PromoCodeRefusal } from './promo-codes'
+import { GATEWAY_ORDER_LIFETIME_MINUTES } from '@/features/payments/event-payment-rules'
 import { notifyEnrolled } from './learning-notifications'
 import { COURSE_CHECKOUT_REUSE_MINUTES, COURSE_PENDING_CHECK_MINUTES, type CoursePurchaseBlocker, type CourseRefundDueReason } from './course-payment-rules'
 
@@ -44,6 +49,12 @@ export type CoursePaymentOrder = {
   refundAttempts: number
   providerRefundId: string | null
   createdAt: string
+  /** Round C: the plan bought (null for orders before plans), its access period, and any promo code used. */
+  planId: string | null
+  planName: string | null
+  accessMonths: AccessMonths
+  promoCode: string | null
+  promoDiscountMinor: number
 }
 
 /** A purchase as the learner sees it (My Learning → Purchases). */
@@ -64,7 +75,7 @@ export type CourseConfirmOutcome =
 export type CoursePaymentActor = { type: PaymentAuditActorType; profileId?: string | null }
 
 export class CoursePurchaseError extends Error {
-  constructor(readonly code: CoursePurchaseBlocker | 'checkout_in_progress' | 'order_not_found' | 'refund_not_allowed' | 'refund_in_progress') {
+  constructor(readonly code: CoursePurchaseBlocker | PromoCodeRefusal | 'plan_not_found' | 'checkout_in_progress' | 'order_not_found' | 'refund_not_allowed' | 'refund_in_progress') {
     super(code)
     this.name = 'CoursePurchaseError'
   }
@@ -94,6 +105,11 @@ type OrderRow = QueryResultRow & {
   refund_attempts: number | string | null
   provider_refund_id: string | null
   created_at: string | Date
+  plan_id?: string | null
+  plan_name?: string | null
+  access_months?: number | null
+  promo_code?: string | null
+  promo_discount_minor?: string | number | null
 }
 
 type CourseRow = QueryResultRow & {
@@ -104,12 +120,13 @@ type CourseRow = QueryResultRow & {
   discount_price_minor: string | number | null
   currency: string
   company_id: string | null
+  mentor_id: string | null
   seller_profile_id: string | null
   visible: boolean
   is_manager: boolean
 }
 
-type EnrollmentRow = QueryResultRow & { id: string; status: string; enrollment_source: string }
+type EnrollmentRow = QueryResultRow & { id: string; status: string; enrollment_source: string; access_expires_at?: string | Date | null }
 
 export type LockedCourse = {
   id: string
@@ -121,6 +138,7 @@ export type LockedCourse = {
   /** The raw currency on the course, for a clear "currency not supported" message. */
   currency: string
   companyId: string | null
+  mentorId: string | null
   sellerProfileId: string | null
 }
 
@@ -128,7 +146,8 @@ const ORDER_COLUMNS = `
   o.id, o.course_id, o.profile_id, o.course_title, o.list_price_minor, o.discount_price_minor, o.amount_minor,
   o.currency, o.provider, o.provider_order_id, o.provider_payment_id, o.provider_session_id, o.status,
   o.enrollment_id, o.enrollment_confirmed_at, o.refund_due_reason, o.failure_reason, o.paid_at, o.refunded_at,
-  o.refund_status, o.refund_attempts, o.provider_refund_id, o.created_at
+  o.refund_status, o.refund_attempts, o.provider_refund_id, o.created_at,
+  o.plan_id, o.plan_name, o.access_months, o.promo_code, o.promo_discount_minor
 `
 
 const SUBJECT = 'course_payment_order'
@@ -169,6 +188,11 @@ export function mapCourseOrder(row: OrderRow): CoursePaymentOrder {
     refundAttempts: Number(row.refund_attempts ?? 0),
     providerRefundId: row.provider_refund_id ?? null,
     createdAt: iso(row.created_at),
+    planId: row.plan_id ?? null,
+    planName: row.plan_name ?? null,
+    accessMonths: row.access_months === 6 || row.access_months === 12 ? row.access_months : null,
+    promoCode: row.promo_code ?? null,
+    promoDiscountMinor: Number(row.promo_discount_minor ?? 0),
   }
 }
 
@@ -204,7 +228,7 @@ async function audit(client: DatabaseQueryClient, order: CoursePaymentOrder, act
 export async function lockCourseForPurchase(client: DatabaseQueryClient, courseId: string, profileId: string): Promise<LockedCourse | null> {
   const result = await client.query<CourseRow>(`
     select course.id, course.title, course.access_type, course.price_minor, course.discount_price_minor, course.currency,
-      course.company_id, coalesce(mentor.user_id, course.created_by_user_id) as seller_profile_id,
+      course.company_id, course.mentor_id, coalesce(mentor.user_id, course.created_by_user_id) as seller_profile_id,
       (${courseOpenToNewLearnersSql()}) as visible,
       ${courseManagerAccessSql('course', '$2::uuid')} as is_manager
     from public.learning_courses course
@@ -232,13 +256,14 @@ export async function lockCourseForPurchase(client: DatabaseQueryClient, courseI
     }),
     currency: row.currency,
     companyId: row.company_id ?? null,
+    mentorId: row.mentor_id ?? null,
     sellerProfileId: row.seller_profile_id ?? null,
   }
 }
 
 async function lockEnrollment(client: DatabaseQueryClient, courseId: string, profileId: string) {
   const result = await client.query<EnrollmentRow>(`
-    select id, status, enrollment_source
+    select id, status, enrollment_source, access_expires_at
     from public.learning_enrollments
     where course_id = $1::uuid and learner_id = $2::uuid
     for update
@@ -251,7 +276,10 @@ function enrollmentBlocker(enrollment: EnrollmentRow | null): 'already_enrolled'
   if (!enrollment) return null
   // Course team access is not a purchase: someone who left the team can buy the course.
   if (enrollment.enrollment_source === 'admin') return null
-  if (enrollment.status === 'active' || enrollment.status === 'completed') return 'already_enrolled'
+  if (enrollment.status === 'active' || enrollment.status === 'completed') {
+    // Round C (C3): time-limited access can be renewed (or extended early); lifetime access cannot be bought twice.
+    return enrollment.access_expires_at ? null : 'already_enrolled'
+  }
   // A purchase that was refunded can be bought again; access removed for another reason cannot.
   return enrollment.enrollment_source === 'purchase' ? null : 'enrollment_revoked'
 }
@@ -275,26 +303,132 @@ async function lockOrder(client: DatabaseQueryClient, orderId: string) {
   return locked.rows[0] ? mapCourseOrder(locked.rows[0]) : null
 }
 
+/** A promo code reservation outlives the gateway order it was made for by this much (late webhooks). */
+const PROMO_RESERVATION_GRACE_MINUTES = 15
+
+function clientRows(client: DatabaseQueryClient) {
+  return async (text: string, values?: readonly unknown[]) => (await client.query(text, values ? [...values] : undefined)).rows
+}
+
 /**
- * Checks every purchase rule with the course row locked, then reuses the learner's
- * open checkout or records a new one with a snapshot of the price.
+ * The plan being bought: the one asked for, or the course's first plan. A course without plan rows yet (created
+ * before round C and not saved since) sells its own price as one lifetime plan. Throws when the plan is not this
+ * course's.
+ */
+async function resolvePlan(client: DatabaseQueryClient, course: LockedCourse, planId: string | null | undefined): Promise<CoursePlan> {
+  const plans = await listStoredPlansWithQuery(clientRows(client), course.id)
+  if (!plans.length) {
+    if (planId) throw new CoursePurchaseError('plan_not_found')
+    if (!course.price) throw new CoursePurchaseError('course_price_missing')
+    return {
+      id: null,
+      name: DEFAULT_PLAN_NAME,
+      priceMinor: course.price.listPriceMinor,
+      discountPriceMinor: course.price.discountPriceMinor,
+      currency: course.price.currency,
+      accessMonths: null,
+      position: 0,
+    }
+  }
+  const plan = planId ? plans.find((candidate) => candidate.id === planId) : plans[0]
+  if (!plan) throw new CoursePurchaseError('plan_not_found')
+  return plan
+}
+
+export type CheckoutQuote = {
+  plan: CoursePlan
+  listPriceMinor: number
+  discountPriceMinor: number | null
+  /** What the buyer pays before any code (the sale price when set). */
+  baseMinor: number
+  promo: { codeId: string; code: string; discountMinor: number } | null
+  amountMinor: number
+  currency: PaymentCurrency
+}
+
+/**
+ * Works out what a checkout costs on the server, with the course (and any code) locked: the plan's current price,
+ * then the promo code. Never trusts a price or discount from the browser. Throws CoursePurchaseError with the
+ * reason a purchase or a code is refused.
+ */
+async function quoteCheckout(client: DatabaseQueryClient, input: {
+  profileId: string
+  courseId: string
+  planId?: string | null
+  promoCode?: string | null
+  currencies?: readonly PaymentCurrency[]
+  now: Date
+}): Promise<{ course: LockedCourse; quote: CheckoutQuote; code: LockedPromoCode | null }> {
+  const course = await lockCourseForPurchase(client, input.courseId, input.profileId)
+  const enrollment = course ? await lockEnrollment(client, course.id, input.profileId) : null
+  const blocker = checkoutBlocker(course, enrollment, input.currencies)
+  if (blocker) throw new CoursePurchaseError(blocker)
+  const plan = await resolvePlan(client, course!, input.planId)
+  const price = planPrice(plan)
+  if (!price) throw new CoursePurchaseError('course_price_missing')
+  if (input.currencies && !input.currencies.includes(price.currency)) throw new CoursePurchaseError('course_currency_unsupported')
+
+  let promo: CheckoutQuote['promo'] = null
+  let code: LockedPromoCode | null = null
+  const typed = input.promoCode ? normalisePromoCode(input.promoCode) : ''
+  if (typed) {
+    code = await lockPromoCodeForCourse(client, { code: typed, course: { id: course!.id, mentorId: course!.mentorId, companyId: course!.companyId } })
+    if (!code) throw new CoursePurchaseError('promo_not_found')
+    const discount = lockedPromoDiscount(code, price.amountMinor, price.currency)
+    if (!discount.ok) throw new CoursePurchaseError(discount.reason)
+    promo = { codeId: code.id, code: code.code, discountMinor: discount.discountMinor }
+  }
+  return {
+    course: course!,
+    code,
+    quote: {
+      plan,
+      listPriceMinor: price.listPriceMinor,
+      discountPriceMinor: price.discountPriceMinor,
+      baseMinor: price.amountMinor,
+      promo,
+      amountMinor: price.amountMinor - (promo?.discountMinor ?? 0),
+      currency: price.currency,
+    },
+  }
+}
+
+/** The price a buyer would pay for a plan with a code, without starting a checkout (course page "Apply"). */
+async function previewCheckout(input: {
+  profileId: string
+  courseId: string
+  planId?: string | null
+  promoCode?: string | null
+  now?: Date
+}): Promise<CheckoutQuote> {
+  const now = input.now ?? new Date()
+  return withTransaction(async (client) => {
+    const { quote, code } = await quoteCheckout(client, { ...input, now })
+    const refusal = code ? await promoUsageRefusal(client, code, { profileId: input.profileId, now }) : null
+    if (refusal) throw new CoursePurchaseError(refusal)
+    return quote
+  })
+}
+
+/**
+ * Checks every purchase rule with the course row (and any promo code) locked, then reuses the learner's open
+ * checkout or records a new one with a snapshot of the plan, the price and the code's discount. A code's use is
+ * reserved here, atomically, so two buyers can never both take its last use.
  */
 async function prepareCheckoutOrder(input: {
   profileId: string
   courseId: string
   provider: PaymentProviderName
   currencies?: readonly PaymentCurrency[]
+  planId?: string | null
+  promoCode?: string | null
   now?: Date
 }): Promise<{ order: CoursePaymentOrder; reused: boolean }> {
   const now = input.now ?? new Date()
   const actor: CoursePaymentActor = { type: 'member', profileId: input.profileId }
   try {
     return await withTransaction(async (client) => {
-      const course = await lockCourseForPurchase(client, input.courseId, input.profileId)
-      const enrollment = course ? await lockEnrollment(client, course.id, input.profileId) : null
-      const blocker = checkoutBlocker(course, enrollment, input.currencies)
-      if (blocker) throw new CoursePurchaseError(blocker)
-      const price = course!.price!
+      const { course, quote, code } = await quoteCheckout(client, { ...input, now })
 
       const open = await client.query<OrderRow>(`
         select ${ORDER_COLUMNS}
@@ -305,8 +439,11 @@ async function prepareCheckoutOrder(input: {
       const existing = open.rows[0] ? mapCourseOrder(open.rows[0]) : null
       if (existing) {
         const ageMs = now.getTime() - Date.parse(existing.createdAt)
-        const samePrice = existing.amountMinor === price.amountMinor && existing.currency === price.currency
-        if (samePrice && existing.provider === input.provider && existing.providerOrderId && ageMs < COURSE_CHECKOUT_REUSE_MINUTES * 60_000) {
+        const sameOrder = existing.amountMinor === quote.amountMinor
+          && existing.currency === quote.currency
+          && existing.planId === quote.plan.id
+          && (existing.promoCode ?? null) === (quote.promo?.code ?? null)
+        if (sameOrder && existing.provider === input.provider && existing.providerOrderId && ageMs < COURSE_CHECKOUT_REUSE_MINUTES * 60_000) {
           return { order: existing, reused: true }
         }
         if (!existing.providerOrderId && ageMs < 60_000) throw new CoursePurchaseError('checkout_in_progress')
@@ -315,23 +452,54 @@ async function prepareCheckoutOrder(input: {
           set status = 'cancelled', failure_reason = 'superseded', updated_at = now()
           where id = $1::uuid and status = 'created'
         `, [existing.id])
+        // A superseded checkout gives its reserved code use back before this one is counted.
+        await releasePromoUse(client, existing.id)
         await audit(client, existing, 'checkout_superseded', { actor, fromStatus: 'created', toStatus: 'cancelled' })
+      }
+
+      if (code) {
+        // Counted with the code row locked (quoteCheckout), after any superseded checkout gave its use back.
+        const refusal = await promoUsageRefusal(client, code, { profileId: input.profileId, now })
+        if (refusal) throw new CoursePurchaseError(refusal)
       }
 
       const inserted = await client.query<OrderRow>(`
         insert into public.course_payment_orders as o (
-          course_id, profile_id, course_title, list_price_minor, discount_price_minor, amount_minor, currency, provider
+          course_id, profile_id, course_title, list_price_minor, discount_price_minor, amount_minor, currency, provider,
+          plan_id, plan_name, access_months, promo_code_id, promo_code, promo_discount_minor
         )
-        values ($1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint, $7::text, $8::text)
+        values ($1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint, $7::text, $8::text,
+                $9::uuid, $10::text, $11::integer, $12::uuid, $13::text, $14::bigint)
         returning ${ORDER_COLUMNS}
-      `, [input.courseId, input.profileId, course!.title, price.listPriceMinor, price.discountPriceMinor, price.amountMinor, price.currency, input.provider])
+      `, [
+        input.courseId, input.profileId, course.title, quote.listPriceMinor, quote.discountPriceMinor, quote.amountMinor, quote.currency, input.provider,
+        quote.plan.id, quote.plan.name, quote.plan.accessMonths, quote.promo?.codeId ?? null, quote.promo?.code ?? null, quote.promo?.discountMinor ?? 0,
+      ])
       const row = inserted.rows[0]
       if (!row) throw new Error('course_payment_order_insert_failed')
       const order = mapCourseOrder(row)
+      if (quote.promo) {
+        await reservePromoUse(client, {
+          codeId: quote.promo.codeId,
+          orderId: order.id,
+          profileId: input.profileId,
+          courseId: input.courseId,
+          discountMinor: quote.promo.discountMinor,
+          currency: quote.currency,
+          reservedUntil: new Date(now.getTime() + (GATEWAY_ORDER_LIFETIME_MINUTES + PROMO_RESERVATION_GRACE_MINUTES) * 60_000),
+        })
+      }
       await audit(client, order, 'checkout_started', {
         actor,
         toStatus: 'created',
-        details: { listPriceMinor: price.listPriceMinor, discountPriceMinor: price.discountPriceMinor },
+        details: {
+          listPriceMinor: quote.listPriceMinor,
+          discountPriceMinor: quote.discountPriceMinor,
+          planId: quote.plan.id,
+          accessMonths: quote.plan.accessMonths,
+          promoCode: quote.promo?.code ?? null,
+          promoDiscountMinor: quote.promo?.discountMinor ?? 0,
+        },
       })
       return { order, reused: false }
     })
@@ -364,7 +532,10 @@ async function markOrderFailed(orderId: string, reason: string) {
       where o.id = $1::uuid and o.status = 'created'
       returning ${ORDER_COLUMNS}
     `, [orderId, reason])
-    if (result.rows[0]) await audit(client, mapCourseOrder(result.rows[0]), 'order_failed', { fromStatus: 'created', toStatus: 'failed', details: { reason } })
+    if (result.rows[0]) {
+      await releasePromoUse(client, orderId)
+      await audit(client, mapCourseOrder(result.rows[0]), 'order_failed', { fromStatus: 'created', toStatus: 'failed', details: { reason } })
+    }
   })
 }
 
@@ -514,27 +685,37 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
     return { state: 'refund_due', order, reason }
   }
 
+  // Round C (C3): the plan's access period. A renewal of time-limited access that is still running extends it
+  // from its current end; otherwise it runs from now. A lifetime plan (or an order before plans) has no end.
+  const accessExpiresSql = `case when $4::integer is null then null
+      else greatest(coalesce(case when status <> 'revoked' then access_expires_at end, $3::timestamptz), $3::timestamptz)
+           + make_interval(months => $4::integer) end`
   let enrollmentId: string
   if (enrollment) {
-    // A refunded purchase bought again, or former team access bought: the same
-    // enrollment (and its progress) becomes a purchase.
+    // A refunded purchase bought again, former team access bought, or time-limited access renewed: the same
+    // enrollment (and its progress) becomes this purchase.
     const reactivated = await client.query<{ id: string } & QueryResultRow>(`
       update public.learning_enrollments
-      set status = case when completed_at is not null then 'completed' else 'active' end,
-        enrollment_source = 'purchase', revoked_at = null, payment_order_id = $2::uuid,
+      set access_expires_at = ${accessExpiresSql},
+        status = case when completed_at is not null then 'completed' else 'active' end,
+        enrollment_source = 'purchase', revoked_at = null, payment_order_id = $2::uuid, plan_id = $5::uuid,
         enrolled_at = case when status = 'revoked' then now() else enrolled_at end, updated_at = now()
       where id = $1::uuid
       returning id
-    `, [enrollment.id, current.id])
+    `, [enrollment.id, current.id, now.toISOString(), current.accessMonths, current.planId])
     enrollmentId = reactivated.rows[0]?.id ?? enrollment.id
   } else {
     const inserted = await client.query<{ id: string } & QueryResultRow>(`
-      insert into public.learning_enrollments (course_id, learner_id, enrollment_source, status, payment_order_id, enrolled_at, created_at, updated_at)
-      values ($1::uuid, $2::uuid, 'purchase', 'active', $3::uuid, now(), now(), now())
+      insert into public.learning_enrollments (course_id, learner_id, enrollment_source, status, payment_order_id, plan_id, access_expires_at, enrolled_at, created_at, updated_at)
+      values ($1::uuid, $2::uuid, 'purchase', 'active', $3::uuid, $5::uuid,
+              case when $6::integer is null then null else $4::timestamptz + make_interval(months => $6::integer) end,
+              now(), now(), now())
       returning id
-    `, [course!.id, current.profileId, current.id])
+    `, [course!.id, current.profileId, current.id, now.toISOString(), current.planId, current.accessMonths])
     enrollmentId = inserted.rows[0]!.id
   }
+  // Round C (C2): the code's reserved use becomes a redemption.
+  if (current.promoCode) await redeemPromoUse(client, current.id)
 
   const confirmed = await client.query<OrderRow>(`
     update public.course_payment_orders o
@@ -744,6 +925,7 @@ async function getCourseSlug(courseId: string | null) {
 
 export const coursePaymentRepository = {
   prepareCheckoutOrder,
+  previewCheckout,
   attachProviderOrder,
   markOrderFailed,
   recordAttemptFailure,

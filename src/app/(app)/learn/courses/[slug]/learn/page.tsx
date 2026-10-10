@@ -209,6 +209,22 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
         </div>
       </header>
 
+      {course.accessExpired ? (
+        <section aria-label="Access ended" className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm max-md:mt-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-amber-950">
+                Your access ended{course.accessExpiresAt ? ` on ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(course.accessExpiresAt))}` : ''}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-amber-900">The course is read-only: your progress, results and certificate are kept. Renew to open the materials again.</p>
+            </div>
+            <Link href={`/learn/courses/${course.slug}#renew`} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+              Renew access
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       {course.enrollmentStatus === 'completed' ? (
         <section aria-label="Course completed" className="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm max-md:order-last max-md:mt-4 max-md:p-5 sm:p-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">

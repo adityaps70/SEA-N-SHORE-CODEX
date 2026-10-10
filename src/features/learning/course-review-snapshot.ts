@@ -36,6 +36,8 @@ export type CourseSnapshotDetails = {
     validityMonths: number | null
     issueTrigger: string
   }
+  /** Added in learning round C; absent from older snapshots. */
+  pricingPlans?: Array<{ name: string; priceMinor: number; discountPriceMinor: number | null; currency: string; accessMonths: number | null }>
 }
 
 export type CourseSnapshotQuiz = {
@@ -229,7 +231,23 @@ export function snapshotDetailsFromRow(row: Record<string, unknown>): CourseSnap
           },
         }
       : {}),
+    ...(row.pricing_plans !== undefined ? { pricingPlans: snapshotPlans(row.pricing_plans) } : {}),
   }
+}
+
+function snapshotPlans(value: unknown): NonNullable<CourseSnapshotDetails['pricingPlans']> {
+  const list = typeof value === 'string' ? (JSON.parse(value) as unknown) : value
+  if (!Array.isArray(list)) return []
+  return list.map((entry) => {
+    const plan = (entry ?? {}) as Record<string, unknown>
+    return {
+      name: text(plan.name),
+      priceMinor: numberOr(plan.priceMinor, 0),
+      discountPriceMinor: nullableNumber(plan.discountPriceMinor),
+      currency: text(plan.currency),
+      accessMonths: nullableNumber(plan.accessMonths),
+    }
+  })
 }
 
 function nullableNumber(value: unknown): number | null {
@@ -371,6 +389,7 @@ const DETAIL_LABELS: Array<[keyof CourseSnapshotDetails, string]> = [
   ['certificateEnabled', 'Certificate'],
   ['navigationMode', 'Navigation (free or in order)'],
   ['certificateDesign', 'Certificate design, validity and issuing'],
+  ['pricingPlans', 'Pricing plans and access periods'],
 ]
 
 const MATERIAL_LABELS: Array<[keyof CourseSnapshotMaterial, string]> = [

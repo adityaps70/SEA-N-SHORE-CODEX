@@ -12,6 +12,7 @@ import { loadCourseCurriculumRows } from './course-snapshot-query'
 import { questionTypeOf, type QuestionType } from './quiz-model'
 import { certificateSettingsFromRow, type CourseCertificateSettings } from './certificate-settings'
 import { liveCourseSql } from './course-publication'
+import { syncFirstPlanWithQuery } from './course-plan-repository'
 
 type CourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CourseTransaction = <T>(work: (query: CourseQuery) => Promise<T>) => Promise<T>
@@ -749,6 +750,8 @@ export function createCourseRepository(input: {
     ) as ReturningIdRow[]
     const created = rows[0]
     if (!created) throw new Error('course_create_failed')
+    // Round C (C3): a paid course sells its price as its first plan.
+    await syncFirstPlanWithQuery(queryRows, created.id)
     return { courseId: created.id }
   }
 
@@ -1023,6 +1026,8 @@ export function createCourseRepository(input: {
       ) as UpdatedCourseRow[]
       const updated = rows[0]
       if (!updated) throw new Error('course_update_failed')
+      // Round C (C3): the course price is its first plan's price.
+      await syncFirstPlanWithQuery(txQuery, courseId)
       return {
         revision: updated.details_revision === undefined || updated.details_revision === null
           ? storedRevision + 1

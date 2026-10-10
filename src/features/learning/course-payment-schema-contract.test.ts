@@ -72,8 +72,18 @@ describe('paid course orders schema (migration 0047)', () => {
     expect(repository()).toContain("set status = 'revoked', revoked_at = now(), updated_at = now()\n      where payment_order_id = $1::uuid")
   })
 
+  it('takes the plan and promo code columns, and the promo-aware amount rule, from round C (0075)', () => {
+    const roundC = readFileSync(resolve(root, 'infra/aws/database/migrations/0075_learning_round_c.sql'), 'utf8')
+    const orderColumns = statements(roundC).find((statement) => statement.startsWith('alter table public.course_payment_orders\n  add column'))!
+    for (const column of ['plan_id uuid', 'plan_name text', 'access_months integer', 'promo_code_id uuid', 'promo_code text', 'promo_discount_minor bigint not null default 0 check (promo_discount_minor >= 0)']) {
+      expect(orderColumns).toContain(`add column if not exists ${column}`)
+    }
+    expect(roundC).toContain('add constraint course_payment_orders_amount_check check (amount_minor = coalesce(discount_price_minor, list_price_minor) - promo_discount_minor)')
+  })
+
   it('is what the repository reads and writes', () => {
-    const table = statements(sql())[0]!
+    const roundC = readFileSync(resolve(root, 'infra/aws/database/migrations/0075_learning_round_c.sql'), 'utf8')
+    const table = `${statements(sql())[0]!}\n${statements(roundC).find((statement) => statement.startsWith('alter table public.course_payment_orders\n  add column'))!}`
     const columns = /const ORDER_COLUMNS = `([^`]+)`/.exec(repository())![1]!
       .split(',')
       .map((column) => column.trim().replace(/^o\./, ''))

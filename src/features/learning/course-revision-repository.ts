@@ -6,6 +6,7 @@ import { loadCourseSnapshot } from './course-snapshot-query'
 import { questionDetailsFromRow, quizSettingsFromRow, saveQuizSettings } from './quiz-definition'
 import { MOVE_ASIDE_OFFSET, retireLessons, retireSection, writeQuizQuestions } from './curriculum-history'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
+import { applyRevisionPlansWithQuery, clonePlansIntoRevisionWithQuery } from './course-plan-repository'
 
 /**
  * Editing a published course without touching what learners see.
@@ -243,6 +244,9 @@ async function cloneCourseIntoRevision(query: Query, liveCourseId: string) {
     [revisionId],
   )
 
+  // Round C (C3): pricing plans travel with the revision (each copy remembers the live plan it came from).
+  await clonePlansIntoRevisionWithQuery(query, liveCourseId, revisionId)
+
   return revisionId
 }
 
@@ -283,6 +287,9 @@ export async function applyCourseRevisionWithQuery(query: Query, revisionCourseI
        and revision.id = $2`,
     [liveCourseId, revisionCourseId],
   )
+
+  // 1b. Pricing plans (round C). Live plan ids never change; dropped plans are archived for the orders that bought them.
+  await applyRevisionPlansWithQuery(query, revisionCourseId, liveCourseId)
 
   // 2. Sections. Live sections move aside first so final positions are free to take.
   const liveSections = await query(

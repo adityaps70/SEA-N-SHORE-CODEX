@@ -37,6 +37,11 @@ const baseOrder: CoursePaymentOrder = {
   refundAttempts: 0,
   providerRefundId: null,
   createdAt: '2030-01-01T09:59:00.000Z',
+  planId: null,
+  planName: null,
+  accessMonths: null,
+  promoCode: null,
+  promoDiscountMinor: 0,
 }
 
 function makeGateway(overrides: Partial<PaymentGateway> = {}): PaymentGateway {

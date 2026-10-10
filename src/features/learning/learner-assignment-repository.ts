@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { learnerCourseAccessSql } from './course-publication'
-import { courseManagerAccessSql } from './course-access'
+import { courseManagerAccessSql, enrollmentAccessOpenSql } from './course-access'
 import {
   ASSIGNMENT_DEFAULTS,
   assignmentSubmissionPrefix,
@@ -225,6 +225,7 @@ export function createLearnerAssignmentRepository(input: {
         and progress.lesson_id = lesson.id
        where enrollment.learner_id = $1
          and enrollment.status in ('active', 'completed')
+         and ${enrollmentAccessOpenSql()}
          and course.slug = $2
          and lesson.id = $3
          and ${learnerCourseAccessSql()}
@@ -314,6 +315,7 @@ export function createLearnerAssignmentRepository(input: {
           and prerequisite_progress.lesson_id = lesson.prerequisite_lesson_id
          where enrollment.learner_id = $1
            and enrollment.status in ('active', 'completed')
+         and ${enrollmentAccessOpenSql()}
            and course.slug = $2
            and lesson.id = $3
            and ${learnerCourseAccessSql()}

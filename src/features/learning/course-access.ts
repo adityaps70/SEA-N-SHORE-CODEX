@@ -22,3 +22,11 @@ export function courseManagerAccessSql(courseAlias: string, actorParam: string) 
     )
   )`
 }
+
+/**
+ * Round C (C3): an enrolment whose access period has ended keeps its progress, results and certificate, but opens
+ * no material and records nothing new until the learner renews. Null = lifetime access.
+ */
+export function enrollmentAccessOpenSql(enrollmentAlias = 'enrollment') {
+  return `(${enrollmentAlias}.access_expires_at is null or ${enrollmentAlias}.access_expires_at > now())`
+}

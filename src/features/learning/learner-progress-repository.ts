@@ -3,6 +3,7 @@ import { withTransaction as databaseTransaction, type DatabaseQueryClient } from
 import { issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
 import { nextMediaProgress } from './media-watch-policy'
 import { learnerCourseAccessSql } from './course-publication'
+import { enrollmentAccessOpenSql } from './course-access'
 
 export type LearnerProgressQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type ProgressTransaction = <T>(work: (query: LearnerProgressQuery) => Promise<T>) => Promise<T>
@@ -172,6 +173,7 @@ export async function completeLearningLessonWithQuery(
        and lesson.id = $3
        and enrollment.status in ('active', 'completed')
        and ${learnerCourseAccessSql()}
+       and ${enrollmentAccessOpenSql()}
        ${manualRuleSql}
        ${accessPolicySql}
      for update of enrollment`,
@@ -260,6 +262,7 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
            and lesson.lesson_type in ('video', 'audio')
            and enrollment.status in ('active', 'completed')
            and ${learnerCourseAccessSql()}
+           and ${enrollmentAccessOpenSql()}
            ${accessPolicySql}
          for update of enrollment`,
         [learnerId, slug, lessonId],
