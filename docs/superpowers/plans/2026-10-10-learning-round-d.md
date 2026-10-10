@@ -100,10 +100,10 @@ Owner decisions (10 October):
 
 - [x] Step 0 findings
 - [x] Migrations 0077–0078 + guarded runner `learning-round-d-migration` from the template
-- [ ] D1 batches: settings, Studio batches page, managers and instructors, batch status sweep
-- [ ] D1 enrol/buy into a batch (course page, free enrolment, checkout, trainer enrol, invitations), seat limit
-- [ ] D1 drip from batch start (shared helper, TS and SQL)
-- [ ] D1 roster batch filter and CSV
+- [x] D1 batches: settings, Studio batches page, managers and instructors, batch status sweep
+- [x] D1 enrol/buy into a batch (course page, free enrolment, checkout, trainer enrol, invitations), seat limit
+- [x] D1 drip from batch start (shared helper, TS and SQL)
+- [x] D1 roster batch filter and CSV
 - [ ] D2 session calendar: one-off and recurring, edit/cancel, meeting links
 - [ ] D2 member time zone and clear zone display
 - [ ] D2 Upcoming sessions (player Sessions tab, My Learning) and .ics
