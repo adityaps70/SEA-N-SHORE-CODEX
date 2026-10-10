@@ -14,6 +14,8 @@ export type LearningNotificationCopy = {
   subject: string
   /** Email button label. */
   action: string
+  /** Optional longer text shown in the email under the message (an announcement's text). */
+  detail?: string
 }
 
 function quoted(title: string | null | undefined) {
@@ -115,6 +117,16 @@ export function learningNotificationCopy(kind: LearningNotificationKind, details
         path: details.verificationCode ? `/certificates/${details.verificationCode}` : '/learn/my-learning',
         subject: `Your ${course} certificate expires in ${days} days`,
         action: 'View your certificate',
+      }
+    }
+    case 'announcement': {
+      const title = details.announcementTitle?.trim() || 'a new announcement'
+      return {
+        message: `New announcement in ${course}: “${title}”.`,
+        path: `/learn/courses/${details.courseSlug}/learn?tab=announcements`,
+        subject: `${course}: ${title}`,
+        action: 'Read the announcement',
+        ...(details.announcementExcerpt ? { detail: details.announcementExcerpt } : {}),
       }
     }
     case 'submissions_to_grade': {

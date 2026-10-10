@@ -79,7 +79,12 @@ const LEVELS: Record<MarketplaceCourse['level'], string> = {
 }
 
 /** schema.org Course, so search engines can show the course as a course. */
-export function courseJsonLd(course: MarketplaceCourse, provider: { kind: 'person' | 'organization'; slug: string } | null) {
+export function courseJsonLd(
+  course: MarketplaceCourse,
+  provider: { kind: 'person' | 'organization'; slug: string } | null,
+  /** Learning round C: approved reviews only; aggregateRating is left out when there are none. */
+  rating: { averageRating: number | null; reviewCount: number } | null = null,
+) {
   const origin = siteOrigin()
   const url = `${origin}${coursePath(course.slug)}`
   const cover = courseCoverPath(course.thumbnailPath)
@@ -114,5 +119,17 @@ export function courseJsonLd(course: MarketplaceCourse, provider: { kind: 'perso
       // Recorded and live-cohort courses both run online here; hybrid mixes online and in person.
       courseMode: course.courseFormat === 'hybrid' ? 'Blended' : 'Online',
     },
+    ...(rating && rating.reviewCount > 0 && rating.averageRating !== null
+      ? {
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: rating.averageRating.toFixed(1),
+          ratingCount: rating.reviewCount,
+          reviewCount: rating.reviewCount,
+          bestRating: 5,
+          worstRating: 1,
+        },
+      }
+      : {}),
   }
 }

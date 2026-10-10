@@ -35,6 +35,8 @@ export type NetworkNotificationType =
   /** Learning round B: written quiz answers graded; a certificate expires in 30 or 7 days. */
   | 'learning_quiz_graded'
   | 'learning_certificate_expiring'
+  /** Learning round C: a trainer posted an announcement to a course the recipient is enrolled in. */
+  | 'learning_announcement'
 
 export type NotificationActor = {
   id: string

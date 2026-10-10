@@ -24,6 +24,7 @@ export const LEARNING_NOTIFICATION_KINDS = [
   'submissions_to_grade',
   'quiz_graded',
   'certificate_expiring',
+  'announcement',
 ] as const
 export type LearningNotificationKind = (typeof LEARNING_NOTIFICATION_KINDS)[number]
 
@@ -48,6 +49,10 @@ export type LearningNotificationDetails = {
   /** certificate_expiring: when it expires, and how many days were left when the reminder went out. */
   expiresAt?: string | null
   daysLeft?: number
+  /** announcement (round C): the trainer's announcement; the excerpt is the start of its text. */
+  announcementId?: string
+  announcementTitle?: string
+  announcementExcerpt?: string
 }
 
 export type LearningNotificationInput = {
@@ -543,4 +548,49 @@ export async function sweepExpiringCertificates(transaction: <T>(work: (query: Q
     }
     return { expiring: rows.length, notified }
   })
+}
+
+/** How much of an announcement travels in the notification and email; the player shows all of it. */
+export const ANNOUNCEMENT_EXCERPT_LENGTH = 600
+
+export function announcementExcerpt(body: string) {
+  const text = body.trim()
+  if (text.length <= ANNOUNCEMENT_EXCERPT_LENGTH) return text
+  const cut = text.slice(0, ANNOUNCEMENT_EXCERPT_LENGTH - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > ANNOUNCEMENT_EXCERPT_LENGTH / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
+/**
+ * A course announcement (learning round C, C5b): one in-app notification and one queued Learning email for every
+ * recipient, written set-based (one statement each, whatever the number of learners). Dedupe keys
+ * (`learning_announcement:<announcement id>`) make a retry harmless: a learner never gets the same announcement
+ * twice. Unlike the other writers this one is not guarded: delivering the announcement is the whole action, so a
+ * failure rolls the announcement back and the trainer can post it again. Returns how many learners it reached.
+ */
+export async function notifyCourseAnnouncement(query: Query, input: {
+  announcementId: string
+  courseId: string
+  recipientIds: readonly string[]
+  details: LearningNotificationDetails
+}) {
+  if (!input.recipientIds.length) return 0
+  const details = JSON.stringify(input.details)
+  const dedupeKey = `learning_announcement:${input.announcementId}`
+  await query(
+    `insert into public.notifications (recipient_id, actor_id, notification_type, course_id, lesson_id, details, dedupe_key)
+     select recipient.id, null, 'learning_announcement'::public.network_notification_type, $2, null, $3::jsonb, $4
+     from unnest($1::uuid[]) as recipient(id)
+     on conflict (recipient_id, dedupe_key) where dedupe_key is not null do nothing`,
+    [input.recipientIds, input.courseId, details, dedupeKey],
+  )
+  await query(
+    `insert into public.learning_notification_emails (dedupe_key, recipient_id, kind, payload)
+     select recipient.id::text || ':' || $4, recipient.id, 'announcement',
+            jsonb_build_object('courseId', $2::uuid, 'details', $3::jsonb)
+     from unnest($1::uuid[]) as recipient(id)
+     on conflict (dedupe_key) do nothing`,
+    [input.recipientIds, input.courseId, details, dedupeKey],
+  )
+  return input.recipientIds.length
 }

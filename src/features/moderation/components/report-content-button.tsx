@@ -5,6 +5,7 @@ import { Flag, ShieldAlert, X } from 'lucide-react'
 import { iconButtonClass, primaryButtonClass, reportButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { reportContent } from '../actions'
 import {
+  MODERATION_TARGET_LABELS,
   REPORT_REASON_LABELS,
   allowedReportReasons,
   type ModerationReportReason,
@@ -79,7 +80,7 @@ export function ReportContentButton({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`Report ${targetType}`}
+            aria-label={`Report ${MODERATION_TARGET_LABELS[targetType] ?? targetType}`}
             className="w-full max-w-md rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-2xl sm:p-6"
           >
             <div className="flex items-start justify-between gap-4">
@@ -88,7 +89,7 @@ export function ReportContentButton({
                   <ShieldAlert aria-hidden="true" className="size-4" />
                   Safety report
                 </p>
-                <h2 className="mt-1 text-xl font-bold text-navy-950">Report this {targetType}</h2>
+                <h2 className="mt-1 text-xl font-bold text-navy-950">Report this {MODERATION_TARGET_LABELS[targetType] ?? targetType}</h2>
                 <p className="mt-1 text-sm leading-6 text-muted">
                   Reports are reviewed by Sea N Shore administrators. Reporting does not automatically remove content.
                 </p>

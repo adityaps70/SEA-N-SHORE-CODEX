@@ -16,6 +16,7 @@ import {
   LogIn,
   PlayCircle,
   ShieldCheck,
+  Star,
   Users,
 } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
@@ -34,6 +35,8 @@ import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse, type PublishedCourseOverview } from '@/features/learning/marketplace-repository'
 import { splitDescription } from '@/features/learning/description'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
+import { courseRatingRepository, type PublicCourseReviews } from '@/features/learning/course-rating-repository'
+import { CourseReviewsSection, formatAverageRating } from '@/features/learning/components/course-reviews-section'
 
 type PublishedCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -133,9 +136,23 @@ function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: Co
 }
 
 const EMPTY_OVERVIEW: PublishedCourseOverview = { sections: [], lessonCount: 0, durationSeconds: 0, learnerCount: 0, publisher: null }
+const EMPTY_REVIEWS: PublicCourseReviews = { averageRating: null, reviewCount: 0, reviews: [] }
+
+/** Learning round C: the average of approved reviews, e.g. "★ 4.6 · 12 ratings". */
+function RatingSummary({ reviews, className = '' }: { reviews: PublicCourseReviews; className?: string }) {
+  if (!reviews.reviewCount || reviews.averageRating === null) return null
+  const average = formatAverageRating(reviews.averageRating)
+  return (
+    <a href="#course-reviews" className={`inline-flex items-center gap-1.5 font-semibold hover:underline ${className}`}>
+      <Star aria-hidden="true" className="size-4 fill-amber-400 text-amber-400" />
+      <span className="sr-only">Rated </span>{average}<span className="sr-only"> out of 5</span>
+      <span aria-hidden="true">·</span> {reviews.reviewCount.toLocaleString('en-IN')} {reviews.reviewCount === 1 ? 'rating' : 'ratings'}
+    </a>
+  )
+}
 
 /** Phone course header (round 8): cover, chips, title, trainer link and learners. */
-function PhoneCourseHeader({ course, overview, trailerUrl }: { course: MarketplaceCourse; overview: PublishedCourseOverview; trailerUrl: string | null }) {
+function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIEWS }: { course: MarketplaceCourse; overview: PublishedCourseOverview; trailerUrl: string | null; reviews?: PublicCourseReviews }) {
   const duration = durationLabel(overview.durationSeconds)
   const publisherHref = overview.publisher
     ? overview.publisher.kind === 'organization' ? `/organizations/${overview.publisher.slug}` : `/people/${overview.publisher.slug}`
@@ -194,6 +211,7 @@ function PhoneCourseHeader({ course, overview, trailerUrl }: { course: Marketpla
           <span aria-hidden="true"> · </span>
           <span className="text-muted">{overview.publisher?.kind === 'organization' ? 'Verified organization' : 'Verified trainer'}</span>
         </p>
+        <RatingSummary reviews={reviews} className="mt-1 text-sm text-navy-900" />
         {overview.learnerCount > 0 ? (
           <p className="mt-1 text-sm text-muted">
             <Users aria-hidden="true" className="mr-1 inline size-4 align-[-3px]" />
@@ -307,12 +325,13 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
 
   // Public page: signed-out visitors see the course and its free previews; enrolling needs an account.
   const user = await getVerifiedUser()
-  const [enrollment, overview, curriculum, trailerUrl] = await Promise.all([
+  const [enrollment, overview, curriculum, trailerUrl, reviews] = await Promise.all([
     user ? enrollmentRepository.getLearnerEnrollment(user.id, course.id) : Promise.resolve(null),
     // The summary and outline are conveniences: the course page must still render without them.
     marketplaceRepository.getPublishedCourseOverview(course.id).catch(() => EMPTY_OVERVIEW),
     publicCourseRepository.getPublicCurriculum(course.id).catch(() => [] as PublicCurriculumSection[]),
     course.trailerPath ? createMediaReadUrl(course.trailerPath).catch(() => null) : Promise.resolve(null),
+    courseRatingRepository.getPublicReviews(course.id).catch(() => EMPTY_REVIEWS),
   ])
   const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
   const isFree = !isPaidCourse(course)
@@ -322,7 +341,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(courseJsonLd(course, overview.publisher)) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(courseJsonLd(course, overview.publisher, reviews)) }} />
       <MobilePageBar
         backHref="/learn"
         className="max-md:order-first"
@@ -344,7 +363,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
         <ArrowLeft aria-hidden="true" className="size-4" /> Explore courses
       </Link>
 
-      <PhoneCourseHeader course={course} overview={overview} trailerUrl={trailerUrl} />
+      <PhoneCourseHeader course={course} overview={overview} trailerUrl={trailerUrl} reviews={reviews} />
 
       <section id="course-access" className="mt-4 scroll-mt-20 overflow-hidden rounded-[1.9rem] bg-navy-950 text-white shadow-[var(--shadow-card)] max-md:order-3 max-md:rounded-2xl">
         <div className="grid lg:grid-cols-[1.45fr_0.55fr]">
@@ -370,6 +389,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             {course.subtitle ? (
               <p className="mt-4 max-w-3xl text-base font-medium leading-7 text-white/78 sm:text-lg">{course.subtitle}</p>
             ) : null}
+            <RatingSummary reviews={reviews} className="mt-4 text-sm text-white/85" />
             <CourseDescription text={course.description} />
             {trailerUrl ? (
               <video
@@ -476,6 +496,12 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             <EvidenceList items={course.requirements} />
           </div>
         </section>
+
+        <CourseReviewsSection
+          data={reviews}
+          viewerId={user?.id ?? null}
+          className={`${PHONE_FLAT_SECTION} scroll-mt-20 lg:order-6 lg:col-span-2`}
+        />
 
         <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7 lg:order-5">
           <span className="grid size-11 place-items-center rounded-2xl bg-navy-950 text-white">

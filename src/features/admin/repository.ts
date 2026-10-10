@@ -867,6 +867,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            when 'job' then coalesce(j.title, 'Unavailable job')
            when 'event' then coalesce(e.title, 'Unavailable event')
            when 'profile' then 'Profile: ' || coalesce(reported_profile.full_name, 'Unavailable profile')
+           when 'course_review' then 'Review of ' || coalesce(review_course.title, 'a course') || ' by ' || coalesce(owner.full_name, 'Unknown member')
          end as target_title,
          case cr.target_type
            when 'post' then p.body
@@ -874,6 +875,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            when 'job' then coalesce(j.summary, j.description)
            when 'event' then e.summary
            when 'profile' then coalesce(reported_profile.headline, reported_profile.summary)
+           when 'course_review' then case when course_review.id is null then null
+             else course_review.rating::text || ' of 5 stars' || case when btrim(course_review.body) = '' then '' else chr(10) || course_review.body end end
          end as target_excerpt,
          owner.id as owner_id,
          owner.full_name as owner_name,
@@ -884,6 +887,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            when 'job' then coalesce(j.status::text, 'missing')
            when 'event' then coalesce(e.status, 'missing')
            when 'profile' then coalesce(reported_profile.account_status::text, 'missing')
+           when 'course_review' then case when course_review.id is null then 'missing' when course_review.status = 'approved' then 'visible' else course_review.status end
          end as target_state,
          count(*)::int as report_count,
          min(cr.created_at) as first_reported_at,
@@ -897,12 +901,15 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
        left join public.jobs j on cr.target_type = 'job' and j.id = cr.target_id
        left join public.events e on cr.target_type = 'event' and e.id = cr.target_id
        left join public.profiles reported_profile on cr.target_type = 'profile' and reported_profile.id = cr.target_id
+       left join public.learning_course_reviews course_review on cr.target_type = 'course_review' and course_review.id = cr.target_id
+       left join public.learning_courses review_course on review_course.id = course_review.course_id
        left join public.profiles owner on owner.id = case cr.target_type
          when 'post' then p.author_id
          when 'comment' then pc.author_id
          when 'job' then j.created_by_user_id
          when 'event' then e.host_user_id
          when 'profile' then reported_profile.id
+         when 'course_review' then course_review.learner_id
        end
        where ${where.join(' and ')}
        group by
@@ -913,6 +920,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          j.id, j.title, j.summary, j.description, j.status,
          e.id, e.title, e.summary, e.status,
          reported_profile.id, reported_profile.full_name, reported_profile.headline, reported_profile.summary, reported_profile.account_status,
+         course_review.id, course_review.rating, course_review.body, course_review.status, review_course.title,
          owner.id, owner.full_name, owner.slug
        order by
          max(case when cr.reporter_id is null
@@ -1016,6 +1024,11 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       return `select case when archived_at is null then 'visible' else 'removed' end as state
         from public.community_groups where id = $1 for update`
     }
+    if (targetType === 'course_review') {
+      // Learning round C: an approved review is the visible state; pending and rejected ones are never public.
+      return `select case when status = 'approved' then 'visible' else status end as state
+        from public.learning_course_reviews where id = $1 for update`
+    }
     return `select account_status::text as state from public.profiles where id = $1 for update`
   }
 
@@ -1086,6 +1099,21 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
           ? 'update public.community_groups set archived_at = coalesce(archived_at, now()), updated_at = now() where id = $1'
           : 'update public.community_groups set archived_at = null, updated_at = now() where id = $1',
         [targetId],
+      )
+      return
+    }
+    if (targetType === 'course_review') {
+      // Learning round C: removing a reported review takes it off the course page (and out of the average);
+      // restoring shows it again. Both record who moderated it.
+      await query(
+        action === 'remove'
+          ? `update public.learning_course_reviews
+             set status = 'removed', moderated_by = $2, moderated_at = now(), updated_at = now()
+             where id = $1`
+          : `update public.learning_course_reviews
+             set status = 'approved', moderated_by = $2, moderated_at = now(), updated_at = now()
+             where id = $1 and status = 'removed'`,
+        [targetId, actorId],
       )
       return
     }
