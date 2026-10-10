@@ -57,6 +57,27 @@ describe('Resend email client', () => {
     })
   })
 
+  it('sends attachments as base64 files and leaves the field out when there are none', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: 'email_456' }))
+    const client = createResendEmailClient({ apiKey: 're_test_secret', fetch: fetchMock })
+    const content = Buffer.from('%PDF-1.7 fixture').toString('base64')
+
+    await client.sendEmail({
+      from: 'Sea N Shore <billing@mail.seanshore.in>',
+      to: 'learner@example.test',
+      subject: 'Your invoice',
+      text: 'Attached',
+      html: '<p>Attached</p>',
+      attachments: [{ filename: 'SNS-26-27-000001.pdf', content }, { filename: ' ', content: 'ignored' }],
+    })
+    await client.sendEmail({ from: 'a@b.com', to: 'c@d.com', subject: 'x', text: 'x', html: '<p>x</p>', attachments: [] })
+
+    const first = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))
+    expect(first.attachments).toEqual([{ filename: 'SNS-26-27-000001.pdf', content }])
+    const second = JSON.parse(String((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body))
+    expect(second).not.toHaveProperty('attachments')
+  })
+
   it('classifies network, rate-limit and server failures as retryable without leaking the API key', async () => {
     const rateClient = createResendEmailClient({
       apiKey: 're_super_secret',

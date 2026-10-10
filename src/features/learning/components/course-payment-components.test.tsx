@@ -223,6 +223,31 @@ describe('CoursePurchasesList', () => {
     expect(within(items[1]!).queryByRole('link')).not.toBeInTheDocument()
   })
 
+  it('links the GST invoice and, after a refund, the credit note as downloads with their numbers', () => {
+    const invoiceId = '44444444-4444-4444-8444-444444444444'
+    const creditNoteId = '55555555-5555-4555-8555-555555555555'
+    render(<CoursePurchasesList purchases={[
+      { ...purchase, invoiceId, invoiceNumber: 'SNS/26-27/000001' },
+      { ...purchase, id: 'o2', status: 'refunded', refundStatus: 'processed', refundedAt: '2030-01-03T10:00:00.000Z', invoiceId, invoiceNumber: 'SNS/26-27/000001', creditNoteId, creditNoteNumber: 'SNC/26-27/000001' },
+    ]} />)
+    const items = screen.getAllByRole('listitem')
+
+    const invoice = within(items[0]!).getByRole('link', { name: /Download invoice/ })
+    expect(invoice).toHaveAttribute('href', `/api/learn/invoices/${invoiceId}`)
+    expect(invoice).toHaveTextContent('SNS/26-27/000001')
+    expect(within(items[0]!).queryByRole('link', { name: /Download credit note/ })).not.toBeInTheDocument()
+
+    expect(within(items[1]!).getByRole('link', { name: /Download invoice/ })).toHaveAttribute('href', `/api/learn/invoices/${invoiceId}`)
+    const note = within(items[1]!).getByRole('link', { name: /Download credit note/ })
+    expect(note).toHaveAttribute('href', `/api/learn/credit-notes/${creditNoteId}`)
+    expect(note).toHaveTextContent('SNC/26-27/000001')
+  })
+
+  it('shows no document links for purchases without an invoice', () => {
+    render(<CoursePurchasesList purchases={[purchase]} />)
+    expect(screen.queryByRole('link', { name: /Download/ })).not.toBeInTheDocument()
+  })
+
   it('has a clear empty state', () => {
     render(<CoursePurchasesList purchases={[]} />)
     expect(screen.getByText(/You haven't bought any courses yet/)).toBeInTheDocument()
