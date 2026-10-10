@@ -101,10 +101,11 @@ event payouts unchanged; the seller-invoice period is the calendar month (IST); 
       credit note SNC/YY-YY/000001 on refund; issued documents can't be changed or deleted (database triggers)
 - [x] USD purchases off until an LUT ARN is saved for the current financial year (checkout and course page)
 - [x] Admin → Payments → Tax: GST details, LUT ARN per financial year, TDS section/rate/threshold
-- [ ] Invoice/credit-note PDF, email with the PDF, download in My Learning → Purchases, monthly GST CSV
-- [ ] Seller monthly invoices (upload, admin approval), PAN, TDS deduction on course payouts, statement, TDS CSV
-- [ ] Invoice PDF screenshot to the owner before the deploy arm
+- [x] Invoice/credit-note PDF, email with the PDF, download in My Learning → Purchases, monthly GST CSV
+- [x] Seller monthly invoices (upload, admin approval), PAN, TDS deduction on course payouts, statement, TDS CSV
+- [x] Invoice PDF screenshot to the owner before the deploy arm
 - [ ] Backfill of past paid orders: only if the owner asks (none issued automatically)
+- [ ] C4 release: one code PR, migration arm (owner), rearm, deploy arm (owner), rearm, Remote Verify, report
 
 ## Decisions made while building
 

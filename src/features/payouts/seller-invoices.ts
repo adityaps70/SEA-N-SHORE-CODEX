@@ -148,12 +148,16 @@ export function monthState(input: { period: string; expectedMinor: number; invoi
   return input.invoiceStatus === 'rejected' ? 'rejected' : 'due'
 }
 
-/** The seller's months with course earnings, newest first (the last 24), with what to invoice and its status. */
+/**
+ * The seller's months with course earnings, newest first (the last 24), with what to invoice and its status. A month
+ * whose course sales were all paid out before C4 (nothing left to pay and no invoice) is not listed.
+ */
 export async function listSellerInvoiceMonths(client: Client, seller: Seller, now: Date = new Date()): Promise<SellerInvoiceMonth[]> {
   const [profileId, companyId] = sellerColumns(seller)
   const result = await client.query<QueryResultRow & Record<string, unknown>>(`
     with months as (
-      select ${indiaMonthSql('e')} as period, sum(e.net_minor) as expected_minor
+      select ${indiaMonthSql('e')} as period, sum(e.net_minor) as expected_minor,
+        bool_or(e.net_minor > 0) and not bool_or(e.payout_id is null and e.status <> 'paid' and e.net_minor > 0) as all_paid
       from public.seller_earnings e
       where ${sellerMatch('e')} and e.currency = 'INR' and e.status <> 'reversed' and ${courseEarningSql('e')}
       group by 1
@@ -168,6 +172,7 @@ export async function listSellerInvoiceMonths(client: Client, seller: Seller, no
       order by (i.status in ('submitted', 'approved')) desc, i.created_at desc
       limit 1
     ) inv on true
+    where not m.all_paid or inv.id is not null
     order by m.period desc
     limit 24
   `, [profileId, companyId])

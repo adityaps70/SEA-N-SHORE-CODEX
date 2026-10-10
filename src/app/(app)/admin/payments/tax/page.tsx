@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
 import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { requirePaymentsAdmin } from '@/features/payouts/admin-guard'
+import { TdsExportPanel } from '@/features/payouts/components/admin/tds-export-panel'
 import { PaymentsAdminTabs } from '@/features/payouts/components/admin/payments-admin-tabs'
 import { readClient } from '@/features/payouts/payout-runtime'
 import { GstExportPanel } from '@/features/tax/components/gst-export-panel'
 import { LutForm, TdsSettingsForm } from '@/features/tax/components/tax-settings-forms'
-import { COURSE_SAC, financialYearOf, GST_SUPPLIER } from '@/features/tax/gst'
+import { previousMonth } from '@/features/payouts/seller-invoice-rules'
+import { COURSE_SAC, financialYearOf, GST_SUPPLIER, indiaMonth } from '@/features/tax/gst'
 import { getTaxSettings, listLutRegistrations } from '@/features/tax/tax-settings'
 
 export const metadata: Metadata = { title: 'Tax · Payments · Admin' }
@@ -83,6 +85,16 @@ export default async function AdminPaymentTaxPage() {
           rate={settings.tdsRateBasisPoints === null ? '' : String(settings.tdsRateBasisPoints / 100)}
           threshold={rupees(settings.tdsThresholdMinor)}
         />
+      </AdminPanel>
+
+      <AdminPanel>
+        <div className="border-b border-mist-100 px-5 py-3">
+          <h3 className="text-sm font-bold text-navy-950">TDS report</h3>
+          <p className="text-xs text-muted">The month&rsquo;s course payouts with the TDS deducted, for TDS returns.</p>
+        </div>
+        <div className="p-5">
+          <TdsExportPanel defaultMonth={previousMonth(indiaMonth(new Date()))} />
+        </div>
       </AdminPanel>
     </main>
   )

@@ -177,6 +177,8 @@ describe('course earnings wait for an approved seller invoice; event earnings an
     const months = await invoices.listSellerInvoiceMonths(db.client as unknown as Client, { profileId: seller }, NOW)
     expect(months.find((month) => month.period === '2026-08')).toMatchObject({ expectedMinor: 180_000, state: 'due', invoice: null })
     expect(months.find((month) => month.period === '2026-09')).toMatchObject({ expectedMinor: -18_000, state: 'not_needed' })
+    // July was paid out before seller invoices existed and has nothing left to pay: it is not listed.
+    expect(months.find((month) => month.period === '2026-07')).toBeUndefined()
 
     // Without tax details the seller cannot invoice; with them, a wrong amount is refused with the exact amount.
     expect(await refusal(invoice(seller, '2026-08', 180_000))).toBe('tax_details_missing')

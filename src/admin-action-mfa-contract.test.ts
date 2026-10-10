@@ -84,7 +84,7 @@ describe('platform-admin server actions are MFA-gated (Round 15)', () => {
 
   it('lists every exported action of the admin-only modules', () => {
     const adminOnly = ADMIN_ACTION_MODULES.filter(([path]) => /(^src\/features\/admin\/|admin-actions\.ts$)/.test(path))
-    expect(adminOnly.length).toBe(9)
+    expect(adminOnly.length).toBe(10)
     for (const [path, names] of adminOnly) {
       const exported = [...read(path).matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1])
       expect(exported.sort(), path).toEqual([...names].sort())
