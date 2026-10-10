@@ -8,6 +8,7 @@ import { subscriptionService } from '../../src/features/billing/subscription-ser
 import { createUnconfirmedUserCleanup } from '../../src/features/auth/unconfirmed-user-cleanup'
 import { createLearningDigestSweep, createLearningEmailWorker } from '../../src/features/learning/learning-email-sending'
 import { createCourseInvitationWorker } from '../../src/features/learning/course-invitation-email'
+import { createCompanyInvitationWorker } from '../../src/features/learning/company-training/company-invitation-email'
 import { createTaxDocumentEmailWorker } from '../../src/features/tax/tax-document-email'
 import { issueMissingTaxDocuments } from '../../src/features/tax/tax-document-repository'
 import { withTransaction } from '../../src/lib/db/client'
@@ -51,6 +52,8 @@ const learningDigestSweep = createLearningDigestSweep()
 const COURSE_INVITATION_SWEEP_MS = 60 * 1000
 let nextCourseInvitationSweepAt = 0
 const courseInvitationWorker = createCourseInvitationWorker()
+// D3: company training invitation emails, every minute. Idempotent (one email per invitation).
+const companyInvitationWorker = createCompanyInvitationWorker()
 // C4: email issued GST invoices and credit notes to their buyers every minute; every 10 minutes,
 // issue any invoice or credit note a payment or refund had to leave for later. Both are idempotent.
 const TAX_DOCUMENT_EMAIL_SWEEP_MS = 60 * 1000
@@ -191,6 +194,16 @@ async function runCourseInvitationSweepIfDue() {
     if (result.enrolled > 0 || result.claimed > 0) console.info('[course_invitation_sweep]', result)
   } catch (error) {
     console.error('[course_invitation_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+  await runCompanyInvitationSweep()
+}
+
+async function runCompanyInvitationSweep() {
+  try {
+    const result = await companyInvitationWorker.runSweep(10)
+    if (result.claimed > 0) console.info('[company_training_invitation_sweep]', result)
+  } catch (error) {
+    console.error('[company_training_invitation_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
   }
 }
 

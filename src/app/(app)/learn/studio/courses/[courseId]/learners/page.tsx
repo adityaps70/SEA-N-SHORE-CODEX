@@ -208,7 +208,7 @@ export default async function CourseLearnersPage({ params, searchParams }: {
                       </td>
                       <td className="px-4 py-3 text-navy-800">
                         {dateLabel(learner.enrolledAt)}
-                        <span className="block text-xs text-muted">{rosterSourceLabel(learner.source)}</span>
+                        <span className="block text-xs text-muted">{rosterSourceLabel(learner.source, learner.companySeat)}</span>
                       </td>
                       <td className="px-4 py-3">
                         <Progress learner={learner} />
@@ -235,7 +235,7 @@ export default async function CourseLearnersPage({ params, searchParams }: {
                   </div>
                   <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs text-navy-800">
                     <dt className="font-semibold">Enrolled</dt>
-                    <dd>{dateLabel(learner.enrolledAt)} · {rosterSourceLabel(learner.source)}</dd>
+                    <dd>{dateLabel(learner.enrolledAt)} · {rosterSourceLabel(learner.source, learner.companySeat)}</dd>
                     <dt className="font-semibold">Last active</dt>
                     <dd>{dateLabel(learner.lastActiveAt)}</dd>
                     <dt className="font-semibold">Quizzes</dt>

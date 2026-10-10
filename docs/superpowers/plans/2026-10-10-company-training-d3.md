@@ -66,8 +66,30 @@ Additive only. No existing check is relaxed and no existing row is changed.
 - [x] Seat packs: price with volume discount, checkout, seats on payment (12 months), B2B GST invoice, earning
 - [x] Refund of unassigned seats within 30 days: partial credit note and earning adjustment, or the whole order; the
   webhook settles pending refunds
-- [ ] Crew: email invitations, accept with consent, decline, withdraw, removal; vessel and rank tags
-- [ ] Assign seats to crew (plan access from the pack), reassign while the learner is at 10% or less
-- [ ] Company training page: overview dashboard, seats (buy, packs, refunds), crew; CSV export (audited)
-- [ ] Learner side: invitation page with the consent wording, My Learning card, sharing settings
-- [ ] Dashboard screenshot to the owner, then PR 1, PR 2, one migration, one deploy, rearm, Remote Verify
+- [x] Crew: email invitations (worker sweep, one email each, sign-up link for newcomers), accept with consent,
+  decline, stop sharing, removal by the company; vessel and rank tags
+- [x] Assign seats to active crew (the pack's plan access from the day of assignment, batch for batch courses),
+  move a seat while the learner is at 10% or less
+- [x] Company training page (Manage page → Crew training): overview dashboard (seats, completion, certificates
+  expiring in 90 days, by vessel, by rank, assigned seats), seats (buy, packs, invoices, refunds), crew; CSV export
+  (audited with its row count)
+- [x] Learner side: invitation page with the consent wording, My Learning card with Stop sharing; "Company seat" on
+  the course roster
+- [x] Dashboard screenshot sent to the owner (sample data, desktop and 390 px)
+- [ ] PR 1, PR 2, one migration, one deploy, rearm, Remote Verify
+
+## More decisions made while building
+
+- **Consent covers the company, not each course.** Accepting the invitation is the consent; each seat the company
+  then gives is shared under it and the learner is told by the usual enrolment email.
+- **Privacy.** The dashboard reads only the company's own seats and, for members who share, the enrolment and
+  certificate made from that seat. A member who stopped sharing, or was taken off the crew, shows only that the seat
+  is used; their progress, certificate and (after removal) tags are not shown or exported.
+- **Moving a seat.** Allowed at 10% progress or less, not once the course is completed, and not after the learner
+  stopped sharing. The first learner's access from the seat ends (their enrolment is revoked); the seat keeps a count
+  of how many times it was given.
+- **No new email kind or notification type.** Invitation emails go out from their own table (like round C course
+  invitations); the learner hears about an assigned course through the existing enrolment notification. No database
+  check had to be relaxed.
+- **Not built (not in the owner's answers):** due dates and reminders for assignments, CSV import of crew, and course
+  packs with several courses. They can follow if wanted.
