@@ -76,7 +76,7 @@ Additive only. No existing check is relaxed and no existing row is changed.
 - [x] Learner side: invitation page with the consent wording, My Learning card with Stop sharing; "Company seat" on
   the course roster
 - [x] Dashboard screenshot sent to the owner (sample data, desktop and 390 px)
-- [ ] PR 1, PR 2, one migration, one deploy, rearm, Remote Verify
+- [x] PR 1, PR 2, one migration, one deploy, rearm, Remote Verify
 
 ## More decisions made while building
 
@@ -93,3 +93,19 @@ Additive only. No existing check is relaxed and no existing row is changed.
   check had to be relaxed.
 - **Not built (not in the owner's answers):** due dates and reminders for assignments, CSV import of crew, and course
   packs with several courses. They can follow if wanted.
+
+## Release (10 October)
+
+| Step | Result |
+| --- | --- |
+| PR 1 (migration 0079 + runner, seat packs) | #196, merged as `234b3be4` |
+| Migration plan | run 38075708097: ADDITIVE, 20 statements, pending 0079, PLAN_VERIFIED |
+| PR 2 (crew, assignment, dashboard, CSV) | #197, merged as `71cecbe4` |
+| Migration arm | #198, merged by the owner |
+| Migration apply | run 38078326696: APPLY_VERIFIED (5 tables, 5 columns, consent trigger, no existing order turned into a pack) |
+| Migration rearm | `9fdf6d88` (guard back to `plan`) |
+| Deploy arm | #199, merged by the owner |
+| Deploy | run 38079587374: web `:244` → `:245`, outbox worker `:126` → `:127`, notification worker `:125` → `:126` |
+| Deploy rearm | `d75c8d79` (guard back to `plan`) |
+| Post-deploy checks | Remote Verify 38080508213, Google auth 38080509913, logo 38080511649: all green |
+| Signed-out live checks | training page and invitation page redirect to sign-in; CSV export returns 401; catalogue and a self-paced course page return 200 |
