@@ -45,6 +45,7 @@ function orderRow(overrides: Record<string, unknown> = {}) {
     currency: 'INR',
     provider: 'cashfree',
     provider_order_id: 'crs_33333333333343338333333333333333',
+    billing_state_code: '27',
     provider_payment_id: null,
     provider_session_id: 'session_1',
     status: 'created',
@@ -180,47 +181,47 @@ describe('course payment repository: purchase rules', () => {
 describe('course payment repository: starting checkout', () => {
   it('records a new order with a snapshot of the list and discount price, charging the discount', async () => {
     scenario({})
-    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', currencies: ['INR'], now })
+    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, currencies: ['INR'], now })
     expect(result.reused).toBe(false)
     expect(result.order).toMatchObject({ amountMinor: 400000, listPriceMinor: 500000, discountPriceMinor: 400000, currency: 'INR', status: 'created' })
     // Round C: the order also snapshots the plan (here the course's own price as a lifetime "Standard" plan) and no code.
-    expect(callWith('insert into public.course_payment_orders')?.[1]).toEqual([courseId, profileId, 'SIRE 2.0 Masterclass', 500000, 400000, 400000, 'INR', 'cashfree', null, 'Standard', null, null, null, 0])
+    expect(callWith('insert into public.course_payment_orders')?.[1]).toEqual([courseId, profileId, 'SIRE 2.0 Masterclass', 500000, 400000, 400000, 'INR', 'cashfree', null, 'Standard', null, null, null, 0, '27', null, null, null])
     expect(sqlCalls()[0]).toContain('for update of course')
     expect(auditActions()).toEqual(['checkout_started'])
   })
 
   it('charges the list price when the discount is not lower than it', async () => {
     scenario({ course: { ...courseRow, discount_price_minor: '500000' } })
-    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now })
+    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now })
     expect(result.order).toMatchObject({ amountMinor: 500000, discountPriceMinor: null })
   })
 
   it('refuses a learner who already has the course, without creating an order', async () => {
     scenario({ enrollment: { id: enrollmentId, status: 'active', enrollment_source: 'purchase' } })
-    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now }))
+    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now }))
       .rejects.toMatchObject({ code: 'already_enrolled' })
     expect(sqlCalls().some((sql) => sql.includes('insert into public.course_payment_orders'))).toBe(false)
   })
 
   it('refuses the course team and courses that are not on sale', async () => {
     scenario({ course: { ...courseRow, is_manager: true } })
-    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now })).rejects.toMatchObject({ code: 'course_team_has_access' })
+    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now })).rejects.toMatchObject({ code: 'course_team_has_access' })
     scenario({ course: { ...courseRow, visible: false } })
-    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now })).rejects.toMatchObject({ code: 'course_not_found' })
+    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now })).rejects.toMatchObject({ code: 'course_not_found' })
     scenario({ course: { ...courseRow, access_type: 'free', price_minor: '0', discount_price_minor: null } })
-    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now })).rejects.toMatchObject({ code: 'course_not_paid' })
+    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now })).rejects.toMatchObject({ code: 'course_not_paid' })
   })
 
   it('reuses a recent open checkout at the same price (double click)', async () => {
     scenario({ openOrder: orderRow() })
-    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now })
+    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now })
     expect(result).toMatchObject({ reused: true, order: { id: orderId, providerOrderId: 'crs_33333333333343338333333333333333' } })
     expect(sqlCalls().some((sql) => sql.includes('insert into'))).toBe(false)
   })
 
   it('replaces an open checkout when the trainer changed the price', async () => {
     scenario({ openOrder: orderRow({ amount_minor: '450000', discount_price_minor: '450000' }) })
-    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now })
+    const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now })
     expect(result.reused).toBe(false)
     expect(sqlCalls().some((sql) => sql.includes("set status = 'cancelled', failure_reason = 'superseded'"))).toBe(true)
     expect(auditActions()).toEqual(['checkout_superseded', 'checkout_started'])
@@ -233,7 +234,7 @@ describe('course payment repository: starting checkout', () => {
       if (text.includes('for update of course')) return { rows: [courseRow] }
       return { rows: [] }
     })
-    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', now }))
+    await expect(coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', billing: { stateCode: '27' }, now }))
       .rejects.toMatchObject({ code: 'checkout_in_progress' })
   })
 })

@@ -87,7 +87,7 @@ describe('startCourseCheckoutAction', () => {
     const result = await startCourseCheckoutAction(courseId)
     expect(mocks.userCan).toHaveBeenCalledWith(userId, 'course.enroll')
     // Round C: no plan or code chosen means the course's first plan, no code.
-    expect(mocks.service.startCheckout).toHaveBeenCalledWith({ profileId: userId, courseId, customer, planId: null, promoCode: null })
+    expect(mocks.service.startCheckout).toHaveBeenCalledWith({ profileId: userId, courseId, customer, planId: null, promoCode: null, billing: null })
     expect(result).toEqual({
       ok: true,
       checkout: { orderId, client: expect.objectContaining({ provider: 'cashfree' }), prefill: { email: customer.email, phone: customer.phone, name: customer.name } },
@@ -217,7 +217,7 @@ describe('startCourseCheckoutAction with a plan and a promo code (round C)', () 
   it('passes only the plan id and the code text to the server-side checkout, and refuses a malformed plan id', async () => {
     const planId = '99999999-9999-4999-8999-999999999999'
     await startCourseCheckoutAction(courseId, { planId, promoCode: ' sire20 ' })
-    expect(mocks.service.startCheckout).toHaveBeenCalledWith({ profileId: userId, courseId, customer, planId, promoCode: 'sire20' })
+    expect(mocks.service.startCheckout).toHaveBeenCalledWith({ profileId: userId, courseId, customer, planId, promoCode: 'sire20', billing: null })
     await expect(startCourseCheckoutAction(courseId, { planId: 'not-a-plan' })).resolves.toMatchObject({ ok: false })
   })
 })

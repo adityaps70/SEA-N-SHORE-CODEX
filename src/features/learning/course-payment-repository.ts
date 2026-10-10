@@ -13,6 +13,8 @@ import { lockedPromoDiscount, lockPromoCodeForCourse, promoUsageRefusal, redeemP
 import { normalisePromoCode, type PromoCodeRefusal } from './promo-codes'
 import { GATEWAY_ORDER_LIFETIME_MINUTES } from '@/features/payments/event-payment-rules'
 import { notifyEnrolled } from './learning-notifications'
+import { resolveOrderBilling, sameBilling, type BillingInput, type BillingRefusal, type OrderBilling } from '@/features/tax/billing'
+import { issueCreditNoteForOrder, issueInvoiceForOrder, withTaxSavepoint } from '@/features/tax/tax-document-repository'
 import { COURSE_CHECKOUT_REUSE_MINUTES, COURSE_PENDING_CHECK_MINUTES, type CoursePurchaseBlocker, type CourseRefundDueReason } from './course-payment-rules'
 
 /**
@@ -55,6 +57,13 @@ export type CoursePaymentOrder = {
   accessMonths: AccessMonths
   promoCode: string | null
   promoDiscountMinor: number
+  /** C4: the billing details asked at checkout (null for orders from before GST invoices). */
+  billing: OrderBilling
+  /** C4: the GST documents issued for this order. */
+  invoiceId: string | null
+  invoiceNumber: string | null
+  creditNoteId: string | null
+  creditNoteNumber: string | null
 }
 
 /** A purchase as the learner sees it (My Learning → Purchases). */
@@ -75,7 +84,7 @@ export type CourseConfirmOutcome =
 export type CoursePaymentActor = { type: PaymentAuditActorType; profileId?: string | null }
 
 export class CoursePurchaseError extends Error {
-  constructor(readonly code: CoursePurchaseBlocker | PromoCodeRefusal | 'plan_not_found' | 'checkout_in_progress' | 'order_not_found' | 'refund_not_allowed' | 'refund_in_progress') {
+  constructor(readonly code: CoursePurchaseBlocker | PromoCodeRefusal | BillingRefusal | 'plan_not_found' | 'checkout_in_progress' | 'order_not_found' | 'refund_not_allowed' | 'refund_in_progress') {
     super(code)
     this.name = 'CoursePurchaseError'
   }
@@ -110,6 +119,14 @@ type OrderRow = QueryResultRow & {
   access_months?: number | null
   promo_code?: string | null
   promo_discount_minor?: string | number | null
+  billing_state_code?: string | null
+  billing_country?: string | null
+  billing_company?: string | null
+  billing_gstin?: string | null
+  invoice_id?: string | null
+  invoice_number?: string | null
+  credit_note_id?: string | null
+  credit_note_number?: string | null
 }
 
 type CourseRow = QueryResultRow & {
@@ -147,7 +164,16 @@ const ORDER_COLUMNS = `
   o.currency, o.provider, o.provider_order_id, o.provider_payment_id, o.provider_session_id, o.status,
   o.enrollment_id, o.enrollment_confirmed_at, o.refund_due_reason, o.failure_reason, o.paid_at, o.refunded_at,
   o.refund_status, o.refund_attempts, o.provider_refund_id, o.created_at,
-  o.plan_id, o.plan_name, o.access_months, o.promo_code, o.promo_discount_minor
+  o.plan_id, o.plan_name, o.access_months, o.promo_code, o.promo_discount_minor,
+  o.billing_state_code, o.billing_country, o.billing_company, o.billing_gstin
+`
+
+/** C4: the GST invoice and credit note issued for the order, read with every order. */
+const ORDER_DOCUMENT_COLUMNS = `
+  (select invoice.id from public.tax_invoices invoice where invoice.order_id = o.id) as invoice_id,
+  (select invoice.invoice_number from public.tax_invoices invoice where invoice.order_id = o.id) as invoice_number,
+  (select note.id from public.tax_credit_notes note join public.tax_invoices invoice on invoice.id = note.invoice_id where invoice.order_id = o.id) as credit_note_id,
+  (select note.credit_note_number from public.tax_credit_notes note join public.tax_invoices invoice on invoice.id = note.invoice_id where invoice.order_id = o.id) as credit_note_number
 `
 
 const SUBJECT = 'course_payment_order'
@@ -193,6 +219,16 @@ export function mapCourseOrder(row: OrderRow): CoursePaymentOrder {
     accessMonths: row.access_months === 6 || row.access_months === 12 ? row.access_months : null,
     promoCode: row.promo_code ?? null,
     promoDiscountMinor: Number(row.promo_discount_minor ?? 0),
+    billing: {
+      stateCode: row.billing_state_code ?? null,
+      country: row.billing_country ?? null,
+      company: row.billing_company ?? null,
+      gstin: row.billing_gstin ?? null,
+    },
+    invoiceId: row.invoice_id ?? null,
+    invoiceNumber: row.invoice_number ?? null,
+    creditNoteId: row.credit_note_id ?? null,
+    creditNoteNumber: row.credit_note_number ?? null,
   }
 }
 
@@ -298,7 +334,7 @@ export function checkoutBlocker(course: LockedCourse | null, enrollment: Enrollm
 
 async function lockOrder(client: DatabaseQueryClient, orderId: string) {
   const locked = await client.query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o where o.id = $1::uuid for update
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o where o.id = $1::uuid for update
   `, [orderId])
   return locked.rows[0] ? mapCourseOrder(locked.rows[0]) : null
 }
@@ -422,6 +458,8 @@ async function prepareCheckoutOrder(input: {
   currencies?: readonly PaymentCurrency[]
   planId?: string | null
   promoCode?: string | null
+  /** C4: billing state (INR) or country (USD), and an optional company + GSTIN. */
+  billing?: BillingInput | null
   now?: Date
 }): Promise<{ order: CoursePaymentOrder; reused: boolean }> {
   const now = input.now ?? new Date()
@@ -429,9 +467,12 @@ async function prepareCheckoutOrder(input: {
   try {
     return await withTransaction(async (client) => {
       const { course, quote, code } = await quoteCheckout(client, { ...input, now })
+      const resolved = resolveOrderBilling(input.billing, quote.currency)
+      if (!resolved.ok) throw new CoursePurchaseError(resolved.reason)
+      const billing = resolved.billing
 
       const open = await client.query<OrderRow>(`
-        select ${ORDER_COLUMNS}
+        select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
         from public.course_payment_orders o
         where o.course_id = $1::uuid and o.profile_id = $2::uuid and o.status = 'created'
         for update
@@ -443,6 +484,7 @@ async function prepareCheckoutOrder(input: {
           && existing.currency === quote.currency
           && existing.planId === quote.plan.id
           && (existing.promoCode ?? null) === (quote.promo?.code ?? null)
+          && sameBilling(existing.billing, billing)
         if (sameOrder && existing.provider === input.provider && existing.providerOrderId && ageMs < COURSE_CHECKOUT_REUSE_MINUTES * 60_000) {
           return { order: existing, reused: true }
         }
@@ -466,14 +508,16 @@ async function prepareCheckoutOrder(input: {
       const inserted = await client.query<OrderRow>(`
         insert into public.course_payment_orders as o (
           course_id, profile_id, course_title, list_price_minor, discount_price_minor, amount_minor, currency, provider,
-          plan_id, plan_name, access_months, promo_code_id, promo_code, promo_discount_minor
+          plan_id, plan_name, access_months, promo_code_id, promo_code, promo_discount_minor,
+          billing_state_code, billing_country, billing_company, billing_gstin
         )
         values ($1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint, $7::text, $8::text,
-                $9::uuid, $10::text, $11::integer, $12::uuid, $13::text, $14::bigint)
-        returning ${ORDER_COLUMNS}
+                $9::uuid, $10::text, $11::integer, $12::uuid, $13::text, $14::bigint, $15::text, $16::text, $17::text, $18::text)
+        returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
       `, [
         input.courseId, input.profileId, course.title, quote.listPriceMinor, quote.discountPriceMinor, quote.amountMinor, quote.currency, input.provider,
         quote.plan.id, quote.plan.name, quote.plan.accessMonths, quote.promo?.codeId ?? null, quote.promo?.code ?? null, quote.promo?.discountMinor ?? 0,
+        billing.stateCode, billing.country, billing.company, billing.gstin,
       ])
       const row = inserted.rows[0]
       if (!row) throw new Error('course_payment_order_insert_failed')
@@ -515,7 +559,7 @@ async function attachProviderOrder(orderId: string, providerOrderId: string, pro
       update public.course_payment_orders o
       set provider_order_id = $2::text, provider_session_id = $3::text, updated_at = now()
       where o.id = $1::uuid and (o.provider_order_id is null or o.provider_order_id = $2::text)
-      returning ${ORDER_COLUMNS}
+      returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
     `, [orderId, providerOrderId, providerSessionId])
     if (!result.rows[0]) throw new CoursePurchaseError('order_not_found')
     const order = mapCourseOrder(result.rows[0])
@@ -530,7 +574,7 @@ async function markOrderFailed(orderId: string, reason: string) {
       update public.course_payment_orders o
       set status = 'failed', failure_reason = left($2::text, 500), updated_at = now()
       where o.id = $1::uuid and o.status = 'created'
-      returning ${ORDER_COLUMNS}
+      returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
     `, [orderId, reason])
     if (result.rows[0]) {
       await releasePromoUse(client, orderId)
@@ -554,7 +598,7 @@ async function recordAttemptFailure(client: DatabaseQueryClient, input: {
     update public.course_payment_orders o
     set failure_reason = left($3::text, 500), updated_at = now()
     where o.provider = $1::text and o.provider_order_id = $2::text and o.status = 'created'
-    returning ${ORDER_COLUMNS}
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
   `, [input.provider, input.providerOrderId, input.reason])
   if (!result.rows[0]) return null
   const order = mapCourseOrder(result.rows[0])
@@ -568,7 +612,7 @@ async function recordAttemptFailure(client: DatabaseQueryClient, input: {
 
 async function getOrderForProfile(orderId: string, profileId: string) {
   const rows = await query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.id = $1::uuid and o.profile_id = $2::uuid
     limit 1
   `, [orderId, profileId])
@@ -578,7 +622,7 @@ async function getOrderForProfile(orderId: string, profileId: string) {
 /** The learner's own order by its gateway order id (return page). */
 async function getOrderForProfileByProviderOrderId(providerOrderId: string, profileId: string) {
   const rows = await query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.provider_order_id = $1::text and o.profile_id = $2::uuid
     order by o.created_at desc
     limit 1
@@ -592,7 +636,7 @@ async function getOrderForProfileByProviderOrderId(providerOrderId: string, prof
 /** One order, only if `managerId` owns the course or manages it for its organization. */
 async function getOrderForManager(orderId: string, managerId: string) {
   const rows = await query<OrderRow>(`
-    select ${ORDER_COLUMNS}
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
     from public.course_payment_orders o
     join public.learning_courses course on course.id = o.course_id
     where o.id = $2::uuid and ${courseManagerAccessSql('course', '$1::uuid')}
@@ -603,14 +647,14 @@ async function getOrderForManager(orderId: string, managerId: string) {
 
 async function getOrderById(orderId: string) {
   const rows = await query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o where o.id = $1::uuid limit 1
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o where o.id = $1::uuid limit 1
   `, [orderId])
   return rows[0] ? mapCourseOrder(rows[0]) : null
 }
 
 async function findOrderByProviderOrderId(client: DatabaseQueryClient, provider: PaymentProviderName, providerOrderId: string) {
   const result = await client.query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.provider = $1::text and o.provider_order_id = $2::text
     limit 1
   `, [provider, providerOrderId])
@@ -619,7 +663,7 @@ async function findOrderByProviderOrderId(client: DatabaseQueryClient, provider:
   const orderUuid = providerOrderId.startsWith('crs_') ? orderUuidFromGatewayOrderId(providerOrderId) : null
   if (!orderUuid) return null
   const byId = await client.query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.id = $1::uuid and o.provider = $2::text and (o.provider_order_id is null or o.provider_order_id = $3::text)
     limit 1
   `, [orderUuid, provider, providerOrderId])
@@ -678,7 +722,7 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
       update public.course_payment_orders o
       set refund_due_reason = $2::text, updated_at = now()
       where o.id = $1::uuid
-      returning ${ORDER_COLUMNS}
+      returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
     `, [current.id, reason])
     const order = mapCourseOrder(updated.rows[0]!)
     await audit(client, order, 'refund_due', { actor, toStatus: 'paid', details: { reason } })
@@ -721,10 +765,12 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
     update public.course_payment_orders o
     set enrollment_id = $2::uuid, enrollment_confirmed_at = now(), refund_due_reason = null, updated_at = now()
     where o.id = $1::uuid
-    returning ${ORDER_COLUMNS}
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
   `, [current.id, enrollmentId])
   const order = mapCourseOrder(confirmed.rows[0]!)
   await audit(client, order, 'enrolled', { actor, toStatus: 'paid', details: { enrollmentId } })
+  // C4: the GST tax invoice, numbered in this transaction. A failure here never undoes the purchase (savepoint).
+  await withTaxSavepoint(client, 'invoice', () => issueInvoiceForOrder(client, order.id))
   // A repurchase after a refund is a new enrolment to tell the learner about: keyed by order.
   await notifyEnrolled(
     async (text, values) => (await client.query(text, values ? [...values] : undefined)).rows,
@@ -772,7 +818,7 @@ async function requestRefund(client: DatabaseQueryClient, input: { orderId: stri
     set refund_status = 'requested', refund_attempts = refund_attempts + 1, refund_requested_at = now(),
       refund_requested_by = $2::uuid, refund_reason = left($3::text, 200), updated_at = now()
     where o.id = $1::uuid
-    returning ${ORDER_COLUMNS}
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
   `, [current.id, input.actor.profileId ?? null, input.reason])
   const order = mapCourseOrder(updated.rows[0]!)
   await audit(client, order, 'refund_requested', {
@@ -803,7 +849,7 @@ async function markOrderRefunded(
       provider_refund_id = coalesce($3::text, o.provider_refund_id),
       updated_at = now()
     where o.id = $1::uuid
-    returning ${ORDER_COLUMNS}
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
   `, [orderId, refund.refundStatus ?? null, refund.providerRefundId ?? null])
   const order = result.rows[0] ? mapCourseOrder(result.rows[0]) : null
   if (order && before.status !== 'refunded') {
@@ -825,6 +871,8 @@ async function markOrderRefunded(
       },
     })
     await reverseSaleEarning(client, { sourceType: 'course_purchase', sourceId: orderId, reason: refund.reason ?? 'course_refunded', actor })
+    // C4: a credit note against the invoice; the invoice itself is never changed.
+    await withTaxSavepoint(client, 'credit_note', () => issueCreditNoteForOrder(client, orderId, { reason: 'Course purchase refunded' }))
   } else if (order && before.refundStatus !== order.refundStatus) {
     await audit(client, order, 'refund_status_changed', { actor, fromStatus: before.refundStatus, toStatus: order.refundStatus, providerReference: order.providerRefundId })
   }
@@ -837,7 +885,7 @@ async function recordRefundFailure(client: DatabaseQueryClient, input: { orderId
     update public.course_payment_orders o
     set refund_status = 'failed', provider_refund_id = coalesce($2::text, o.provider_refund_id), updated_at = now()
     where o.id = $1::uuid and o.status in ('paid', 'refunded')
-    returning ${ORDER_COLUMNS}
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
   `, [input.orderId, input.providerRefundId ?? null])
   const order = result.rows[0] ? mapCourseOrder(result.rows[0]) : null
   if (order) await audit(client, order, 'refund_failed', { actor: input.actor, toStatus: order.status, providerReference: order.providerRefundId, details: { reason: input.reason } })
@@ -850,7 +898,7 @@ type SaleRow = PurchaseRow & { buyer_name: string | null; buyer_slug: string | n
 /** The learner's receipts: every completed or refunded purchase, newest first. */
 async function listLearnerPurchases(profileId: string): Promise<LearnerCoursePurchase[]> {
   const rows = await query<PurchaseRow>(`
-    select ${ORDER_COLUMNS}, course.slug as course_slug
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}, course.slug as course_slug
     from public.course_payment_orders o
     left join public.learning_courses course on course.id = o.course_id
     where o.profile_id = $1::uuid and o.status in ('paid', 'refunded')
@@ -866,7 +914,7 @@ async function listLearnerPurchases(profileId: string): Promise<LearnerCoursePur
  */
 async function listCourseSales(input: { managerId: string; allCourses?: boolean }): Promise<CourseSaleRow[]> {
   const rows = await query<SaleRow>(`
-    select ${ORDER_COLUMNS}, course.slug as course_slug, buyer.full_name as buyer_name, buyer.slug as buyer_slug
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}, course.slug as course_slug, buyer.full_name as buyer_name, buyer.slug as buyer_slug
     from public.course_payment_orders o
     left join public.learning_courses course on course.id = o.course_id
     left join public.profiles buyer on buyer.id = o.profile_id
@@ -886,7 +934,7 @@ async function listCourseSales(input: { managerId: string; allCourses?: boolean 
 /** A checkout the learner started recently and has not finished (course page "check payment"). */
 async function getRecentOpenOrder(profileId: string, courseId: string) {
   const rows = await query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.profile_id = $1::uuid and o.course_id = $2::uuid and o.status = 'created'
       and o.provider_order_id is not null
       and o.created_at > now() - make_interval(mins => $3::integer)
@@ -899,7 +947,7 @@ async function getRecentOpenOrder(profileId: string, courseId: string) {
 /** A paid purchase of this course that is waiting for its refund (course page notice). */
 async function getRefundDueOrder(profileId: string, courseId: string) {
   const rows = await query<OrderRow>(`
-    select ${ORDER_COLUMNS} from public.course_payment_orders o
+    select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.profile_id = $1::uuid and o.course_id = $2::uuid and o.status = 'paid' and o.enrollment_confirmed_at is null
     order by o.created_at desc
     limit 1

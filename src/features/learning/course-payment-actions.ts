@@ -23,6 +23,7 @@ import { COURSE_PAYMENTS_NOT_CONFIGURED_HELP, coursePurchaseBlockerMessage } fro
 import { coursePaymentService } from './course-payment-runtime'
 import { coursePurchasePaths } from './course-payment-service'
 import { promoRefusalMessage } from './promo-codes'
+import { billingInputSchema, billingRefusalMessage, type BillingInput, type BillingRefusal } from '@/features/tax/billing'
 import { accessPeriodLabel } from './course-plans'
 
 export type RefundCoursePaymentResult = { ok: true; message: string } | { ok: false; error: string }
@@ -59,6 +60,8 @@ function checkoutError(error: unknown) {
     if (error.code === 'order_not_found') return 'We could not find this checkout. Select Buy course again.'
     if (error.code === 'plan_not_found') return 'This plan is no longer on sale. Refresh the page and choose a plan.'
     if (error.code.startsWith('promo_')) return promoRefusalMessage(error.code)
+    if (error.code.startsWith('billing_')) return billingRefusalMessage(error.code as BillingRefusal)
+    if (error.code === 'course_currency_unsupported') return 'Purchases in this currency are not open yet. Choose a plan in INR, or check back soon.'
     return coursePurchaseBlockerMessage(error.code)
   }
   return 'We could not start the payment. No money was taken. Please try again.'
@@ -70,13 +73,15 @@ function checkoutError(error: unknown) {
  */
 export async function startCourseCheckoutAction(
   courseId: string,
-  options: { phone?: string; planId?: string | null; promoCode?: string | null } = {},
+  options: { phone?: string; planId?: string | null; promoCode?: string | null; billing?: BillingInput | null } = {},
 ): Promise<StartCheckoutResult> {
   const id = uuidSchema.safeParse(courseId)
   const phone = phoneSchema.safeParse(options.phone)
   const plan = planSchema.safeParse(options.planId)
   const promo = promoCodeSchema.safeParse(options.promoCode)
+  const billing = billingInputSchema.safeParse(options.billing)
   if (!id.success) return { ok: false, error: coursePurchaseBlockerMessage('course_not_found') }
+  if (!billing.success) return { ok: false, error: billingRefusalMessage('billing_state_required') }
   if (!phone.success) return { ok: false, error: PHONE_INVALID_MESSAGE, needsPhone: true }
   if (!plan.success) return { ok: false, error: 'This plan is no longer on sale. Refresh the page and choose a plan.' }
   if (!promo.success) return { ok: false, error: promoRefusalMessage('promo_not_found') }
@@ -96,6 +101,7 @@ export async function startCourseCheckoutAction(
       customer,
       planId: plan.data ?? null,
       promoCode: promo.data || null,
+      billing: billing.data ?? null,
     })
     return {
       ok: true,

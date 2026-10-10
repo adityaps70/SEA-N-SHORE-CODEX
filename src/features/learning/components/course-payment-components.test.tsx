@@ -201,6 +201,11 @@ describe('CoursePurchasesList', () => {
     accessMonths: null,
     promoCode: null,
     promoDiscountMinor: 0,
+    billing: { stateCode: null, country: null, company: null, gstin: null },
+    invoiceId: null,
+    invoiceNumber: null,
+    creditNoteId: null,
+    creditNoteNumber: null,
     courseSlug: 'sire-2-masterclass',
   }
 
