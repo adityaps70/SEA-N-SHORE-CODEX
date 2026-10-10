@@ -21,7 +21,7 @@ export function GstExportPanel({ defaultMonth, now = new Date() }: { defaultMont
       <h2 id="gst-export-title" className="text-lg font-bold text-navy-950">GST documents export</h2>
       <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
         Every tax invoice and credit note dated in the month, as a CSV for GST returns. Amounts are exactly as issued, in each
-        document's currency; credit notes are listed as positive amounts.
+        document&rsquo;s currency; credit notes are listed as positive amounts.
       </p>
       <form method="get" action={GST_EXPORT_PATH} className="mt-4 flex flex-wrap items-end gap-3">
         <label htmlFor="gst-export-month" className="grid gap-2 text-sm font-medium text-navy-900">
