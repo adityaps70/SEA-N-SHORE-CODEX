@@ -8,6 +8,7 @@ import {
 } from './lms-material-policy'
 import { coursePublisherNameSql, learnerCourseAccessSql } from './course-publication'
 import { createScormContentToken } from './scorm-content-link'
+import { dripAnchorSql } from './course-access'
 
 type LearnerCourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -36,6 +37,7 @@ export type LearnerCourseRow = QueryResultRow & {
   enrollment_status: string
   enrollment_source?: string | null
   enrolled_at: string | Date
+  drip_anchor_at?: string | Date | null
   access_expires_at?: string | Date | null
   course_id: string
   slug: string
@@ -260,6 +262,7 @@ export function createLearnerCourseRepository(input: {
          enrollment.status as enrollment_status,
          enrollment.enrollment_source,
          enrollment.enrolled_at,
+         ${dripAnchorSql()} as drip_anchor_at,
          enrollment.access_expires_at,
          course.id as course_id,
          course.slug,
@@ -350,7 +353,8 @@ export function createLearnerCourseRepository(input: {
     if (!first) return null
 
     const navigationMode = asNavigationMode(first.navigation_mode ?? 'free')
-    const enrolledAt = asDate(first.enrolled_at)
+    // Round D: drip lessons count from the learner's batch start when the course says so (else enrolment).
+    const enrolledAt = asDate(first.drip_anchor_at ?? first.enrolled_at)
     const currentTime = now()
     const sections: LearnerCourseSection[] = []
     const sectionsById = new Map<string, LearnerCourseSection>()

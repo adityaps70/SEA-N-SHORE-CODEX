@@ -159,6 +159,8 @@ export function createCoursePaymentService(deps: {
     promoCode?: string | null
     /** C4: billing state or country, and an optional company + GSTIN, for the GST invoice. */
     billing?: BillingInput | null
+    /** Round D: the batch chosen on a batch course. */
+    batchId?: string | null
   }): Promise<CourseCheckoutSession> {
     const gateway = await deps.getGateway()
     if (!gateway) throw new PaymentsNotConfiguredError()
@@ -172,6 +174,7 @@ export function createCoursePaymentService(deps: {
       planId: input.planId ?? null,
       promoCode: input.promoCode ?? null,
       billing: input.billing ?? null,
+      batchId: input.batchId ?? null,
       now: at,
     })
     let order = prepared.order

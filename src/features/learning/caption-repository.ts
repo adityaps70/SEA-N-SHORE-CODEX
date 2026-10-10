@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { courseOpenToNewLearnersSql, learnerCourseAccessSql } from './course-publication'
-import { enrollmentAccessOpenSql } from './course-access'
+import { enrollmentAccessOpenSql, dripAnchorSql } from './course-access'
 
 /**
  * Who may read a video's captions (learning round A, A7): a learner enrolled in the course once the
@@ -14,7 +14,7 @@ type Query = (text: string, values?: readonly unknown[]) => Promise<QueryResultR
 const RELEASED_SQL = `(
   lesson.release_mode = 'immediate'
   or (lesson.release_mode = 'scheduled' and lesson.release_at <= now())
-  or (lesson.release_mode = 'drip' and enrollment.enrolled_at + make_interval(days => coalesce(lesson.drip_delay_days, 0)) <= now())
+  or (lesson.release_mode = 'drip' and ${dripAnchorSql()} + make_interval(days => coalesce(lesson.drip_delay_days, 0)) <= now())
 )`
 
 const COURSE_JOINS = `inner join public.learning_course_sections section on section.id = lesson.section_id and section.removed_at is null

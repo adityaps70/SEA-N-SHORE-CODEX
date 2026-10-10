@@ -53,3 +53,18 @@ export function batchStaffAccessSql(batchAlias: string, actorParam: string) {
     )
   )`
 }
+
+/**
+ * Round D: the moment a learner's drip lessons count from. A course with drip_anchor 'batch_start' counts from the
+ * start of the learner's batch; every other case (self-paced courses, learners without a batch) from enrolled_at, as
+ * before. `enrollmentAlias` is a public.learning_enrollments row.
+ */
+export function dripAnchorSql(enrollmentAlias = 'enrollment') {
+  return `coalesce((
+    select anchor_batch.starts_at
+    from public.learning_course_batches anchor_batch
+    inner join public.learning_courses anchor_course on anchor_course.id = anchor_batch.course_id
+    where anchor_batch.id = ${enrollmentAlias}.batch_id
+      and anchor_course.drip_anchor = 'batch_start'
+  ), ${enrollmentAlias}.enrolled_at)`
+}

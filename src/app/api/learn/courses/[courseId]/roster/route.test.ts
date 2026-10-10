@@ -31,6 +31,8 @@ const learner: RosterLearner = {
   lastActiveAt: '2026-03-10T06:00:00.000Z',
   quizScores: [{ lessonTitle: 'Fixture Quiz', bestPercentage: 90, passed: true }],
   certificate: 'issued',
+  batchId: null,
+  batchTitle: null,
 }
 
 function get(id = courseId) {
@@ -82,7 +84,7 @@ describe('GET /api/learn/courses/[courseId]/roster', () => {
     const response = await get()
 
     expect(response.status).toBe(200)
-    expect(mocks.exportRoster).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: false })
+    expect(mocks.exportRoster).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: false, batchId: null })
     expect(response.headers.get('content-type')).toBe('text/csv; charset=utf-8')
     expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(response.headers.get('content-disposition')).toBe('attachment; filename="sea-n-shore-learners-fixture-course-2026-10-10.csv"')
@@ -97,7 +99,7 @@ describe('GET /api/learn/courses/[courseId]/roster', () => {
 
     const response = await get()
 
-    expect(mocks.exportRoster).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: true })
+    expect(mocks.exportRoster).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: true, batchId: null })
     expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="sea-n-shore-learners-evilname-\d{4}-\d{2}-\d{2}\.csv"$/)
   })
 

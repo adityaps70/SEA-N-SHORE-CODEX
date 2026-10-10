@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { learnerCourseAccessSql } from './course-publication'
+import { dripAnchorSql } from './course-access'
 
 /**
  * Learning notifications (learning round A, A6): an in-app notification and, unless the
@@ -325,7 +326,7 @@ export async function sweepReleasedLessons(transaction: <T>(work: (query: Query)
                 course.id as course_id, course.title as course_title, course.slug as course_slug,
                 lesson.id as lesson_id, lesson.title as lesson_title, section.position as section_position, lesson.position as lesson_position,
                 case when lesson.release_mode = 'scheduled' then lesson.release_at
-                     else enrollment.enrolled_at + make_interval(days => lesson.drip_delay_days) end as released_at
+                     else ${dripAnchorSql()} + make_interval(days => lesson.drip_delay_days) end as released_at
          from public.learning_enrollments enrollment
          inner join public.learning_courses course on course.id = enrollment.course_id
          left join public.learning_mentors mentor on mentor.id = course.mentor_id

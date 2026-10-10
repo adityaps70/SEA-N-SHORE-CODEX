@@ -25,6 +25,8 @@ import { coursePurchasePaths } from './course-payment-service'
 import { promoRefusalMessage } from './promo-codes'
 import { billingInputSchema, billingRefusalMessage, type BillingInput, type BillingRefusal } from '@/features/tax/billing'
 import { accessPeriodLabel } from './course-plans'
+import { BatchError } from './batches/batch-repository'
+import { batchRefusalMessage } from './batches/batch-rules'
 
 export type RefundCoursePaymentResult = { ok: true; message: string } | { ok: false; error: string }
 
@@ -54,6 +56,7 @@ function refresh(courseSlug: string | null) {
 
 function checkoutError(error: unknown) {
   if (error instanceof PaymentsNotConfiguredError) return COURSE_PAYMENTS_NOT_CONFIGURED_HELP
+  if (error instanceof BatchError) return batchRefusalMessage(error.code) ?? 'Choose another batch and try again.'
   if (error instanceof PaymentGatewayUnavailableError) return 'We could not reach the payment service. No money was taken. Please try again in a few minutes.'
   if (error instanceof CoursePurchaseError) {
     if (error.code === 'checkout_in_progress') return 'Your checkout is already being prepared. Wait a moment and try again.'
@@ -73,18 +76,20 @@ function checkoutError(error: unknown) {
  */
 export async function startCourseCheckoutAction(
   courseId: string,
-  options: { phone?: string; planId?: string | null; promoCode?: string | null; billing?: BillingInput | null } = {},
+  options: { phone?: string; planId?: string | null; promoCode?: string | null; billing?: BillingInput | null; batchId?: string | null } = {},
 ): Promise<StartCheckoutResult> {
   const id = uuidSchema.safeParse(courseId)
   const phone = phoneSchema.safeParse(options.phone)
   const plan = planSchema.safeParse(options.planId)
   const promo = promoCodeSchema.safeParse(options.promoCode)
   const billing = billingInputSchema.safeParse(options.billing)
+  const batch = uuidSchema.nullable().optional().safeParse(options.batchId)
   if (!id.success) return { ok: false, error: coursePurchaseBlockerMessage('course_not_found') }
   if (!billing.success) return { ok: false, error: billingRefusalMessage('billing_state_required') }
   if (!phone.success) return { ok: false, error: PHONE_INVALID_MESSAGE, needsPhone: true }
   if (!plan.success) return { ok: false, error: 'This plan is no longer on sale. Refresh the page and choose a plan.' }
   if (!promo.success) return { ok: false, error: promoRefusalMessage('promo_not_found') }
+  if (!batch.success) return { ok: false, error: batchRefusalMessage('batch_not_found')! }
   try {
     const user = await requireAwsUser()
     if (!await userCan(user.id, 'course.enroll')) {
@@ -102,6 +107,7 @@ export async function startCourseCheckoutAction(
       planId: plan.data ?? null,
       promoCode: promo.data || null,
       billing: billing.data ?? null,
+      batchId: batch.data ?? null,
     })
     return {
       ok: true,

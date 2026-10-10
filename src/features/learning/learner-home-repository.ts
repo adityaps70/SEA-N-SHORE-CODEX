@@ -3,12 +3,14 @@ import { query as databaseQuery } from '@/lib/db/client'
 import { learnerCourseAccessSql } from './course-publication'
 import { learnerCourseRepository, type LearnerCourse, type LearnerLesson } from './learner-course-repository'
 import { curriculumLessons, resumePoint, type ResumePoint } from './next-lesson'
+import { dripAnchorSql } from './course-access'
 
 type LearnerHomeQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
 type ResumeEnrollmentRow = QueryResultRow & {
   enrollment_id: string
   enrolled_at: string | Date
+  drip_anchor_at?: string | Date | null
   slug: string
   title: string
   last_active_at: string | Date
@@ -47,6 +49,7 @@ export function createLearnerHomeRepository(input: {
       `select
          enrollment.id as enrollment_id,
          enrollment.enrolled_at,
+         ${dripAnchorSql()} as drip_anchor_at,
          course.slug,
          course.title,
          coalesce(
@@ -77,7 +80,8 @@ export function createLearnerHomeRepository(input: {
     if (!row) return null
     return {
       enrollmentId: row.enrollment_id,
-      enrolledAt: asDate(row.enrolled_at),
+      // Round D: the drip anchor (batch start or enrolment), used to say when the next lesson opens.
+      enrolledAt: asDate(row.drip_anchor_at ?? row.enrolled_at),
       slug: row.slug,
       title: row.title,
       lastActiveAt: asDate(row.last_active_at).toISOString(),

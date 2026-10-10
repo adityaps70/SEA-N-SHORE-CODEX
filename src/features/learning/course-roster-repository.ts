@@ -1,7 +1,8 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { roleDisplayLabel } from '@/features/roles/taxonomy'
-import { courseManagerAccessSql } from './course-access'
+import { batchStaffAccessSql, courseManagerAccessSql } from './course-access'
+import { BatchError, lockBatchForEnrolment } from './batches/batch-repository'
 import { courseOpenToNewLearnersSql, liveCourseSql } from './course-publication'
 import { ROSTER_ENROL_LIMITS, type RosterEnrolOutcome, type RosterInvitation, type RosterLearner, type RosterQuizScore } from './course-roster'
 import { notifyEnrolled } from './learning-notifications'
@@ -17,9 +18,18 @@ import { notifyEnrolled } from './learning-notifications'
 type Query = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type Transaction = <T>(work: (query: Query) => Promise<T>) => Promise<T>
 
-export type RosterAccess = { actorId: string; courseId: string; allCourses?: boolean }
+/** Round D: `batchId` limits the roster to one batch; a batch's manager or instructors may read only that view. */
+export type RosterAccess = { actorId: string; courseId: string; allCourses?: boolean; batchId?: string | null }
 
-export type RosterCourse = { id: string; title: string; slug: string; openToNewLearners: boolean }
+export type RosterCourse = {
+  id: string
+  title: string
+  slug: string
+  openToNewLearners: boolean
+  /** Round D: true for the course's managers (and platform admins); false for batch staff, who may only read. */
+  canManage: boolean
+  batchMode: 'self_paced' | 'batches'
+}
 
 function clientQuery(client: DatabaseQueryClient): Query {
   return async (text, values) => (await client.query(text, values ? [...values] : undefined)).rows
@@ -49,8 +59,9 @@ function parseJson<T>(value: unknown, fallback: T): T {
 }
 
 const COURSE_SQL = `
-  select course.id, course.title, course.slug,
-         (${courseOpenToNewLearnersSql('course', 'mentor', 'application', 'company')}) as open_to_new_learners
+  select course.id, course.title, course.slug, course.batch_mode,
+         (${courseOpenToNewLearnersSql('course', 'mentor', 'application', 'company')}) as open_to_new_learners,
+         ($3::boolean or ${courseManagerAccessSql('course', '$1::uuid')}) as can_manage
   from public.learning_courses course
   left join public.learning_mentors mentor on mentor.id = course.mentor_id
   left join public.learning_mentor_applications application
@@ -58,13 +69,31 @@ const COURSE_SQL = `
   left join public.companies company on company.id = course.company_id
   where course.id = $2::uuid
     and ${liveCourseSql('course')}
-    and ($3::boolean or ${courseManagerAccessSql('course', '$1::uuid')})`
+    and ($3::boolean or ${courseManagerAccessSql('course', '$1::uuid')}
+         or ($4::uuid is not null and exists (
+           select 1 from public.learning_course_batches roster_batch
+           where roster_batch.id = $4::uuid and roster_batch.course_id = course.id
+             and ${batchStaffAccessSql('roster_batch', '$1::uuid')})))`
 
 async function loadCourse(query: Query, access: RosterAccess, lock = false): Promise<RosterCourse> {
-  const rows = await query(`${COURSE_SQL}${lock ? ' for update of course' : ''}`, [access.actorId, access.courseId, Boolean(access.allCourses)])
+  const rows = await query(`${COURSE_SQL}${lock ? ' for update of course' : ''}`, [access.actorId, access.courseId, Boolean(access.allCourses), access.batchId ?? null])
   const row = rows[0]
   if (!row) throw new Error('course_not_found')
-  return { id: String(row.id), title: String(row.title), slug: String(row.slug), openToNewLearners: row.open_to_new_learners === true }
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    slug: String(row.slug),
+    openToNewLearners: row.open_to_new_learners === true,
+    canManage: row.can_manage === true,
+    batchMode: row.batch_mode === 'batches' ? 'batches' : 'self_paced',
+  }
+}
+
+/** Course managers only (writes); batch staff and others get course_not_found. */
+async function loadManagedRosterCourse(query: Query, access: RosterAccess, lock = false) {
+  const managed = await loadCourse(query, { ...access, batchId: null }, lock)
+  if (!managed.canManage) throw new Error('course_not_found')
+  return managed
 }
 
 const ROSTER_SQL = `
@@ -85,6 +114,8 @@ const ROSTER_SQL = `
     enrollment.access_expires_at,
     profile.full_name,
     profile.slug,
+    enrollment.batch_id,
+    roster_batch.title as batch_title,
     profile.role_key,
     profile.role_other_text,
     maritime.rank as legacy_rank,
@@ -121,7 +152,9 @@ const ROSTER_SQL = `
   inner join public.profiles profile on profile.id = enrollment.learner_id
   left join public.maritime_profiles maritime on maritime.user_id = enrollment.learner_id
   left join public.learning_certificates certificate on certificate.enrollment_id = enrollment.id
+  left join public.learning_course_batches roster_batch on roster_batch.id = enrollment.batch_id
   where enrollment.course_id = $1::uuid
+    and ($2::uuid is null or enrollment.batch_id = $2::uuid)
   order by enrollment.enrolled_at desc, enrollment.id desc
   limit 5000`
 
@@ -150,6 +183,8 @@ function mapLearner(row: QueryResultRow): RosterLearner {
       passed: score.passed === true,
     })),
     certificate: row.certificate_status === 'issued' || row.certificate_status === 'expired' ? row.certificate_status : 'none',
+    batchId: row.batch_id ? String(row.batch_id) : null,
+    batchTitle: row.batch_title ? String(row.batch_title) : null,
   }
 }
 
@@ -194,10 +229,10 @@ async function memberByVerifiedEmail(query: Query, email: string) {
  * Gives a member access as a trainer enrolment. A new enrolment is created; one that was revoked (after a refund)
  * or whose access period ended is reopened with lifetime access. An open enrolment is left exactly as it is.
  */
-async function enrolMember(query: Query, input: { courseId: string; learnerId: string; enrolledBy: string | null }) {
+async function enrolMember(query: Query, input: { courseId: string; learnerId: string; enrolledBy: string | null; batchId?: string | null }) {
   const rows = await query(
-    `insert into public.learning_enrollments (course_id, learner_id, enrollment_source, status, enrolled_at, enrolled_by, created_at, updated_at)
-     values ($1::uuid, $2::uuid, 'trainer', 'active', now(), $3::uuid, now(), now())
+    `insert into public.learning_enrollments (course_id, learner_id, enrollment_source, status, enrolled_at, enrolled_by, batch_id, created_at, updated_at)
+     values ($1::uuid, $2::uuid, 'trainer', 'active', now(), $3::uuid, $4::uuid, now(), now())
      on conflict (course_id, learner_id) do update
        set enrollment_source = 'trainer',
            status = case when learning_enrollments.status = 'revoked' then 'active' else learning_enrollments.status end,
@@ -206,11 +241,12 @@ async function enrolMember(query: Query, input: { courseId: string; learnerId: s
            plan_id = null,
            access_expires_at = null,
            enrolled_by = excluded.enrolled_by,
+           batch_id = coalesce(excluded.batch_id, learning_enrollments.batch_id),
            updated_at = now()
        where learning_enrollments.status = 'revoked'
           or (learning_enrollments.access_expires_at is not null and learning_enrollments.access_expires_at <= now())
      returning id, extract(epoch from updated_at)::bigint as version`,
-    [input.courseId, input.learnerId, input.enrolledBy],
+    [input.courseId, input.learnerId, input.enrolledBy, input.batchId ?? null],
   )
   const row = rows[0]
   if (!row) return null
@@ -230,14 +266,15 @@ export function createCourseRosterRepository(input: { query?: Query; transaction
   async function list(access: RosterAccess): Promise<{ course: RosterCourse; learners: RosterLearner[]; invitations: RosterInvitation[] }> {
     const managed = await loadCourse(query, access)
     const [learners, invitations] = await Promise.all([
-      query(ROSTER_SQL, [managed.id]),
+      query(ROSTER_SQL, [managed.id, access.batchId ?? null]),
       query(
         `select id, email, created_at, expires_at, email_status
          from public.learning_course_invitations
          where course_id = $1::uuid and status = 'pending' and expires_at > now()
+           and ($2::uuid is null or batch_id = $2::uuid)
          order by created_at desc
          limit 500`,
-        [managed.id],
+        [managed.id, access.batchId ?? null],
       ),
     ])
     return {
@@ -259,22 +296,28 @@ export function createCourseRosterRepository(input: { query?: Query; transaction
    */
   async function enrolByEmail(access: RosterAccess, email: string): Promise<RosterEnrolOutcome> {
     return transaction(async (tx) => {
-      const managed = await loadCourse(tx, access, true)
+      const managed = await loadManagedRosterCourse(tx, access, true)
       if (!managed.openToNewLearners) throw new Error('course_not_enrollable')
       await assertUnderEnrolLimit(tx, access.actorId)
+      // Round D: on a batch course the trainer adds the learner to a batch (locked; it must be open with a seat free).
+      const batchId = managed.batchMode === 'batches' ? access.batchId ?? null : null
+      if (managed.batchMode === 'batches') {
+        if (!batchId) throw new BatchError('batch_required')
+        await lockBatchForEnrolment(tx, { courseId: managed.id, batchId })
+      }
 
       const member = await memberByVerifiedEmail(tx, email)
       let outcome: RosterEnrolOutcome
       if (member) {
-        const enrollmentId = await enrolMember(tx, { courseId: managed.id, learnerId: member.profileId, enrolledBy: access.actorId })
+        const enrollmentId = await enrolMember(tx, { courseId: managed.id, learnerId: member.profileId, enrolledBy: access.actorId, batchId })
         outcome = enrollmentId ? { kind: 'enrolled', name: member.name } : { kind: 'already_enrolled', name: member.name }
       } else {
         const rows = await tx(
-          `insert into public.learning_course_invitations (course_id, email, invited_by)
-           values ($1::uuid, $2, $3::uuid)
+          `insert into public.learning_course_invitations (course_id, email, invited_by, batch_id)
+           values ($1::uuid, $2, $3::uuid, $4::uuid)
            on conflict (course_id, email) where status = 'pending' do nothing
            returning id`,
-          [managed.id, email, access.actorId],
+          [managed.id, email, access.actorId, batchId],
         )
         outcome = rows[0] ? { kind: 'invited' } : { kind: 'already_invited' }
       }
@@ -285,7 +328,7 @@ export function createCourseRosterRepository(input: { query?: Query; transaction
 
   async function cancelInvitation(access: RosterAccess, invitationId: string) {
     return transaction(async (tx) => {
-      const managed = await loadCourse(tx, access)
+      const managed = await loadManagedRosterCourse(tx, access)
       const rows = await tx(
         `update public.learning_course_invitations
          set status = 'cancelled', cancelled_at = now(), updated_at = now()
@@ -302,8 +345,8 @@ export function createCourseRosterRepository(input: { query?: Query; transaction
   async function exportRoster(access: RosterAccess) {
     return transaction(async (tx) => {
       const managed = await loadCourse(tx, access)
-      const learners = (await tx(ROSTER_SQL, [managed.id])).map(mapLearner)
-      await audit(tx, access.actorId, 'learning.roster_exported', managed.id, { rows: learners.length })
+      const learners = (await tx(ROSTER_SQL, [managed.id, access.batchId ?? null])).map(mapLearner)
+      await audit(tx, access.actorId, 'learning.roster_exported', managed.id, { rows: learners.length, ...(access.batchId ? { batchId: access.batchId } : {}) })
       return { course: managed, learners }
     })
   }
@@ -314,7 +357,7 @@ export function createCourseRosterRepository(input: { query?: Query; transaction
 export const courseRosterRepository = createCourseRosterRepository()
 
 const CLAIMABLE_SQL = `
-  select invitation.id, invitation.course_id, invitation.invited_by, account.profile_id
+  select invitation.id, invitation.course_id, invitation.invited_by, invitation.batch_id, account.profile_id
   from public.learning_course_invitations invitation
   inner join public.identity_accounts account
     on account.email = invitation.email and account.email_verified = true
@@ -350,7 +393,12 @@ export function createCourseInvitationClaims(input: { transaction?: Transaction 
         if (seen.has(invitationId)) continue
         seen.add(invitationId)
         const learnerId = String(row.profile_id)
-        const enrollmentId = await enrolMember(tx, { courseId: String(row.course_id), learnerId, enrolledBy: row.invited_by ? String(row.invited_by) : null })
+        const enrollmentId = await enrolMember(tx, {
+          courseId: String(row.course_id),
+          learnerId,
+          enrolledBy: row.invited_by ? String(row.invited_by) : null,
+          batchId: row.batch_id ? String(row.batch_id) : null,
+        })
         const existing = enrollmentId ?? String((await tx(
           `select id from public.learning_enrollments where course_id = $1::uuid and learner_id = $2::uuid`,
           [row.course_id, learnerId],

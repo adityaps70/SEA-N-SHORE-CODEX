@@ -31,7 +31,7 @@ import CourseLearnersPage from './page'
 const courseId = '22222222-2222-4222-8222-222222222222'
 const invitationId = '77777777-7777-4777-8777-777777777777'
 
-const course: RosterCourse = { id: courseId, title: 'Fixture Course', slug: 'fixture-course', openToNewLearners: true }
+const course: RosterCourse = { id: courseId, title: 'Fixture Course', slug: 'fixture-course', openToNewLearners: true, canManage: true, batchMode: 'self_paced' as const }
 
 const learning: RosterLearner = {
   enrollmentId: '80000000-0000-4000-8000-000000000001',
@@ -49,6 +49,8 @@ const learning: RosterLearner = {
   lastActiveAt: '2026-03-10T06:00:00.000Z',
   quizScores: [{ lessonTitle: 'Fixture Quiz', bestPercentage: 90, passed: true }],
   certificate: 'issued',
+  batchId: null,
+  batchTitle: null,
 }
 
 const removed: RosterLearner = {
@@ -64,6 +66,8 @@ const removed: RosterLearner = {
   progressPercent: 0,
   quizScores: [],
   certificate: 'none',
+  batchId: null,
+  batchTitle: null,
 }
 
 const invitation: RosterInvitation = {
@@ -111,13 +115,13 @@ describe('/learn/studio/courses/[courseId]/learners', () => {
     mocks.canUsePlatformAdminAuthority.mockResolvedValue(true)
     render(await renderPage())
     expect(mocks.canUsePlatformAdminAuthority).toHaveBeenCalledWith('user-1')
-    expect(mocks.list).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: true })
+    expect(mocks.list).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: true, batchId: null })
   })
 
   it('shows the course summary and the CSV download link', async () => {
     render(await renderPage())
 
-    expect(mocks.list).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: false })
+    expect(mocks.list).toHaveBeenCalledWith({ actorId: 'user-1', courseId, allCourses: false, batchId: null })
     expect(screen.getByRole('heading', { level: 1, name: 'Fixture Course' })).toBeInTheDocument()
     expect(screen.getByText('1 learning · 1 certified · 1 invited')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Download CSV' })).toHaveAttribute('href', `/api/learn/courses/${courseId}/roster`)

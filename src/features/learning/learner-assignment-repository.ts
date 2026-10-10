@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { learnerCourseAccessSql } from './course-publication'
-import { courseManagerAccessSql, enrollmentAccessOpenSql } from './course-access'
+import { courseManagerAccessSql, enrollmentAccessOpenSql, dripAnchorSql } from './course-access'
 import {
   ASSIGNMENT_DEFAULTS,
   assignmentSubmissionPrefix,
@@ -322,7 +322,7 @@ export function createLearnerAssignmentRepository(input: {
            and (
              lesson.release_mode = 'immediate'
              or (lesson.release_mode = 'scheduled' and lesson.release_at <= now())
-             or (lesson.release_mode = 'drip' and enrollment.enrolled_at + make_interval(days => lesson.drip_delay_days) <= now())
+             or (lesson.release_mode = 'drip' and ${dripAnchorSql()} + make_interval(days => lesson.drip_delay_days) <= now())
            )
            and (lesson.prerequisite_lesson_id is null or prerequisite_progress.completed = true)
            and (

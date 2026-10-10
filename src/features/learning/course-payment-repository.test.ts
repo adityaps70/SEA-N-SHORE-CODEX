@@ -157,6 +157,7 @@ describe('course payment repository: purchase rules', () => {
     companyId: null,
     mentorId: null,
     sellerProfileId: mentorProfileId,
+    batchMode: 'self_paced',
   }
 
   it('lets a learner buy a published paid course and explains every refusal', () => {
@@ -185,7 +186,7 @@ describe('course payment repository: starting checkout', () => {
     expect(result.reused).toBe(false)
     expect(result.order).toMatchObject({ amountMinor: 400000, listPriceMinor: 500000, discountPriceMinor: 400000, currency: 'INR', status: 'created' })
     // Round C: the order also snapshots the plan (here the course's own price as a lifetime "Standard" plan) and no code.
-    expect(callWith('insert into public.course_payment_orders')?.[1]).toEqual([courseId, profileId, 'SIRE 2.0 Masterclass', 500000, 400000, 400000, 'INR', 'cashfree', null, 'Standard', null, null, null, 0, '27', null, null, null])
+    expect(callWith('insert into public.course_payment_orders')?.[1]).toEqual([courseId, profileId, 'SIRE 2.0 Masterclass', 500000, 400000, 400000, 'INR', 'cashfree', null, 'Standard', null, null, null, 0, '27', null, null, null, null])
     expect(sqlCalls()[0]).toContain('for update of course')
     expect(auditActions()).toEqual(['checkout_started'])
   })

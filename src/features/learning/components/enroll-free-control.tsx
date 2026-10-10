@@ -8,9 +8,12 @@ import { enrollInFreeCourse } from '../enrollment-actions'
 type Props = {
   courseId: string
   initiallyEnrolled: boolean
+  /** Round D: on a batch course, the chosen batch (enrolling waits until one is chosen). */
+  batchId?: string | null
+  batchRequired?: boolean
 }
 
-export function EnrollFreeControl({ courseId, initiallyEnrolled }: Props) {
+export function EnrollFreeControl({ courseId, initiallyEnrolled, batchId = null, batchRequired = false }: Props) {
   const [pending, startTransition] = useTransition()
   const [enrolled, setEnrolled] = useState(initiallyEnrolled)
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +21,7 @@ export function EnrollFreeControl({ courseId, initiallyEnrolled }: Props) {
   function onEnroll() {
     setError(null)
     startTransition(async () => {
-      const result = await enrollInFreeCourse(courseId)
+      const result = batchRequired ? await enrollInFreeCourse(courseId, batchId) : await enrollInFreeCourse(courseId)
       if (!result.ok) {
         setError(result.error)
         return
@@ -58,7 +61,7 @@ export function EnrollFreeControl({ courseId, initiallyEnrolled }: Props) {
       </p>
       <button
         type="button"
-        disabled={pending}
+        disabled={pending || (batchRequired && !batchId)}
         onClick={onEnroll}
         className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60"
       >

@@ -11,6 +11,7 @@ import { createCourseInvitationWorker } from '../../src/features/learning/course
 import { createTaxDocumentEmailWorker } from '../../src/features/tax/tax-document-email'
 import { issueMissingTaxDocuments } from '../../src/features/tax/tax-document-repository'
 import { withTransaction } from '../../src/lib/db/client'
+import { batchRepository } from '../../src/features/learning/batches/batch-repository'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -57,6 +58,9 @@ let nextTaxDocumentEmailSweepAt = 0
 let nextTaxDocumentIssueSweepAt = 0
 let taxDocumentEmailDisabledLogged = false
 const taxDocumentEmailWorker = createTaxDocumentEmailWorker()
+// Round D: move course batches along (upcoming → running → completed) once an hour.
+const BATCH_STATUS_SWEEP_MS = 60 * 60 * 1000
+let nextBatchStatusSweepAt = 0
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -218,6 +222,19 @@ async function runTaxDocumentEmailSweepIfDue() {
   }
 }
 
+async function runBatchStatusSweepIfDue() {
+  const now = Date.now()
+  if (now < nextBatchStatusSweepAt) return
+  nextBatchStatusSweepAt = now + BATCH_STATUS_SWEEP_MS
+
+  try {
+    const result = await batchRepository.advanceStatuses()
+    if (result.moved > 0) console.info('[learning_batch_status_sweep]', result)
+  } catch (error) {
+    console.error('[learning_batch_status_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -237,6 +254,7 @@ async function main() {
       await runCourseInvitationSweepIfDue()
       await runTaxDocumentIssueSweepIfDue()
       await runTaxDocumentEmailSweepIfDue()
+      await runBatchStatusSweepIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

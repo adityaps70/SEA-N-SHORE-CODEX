@@ -13,10 +13,19 @@ function outcomeText(outcome: RosterEnrolOutcome) {
   return 'This email address already has an invitation waiting.'
 }
 
-/** Round C (C1): add a learner by email. Members are enrolled now; anyone else is invited. */
-export function CourseRosterEnrolForm({ courseId, disabledReason }: { courseId: string; disabledReason: string | null }) {
+/**
+ * Round C (C1): add a learner by email. Members are enrolled now; anyone else is invited.
+ * Round D: on a batch course the trainer picks the batch the learner joins.
+ */
+export function CourseRosterEnrolForm({ courseId, disabledReason, batches, defaultBatchId = null }: {
+  courseId: string
+  disabledReason: string | null
+  batches?: readonly { id: string; title: string; closedLabel: string | null }[]
+  defaultBatchId?: string | null
+}) {
   const router = useRouter()
   const [email, setEmail] = useState('')
+  const [batchId, setBatchId] = useState(defaultBatchId ?? batches?.find((batch) => !batch.closedLabel)?.id ?? '')
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -24,7 +33,7 @@ export function CourseRosterEnrolForm({ courseId, disabledReason }: { courseId: 
     event.preventDefault()
     setMessage(null)
     startTransition(async () => {
-      const result = await enrolLearnerByEmail(courseId, email)
+      const result = await enrolLearnerByEmail(courseId, email, batches ? batchId || null : null)
       if (!result.ok) {
         setMessage({ tone: 'error', text: result.error })
         return
@@ -44,7 +53,24 @@ export function CourseRosterEnrolForm({ courseId, disabledReason }: { courseId: 
       {disabledReason ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950">{disabledReason}</p>
       ) : (
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          {batches ? (
+            <label className="w-full text-sm font-semibold text-navy-950">
+              Batch
+              <select
+                value={batchId}
+                onChange={(event) => setBatchId(event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              >
+                <option value="">Choose a batch</option>
+                {batches.map((batch) => (
+                  <option key={batch.id} value={batch.id} disabled={Boolean(batch.closedLabel)}>
+                    {batch.title}{batch.closedLabel ? ` (${batch.closedLabel})` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="min-w-0 flex-1 text-sm font-semibold text-navy-950">
             <span className="sr-only">Email address</span>
             <input
@@ -59,7 +85,7 @@ export function CourseRosterEnrolForm({ courseId, disabledReason }: { courseId: 
               className="min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             />
           </label>
-          <button type="submit" disabled={pending || !email.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={pending || !email.trim() || (Boolean(batches) && !batchId)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60">
             {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <UserPlus aria-hidden="true" className="size-4" />}
             Add learner
           </button>

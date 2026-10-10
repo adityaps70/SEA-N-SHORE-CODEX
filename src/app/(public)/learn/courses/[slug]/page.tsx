@@ -31,6 +31,9 @@ import { EnrollFreeControl } from '@/features/learning/components/enroll-free-co
 import { CoursePurchasePanel, type CoursePurchaseState } from '@/features/learning/components/course-purchase-panel'
 import { coursePrice, discountPercent, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
 import { loadCoursePurchaseState } from '@/features/learning/course-purchase-state'
+import { batchRepository } from '@/features/learning/batches/batch-repository'
+import { batchClosedReason, type CourseBatch } from '@/features/learning/batches/batch-rules'
+import { CourseBatchPicker } from '@/features/learning/batches/components/course-batch-picker'
 import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse, type PublishedCourseOverview } from '@/features/learning/marketplace-repository'
 import { splitDescription } from '@/features/learning/description'
@@ -40,6 +43,8 @@ import { CourseReviewsSection, formatAverageRating } from '@/features/learning/c
 
 type PublishedCoursePageProps = {
   params: Promise<{ slug: string }>
+  /** Round D: `?batch=` is the batch chosen on a batch course. */
+  searchParams?: Promise<{ batch?: string | string[] }>
 }
 
 function levelLabel(level: MarketplaceCourse['level']) {
@@ -127,7 +132,9 @@ function priceChipLabel(course: MarketplaceCourse) {
   return price ? formatCourseAmount(price.amountMinor, price.currency) : formatCourseAmount(course.priceMinor, course.currency)
 }
 
-function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: CoursePurchaseState | null, completed: boolean): CourseActionBarMode | null {
+function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: CoursePurchaseState | null, completed: boolean, batchCourse = false): CourseActionBarMode | null {
+  // Round D: on a batch course the learner first chooses a batch in the "Course access" card.
+  if (batchCourse && !initiallyEnrolled && (isFree || purchase?.kind === 'buy')) return { kind: 'choose', label: 'Choose a batch' }
   if (isFree) return initiallyEnrolled ? { kind: 'continue', label: completed ? 'Review course' : 'Continue learning' } : { kind: 'enroll' }
   if (!purchase) return null
   if (purchase.kind === 'enrolled') return { kind: 'continue', label: purchase.completed ? 'Review course' : 'Continue learning' }
@@ -323,8 +330,9 @@ export async function generateMetadata({ params }: PublishedCoursePageProps): Pr
   return courseMetadata(course)
 }
 
-export default async function PublishedCoursePage({ params }: PublishedCoursePageProps) {
+export default async function PublishedCoursePage({ params, searchParams }: PublishedCoursePageProps) {
   const { slug } = await params
+  const batchParam = (await searchParams)?.batch
   const course = await loadPublishedCourse(slug)
 
   if (!course) return notFound()
@@ -342,7 +350,11 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
   const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
   const isFree = !isPaidCourse(course)
   const purchase: CoursePurchaseState | null = isFree || !user ? null : await loadCoursePurchaseState({ userId: user.id, course, enrollment })
-  const barMode = user ? actionBarMode(isFree, initiallyEnrolled, purchase, enrollment?.status === 'completed') : null
+  // Round D: a batch course lists its batches; the learner picks one before enrolling or buying.
+  const batchCourse = (await batchRepository.courseMode(course.id).catch(() => 'self_paced' as const)) === 'batches'
+  const batches: CourseBatch[] = batchCourse && !initiallyEnrolled ? await batchRepository.listForLearners(course.id).catch(() => []) : []
+  const selectedBatch = batches.find((batch) => batch.id === batchParam && !batchClosedReason(batch)) ?? null
+  const barMode = user ? actionBarMode(isFree, initiallyEnrolled, purchase, enrollment?.status === 'completed', batchCourse) : null
   const coursePath = `/learn/courses/${course.slug}`
 
   return (
@@ -429,16 +441,20 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
                 : 'One-time payment for your Sea N Shore account. The course unlocks as soon as your payment is confirmed.'}
             </p>
 
+            {batchCourse && !initiallyEnrolled && !(purchase && purchase.kind !== 'buy') ? (
+              <CourseBatchPicker coursePath={`/learn/courses/${course.slug}`} batches={batches} selectedId={selectedBatch?.id ?? null} />
+            ) : null}
+
             {!user ? (
               <SignInToEnrol isFree={isFree} />
             ) : isFree ? (
               <div className="mt-6">
                 {/* Remounts after the phone bar enrolls and the page refreshes. */}
-                <EnrollFreeControl key={initiallyEnrolled ? 'enrolled' : 'open'} courseId={course.id} initiallyEnrolled={initiallyEnrolled} />
+                <EnrollFreeControl key={initiallyEnrolled ? 'enrolled' : 'open'} courseId={course.id} initiallyEnrolled={initiallyEnrolled} batchId={selectedBatch?.id ?? null} batchRequired={batchCourse} />
               </div>
             ) : purchase ? (
               <div className="mt-6">
-                <CoursePurchasePanel course={{ id: course.id, slug: course.slug, title: course.title }} state={purchase} />
+                <CoursePurchasePanel course={{ id: course.id, slug: course.slug, title: course.title }} state={purchase} batchId={selectedBatch?.id ?? null} batchRequired={batchCourse} />
               </div>
             ) : null}
 

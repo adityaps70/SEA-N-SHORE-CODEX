@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   listForMentor: vi.fn(),
   listUserOrganizations: vi.fn(),
   redirect: vi.fn(),
+  listTeaching: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
@@ -20,6 +21,9 @@ vi.mock('@/features/learning/course-repository', () => ({
 }))
 vi.mock('@/features/learning/assignment-grading-repository', () => ({
   assignmentGradingRepository: { listForMentor: mocks.listForMentor },
+}))
+vi.mock('@/features/learning/batches/batch-repository', () => ({
+  batchRepository: { listTeaching: mocks.listTeaching },
 }))
 vi.mock('@/features/organizations/repository', () => ({
   organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
@@ -34,6 +38,7 @@ describe('/learn/studio', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
     mocks.listUserOrganizations.mockResolvedValue([])
+    mocks.listTeaching.mockResolvedValue([])
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '11111111-1111-4111-8111-111111111111',
@@ -198,4 +203,37 @@ describe('/learn/studio', () => {
     expect(mocks.redirect).not.toHaveBeenCalled()
   })
 
+  it('opens a batch-only Studio for a batch manager or instructor who does not publish courses (round D)', async () => {
+    mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+    mocks.listTeaching.mockResolvedValue([{
+      batch: {
+        id: '44444444-4444-4444-8444-444444444444',
+        courseId: '33333333-3333-4333-8333-333333333333',
+        title: 'November evening batch',
+        startsAt: '2026-11-02T13:30:00.000Z',
+        endsAt: null,
+        seatLimit: 20,
+        timeZone: 'Asia/Kolkata',
+        status: 'upcoming',
+        enrolmentOpen: true,
+        managerProfileId: null,
+        managerName: null,
+        enrolledCount: 3,
+        heldCount: 0,
+      },
+      courseTitle: 'SIRE 2.0 Readiness for Tanker Officers',
+      role: 'instructor',
+    }])
+
+    render(await MentorStudioPage())
+
+    expect(mocks.redirect).not.toHaveBeenCalled()
+    expect(mocks.listOwnedCourses).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Batches you teach' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /November evening batch/ })).toHaveAttribute(
+      'href',
+      '/learn/studio/courses/33333333-3333-4333-8333-333333333333/batches/44444444-4444-4444-8444-444444444444',
+    )
+    expect(screen.getByText(/Starts Mon 2 Nov 2026 · Asia\/Kolkata · Upcoming · Instructor/)).toBeInTheDocument()
+  })
 })

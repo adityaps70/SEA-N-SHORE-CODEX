@@ -4,6 +4,7 @@ import { recordPaymentAudit, type PaymentAuditActorType } from '@/features/payme
 import { recordSaleEarning, reverseSaleEarning } from '@/features/payments/earnings'
 import { orderUuidFromGatewayOrderId } from '@/features/payments/order-ids'
 import type { EventPaymentOrderStatus, PaymentCurrency, PaymentProviderName } from '@/features/payments/types'
+import { resolveEnrolmentBatch } from './batches/batch-repository'
 import { courseManagerAccessSql } from './course-access'
 import { coursePrice, type CoursePrice } from './course-pricing'
 import { courseOpenToNewLearnersSql } from './course-publication'
@@ -157,6 +158,8 @@ export type LockedCourse = {
   companyId: string | null
   mentorId: string | null
   sellerProfileId: string | null
+  /** Round D: a batch course sells seats in dated batches. */
+  batchMode: 'self_paced' | 'batches'
 }
 
 const ORDER_COLUMNS = `
@@ -265,6 +268,7 @@ export async function lockCourseForPurchase(client: DatabaseQueryClient, courseI
   const result = await client.query<CourseRow>(`
     select course.id, course.title, course.access_type, course.price_minor, course.discount_price_minor, course.currency,
       course.company_id, course.mentor_id, coalesce(mentor.user_id, course.created_by_user_id) as seller_profile_id,
+      course.batch_mode,
       (${courseOpenToNewLearnersSql()}) as visible,
       ${courseManagerAccessSql('course', '$2::uuid')} as is_manager
     from public.learning_courses course
@@ -294,6 +298,7 @@ export async function lockCourseForPurchase(client: DatabaseQueryClient, courseI
     companyId: row.company_id ?? null,
     mentorId: row.mentor_id ?? null,
     sellerProfileId: row.seller_profile_id ?? null,
+    batchMode: row.batch_mode === 'batches' ? 'batches' : 'self_paced',
   }
 }
 
@@ -451,6 +456,28 @@ async function previewCheckout(input: {
  * checkout or records a new one with a snapshot of the plan, the price and the code's discount. A code's use is
  * reserved here, atomically, so two buyers can never both take its last use.
  */
+/** Round D: the batch a checkout order is for (null for a self-paced course). */
+async function orderBatchId(client: DatabaseQueryClient, orderId: string) {
+  const rows = await client.query<{ batch_id: string | null } & QueryResultRow>(`select batch_id from public.course_payment_orders where id = $1::uuid`, [orderId])
+  return rows.rows[0]?.batch_id ?? null
+}
+
+/**
+ * Round D: the batch a new checkout on a batch course carries. A learner renewing access keeps their batch (no new
+ * seat); otherwise the chosen batch is locked and must be open with a seat free.
+ */
+async function checkoutBatchId(client: DatabaseQueryClient, input: { courseId: string; profileId: string; batchId: string | null; excludeOrderId: string | null }) {
+  const query = async (text: string, values?: readonly unknown[]) => (await client.query(text, values ? [...values] : undefined)).rows
+  const current = await query(
+    `select batch_id from public.learning_enrollments
+     where course_id = $1::uuid and learner_id = $2::uuid and status <> 'revoked' and batch_id is not null`,
+    [input.courseId, input.profileId],
+  )
+  if (current[0]?.batch_id) return String(current[0].batch_id)
+  const batch = await resolveEnrolmentBatch(query, { courseId: input.courseId, batchId: input.batchId, excludeOrderId: input.excludeOrderId })
+  return batch?.id ?? null
+}
+
 async function prepareCheckoutOrder(input: {
   profileId: string
   courseId: string
@@ -460,6 +487,8 @@ async function prepareCheckoutOrder(input: {
   promoCode?: string | null
   /** C4: billing state (INR) or country (USD), and an optional company + GSTIN. */
   billing?: BillingInput | null
+  /** Round D: the batch chosen on a batch course (ignored on a self-paced course). */
+  batchId?: string | null
   now?: Date
 }): Promise<{ order: CoursePaymentOrder; reused: boolean }> {
   const now = input.now ?? new Date()
@@ -478,6 +507,9 @@ async function prepareCheckoutOrder(input: {
         for update
       `, [input.courseId, input.profileId])
       const existing = open.rows[0] ? mapCourseOrder(open.rows[0]) : null
+      const batchId = course.batchMode === 'batches'
+        ? await checkoutBatchId(client, { courseId: input.courseId, profileId: input.profileId, batchId: input.batchId ?? null, excludeOrderId: existing?.id ?? null })
+        : null
       if (existing) {
         const ageMs = now.getTime() - Date.parse(existing.createdAt)
         const sameOrder = existing.amountMinor === quote.amountMinor
@@ -485,6 +517,7 @@ async function prepareCheckoutOrder(input: {
           && existing.planId === quote.plan.id
           && (existing.promoCode ?? null) === (quote.promo?.code ?? null)
           && sameBilling(existing.billing, billing)
+          && (course.batchMode !== 'batches' || (await orderBatchId(client, existing.id)) === batchId)
         if (sameOrder && existing.provider === input.provider && existing.providerOrderId && ageMs < COURSE_CHECKOUT_REUSE_MINUTES * 60_000) {
           return { order: existing, reused: true }
         }
@@ -509,15 +542,15 @@ async function prepareCheckoutOrder(input: {
         insert into public.course_payment_orders as o (
           course_id, profile_id, course_title, list_price_minor, discount_price_minor, amount_minor, currency, provider,
           plan_id, plan_name, access_months, promo_code_id, promo_code, promo_discount_minor,
-          billing_state_code, billing_country, billing_company, billing_gstin
+          billing_state_code, billing_country, billing_company, billing_gstin, batch_id
         )
         values ($1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint, $7::text, $8::text,
-                $9::uuid, $10::text, $11::integer, $12::uuid, $13::text, $14::bigint, $15::text, $16::text, $17::text, $18::text)
+                $9::uuid, $10::text, $11::integer, $12::uuid, $13::text, $14::bigint, $15::text, $16::text, $17::text, $18::text, $19::uuid)
         returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
       `, [
         input.courseId, input.profileId, course.title, quote.listPriceMinor, quote.discountPriceMinor, quote.amountMinor, quote.currency, input.provider,
         quote.plan.id, quote.plan.name, quote.plan.accessMonths, quote.promo?.codeId ?? null, quote.promo?.code ?? null, quote.promo?.discountMinor ?? 0,
-        billing.stateCode, billing.country, billing.company, billing.gstin,
+        billing.stateCode, billing.country, billing.company, billing.gstin, batchId,
       ])
       const row = inserted.rows[0]
       if (!row) throw new Error('course_payment_order_insert_failed')
@@ -758,6 +791,15 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
     `, [course!.id, current.profileId, current.id, now.toISOString(), current.planId, current.accessMonths])
     enrollmentId = inserted.rows[0]!.id
   }
+  // Round D: the enrolment joins the order's batch, unless the learner already has one (a renewal keeps its batch). A
+  // paid order always enrols, even when that goes over the seat limit.
+  if (course!.batchMode === 'batches') await client.query(`
+    update public.learning_enrollments enrollment
+    set batch_id = paid_order.batch_id, updated_at = now()
+    from public.course_payment_orders paid_order
+    where enrollment.id = $1::uuid and paid_order.id = $2::uuid and paid_order.batch_id is not null
+      and (enrollment.batch_id is null or $3::boolean)
+  `, [enrollmentId, current.id, enrollment?.status === 'revoked'])
   // Round C (C2): the code's reserved use becomes a redemption.
   if (current.promoCode) await redeemPromoUse(client, current.id)
 

@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
-import { query as databaseQuery } from '@/lib/db/client'
+import { query as databaseQuery, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { courseBatchMode, resolveEnrolmentBatch } from './batches/batch-repository'
 import { courseOpenToNewLearnersSql, coursePublisherNameSql, learnerCourseAccessSql, publishedCourseVisibilitySql } from './course-publication'
 import { notifyEnrolled } from './learning-notifications'
 
@@ -109,8 +110,18 @@ function mapEnrollment(row: EnrollmentRow): LearnerEnrollment {
   }
 }
 
-export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = {}) {
+type EnrollmentTransaction = <T>(work: (query: EnrollmentQuery) => Promise<T>) => Promise<T>
+
+function clientRows(client: DatabaseQueryClient): EnrollmentQuery {
+  return async (text, values) => (await client.query(text, values ? [...values] : undefined)).rows
+}
+
+export function createEnrollmentRepository(input: { query?: EnrollmentQuery; transaction?: EnrollmentTransaction } = {}) {
   const queryRows: EnrollmentQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
+  const transaction: EnrollmentTransaction = input.transaction
+    ?? (input.query
+      ? (<T>(work: (query: EnrollmentQuery) => Promise<T>) => work(queryRows))
+      : (<T>(work: (query: EnrollmentQuery) => Promise<T>) => withTransaction((client) => work(clientRows(client)))))
 
   async function getLearnerEnrollment(learnerId: string, courseId: string): Promise<LearnerEnrollment | null> {
     const rows = await queryRows(
@@ -133,7 +144,44 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
     return row ? mapEnrollment(row) : null
   }
 
-  async function enrollFreeCourse(learnerId: string, courseId: string) {
+  /**
+   * Round D: on a batch course the learner joins a chosen batch. The batch is locked and its seats counted in the same
+   * transaction as the enrolment, so two learners can never take the last seat. A learner already on the course keeps
+   * their batch.
+   */
+  /**
+   * Round D: on a batch course the learner joins a chosen batch. The batch is locked and its seats counted in the same
+   * transaction as the enrolment, so two learners can never take the last seat.
+   */
+  async function enrollFreeBatchCourse(learnerId: string, courseId: string, batchId: string | null) {
+    return transaction(async (tx) => {
+      const batch = await resolveEnrolmentBatch(tx, { courseId, batchId })
+      const rows = await tx(
+        `insert into public.learning_enrollments (course_id, learner_id, enrollment_source, status, enrolled_at, batch_id, created_at, updated_at)
+         select course.id, $1, 'free', 'active', now(), $3::uuid, now(), now()
+         from public.learning_courses course
+         left join public.learning_mentors mentor on mentor.id = course.mentor_id
+         left join public.learning_mentor_applications application
+           on application.id = mentor.application_id and application.user_id = mentor.user_id
+         left join public.companies company on company.id = course.company_id
+         where course.id = $2
+           and ${courseOpenToNewLearnersSql()}
+           and course.access_type = 'free'
+           and course.price_minor = 0
+         on conflict (course_id, learner_id) do nothing
+         returning id, status, enrollment_source, enrolled_at, completed_at, revoked_at`,
+        [learnerId, courseId, batch?.id ?? null],
+      ) as EnrollmentRow[]
+      const created = rows[0]
+      if (!created) throw new Error('course_not_enrollable')
+      const enrollment = mapEnrollment(created)
+      await notifyEnrolled(tx, { learnerId, courseId, enrollmentId: enrollment.enrollmentId }, { inTransaction: true })
+      return { enrollmentId: enrollment.enrollmentId, status: enrollment.status, enrolledAt: enrollment.enrolledAt, alreadyEnrolled: false }
+    })
+  }
+
+  /** A self-paced course enrols straight away; a batch course (round D) into the chosen batch. */
+  async function enrollFreeCourse(learnerId: string, courseId: string, batchId: string | null = null) {
     const rows = await queryRows(
       `insert into public.learning_enrollments (
          course_id,
@@ -164,6 +212,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          and ${courseOpenToNewLearnersSql()}
          and course.access_type = 'free'
          and course.price_minor = 0
+         and course.batch_mode = 'self_paced'
        on conflict (course_id, learner_id) do nothing
        returning
          id,
@@ -188,7 +237,10 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
     }
 
     const existing = await getLearnerEnrollment(learnerId, courseId)
-    if (!existing) throw new Error('course_not_enrollable')
+    if (!existing) {
+      if ((await courseBatchMode(queryRows, courseId)) === 'batches') return enrollFreeBatchCourse(learnerId, courseId, batchId)
+      throw new Error('course_not_enrollable')
+    }
     if (existing.status === 'revoked') throw new Error('enrollment_revoked')
 
     return {
