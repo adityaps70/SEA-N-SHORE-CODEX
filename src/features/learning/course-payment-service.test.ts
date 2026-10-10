@@ -96,8 +96,9 @@ let repository: ReturnType<typeof makeRepository>
 const tx = { query: vi.fn() }
 const log = vi.fn()
 
-function service(options: { configured?: boolean } = {}) {
+function service(options: { configured?: boolean; lut?: string | null } = {}) {
   return createCoursePaymentService({
+    lutForDate: async () => options.lut ?? null,
     getGateway: async () => (options.configured === false ? null : gateway),
     getGatewayByName: async () => (options.configured === false ? null : gateway),
     repository: repository as never,
@@ -123,6 +124,14 @@ describe('course payment service: checkout', () => {
   it('asks for a mobile number before creating anything when Cashfree needs one', async () => {
     await expect(service().startCheckout({ profileId, courseId, customer: { ...customer, phone: null } })).rejects.toMatchObject({ name: 'CustomerPhoneRequiredError' })
     expect(repository.prepareCheckoutOrder).not.toHaveBeenCalled()
+  })
+
+  it('takes USD off what the gateway can charge until an LUT is saved for the financial year (C4)', async () => {
+    gateway = { ...gateway, currencies: ['INR', 'USD'] }
+    await service().startCheckout({ profileId, courseId, customer, billing: { stateCode: '27' } })
+    expect(repository.prepareCheckoutOrder).toHaveBeenLastCalledWith(expect.objectContaining({ currencies: ['INR'], billing: { stateCode: '27' } }))
+    await service({ lut: 'AD2704260012345' }).startCheckout({ profileId, courseId, customer })
+    expect(repository.prepareCheckoutOrder).toHaveBeenLastCalledWith(expect.objectContaining({ currencies: ['INR', 'USD'] }))
   })
 
   it('creates a crs_ gateway order for the stored amount with return and webhook URLs', async () => {

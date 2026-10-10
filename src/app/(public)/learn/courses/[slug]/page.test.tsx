@@ -259,8 +259,9 @@ describe('/learn/courses/[slug]', () => {
     expect(original.closest('.line-through')).not.toBeNull()
     expect(screen.getByText('Save 20%')).toBeInTheDocument()
     expect(within(desktopHero()).getByRole('button', { name: 'Buy course — ₹16,000' })).toBeEnabled()
-    // Phones: the same checkout as a sticky bar, and the discounted price on the header chip.
-    expect(within(screen.getByTestId('course-action-bar')).getByRole('button', { name: 'Buy course — ₹16,000' })).toBeEnabled()
+    // Phones: the sticky bar opens the checkout section (C4: billing details for the GST invoice are asked there),
+    // and the discounted price is on the header chip.
+    expect(within(screen.getByTestId('course-action-bar')).getByRole('link', { name: 'Buy — ₹16,000' })).toHaveAttribute('href', '#course-access')
     expect(within(screen.getByTestId('phone-course-header')).getByText('₹16,000')).toBeInTheDocument()
   })
 

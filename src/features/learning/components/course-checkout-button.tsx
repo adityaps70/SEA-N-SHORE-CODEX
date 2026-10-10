@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
 import { CHECKOUT_TIMEOUT_SECONDS } from '@/features/payments/event-payment-rules'
 import { GatewayCheckoutButton } from '@/features/payments/components/gateway-checkout-button'
+import type { BillingInput } from '@/features/tax/billing'
 import { confirmCoursePaymentAction, startCourseCheckoutAction } from '../course-payment-actions'
 import { COURSE_PAYMENTS_NOT_CONFIGURED_HELP, COURSE_PAYMENTS_NOT_CONFIGURED_LABEL } from '../course-payment-rules'
 
@@ -23,11 +24,14 @@ type Props = {
   promoCode?: string | null
   /** "Buy course" (default) or "Renew". */
   actionVerb?: string
+  /** C4: billing details for the GST invoice, and a check run before checkout starts (returns a message to show). */
+  billing?: BillingInput | null
+  validate?: () => string | null
 }
 
 /** "Buy course — ₹X": gateway checkout, then straight into the course player once the server confirms. */
 export function CourseCheckoutButton({
-  courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false, planId = null, promoCode = null, actionVerb = 'Buy course',
+  courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false, planId = null, promoCode = null, actionVerb = 'Buy course', billing = null, validate,
 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -45,11 +49,16 @@ export function CourseCheckoutButton({
       unavailableHelp={blockedMessage}
       successFallback="Payment received. You're enrolled."
       timeoutSeconds={CHECKOUT_TIMEOUT_SECONDS}
-      start={({ phone }) => startCourseCheckoutAction(courseId, {
-        ...(phone ? { phone } : {}),
-        ...(planId ? { planId } : {}),
-        ...(promoCode ? { promoCode } : {}),
-      })}
+      start={async ({ phone }) => {
+        const problem = validate?.() ?? null
+        if (problem) return { ok: false, error: problem }
+        return startCourseCheckoutAction(courseId, {
+          ...(phone ? { phone } : {}),
+          ...(planId ? { planId } : {}),
+          ...(promoCode ? { promoCode } : {}),
+          ...(billing ? { billing } : {}),
+        })
+      }}
       confirm={({ orderId, proof }) => confirmCoursePaymentAction({ courseId, orderId, proof })}
       onSettled={(result) => {
         startTransition(() => {

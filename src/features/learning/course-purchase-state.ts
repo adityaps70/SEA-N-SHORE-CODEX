@@ -1,5 +1,7 @@
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { getPaymentCapabilities, type PaymentCapabilities } from '@/features/payments/provider'
+import type { PaymentCurrency } from '@/features/payments/types'
+import { lutForDate } from '@/features/tax/tax-settings'
 import type { CoursePurchaseState } from './components/course-purchase-panel'
 import { coursePaymentRepository } from './course-payment-repository'
 import { coursePurchaseBlockerMessage, courseRefundReasonLabel } from './course-payment-rules'
@@ -40,8 +42,22 @@ export function planOffers(plans: CoursePlan[]): CoursePlanOffer[] {
       listLabel: price.discountPriceMinor === null ? null : formatCourseAmount(price.listPriceMinor, price.currency),
       accessLabel: accessPeriodLabel(plan.accessMonths),
       currency: price.currency,
+      amountMinor: price.amountMinor,
+      unavailableMessage: null,
     }]
   })
+}
+
+/** C4: USD course sales are exports under LUT; they stay off until an LUT ARN is saved for this financial year. */
+export const USD_CLOSED_MESSAGE = 'Purchases in US dollars open soon. Choose a plan in Indian rupees, or check back later.'
+
+async function chargeable<T extends { currencies: readonly PaymentCurrency[] }>(payments: T, log: (message: string) => void): Promise<T> {
+  if (!payments.currencies.includes('USD')) return payments
+  const lut = await lutForDate(new Date()).catch((error: unknown) => {
+    log(error instanceof Error ? error.message : 'lut_lookup_failed')
+    return null
+  })
+  return lut ? payments : { ...payments, currencies: payments.currencies.filter((currency) => currency !== 'USD') }
 }
 
 async function capabilities(log: (message: string) => void) {
@@ -106,14 +122,22 @@ export async function loadCoursePurchaseState(input: {
     log(error instanceof Error ? error.message : 'course_plans_failed')
     return [] as CoursePlan[]
   })
-  const offers = planOffers(plans)
   const price = coursePrice(course)
-  const payments = await capabilities(log)
+  const gateway = await capabilities(log)
+  const payments = await chargeable(gateway, log)
+  const closedMessage = (currency: string) => gateway.currencies.includes(currency as PaymentCurrency)
+    ? USD_CLOSED_MESSAGE
+    : coursePurchaseBlockerMessage('course_currency_unsupported')
+  const offers = planOffers(plans).map((offer) => offer.currency && payments.configured && !payments.currencies.includes(offer.currency as PaymentCurrency)
+    ? { ...offer, unavailableMessage: closedMessage(offer.currency) }
+    : offer)
   const blockedMessage = !price
     ? coursePurchaseBlockerMessage(['INR', 'USD'].includes(course.currency) ? 'course_price_missing' : 'course_currency_unsupported')
-    : payments.configured && !payments.currencies.includes(price.currency)
+    : gateway.configured && !gateway.currencies.includes(price.currency)
       ? coursePurchaseBlockerMessage('course_currency_unsupported')
-      : undefined
+      : payments.configured && !payments.currencies.includes(price.currency) && offers.every((offer) => offer.unavailableMessage)
+        ? USD_CLOSED_MESSAGE
+        : undefined
   const open = payments.configured ? await coursePaymentRepository.getRecentOpenOrder(userId, course.id).catch(() => null) : null
 
   return {

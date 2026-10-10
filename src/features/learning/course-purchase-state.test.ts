@@ -43,7 +43,7 @@ beforeEach(() => {
 })
 
 const standardPlan = { id: 'plan-standard', name: 'Standard', priceMinor: 500000, discountPriceMinor: 400000, currency: 'INR', accessMonths: null, position: 0 }
-const standardOffer = { id: 'plan-standard', name: 'Standard', priceLabel: '₹4,000', listLabel: '₹5,000', accessLabel: 'Lifetime access', currency: 'INR' }
+const standardOffer = { id: 'plan-standard', name: 'Standard', priceLabel: '₹4,000', listLabel: '₹5,000', accessLabel: 'Lifetime access', currency: 'INR', amountMinor: 400_000, unavailableMessage: null }
 
 describe('course purchase state', () => {
   it('offers Buy course at the discounted price when payments are on', async () => {
@@ -58,6 +58,14 @@ describe('course purchase state', () => {
     mocks.getPaymentCapabilities.mockRejectedValueOnce(new Error('secrets unavailable'))
     await expect(loadCoursePurchaseState({ userId, course, enrollment: null })).resolves.toMatchObject({ kind: 'buy', configured: false })
     expect(mocks.getRecentOpenOrder).not.toHaveBeenCalled()
+  })
+
+  it('keeps USD plans closed until an LUT is saved for the financial year (C4)', async () => {
+    mocks.getPaymentCapabilities.mockResolvedValueOnce({ configured: true, provider: 'cashfree', currencies: ['INR', 'USD'] })
+    mocks.listPlans.mockResolvedValueOnce([{ ...standardPlan, currency: 'USD', priceMinor: 9_900, discountPriceMinor: null }])
+    const state = await loadCoursePurchaseState({ userId, course: { ...course, currency: 'USD', priceMinor: 9_900, discountPriceMinor: null }, enrollment: null })
+    expect(state).toMatchObject({ kind: 'buy', blockedMessage: expect.stringMatching(/US dollars open soon/) })
+    expect(state).toMatchObject({ plans: [{ unavailableMessage: expect.stringMatching(/US dollars open soon/) }] })
   })
 
   it('explains a currency the gateway cannot take', async () => {
