@@ -1,5 +1,16 @@
-export const MODERATION_TARGET_TYPES = ['post', 'comment', 'job', 'event', 'profile', 'group'] as const
+export const MODERATION_TARGET_TYPES = ['post', 'comment', 'job', 'event', 'profile', 'group', 'course_review'] as const
 export type ModerationTargetType = (typeof MODERATION_TARGET_TYPES)[number]
+
+/** What members call each kind of content ("Report this review"). Learning round C adds course reviews. */
+export const MODERATION_TARGET_LABELS: Record<ModerationTargetType, string> = {
+  post: 'post',
+  comment: 'comment',
+  job: 'job',
+  event: 'event',
+  profile: 'profile',
+  group: 'group',
+  course_review: 'review',
+}
 
 export const MODERATION_REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'] as const
 export type ModerationReportStatus = (typeof MODERATION_REPORT_STATUSES)[number]
@@ -65,6 +76,7 @@ export const REPORT_REASON_LABELS: Record<ModerationReportReason, string> = {
 export function allowedReportReasons(targetType: ModerationTargetType): readonly ModerationReportReason[] {
   if (targetType === 'job') return JOB_REPORT_REASONS
   if (targetType === 'profile') return PROFILE_REPORT_REASONS
+  // Posts, comments, events, groups and course reviews (learning round C) share the general reasons.
   return GENERAL_REPORT_REASONS
 }
 

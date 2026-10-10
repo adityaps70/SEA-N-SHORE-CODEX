@@ -18,6 +18,9 @@ const mocks = vi.hoisted(() => ({
   capturedResubmission: null as boolean | null,
   capturedSlugLocked: null as boolean | null,
   capturedSubmitRevision: null as boolean | null,
+  // Learning round C: announcements and the course community (live course).
+  listForManager: vi.fn(async (_actor: string, liveCourseId: string) => ({ liveCourseId, announcements: [], remainingToday: 3 }) as unknown),
+  getLinkForManager: vi.fn(async (_actor: string, liveCourseId: string) => ({ liveCourseId, current: null, options: [] }) as unknown),
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }))
@@ -64,6 +67,14 @@ vi.mock('@/features/learning/components/course-revision-controls', () => ({
     <div data-testid="course-revision-start">start:{courseId}:{openRevision?.courseId ?? 'none'}</div>
   ),
   CourseRevisionDiscardControl: ({ revisionCourseId }: { revisionCourseId: string }) => <div data-testid="course-revision-discard">discard:{revisionCourseId}</div>,
+}))
+vi.mock('@/features/learning/course-announcement-repository', () => ({ courseAnnouncementRepository: { listForManager: mocks.listForManager } }))
+vi.mock('@/features/learning/course-community-repository', () => ({ courseCommunityRepository: { getLinkForManager: mocks.getLinkForManager } }))
+vi.mock('@/features/learning/components/course-announcements-panel', () => ({
+  CourseAnnouncementsPanel: ({ data }: { data: { liveCourseId: string } }) => <div data-testid="course-announcements-panel">announcements:{data.liveCourseId}</div>,
+}))
+vi.mock('@/features/learning/components/course-community-panel', () => ({
+  CourseCommunityPanel: ({ link }: { link: { liveCourseId: string } }) => <div data-testid="course-community-panel">community:{link.liveCourseId}</div>,
 }))
 vi.mock('@/features/learning/components/course-withdraw-control', () => ({
   CourseWithdrawControl: ({ courseId }: { courseId: string }) => <div data-testid="course-withdraw-control">withdraw:{courseId}</div>,
@@ -304,5 +315,27 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(screen.getByText('These changes are closed')).toBeInTheDocument()
     expect(mocks.capturedFormReadOnly).toBe(true)
     expect(screen.queryByTestId('course-submit-control')).not.toBeInTheDocument()
+  })
+
+  it('shows Announcements and the course community for the live course, also from a draft copy (round C)', async () => {
+    const revisionId = '99999999-9999-4999-8999-999999999999'
+    mocks.getOwnedCourse.mockResolvedValue({
+      ...draftCourse,
+      id: revisionId,
+      status: 'draft',
+      revisionOf: { courseId, slug: 'sire-2-readiness-for-tanker-officers', title: draftCourse.title },
+    })
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId: revisionId }) }))
+    expect(mocks.listForManager).toHaveBeenCalledWith('user-1', courseId)
+    expect(mocks.getLinkForManager).toHaveBeenCalledWith('user-1', courseId)
+    expect(screen.getByTestId('course-announcements-panel')).toHaveTextContent(`announcements:${courseId}`)
+    expect(screen.getByTestId('course-community-panel')).toHaveTextContent(`community:${courseId}`)
+  })
+
+  it('offers no announcements before a course has ever been published, but can link its community (round C)', async () => {
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+    expect(mocks.listForManager).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('course-announcements-panel')).not.toBeInTheDocument()
+    expect(screen.getByTestId('course-community-panel')).toHaveTextContent(`community:${courseId}`)
   })
 })

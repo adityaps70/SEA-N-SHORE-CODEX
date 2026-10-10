@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   redirect: vi.fn(),
   isCourseManager: vi.fn(),
   canAccessPlatformAdmin: vi.fn(),
+  // Learning round C: rating, announcements and the course community (defaults: nothing to show).
+  getEligibility: vi.fn(async () => null as unknown),
+  listForLearner: vi.fn(async () => [] as unknown[]),
+  getDiscussion: vi.fn(async () => null as unknown),
 }))
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, redirect: mocks.redirect }))
@@ -47,6 +51,11 @@ vi.mock('@/features/learning/components/material-player', () => ({
   },
 }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
+vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getEligibility: mocks.getEligibility } }))
+vi.mock('@/features/learning/course-announcement-repository', () => ({ courseAnnouncementRepository: { listForLearner: mocks.listForLearner } }))
+vi.mock('@/features/learning/course-community-repository', () => ({ courseCommunityRepository: { getDiscussion: mocks.getDiscussion } }))
+vi.mock('@/features/learning/course-rating-actions', () => ({ saveCourseReview: vi.fn() }))
+vi.mock('@/features/learning/course-community-actions', () => ({ openCourseDiscussion: vi.fn() }))
 
 import LearnerCoursePage from './page'
 
@@ -421,5 +430,34 @@ describe('/learn/courses/[slug]/learn course team access', () => {
     mocks.isCourseManager.mockResolvedValue(true)
     render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
     expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
+  it('has Lesson and Announcements tabs; ?tab=announcements opens the course’s announcements, newest first (round C)', async () => {
+    mocks.listForLearner.mockResolvedValueOnce([
+      { id: 'a2', courseId: course.courseId, title: 'Live Q&A on Saturday', body: 'Join at 10:00 IST.', createdAt: '2026-10-09T10:00:00.000Z' },
+      { id: 'a1', courseId: course.courseId, title: 'Welcome aboard', body: 'Start with the intro.', createdAt: '2026-10-01T10:00:00.000Z' },
+    ])
+    mocks.getDiscussion.mockResolvedValueOnce({ groupId: 'g1', name: 'Fixture Deck Circle', visibility: 'private' })
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ tab: 'announcements' }) }))
+
+    expect(mocks.listForLearner).toHaveBeenCalledWith('learner-1', course.courseId)
+    const tabs = screen.getByRole('tablist', { name: 'Course player' })
+    expect(within(tabs).getByRole('tab', { name: /Announcements/ })).toHaveAttribute('aria-selected', 'true')
+    expect(within(tabs).getByRole('tab', { name: 'Lesson' })).toHaveAttribute('aria-selected', 'false')
+    const panel = screen.getByRole('tabpanel', { name: /Announcements/ })
+    expect(within(panel).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['Live Q&A on Saturday', 'Welcome aboard'])
+    expect(screen.getAllByRole('button', { name: 'Ask the trainer / Discuss' }).length).toBeGreaterThan(0)
+
+    fireEvent.click(within(tabs).getByRole('tab', { name: 'Lesson' }))
+    expect(screen.getByRole('region', { name: 'Current lesson' })).toBeVisible()
+  })
+
+  it('shows "Rate this course" in the lesson tab when the learner may rate it (round C)', async () => {
+    mocks.getEligibility.mockResolvedValueOnce({ canReview: false, reason: 'progress', progressPercent: 10, review: null })
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({}) }))
+    expect(mocks.getEligibility).toHaveBeenCalledWith('learner-1', course.courseId)
+    expect(screen.getByRole('heading', { name: 'Rate this course' })).toBeInTheDocument()
+    expect(screen.getByText(/once you’ve completed 20% of it\. You’re at 10%\./)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ask the trainer / Discuss' })).not.toBeInTheDocument()
   })
 })

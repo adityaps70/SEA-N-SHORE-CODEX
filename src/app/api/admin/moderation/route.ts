@@ -109,6 +109,10 @@ export async function POST(request: Request) {
       revalidatePath('/events')
       revalidatePath(`/events/${parsed.data.targetId}`)
     }
+    if (parsed.data.targetType === 'course_review') {
+      // Learning round C: a removed or restored review leaves or rejoins its course page.
+      revalidatePath('/learn/courses/[slug]', 'page')
+    }
 
     return json({ ok: true }, 200)
   } catch (error) {

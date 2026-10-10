@@ -215,6 +215,9 @@ export async function moderateContent(input: {
     revalidatePath('/events')
     revalidatePath(`/events/${parsed.data.targetId}`)
   }
+  if (parsed.data.targetType === 'course_review') {
+    revalidatePath('/learn/courses/[slug]', 'page')
+  }
   if (parsed.data.targetType === 'profile') {
     revalidatePath('/network')
     revalidatePath('/people/[slug]', 'page')

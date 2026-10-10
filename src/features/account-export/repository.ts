@@ -394,6 +394,18 @@ select jsonb_build_object(
     select jsonb_agg(to_jsonb(certificate))
     from public.learning_certificates certificate
     where certificate.learner_id = $1
+  ), '[]'::jsonb),
+  -- Learning round C: the member's own course ratings and reviews (not who moderated them), and the
+  -- announcements they posted to their courses' learners.
+  'learningCourseReviews', coalesce((
+    select jsonb_agg(to_jsonb(review) - 'moderated_by')
+    from public.learning_course_reviews review
+    where review.learner_id = $1
+  ), '[]'::jsonb),
+  'learningCourseAnnouncementsAuthored', coalesce((
+    select jsonb_agg(to_jsonb(announcement))
+    from public.learning_course_announcements announcement
+    where announcement.author_id = $1
   ), '[]'::jsonb)
 ) as export_data
 `

@@ -44,6 +44,7 @@ export function learningEmail(input: {
   const footer = 'You get this email because you learn or teach on Sea N Shore.'
   const text = [
     copy.message,
+    ...(copy.detail ? [copy.detail] : []),
     `${copy.action}: ${url}`,
     `${footer} Turn off learning emails: ${links.page}`,
     `Or choose your emails in Settings: ${links.settings}`,
@@ -53,7 +54,7 @@ export function learningEmail(input: {
 <p style="font-weight:bold;color:#071b2d;font-size:18px;margin:0 0 20px">Sea N Shore</p>
 <div style="background:#ffffff;border-radius:16px;padding:24px">
 <p style="margin:0 0 20px;font-size:16px;line-height:1.6">${escapeHtml(copy.message)}</p>
-<p style="margin:0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#075e82;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:bold">${escapeHtml(copy.action)}</a></p>
+${copy.detail ? `<p style="margin:0 0 20px;font-size:15px;line-height:1.6;white-space:pre-wrap;border-left:3px solid #c9d8de;padding-left:12px;color:#334a57">${escapeHtml(copy.detail)}</p>\n` : ''}<p style="margin:0"><a href="${escapeHtml(url)}" style="display:inline-block;background:#075e82;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:bold">${escapeHtml(copy.action)}</a></p>
 </div>
 <div style="font-size:12px;color:#607481;padding:16px 4px;line-height:1.5">${escapeHtml(footer)} <a href="${escapeHtml(links.page)}" style="color:#607481">Turn off learning emails</a> · <a href="${escapeHtml(links.settings)}" style="color:#607481">Email settings</a></div>
 </div></body></html>`

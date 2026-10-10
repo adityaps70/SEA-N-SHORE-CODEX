@@ -44,6 +44,13 @@ function targetLookupSql(targetType: ModerationTargetType) {
       where g.id = $1 and g.archived_at is null
       limit 1`
   }
+  if (targetType === 'course_review') {
+    // Learning round C: only an approved review is shown publicly, so only an approved review can be reported.
+    return `select learner_id as owner_id
+      from public.learning_course_reviews
+      where id = $1 and status = 'approved'
+      limit 1`
+  }
   return `select id as owner_id
     from public.profiles
     where id = $1 and account_status::text <> 'deletion_requested'

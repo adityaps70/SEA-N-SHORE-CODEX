@@ -34,6 +34,7 @@ const copyByType: Record<NetworkNotificationType, string> = {
   learning_submissions_to_grade: 'submitted assignments to grade',
   learning_quiz_graded: 'graded your quiz answers',
   learning_certificate_expiring: 'your certificate expires soon',
+  learning_announcement: 'posted a course announcement',
 }
 
 function learningCopy(row: NotificationRow) {

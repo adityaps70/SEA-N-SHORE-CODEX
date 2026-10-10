@@ -472,6 +472,19 @@ async function cleanupAccount(query: Query, profileId: string, currentSub: strin
      where reviewed_by = $1`,
     [profileId],
   )
+  // Learning round C: reviews this person moderated and announcements they posted stay, without their name.
+  await query(
+    `update public.learning_course_reviews
+     set moderated_by = null
+     where moderated_by = $1`,
+    [profileId],
+  )
+  await query(
+    `update public.learning_course_announcements
+     set author_id = null
+     where author_id = $1`,
+    [profileId],
+  )
 
   await query(
     `delete from public.post_reactions
@@ -642,6 +655,19 @@ async function cleanupAccount(query: Query, profileId: string, currentSub: strin
   await query(
     `delete from public.content_reports
      where reporter_id = $1`,
+    [profileId],
+  )
+  // Learning round C: the profile row is kept (anonymised), so the member's course reviews would not cascade.
+  // They are deleted here, with the reports about them (the reported text no longer exists).
+  await query(
+    `delete from public.content_reports
+     where target_type = 'course_review'
+       and target_id in (select id from public.learning_course_reviews where learner_id = $1)`,
+    [profileId],
+  )
+  await query(
+    `delete from public.learning_course_reviews
+     where learner_id = $1`,
     [profileId],
   )
   await query(
