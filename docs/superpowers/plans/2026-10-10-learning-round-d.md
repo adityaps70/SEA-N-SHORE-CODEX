@@ -121,5 +121,53 @@ Decisions made while building:
 - [x] D2 recordings (link or upload)
 - [x] Zoom/Meet automatic link creation: note for the owner (not built)
 - [x] D3 design sent to the owner (not built until approved)
-- [ ] PR 1 (D1 + migrations), PR 2 (D2), one guarded migration, one deploy, rearm, Remote Verify
-- [ ] Live checks on seanshore.in and report
+- [x] PR 1 (D1 + migrations), PR 2 (D2), one guarded migration, one deploy, rearm, Remote Verify
+- [x] Signed-out live checks on seanshore.in and report
+- [ ] Signed-in live checks on seanshore.in (owner; script below)
+
+## Release (10 October)
+
+| Step | Result |
+| --- | --- |
+| PR 1, D1 batches + migrations 0077–0078 | #191, merged as `bca7b803` |
+| Migration plan | run 38066123596: both files ADDITIVE (1 and 22 statements), both pending, PLAN_VERIFIED, PLAN_ONLY_NO_APPLY |
+| PR 2, D2 live sessions | #192, merged as `74167b33` |
+| Migration arm (owner merged) | #193, `migrate-once 74167b33` |
+| Migration apply | run 38069239021: 0077 and 0078 APPLIED, `tables=5 columns=8 reminder_type=1`, APPLY_VERIFIED=true |
+| Migration rearm | `b1ac9ae2` (guard back to `plan`) |
+| Deploy arm (owner merged) | #194, `deploy-once b1ac9ae2` |
+| Deploy | run 38070723870: web `:243 → :244`, outbox worker `:125 → :126`, notification worker `:124 → :125` |
+| Deploy rearm | `8f7ac7f4` (guard back to `plan`) |
+| Post-deploy checks | Remote Verify 38071669436, Google auth 38071671401, logo 38071673721: all green |
+
+Final guards: `learning-round-d-migration-action.txt` = `plan`, `staging-deploy-action.txt` = `plan`.
+
+One side note: the AWS Social Events Image run on the #192 merge (38067340691) failed only because its 15-minute wait
+for CI on the same commit ran out 20 seconds before that CI went green (that CI run took about 16 minutes). It
+builds the social worker image, which round D does not change. The next merge to feat runs it again.
+
+### Signed-out live checks (done)
+
+- `/` and `/learn`: 200. A self-paced course page (`/learn/courses/sire-2-0-inspection-readiness`) loads with its
+  usual "Enrol" button and no batch picker.
+- Signed out, `/api/learn/sessions/<id>/calendar`, `/recording` and `/api/learn/batches/<id>/calendar` answer 401;
+  `/api/learn/sessions/<id>/join` sends the visitor to sign in; the Studio batch and session pages, My Learning and
+  Settings → Notifications send the visitor to sign in.
+
+### Signed-in live checks (owner)
+
+1. Studio → a course → Batches: choose "Batches" for the course (optional: drip from the batch start, minimum
+   attendance 67 %). Add a batch starting today with a seat limit.
+2. Batch → Sessions: add a weekly series of 3 sessions (e.g. three weekdays at the next round hour, 30 minutes) with
+   any https meeting link. The first one should start about 70 minutes from now so both reminders fall inside the test.
+3. As a test learner: open the course page, choose the batch, enrol. Player → Sessions shows the 3 sessions in the
+   device's zone with the zone named; "Add to calendar" downloads a `.ics` file that opens in a calendar app.
+4. Reminders: the "Coming up" email arrives within about 5 minutes (24 h stage) and "Starting soon" when the session
+   is under an hour away.
+5. From 15 minutes before the start, Join opens the meeting link; the trainer's Sessions page then shows the join
+   time. After the start, mark the learner present for one session and absent for the next.
+6. The learner finishes the lessons: the certificate waits while attendance is below the minimum (Course completed
+   shows the attendance message); marking enough sessions present issues it.
+7. Attach a recording (link or upload) to the first session: the learner sees it in Sessions; a learner of another
+   batch and a signed-out visitor do not.
+8. A self-paced course still enrols, plays and issues its certificate as before.
