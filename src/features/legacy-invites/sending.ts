@@ -1,4 +1,5 @@
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
+import { withEmailSuppression } from '@/lib/email/suppression'
 import { LEGACY_INVITE_FROM, legacyInviteEmail } from './email'
 import { legacyInviteRepository, type LegacyInviteDelivery } from './repository'
 
@@ -21,7 +22,7 @@ export function createLegacyInviteWorker(input: {
   async function resolveClient() {
     if (client !== undefined) return client
     const key = await (input.loadApiKey ?? loadResendApiKey)()
-    client = key ? createResendEmailClient({ apiKey: key }) : null
+    client = key ? withEmailSuppression(createResendEmailClient({ apiKey: key })) : null
     return client
   }
 
@@ -65,13 +66,16 @@ export function createLegacyInviteWorker(input: {
       let failed = 0
       let skipped = 0
       let retrying = 0
-      for (const delivery of deliveries) {
+      for (const [index, delivery] of deliveries.entries()) {
         const result = await sendOne(delivery, sender)
         if (result === 'sent') sent += 1
         if (result === 'failed') failed += 1
         if (result === 'skipped') skipped += 1
         if (result === 'retry') {
           retrying += 1
+          // Resend is struggling: put the claimed-but-untried invitations back in the queue for the next sweep.
+          // Without this they stayed in 'sending' for good, which no sweep picks up and Stop cannot cancel.
+          for (const rest of deliveries.slice(index + 1)) await repository.release(rest.id)
           break
         }
       }

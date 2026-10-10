@@ -4,6 +4,8 @@ import { outboxIdleDelayMs } from '../../src/features/events/outbox-backoff'
 import { deletedPostRetention } from '../../src/features/feed/deleted-post-retention'
 import { createNewsletterWorker } from '../../src/features/newsletter/worker'
 import { createLegacyInviteWorker } from '../../src/features/legacy-invites/sending'
+import { createLegacyReminderWorker } from '../../src/features/legacy-invites/reminder-sending'
+import { createDeliveryBackfillWorker } from '../../src/features/email-delivery/backfill'
 import { subscriptionService } from '../../src/features/billing/subscription-service'
 import { createUnconfirmedUserCleanup } from '../../src/features/auth/unconfirmed-user-cleanup'
 import { createLearningDigestSweep, createLearningEmailWorker } from '../../src/features/learning/learning-email-sending'
@@ -30,6 +32,17 @@ let nextNewsletterSweepAt = 0
 let nextLegacyInviteSweepAt = 0
 const newsletterWorker = createNewsletterWorker()
 const legacyInviteWorker = createLegacyInviteWorker()
+// The legacy second reminder: same pace as the first invitation (at most 5 a minute), only after the admin starts it.
+const LEGACY_REMINDER_SWEEP_MS = 60 * 1000
+let nextLegacyReminderSweepAt = 0
+const legacyReminderWorker = createLegacyReminderWorker()
+// Resend delivery status backfill (each sent invitation fetched once, about 20 every 20 s) and the suppression list
+// sync (every 6 hours). Both only read from Resend; the backfill finds nothing to do once every invitation is checked.
+const DELIVERY_BACKFILL_SWEEP_MS = 20 * 1000
+const SUPPRESSION_SYNC_MS = 6 * 60 * 60 * 1000
+let nextDeliveryBackfillSweepAt = 0
+let nextSuppressionSyncAt = 0
+const deliveryBackfillWorker = createDeliveryBackfillWorker()
 // Plan subscriptions: expire lapsed plans, reconcile open Cashfree mandates, raise due
 // charges in merchant charge mode. Hourly; the job is idempotent.
 const BILLING_SWEEP_MS = 60 * 60 * 1000
@@ -125,6 +138,40 @@ async function runLegacyInviteSweepIfDue() {
     })
   } catch (error) {
     console.error('[legacy_invite_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
+async function runLegacyReminderSweepIfDue() {
+  const now = Date.now()
+  if (now < nextLegacyReminderSweepAt) return
+  nextLegacyReminderSweepAt = now + LEGACY_REMINDER_SWEEP_MS
+
+  try {
+    const result = await legacyReminderWorker.runSweep(5)
+    if (result.claimed > 0) console.info('[legacy_reminder_sweep]', result)
+  } catch (error) {
+    console.error('[legacy_reminder_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
+async function runDeliveryBackfillIfDue() {
+  const now = Date.now()
+  if (now >= nextSuppressionSyncAt) {
+    nextSuppressionSyncAt = now + SUPPRESSION_SYNC_MS
+    try {
+      const result = await deliveryBackfillWorker.runSuppressionSync()
+      console.info('[resend_suppression_sync]', result)
+    } catch (error) {
+      console.error('[resend_suppression_sync_error]', error instanceof Error ? error.message : 'unknown_error')
+    }
+  }
+  if (now < nextDeliveryBackfillSweepAt) return
+  nextDeliveryBackfillSweepAt = now + DELIVERY_BACKFILL_SWEEP_MS
+  try {
+    const result = await deliveryBackfillWorker.runStatusSweep(20)
+    if (result.checked > 0 || result.stopped) console.info('[resend_status_backfill]', result)
+  } catch (error) {
+    console.error('[resend_status_backfill_error]', error instanceof Error ? error.message : 'unknown_error')
   }
 }
 
@@ -277,6 +324,8 @@ async function main() {
       await runRetentionSweepIfDue()
       await runNewsletterSweepIfDue()
       await runLegacyInviteSweepIfDue()
+      await runLegacyReminderSweepIfDue()
+      await runDeliveryBackfillIfDue()
       await runBillingSweepIfDue()
       await runUnconfirmedUserSweepIfDue()
       await runLearningDigestSweepIfDue()

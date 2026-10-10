@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createResendEmailClient,
+  DEFAULT_RESEND_ADMIN_SECRET_ID,
   DEFAULT_RESEND_SECRET_ID,
+  loadResendAdminApiKey,
   loadResendApiKey,
   resendApiKeyFromSecretString,
   resendSecretId,
@@ -133,5 +135,66 @@ describe('Resend email client', () => {
     expect(resendApiKeyFromSecretString(JSON.stringify({ api_key: 're_alt_key' }))).toBe('re_alt_key')
     expect(resendApiKeyFromSecretString('re_raw_key')).toBe('re_raw_key')
     expect(resendApiKeyFromSecretString(JSON.stringify({ RESEND_API_KEY: 'not-a-key' }))).toBeNull()
+  })
+})
+
+describe('Resend read calls for delivery status', () => {
+  it('fetches one email’s last event with a GET and the bearer key', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ object: 'email', id: 'e-1', to: ['A@Example.com'], last_event: 'delivered', created_at: '2026-10-03 10:00:00+00' }))
+    const client = createResendEmailClient({ apiKey: 're_test_key', fetch: fetchMock })
+    await expect(client.getEmail('e-1')).resolves.toEqual({ id: 'e-1', lastEvent: 'delivered', to: ['A@Example.com'], createdAt: '2026-10-03 10:00:00+00' })
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.resend.com/emails/e-1')
+    expect(init.method).toBe('GET')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer re_test_key')
+    await expect(client.getEmail('../domains')).rejects.toMatchObject({ code: 'invalid_email_id' })
+  })
+
+  it('reports a rate limit as retryable and a sending-only key as not', async () => {
+    const limited = createResendEmailClient({ apiKey: 're_test_key', fetch: vi.fn(async () => jsonResponse({ name: 'rate_limit_exceeded', message: 'Too many' }, 429)) })
+    await expect(limited.getEmail('e-1')).rejects.toMatchObject({ status: 429, retryable: true })
+    const restricted = createResendEmailClient({ apiKey: 're_test_key', fetch: vi.fn(async () => jsonResponse({ name: 'restricted_api_key', message: 'Sending only' }, 401)) })
+    await expect(restricted.getEmail('e-1')).rejects.toMatchObject({ status: 401, retryable: false })
+  })
+
+  it('pages through the suppression list with limit and after', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      object: 'list',
+      has_more: true,
+      data: [{ id: 's1', email: 'A@Example.com', origin: 'bounce', source_id: 'e1' }, { id: '', email: 'skip@example.com' }],
+    }))
+    const client = createResendEmailClient({ apiKey: 're_test_key', fetch: fetchMock })
+    await expect(client.listSuppressions({ after: 's0', limit: 500 })).resolves.toEqual({
+      data: [{ id: 's1', email: 'a@example.com', origin: 'bounce', sourceId: 'e1' }],
+      hasMore: true,
+    })
+    expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('https://api.resend.com/suppressions?limit=100&after=s0')
+  })
+})
+
+describe('the full-access admin key', () => {
+  it('reads sea-n-shore/resend-admin (plaintext) in production, with its own cache, separate from the sending key', async () => {
+    const secrets: Record<string, string> = {
+      'sea-n-shore/resend': JSON.stringify({ RESEND_API_KEY: 're_sending_only' }),
+      'sea-n-shore/resend-admin': 're_full_access',
+    }
+    const loadSecret = vi.fn(async (id: string) => secrets[id] ?? null)
+    const environment = { NODE_ENV: 'production' }
+    expect(DEFAULT_RESEND_ADMIN_SECRET_ID).toBe('sea-n-shore/resend-admin')
+    // The existing runtime grant is "sea-n-shore/resend*", which covers the admin secret's name.
+    expect(DEFAULT_RESEND_ADMIN_SECRET_ID.startsWith(DEFAULT_RESEND_SECRET_ID)).toBe(true)
+    await expect(loadResendApiKey({ environment, loadSecret })).resolves.toBe('re_sending_only')
+    await expect(loadResendAdminApiKey({ environment, loadSecret })).resolves.toBe('re_full_access')
+    await expect(loadResendApiKey({ environment, loadSecret })).resolves.toBe('re_sending_only')
+    expect(loadSecret.mock.calls).toEqual([['sea-n-shore/resend'], ['sea-n-shore/resend-admin']])
+  })
+
+  it('returns null without logging the key when the admin secret is missing', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = Object.assign(new Error('not found'), { name: 'ResourceNotFoundException' })
+    await expect(loadResendAdminApiKey({ environment: { NODE_ENV: 'production' }, loadSecret: async () => { throw error }, useCache: false })).resolves.toBeNull()
+    expect(log).toHaveBeenCalledWith('resend_admin_secret_unavailable', { name: 'ResourceNotFoundException' })
+    log.mockRestore()
+    await expect(loadResendAdminApiKey({ environment: { NODE_ENV: 'test' }, useCache: false })).resolves.toBeNull()
   })
 })

@@ -26,7 +26,7 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/organizations/access-request-actions.ts', ['decideOrganizationAccessRequest']],
   ['src/features/billing/admin-actions.ts', ['updatePlanPriceAction', 'adminCancelSubscriptionAction', 'adminExtendTrialAction', 'adminEndTrialAction']],
   ['src/features/community/admin-actions.ts', ['createGroupAsAdmin', 'updateGroupAsAdmin', 'setGroupOwnerAsAdmin', 'archiveGroupAsAdmin', 'unarchiveGroupAsAdmin']],
-  ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites']],
+  ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites', 'prepareLegacyReminderBatch', 'startPreparedLegacyReminders', 'cancelPreparedLegacyReminders', 'stopUnsentLegacyReminders']],
   ['src/features/newsletter/admin-actions.ts', ['adminUnsubscribeSubscriber', 'queueNewsletterCampaign']],
   ['src/features/payouts/admin-actions.ts', ['updateFeeSettingsAction', 'setFeeOverrideAction', 'removeFeeOverrideAction', 'searchSellersAction', 'sendPayoutAction', 'refreshPayoutStatusAction', 'retryPayoutAction', 'cancelPayoutAction']],
   // C4: admin review of course sellers' monthly invoices.

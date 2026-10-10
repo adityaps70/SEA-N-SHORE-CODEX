@@ -1,4 +1,4 @@
-function escapeHtml(value: string) {
+export function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
     '<': '&lt;',
@@ -10,9 +10,17 @@ function escapeHtml(value: string) {
 
 export const LEGACY_INVITE_FROM = 'Sea N Shore <accounts@mail.seanshore.in>'
 
+export function legacySiteUrl(siteUrl?: string) {
+  return (siteUrl?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://seanshore.in').replace(/\/+$/g, '')
+}
+
+/** The invitation's unique claim link. The second reminder uses the same link as the first invitation. */
+export function legacyClaimUrl(siteUrl: string, claimToken: string) {
+  return `${legacySiteUrl(siteUrl)}/auth/claim-profile?invite=${encodeURIComponent(claimToken)}`
+}
+
 export function legacyInviteEmail(input: { fullName: string; claimToken: string; siteUrl?: string }) {
-  const siteUrl = (input.siteUrl?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://seanshore.in').replace(/\/+$/g, '')
-  const claimUrl = `${siteUrl}/auth/claim-profile?invite=${encodeURIComponent(input.claimToken)}`
+  const claimUrl = legacyClaimUrl(legacySiteUrl(input.siteUrl), input.claimToken)
   const name = input.fullName.trim() || 'Sea N Shore member'
   const subject = 'Your Sea N Shore profile is ready to reclaim'
   const text = [

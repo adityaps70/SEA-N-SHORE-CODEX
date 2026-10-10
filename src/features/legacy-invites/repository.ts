@@ -31,6 +31,8 @@ export type LegacyInviteRecent = {
   status: LegacyInviteStatus
   attempts: number
   sentAt: string | null
+  lastEvent: string | null
+  lastEventAt: string | null
   lastError: string | null
 }
 
@@ -81,6 +83,11 @@ function eligibleSql() {
         from public.legacy_profile_invites invite
         where lower(invite.email) = candidate.email
           and invite.status <> 'cancelled'
+      )
+      and not exists (
+        select 1
+        from public.email_suppressions suppression
+        where suppression.email = candidate.email
       )
   `
 }
@@ -265,6 +272,15 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
       })
     },
 
+    /** Returns a claimed invitation that was not tried to the queue, as if it had not been claimed. */
+    async release(id: string) {
+      await queryRows(`
+        update public.legacy_profile_invites
+        set status = 'queued', attempts = greatest(0, attempts - 1), updated_at = now()
+        where id = $1 and status = 'sending'
+      `, [id])
+    },
+
     async markSent(id: string, messageId: string) {
       await queryRows(`
         update public.legacy_profile_invites
@@ -322,10 +338,12 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
         status: string
         attempts: number
         sent_at: string | Date | null
+        last_event: string | null
+        last_event_at: string | Date | null
         last_error: string | null
       }>(`
         select invite.id, invite.email, profile.full_name, invite.status, invite.attempts,
-               invite.sent_at, invite.last_error
+               invite.sent_at, invite.last_event, invite.last_event_at, invite.last_error
         from public.legacy_profile_invites invite
         join public.profiles profile on profile.id = invite.profile_id
         order by invite.queued_at desc
@@ -338,6 +356,8 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
         status: status(row.status),
         attempts: row.attempts,
         sentAt: row.sent_at instanceof Date ? row.sent_at.toISOString() : row.sent_at,
+        lastEvent: row.last_event ?? null,
+        lastEventAt: row.last_event_at instanceof Date ? row.last_event_at.toISOString() : row.last_event_at,
         lastError: row.last_error ?? null,
       }))
     },
