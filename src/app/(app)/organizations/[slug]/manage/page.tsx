@@ -11,6 +11,7 @@ import { BillingHistory, PlanBillingPanel } from '@/features/billing/components/
 import { loadPlanBillingView } from '@/features/billing/page-data'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { organizationAccessRequestRepository } from '@/features/organizations/access-request-repository'
+import { canRunCompanyTraining } from '@/features/organizations/manage-context'
 import { StatusChip } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationManageShell } from '@/features/organizations/components/organization-manage-shell'
 import { OrganizationRequestsPanel } from '@/features/organizations/components/organization-requests-panel'
@@ -110,6 +111,7 @@ export default async function OrganizationManagePage({
       showRequests={Boolean(viewer)}
       pendingRequests={pendingCount}
       showBilling={billingContact}
+      showTraining={canRunCompanyTraining(access, workspace.id)}
       locked={membership ? {
         team: !can('organization.team'),
         branding: !can('organization.branding'),

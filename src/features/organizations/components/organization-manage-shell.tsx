@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, CreditCard, ExternalLink, Inbox, LayoutDashboard, Lock, Palette, UsersRound } from 'lucide-react'
+import { BarChart3, CreditCard, ExternalLink, GraduationCap, Inbox, LayoutDashboard, Lock, Palette, UsersRound } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { organizationManageHref, organizationPlanBillingHref } from '../organization-page-profile'
 import { OrganizationLogo } from './organization-logo'
 
-export type ManageNavId = 'overview' | 'requests' | 'team' | 'branding' | 'analytics' | 'billing'
+export type ManageNavId = 'overview' | 'requests' | 'team' | 'branding' | 'analytics' | 'billing' | 'training'
 
 type NavItem = {
   id: ManageNavId
@@ -29,6 +29,7 @@ export function OrganizationManageShell({
   pendingRequests = 0,
   locked = {},
   showBilling = false,
+  showTraining = false,
   children,
 }: {
   workspace: { id: string; slug: string; name: string; logoPath: string | null }
@@ -42,6 +43,8 @@ export function OrganizationManageShell({
   locked?: Partial<Record<'team' | 'branding' | 'analytics', boolean>>
   /** "Plan & billing" is shown to the owner and administrators, on the free plan too. */
   showBilling?: boolean
+  /** D3: "Crew training" for the owner, administrators and learning managers. */
+  showTraining?: boolean
   children: ReactNode
 }) {
   const slug = workspace.slug
@@ -50,6 +53,7 @@ export function OrganizationManageShell({
     ...(showRequests ? [{ id: 'requests' as const, label: 'Requests', href: organizationManageHref(slug, 'requests'), icon: Inbox, badge: pendingRequests }] : []),
     // Early in the list so it is visible without scrolling the phone section row.
     ...(showBilling ? [{ id: 'billing' as const, label: 'Plan & billing', href: organizationPlanBillingHref(slug), icon: CreditCard }] : []),
+    ...(showTraining ? [{ id: 'training' as const, label: 'Crew training', href: `/organizations/${slug}/training`, icon: GraduationCap }] : []),
     { id: 'team', label: 'Team & roles', href: `/organizations/${slug}/team`, icon: UsersRound, locked: locked.team },
     { id: 'branding', label: 'Branding', href: `/organizations/${slug}/branding`, icon: Palette, locked: locked.branding },
     { id: 'analytics', label: 'Analytics', href: `/organizations/${slug}/analytics`, icon: BarChart3, locked: locked.analytics },

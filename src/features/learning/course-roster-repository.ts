@@ -116,6 +116,7 @@ const ROSTER_SQL = `
     profile.slug,
     enrollment.batch_id,
     roster_batch.title as batch_title,
+    enrollment.company_seat_id,
     profile.role_key,
     profile.role_other_text,
     maritime.rank as legacy_rank,
@@ -185,6 +186,7 @@ function mapLearner(row: QueryResultRow): RosterLearner {
     certificate: row.certificate_status === 'issued' || row.certificate_status === 'expired' ? row.certificate_status : 'none',
     batchId: row.batch_id ? String(row.batch_id) : null,
     batchTitle: row.batch_title ? String(row.batch_title) : null,
+    ...(row.company_seat_id ? { companySeat: true } : {}),
   }
 }
 

@@ -17,6 +17,8 @@ import {
 import { learnerHomeRepository } from '@/features/learning/learner-home-repository'
 import { sessionRepository } from '@/features/learning/sessions/session-repository'
 import { UpcomingSessionsCard } from '@/features/learning/sessions/components/learner-sessions-panel'
+import { CompanyTrainingCard } from '@/features/learning/company-training/components/company-training-card'
+import { crewRepository } from '@/features/learning/company-training/crew-repository'
 import { DeviceTimeZoneSync } from '@/features/learning/sessions/components/device-time-zone-sync'
 
 export const metadata: Metadata = { title: 'My learning' }
@@ -171,7 +173,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
   ])
   // Round C (C1): a course a trainer invited this email address to is enrolled before the list loads.
   await courseInvitationClaims.forProfile(user.id).catch(logLoadFailure('course_invitation_claim_failed'))
-  const [enrollments, purchases, certificates, resume, upcomingSessions] = await Promise.all([
+  const [enrollments, purchases, certificates, resume, upcomingSessions, companyInvitations, companySharing] = await Promise.all([
     enrollmentRepository.listLearnerEnrollments(user.id),
     coursePaymentRepository.listLearnerPurchases(user.id).catch(logLoadFailure('learner_purchases_load_failed')),
     certificateRepository.listForLearner(user.id).catch(logLoadFailure('learner_certificates_load_failed')),
@@ -179,6 +181,9 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
     learnerHomeRepository.getResumeCourse(user.id).catch(logLoadFailure('learner_resume_load_failed')),
     // Round D: the next live sessions of the learner's batches (a convenience: the page works without it).
     sessionRepository.upcomingForLearner(user.id, 5).catch(logLoadFailure('learner_sessions_load_failed')),
+    // D3: crew training invitations and the companies the learner shares assigned-course progress with.
+    crewRepository.invitationsForMember(user.id).catch(logLoadFailure('company_invitations_load_failed')),
+    crewRepository.sharingForMember(user.id).catch(logLoadFailure('company_sharing_load_failed')),
   ])
   const now = new Date()
 
@@ -237,6 +242,8 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
           <UpcomingSessionsCard sessions={upcomingSessions} now={now} />
         </div>
       ) : null}
+
+      <CompanyTrainingCard invitations={companyInvitations ?? []} sharing={companySharing ?? []} />
 
       <MyLearningTabs
         initialTab={myLearningTabFrom(query.tab)}

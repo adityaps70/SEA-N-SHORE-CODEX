@@ -41,6 +41,8 @@ export type RosterLearner = {
   /** Round D: the learner's batch on a batch course (null when self-paced or not in a batch). */
   batchId: string | null
   batchTitle: string | null
+  /** D3: enrolled on a company's seat. */
+  companySeat?: boolean
 }
 
 export type RosterInvitation = {
@@ -57,7 +59,8 @@ export type RosterEnrolOutcome =
   | { kind: 'invited' }
   | { kind: 'already_invited' }
 
-export function rosterSourceLabel(source: RosterLearner['source']) {
+export function rosterSourceLabel(source: RosterLearner['source'], companySeat = false) {
+  if (companySeat) return 'Company seat'
   if (source === 'purchase') return 'Bought'
   if (source === 'trainer') return 'Enrolled by trainer'
   if (source === 'admin') return 'Course team'
@@ -89,7 +92,7 @@ const COLUMNS: ReadonlyArray<readonly [string, (learner: RosterLearner) => strin
   ['Name', (learner) => learner.name],
   ['Rank', (learner) => learner.rank ?? ''],
   ['Enrolled', (learner) => isoDate(learner.enrolledAt)],
-  ['How', (learner) => rosterSourceLabel(learner.source)],
+  ['How', (learner) => rosterSourceLabel(learner.source, learner.companySeat)],
   ['Status', (learner) => rosterStatusLabel(learner)],
   ['Progress %', (learner) => String(learner.progressPercent)],
   ['Lessons completed', (learner) => `${learner.completedLessons} of ${learner.totalLessons}`],

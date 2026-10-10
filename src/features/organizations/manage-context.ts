@@ -1,5 +1,6 @@
 import { canUseCapability, type AccessContext } from '@/features/access/policy'
 import { isOrganizationBillingContact } from '@/features/billing/billing-access'
+import { COMPANY_TRAINING_ROLES } from '@/features/learning/company-training/company-access'
 import { accessRoleLabel } from './access-request-labels'
 import { organizationAccessRequestRepository } from './access-request-repository'
 
@@ -17,10 +18,17 @@ export async function loadManageShellContext(userId: string, companyId: string, 
       ? `${accessRoleLabel(membership.role)} · ${membership.plan === 'organization_pro' ? 'Organization Pro' : 'Free plan'}`
       : null,
     showBilling: isOrganizationBillingContact(access, companyId),
+    showTraining: canRunCompanyTraining(access, companyId),
     locked: {
       team: !canUseCapability(access, 'organization.team', { companyId }),
       branding: !canUseCapability(access, 'organization.branding', { companyId }),
       analytics: !canUseCapability(access, 'analytics.view', { companyId }),
     },
   }
+}
+
+/** D3: the owner, administrators and learning managers of a claimed organization run its crew training. */
+export function canRunCompanyTraining(access: AccessContext, companyId: string) {
+  const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
+  return Boolean(membership && !membership.unclaimed && (COMPANY_TRAINING_ROLES as readonly string[]).includes(membership.role))
 }

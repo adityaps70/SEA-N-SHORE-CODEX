@@ -44,6 +44,14 @@ export type SeatPackRow = {
   boughtBy: string | null
 }
 
+export type AssignOption = {
+  courseId: string
+  title: string
+  available: number
+  batches: Array<{ id: string; label: string }> | null
+  eligible: Array<{ profileId: string; name: string; detail: string | null }>
+}
+
 export type SeatSummaryRow = {
   courseId: string
   courseTitle: string
@@ -200,13 +208,81 @@ export function createTrainingRepository(input: { query?: Query } = {}) {
     }))
   }
 
+  /**
+   * What the Assign form needs: each course with unassigned seats, the active crew who could get one (not enrolled in
+   * it yet), and the open batches of a batch course.
+   */
+  async function assignOptions(actor: TrainingActor, companyId: string, now = new Date()): Promise<AssignOption[]> {
+    await loadTrainingCompany(query, actor, companyId)
+    const courses = await query(
+      `select seat.course_id, course.title, course.batch_mode, count(*) as available
+       from public.company_training_seats seat
+       inner join public.learning_courses course on course.id = seat.course_id
+       where seat.company_id = $1::uuid and seat.status = 'available' and seat.valid_until > $2::timestamptz
+       group by seat.course_id, course.title, course.batch_mode
+       order by lower(course.title)`,
+      [companyId, now.toISOString()],
+    )
+    if (!courses.length) return []
+    const ids = courses.map((row) => String(row.course_id))
+    const [crew, enrolled, batches] = await Promise.all([
+      query(
+        `select learner.profile_id, profile.full_name, learner.vessel, learner.rank
+         from public.company_training_learners learner
+         inner join public.profiles profile on profile.id = learner.profile_id
+         where learner.company_id = $1::uuid and learner.status = 'active'
+         order by lower(profile.full_name), learner.profile_id
+         limit 2000`,
+        [companyId],
+      ),
+      query(
+        `select enrollment.course_id, enrollment.learner_id
+         from public.learning_enrollments enrollment
+         inner join public.company_training_learners learner
+           on learner.profile_id = enrollment.learner_id and learner.company_id = $1::uuid and learner.status = 'active'
+         where enrollment.course_id = any($2::uuid[]) and enrollment.status <> 'revoked'
+           and (enrollment.access_expires_at is null or enrollment.access_expires_at > now())`,
+        [companyId, ids],
+      ),
+      query(
+        `select batch.id, batch.course_id, batch.title, batch.starts_at
+         from public.learning_course_batches batch
+         where batch.course_id = any($1::uuid[]) and batch.status in ('upcoming', 'running') and batch.enrolment_open = true
+         order by batch.starts_at asc`,
+        [ids],
+      ),
+    ])
+    const taken = new Set(enrolled.map((row) => `${row.course_id}:${row.learner_id}`))
+    return courses.map((row) => {
+      const courseId = String(row.course_id)
+      return {
+        courseId,
+        title: String(row.title),
+        available: count(row.available),
+        batches: row.batch_mode === 'batches'
+          ? batches.filter((batch) => String(batch.course_id) === courseId).map((batch) => ({
+              id: String(batch.id),
+              label: `${String(batch.title)} · starts ${new Date(String(iso(batch.starts_at))).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`,
+            }))
+          : null,
+        eligible: crew
+          .filter((person) => !taken.has(`${courseId}:${person.profile_id}`))
+          .map((person) => ({
+            profileId: String(person.profile_id),
+            name: String(person.full_name ?? '').trim() || 'Sea N Shore member',
+            detail: [person.rank, person.vessel].filter(Boolean).map(String).join(' · ') || null,
+          })),
+      }
+    })
+  }
+
   /** The organization's page slug (payment return page). */
   async function companySlug(companyId: string) {
     const rows = await query('select slug from public.companies where id = $1::uuid', [companyId])
     return rows[0]?.slug ? String(rows[0].slug) : null
   }
 
-  return { company, buyableCourses, seatPacks, seatSummary, companySlug }
+  return { company, buyableCourses, seatPacks, seatSummary, assignOptions, companySlug }
 }
 
 export const trainingRepository = createTrainingRepository()
