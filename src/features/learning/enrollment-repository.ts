@@ -25,6 +25,7 @@ type LearnerCourseRow = QueryResultRow & {
   enrollment_status: string
   enrolled_at: string | Date
   completed_at: string | Date | null
+  access_expires_at?: string | Date | null
   course_id: string
   slug: string
   title: string
@@ -58,6 +59,8 @@ export type LearnerCourseEnrollment = {
   enrollmentStatus: 'active' | 'completed'
   enrolledAt: string
   completedAt: string | null
+  /** When a time-limited plan's access ends (learning round C); null or absent = lifetime access. */
+  accessExpiresAt?: string | null
   courseId: string
   slug: string
   title: string
@@ -246,6 +249,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          enrollment.status as enrollment_status,
          enrollment.enrolled_at,
          enrollment.completed_at,
+         enrollment.access_expires_at,
          course.id as course_id,
          course.slug,
          course.title,
@@ -291,6 +295,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          enrollment.status,
          enrollment.enrolled_at,
          enrollment.completed_at,
+         enrollment.access_expires_at,
          course.id,
          course.slug,
          course.title,
@@ -325,6 +330,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
         enrollmentStatus,
         enrolledAt: isoDateTime(row.enrolled_at),
         completedAt: nullableIsoDateTime(row.completed_at),
+        accessExpiresAt: nullableIsoDateTime(row.access_expires_at ?? null),
         courseId: row.course_id,
         slug: row.slug,
         title: row.title,

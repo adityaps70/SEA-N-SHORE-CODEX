@@ -148,6 +148,8 @@ describe('learning enrollment repository', () => {
       enrollmentStatus: 'active',
       enrolledAt: '2026-09-14T12:00:00.000Z',
       completedAt: null,
+      // Learning round C: lifetime access when the row has no end date.
+      accessExpiresAt: null,
       courseId,
       slug: 'sire-2-readiness-for-tanker-officers',
       title: 'SIRE 2.0 Readiness for Tanker Officers',
@@ -171,6 +173,7 @@ describe('learning enrollment repository', () => {
     expect(seen[0]?.text).toContain('public.companies company')
     expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).toContain('order by enrollment.updated_at desc, enrollment.id desc')
+    expect(seen[0]?.text).toContain('enrollment.access_expires_at')
   })
 
   it('allows free enrollment into a verified organization-published course', async () => {

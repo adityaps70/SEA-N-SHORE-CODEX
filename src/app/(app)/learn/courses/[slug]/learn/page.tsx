@@ -10,9 +10,9 @@ import { MaterialPlayer } from '@/features/learning/components/material-player'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import {
   learnerCourseRepository,
-  type LearnerCourse,
   type LearnerLesson,
 } from '@/features/learning/learner-course-repository'
+import { curriculumLessons, defaultPlayerLesson } from '@/features/learning/next-lesson'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import { renderArticleHtml } from '@/features/learning/article-html'
@@ -22,18 +22,6 @@ import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
   searchParams?: Promise<{ lesson?: string }>
-}
-
-function allLessons(course: LearnerCourse) {
-  return course.sections.flatMap((section) => section.lessons)
-}
-
-function defaultLesson(course: LearnerCourse) {
-  const lessons = allLessons(course)
-  return lessons.find((lesson) => lesson.isAvailable && !lesson.completed)
-    ?? lessons.find((lesson) => lesson.isAvailable)
-    ?? lessons[0]
-    ?? null
 }
 
 function lessonHref(slug: string, lessonId: string) {
@@ -83,11 +71,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     if (!stillOnTeam) return redirect(`/learn/courses/${course.slug}`)
   }
 
-  const lessons = allLessons(course)
+  const lessons = curriculumLessons(course)
   const requestedLessonId = query.lesson
   const selectedLesson = requestedLessonId
     ? lessons.find((lesson) => lesson.id === requestedLessonId) ?? null
-    : defaultLesson(course)
+    : defaultPlayerLesson(lessons)
 
   if (requestedLessonId && !selectedLesson) return notFound()
 

@@ -24,9 +24,9 @@ function refundLine(purchase: LearnerCoursePurchase) {
 }
 
 /** Receipt-like list of the learner's course purchases (My Learning → Purchases). */
-export function CoursePurchasesList({ purchases }: { purchases: LearnerCoursePurchase[] }) {
+export function CoursePurchasesList({ purchases, className = 'mt-10' }: { purchases: LearnerCoursePurchase[]; className?: string }) {
   return (
-    <section id="purchases" aria-labelledby="purchases-title" className="mt-10 scroll-mt-24">
+    <section id="purchases" aria-labelledby="purchases-title" className={`${className} scroll-mt-24`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Receipts</p>
