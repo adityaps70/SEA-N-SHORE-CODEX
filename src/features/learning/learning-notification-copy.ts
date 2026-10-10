@@ -1,4 +1,5 @@
 import { LEARNING_NOTIFICATION_KINDS, type LearningNotificationDetails, type LearningNotificationKind } from './learning-notifications'
+import { DEFAULT_TIME_ZONE, formatZonedRange, formatZonedTime } from './sessions/session-time'
 
 /**
  * What a learning notification says and where it leads, shared by the in-app list and the email.
@@ -127,6 +128,20 @@ export function learningNotificationCopy(kind: LearningNotificationKind, details
         subject: `${course}: ${title}`,
         action: 'Read the announcement',
         ...(details.announcementExcerpt ? { detail: details.announcementExcerpt } : {}),
+      }
+    }
+    case 'session_reminder': {
+      const title = details.sessionTitle?.trim() || 'Your live session'
+      const zone = details.timeZone || DEFAULT_TIME_ZONE
+      const when = details.startsAt ? formatZonedRange(details.startsAt, details.durationMinutes ?? 60, zone, { withYear: true }) : 'soon'
+      const utc = details.startsAt && zone !== 'UTC' ? ` (${formatZonedTime(details.startsAt, 'UTC')})` : ''
+      const soon = details.stage === '1h' ? 'starts in about an hour' : 'is coming up'
+      return {
+        message: `${quoted(title)} in ${course} ${soon}: ${when}${utc}.`,
+        path: `/learn/courses/${details.courseSlug}/learn?tab=sessions`,
+        subject: details.stage === '1h' ? `Starting soon: ${title}` : `Coming up: ${title}`,
+        action: 'Open your sessions',
+        detail: 'Join from your Sessions tab. You can add every session to your calendar there.',
       }
     }
     case 'submissions_to_grade': {

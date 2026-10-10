@@ -37,6 +37,8 @@ export type NetworkNotificationType =
   | 'learning_certificate_expiring'
   /** Learning round C: a trainer posted an announcement to a course the recipient is enrolled in. */
   | 'learning_announcement'
+  /** Learning round D: a live session of the recipient's batch starts in a day or an hour. */
+  | 'learning_session_reminder'
 
 export type NotificationActor = {
   id: string

@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { BookOpen, Megaphone } from 'lucide-react'
+import { BookOpen, CalendarClock, Megaphone } from 'lucide-react'
 
 /**
  * Learning round C (C5b): the player's "Lesson" and "Announcements" tabs (WAI-ARIA tabs, automatic activation).
@@ -9,10 +9,11 @@ import { BookOpen, Megaphone } from 'lucide-react'
  * so the link in an announcement email opens the right tab. Leaving the lesson pauses its video or audio.
  */
 
-export type PlayerTab = 'lesson' | 'announcements'
+export type PlayerTab = 'lesson' | 'announcements' | 'sessions'
 
-const TABS: Array<{ id: PlayerTab; label: string }> = [
+const ALL_TABS: Array<{ id: PlayerTab; label: string }> = [
   { id: 'lesson', label: 'Lesson' },
+  { id: 'sessions', label: 'Sessions' },
   { id: 'announcements', label: 'Announcements' },
 ]
 
@@ -21,15 +22,19 @@ export function PlayerTabs({
   announcementCount,
   lesson,
   announcements,
+  sessions,
 }: {
   initialTab?: PlayerTab
   announcementCount: number
   lesson: ReactNode
   announcements: ReactNode
+  /** Round D: the learner's live sessions (only on a batch course). */
+  sessions?: ReactNode
 }) {
-  const [active, setActive] = useState<PlayerTab>(initialTab)
+  const TABS = ALL_TABS.filter((tab) => tab.id !== 'sessions' || Boolean(sessions))
+  const [active, setActive] = useState<PlayerTab>(initialTab === 'sessions' && !sessions ? 'lesson' : initialTab)
   const baseId = useId()
-  const tabRefs = useRef<Record<PlayerTab, HTMLButtonElement | null>>({ lesson: null, announcements: null })
+  const tabRefs = useRef<Record<PlayerTab, HTMLButtonElement | null>>({ lesson: null, announcements: null, sessions: null })
   const lessonPanelRef = useRef<HTMLDivElement | null>(null)
 
   function select(tab: PlayerTab, focus = false) {
@@ -40,8 +45,9 @@ export function PlayerTabs({
     if (focus) tabRefs.current[tab]?.focus()
     try {
       const url = new URL(window.location.href)
-      if (tab === 'announcements') url.searchParams.set('tab', 'announcements')
-      else url.searchParams.delete('tab')
+      if (tab === 'lesson') url.searchParams.delete('tab')
+      else url.searchParams.set('tab', tab)
+      url.searchParams.delete('join')
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
     } catch {
       // The tab still switches when the address cannot be updated.
@@ -69,7 +75,7 @@ export function PlayerTabs({
       >
         {TABS.map((tab) => {
           const selected = tab.id === active
-          const Icon = tab.id === 'lesson' ? BookOpen : Megaphone
+          const Icon = tab.id === 'lesson' ? BookOpen : tab.id === 'sessions' ? CalendarClock : Megaphone
           return (
             <button
               key={tab.id}
@@ -114,6 +120,18 @@ export function PlayerTabs({
       >
         {announcements}
       </div>
+      {sessions ? (
+        <div
+          role="tabpanel"
+          id={`${baseId}-panel-sessions`}
+          aria-labelledby={`${baseId}-tab-sessions`}
+          hidden={active !== 'sessions'}
+          tabIndex={0}
+          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 rounded-3xl"
+        >
+          {sessions}
+        </div>
+      ) : null}
     </div>
   )
 }

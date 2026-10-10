@@ -15,6 +15,9 @@ import {
   type LearnerCourseEnrollment,
 } from '@/features/learning/enrollment-repository'
 import { learnerHomeRepository } from '@/features/learning/learner-home-repository'
+import { sessionRepository } from '@/features/learning/sessions/session-repository'
+import { UpcomingSessionsCard } from '@/features/learning/sessions/components/learner-sessions-panel'
+import { DeviceTimeZoneSync } from '@/features/learning/sessions/components/device-time-zone-sync'
 
 export const metadata: Metadata = { title: 'My learning' }
 
@@ -168,12 +171,14 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
   ])
   // Round C (C1): a course a trainer invited this email address to is enrolled before the list loads.
   await courseInvitationClaims.forProfile(user.id).catch(logLoadFailure('course_invitation_claim_failed'))
-  const [enrollments, purchases, certificates, resume] = await Promise.all([
+  const [enrollments, purchases, certificates, resume, upcomingSessions] = await Promise.all([
     enrollmentRepository.listLearnerEnrollments(user.id),
     coursePaymentRepository.listLearnerPurchases(user.id).catch(logLoadFailure('learner_purchases_load_failed')),
     certificateRepository.listForLearner(user.id).catch(logLoadFailure('learner_certificates_load_failed')),
     // The Continue card is a shortcut: if it cannot be worked out, the page still shows every course.
     learnerHomeRepository.getResumeCourse(user.id).catch(logLoadFailure('learner_resume_load_failed')),
+    // Round D: the next live sessions of the learner's batches (a convenience: the page works without it).
+    sessionRepository.upcomingForLearner(user.id, 5).catch(logLoadFailure('learner_sessions_load_failed')),
   ])
   const now = new Date()
 
@@ -226,6 +231,12 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
       </section>
 
       {resume ? <ResumeCourseCard resume={resume} /> : null}
+      {upcomingSessions?.length ? (
+        <div className="mt-5 max-md:mt-3 max-md:px-4">
+          <DeviceTimeZoneSync />
+          <UpcomingSessionsCard sessions={upcomingSessions} now={now} />
+        </div>
+      ) : null}
 
       <MyLearningTabs
         initialTab={myLearningTabFrom(query.tab)}
