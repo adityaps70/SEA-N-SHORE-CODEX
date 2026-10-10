@@ -46,8 +46,8 @@ Owner decisions (10 October):
       `scripts/aws/templates/guarded-migration/`; round checks after apply (tables, columns, the five checks, no paid
       course without a plan)
 - [x] Applies cleanly after every earlier migration in PGlite
-- [ ] Plan run on the merged head
-- [ ] Arm PR (owner merges and approves), migrate-once, rearm to plan
+- [x] Plan run on the merged head (run 38035159195 on 17580b6f: ADDITIVE, 33-statement preview rolled back, PLAN_ONLY_NO_APPLY)
+- [x] Arm PR #185 (owner merged), migrate-once run 38041336747: 0074 and 0075 applied, APPLY_VERIFIED=true, 1 Standard plan backfilled, 0 paid courses without a plan; rearmed to plan (cb50b601)
 
 ## PR 1: C0 + C1 + C2 + C3
 
@@ -112,6 +112,12 @@ media bucket, linked from My Learning → Purchases and emailed with the payment
 
 ## Release
 
-- [ ] One guarded migration (0074–0075), one deploy, rearm, Remote Verify green
+- [x] One guarded migration (0074–0075), one deploy, rearm, Remote Verify green
+  - The round's code went live in the owner's jobs-feed deploy (#184, run 38036424831, `deploy-once 17580b6f`) at 08:15 UTC,
+    70 minutes before the migration applied at 09:27 UTC. No separate round C deploy was needed. Task definitions:
+    web :240 → :241, outbox worker :122 → :123, notification worker :121 → :122. Deploy guard rearmed to plan (2e739345).
+  - Remote Verify 38037221357 green right after the deploy. The re-run after the migration (38042373553) failed on
+    2 `database_query_failed` lines logged before the migration (its log window starts at the deployment, 08:06 UTC).
+    Fresh deploy arm PR #186 opened so a new window can confirm a clean run.
 - [ ] Live checks on seanshore.in
 - [ ] Report
