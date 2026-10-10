@@ -15,6 +15,7 @@ import {
   type GstSupplier,
   type SupplyType,
 } from './gst'
+import { seatPackInvoiceDescription } from '@/features/learning/company-training/seat-rules'
 import { lutForDate } from './tax-settings'
 
 /**
@@ -175,6 +176,9 @@ type OrderForInvoice = QueryResultRow & {
   billing_company: string | null
   billing_gstin: string | null
   buyer_name: string | null
+  seat_quantity: number | string | null
+  seat_unit_price_minor: number | string | null
+  seat_volume_discount_basis_points: number | string | null
 }
 
 export type InvoiceIssueOutcome =
@@ -196,6 +200,7 @@ export async function issueInvoiceForOrder(client: Client, orderId: string, inpu
   const orderRows = await client.query<OrderForInvoice>(
     `select o.id, o.profile_id, o.status, o.amount_minor, o.currency, o.course_title, o.plan_name, o.paid_at,
             o.enrollment_confirmed_at, o.billing_state_code, o.billing_country, o.billing_company, o.billing_gstin,
+            o.seat_quantity, o.seat_unit_price_minor, o.seat_volume_discount_basis_points,
             profile.full_name as buyer_name
      from public.course_payment_orders o
      left join public.profiles profile on profile.id = o.profile_id
@@ -219,7 +224,18 @@ export async function issueInvoiceForOrder(client: Client, orderId: string, inpu
   const placeOfSupply = supplyType === 'export_lut'
     ? EXPORT_PLACE_OF_SUPPLY
     : { code: order.billing_state_code!, name: gstStateName(order.billing_state_code)! }
-  const description = `${order.course_title}${order.plan_name ? ` (${order.plan_name})` : ''}: online course access`.slice(0, 300)
+  // D3: a company's seat pack is one line with the number of seats, the price per seat and any volume discount.
+  const seatQuantity = order.seat_quantity === null ? null : Number(order.seat_quantity)
+  const description = seatQuantity
+    ? seatPackInvoiceDescription({
+        courseTitle: order.course_title,
+        planName: order.plan_name,
+        quantity: seatQuantity,
+        unitMinor: Number(order.seat_unit_price_minor),
+        basisPoints: Number(order.seat_volume_discount_basis_points ?? 0),
+        currency: order.currency,
+      })
+    : `${order.course_title}${order.plan_name ? ` (${order.plan_name})` : ''}: online course access`.slice(0, 300)
 
   const inserted = await client.query<QueryResultRow>(
     `insert into public.tax_invoices as invoice (
@@ -258,7 +274,7 @@ export async function issueInvoiceForOrder(client: Client, orderId: string, inpu
  * Issues the credit note that reverses a refunded order's invoice, in full. Idempotent. An order with no invoice (for
  * example one paid before C4, or refunded before access was given) needs no credit note.
  */
-export async function issueCreditNoteForOrder(client: Client, orderId: string, input: { reason: string; at?: Date; actorProfileId?: string | null }) {
+export async function issueCreditNoteForOrder(client: Client, orderId: string, input: { reason: string; at?: Date; actorProfileId?: string | null; amountMinor?: number }) {
   const invoiceRows = await client.query<QueryResultRow>(
     `select ${INVOICE_COLUMNS} from public.tax_invoices invoice where invoice.order_id = $1::uuid`,
     [orderId],
@@ -269,6 +285,10 @@ export async function issueCreditNoteForOrder(client: Client, orderId: string, i
   if (existing.rows[0]) return mapCreditNote(existing.rows[0])
 
   const at = input.at ?? new Date()
+  // D3: refunding some seats of a pack credits only their price; the GST is worked out of it the same way.
+  const part = input.amountMinor !== undefined && input.amountMinor < invoice.totalMinor
+    ? gstBreakup(input.amountMinor, invoice.supplyType)
+    : { taxableMinor: invoice.taxableMinor, cgstMinor: invoice.cgstMinor, sgstMinor: invoice.sgstMinor, igstMinor: invoice.igstMinor, totalMinor: invoice.totalMinor }
   const financialYear = financialYearOf(at)
   const sequence = await nextSequence(client, 'credit_note', financialYear)
   const number = creditNoteNumber(financialYear, sequence)
@@ -278,8 +298,8 @@ export async function issueCreditNoteForOrder(client: Client, orderId: string, i
        sgst_minor, igst_minor, total_minor
      ) values ($1, $2, $3, $4::uuid, $5::date, $6, $7, $8, $9, $10, $11)
      returning ${CREDIT_NOTE_COLUMNS}`,
-    [number, financialYear, sequence, invoice.id, indiaDate(at), input.reason.slice(0, 200) || 'Refund', invoice.taxableMinor,
-      invoice.cgstMinor, invoice.sgstMinor, invoice.igstMinor, invoice.totalMinor],
+    [number, financialYear, sequence, invoice.id, indiaDate(at), input.reason.slice(0, 200) || 'Refund', part.taxableMinor,
+      part.cgstMinor, part.sgstMinor, part.igstMinor, part.totalMinor],
   )
   const note = mapCreditNote(inserted.rows[0]!)
   await client.query(
@@ -292,7 +312,7 @@ export async function issueCreditNoteForOrder(client: Client, orderId: string, i
     subjectType: 'course_payment_order',
     subjectId: orderId,
     action: 'tax_credit_note_issued',
-    amountMinor: invoice.totalMinor,
+    amountMinor: part.totalMinor,
     currency: invoice.currency,
     details: { creditNoteNumber: number, invoiceNumber: invoice.invoiceNumber },
   })

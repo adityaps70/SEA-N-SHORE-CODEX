@@ -23,6 +23,7 @@ import {
   type PaymentGateway,
   type PaymentProviderName,
 } from '@/features/payments/types'
+import { completeSeatRefund, failSeatRefund, findSeatRefundForEvent, requestSeatRefund } from './company-training/seat-refund-repository'
 import {
   coursePaymentRepository,
   CoursePurchaseError,
@@ -177,6 +178,19 @@ export function createCoursePaymentService(deps: {
       batchId: input.batchId ?? null,
       now: at,
     })
+    return openGatewayCheckout(gateway, prepared, {
+      customer: input.customer,
+      description: prepared.order.courseTitle || 'Sea N Shore course',
+      notes: { sns_order_id: prepared.order.id, sns_course_id: input.courseId, sns_profile_id: input.profileId },
+    })
+  }
+
+  /** Reopens a reused checkout, or creates the gateway order for a new one. */
+  async function openGatewayCheckout(
+    gateway: PaymentGateway,
+    prepared: { order: CoursePaymentOrder; reused: boolean },
+    input: { customer: CheckoutCustomer; description: string; notes: Record<string, string> },
+  ): Promise<CourseCheckoutSession> {
     let order = prepared.order
     if (prepared.reused && order.providerOrderId) {
       const client = gateway.restoreCheckout({
@@ -196,11 +210,11 @@ export function createCoursePaymentService(deps: {
         amountMinor: order.amountMinor,
         currency: order.currency,
         customer: input.customer,
-        description: order.courseTitle || 'Sea N Shore course',
+        description: input.description,
         returnUrl: paymentReturnUrl(siteUrl(), reference),
         notifyUrl: cashfreeNotifyUrl(siteUrl()),
         expiresAt: new Date(now().getTime() + GATEWAY_ORDER_LIFETIME_MINUTES * 60_000),
-        notes: { sns_order_id: order.id, sns_course_id: input.courseId, sns_profile_id: input.profileId },
+        notes: input.notes,
       })
       order = await repository.attachProviderOrder(order.id, checkout.providerOrderId, checkout.providerSessionId)
       client = checkout.client
@@ -217,6 +231,90 @@ export function createCoursePaymentService(deps: {
       throw new PaymentGatewayUnavailableError()
     }
     return { orderId: order.id, client, amountMinor: order.amountMinor, currency: order.currency, courseTitle: order.courseTitle }
+  }
+
+  /**
+   * D3: a company admin buys a pack of seats of one course. The same gateways and webhooks as a course purchase; a
+   * paid pack gives the company its seats (no one is enrolled).
+   */
+  async function startSeatCheckout(input: {
+    profileId: string
+    companyId: string
+    courseId: string
+    quantity: number
+    planId?: string | null
+    billing?: BillingInput | null
+    customer: CheckoutCustomer
+  }): Promise<CourseCheckoutSession> {
+    const gateway = await deps.getGateway()
+    if (!gateway) throw new PaymentsNotConfiguredError()
+    if (gateway.requiresCustomerPhone && !input.customer.phone) throw new CustomerPhoneRequiredError()
+    const prepared = await repository.prepareSeatCheckoutOrder({
+      profileId: input.profileId,
+      companyId: input.companyId,
+      courseId: input.courseId,
+      provider: gateway.name,
+      quantity: input.quantity,
+      planId: input.planId ?? null,
+      billing: input.billing ?? null,
+      currencies: gateway.currencies,
+      now: now(),
+    })
+    return openGatewayCheckout(gateway, prepared, {
+      customer: input.customer,
+      description: `${prepared.quote.quantity} ${prepared.quote.quantity === 1 ? 'seat' : 'seats'} · ${prepared.order.courseTitle}`.slice(0, 120),
+      notes: { sns_order_id: prepared.order.id, sns_course_id: input.courseId, sns_profile_id: input.profileId, sns_company_id: input.companyId },
+    })
+  }
+
+  /**
+   * D3: refunds `seats` unassigned seats of a pack within 30 days of the purchase. Every seat of a pack with none
+   * assigned is the whole order (the ordinary refund); otherwise only those seats' price goes back, with a credit note
+   * for it and that share of the seller's earning taken back.
+   */
+  async function refundSeats(input: { orderId: string; companyId: string; seats: number; actorProfileId: string; platformAdmin?: boolean }): Promise<CourseRefundOutcome | { state: 'seats_refunded' | 'seats_refund_pending'; order: CoursePaymentOrder; seats: number; amountMinor: number }> {
+    const existing = await repository.getOrderById(input.orderId)
+    if (!existing || existing.seatPack?.companyId !== input.companyId) throw new CoursePurchaseError('order_not_found')
+    const gateway = await gatewayFor(existing)
+    const actor = { type: input.platformAdmin ? 'admin' as const : 'member' as const, profileId: input.actorProfileId }
+    const plan = await transaction((client) => requestSeatRefund(client, { ...input, actor, now: now() }))
+    if (plan.kind === 'whole_pack') {
+      return refundOrder({ orderId: plan.orderId, actor: { type: input.platformAdmin ? 'admin' : 'organizer', profileId: input.actorProfileId }, reason: 'company_seats_refunded' })
+    }
+
+    const { refund } = plan
+    let result
+    try {
+      result = await gateway.refund({
+        providerOrderId: plan.providerOrderId,
+        providerPaymentId: plan.providerPaymentId,
+        amountMinor: refund.amountMinor,
+        currency: refund.currency,
+        refundId: refundIdFor(refund.id, refund.attempts),
+        note: 'Sea N Shore company seats refund',
+      })
+    } catch (error) {
+      const message = error instanceof PaymentProviderError ? error.providerMessage ?? error.code : 'refund_request_failed'
+      await transaction((client) => failSeatRefund(client, { refundId: refund.id, reason: message, actor }))
+      log('company_seat_refund_failed', { orderId: existing.id, message })
+      throw new RefundFailedError(error instanceof PaymentProviderError ? error.providerMessage : null)
+    }
+    if (result.status === 'failed') {
+      await transaction((client) => failSeatRefund(client, { refundId: refund.id, reason: 'gateway_rejected', providerRefundId: result.providerRefundId, actor }))
+      throw new RefundFailedError(null)
+    }
+    await transaction((client) => completeSeatRefund(client, {
+      refundId: refund.id,
+      providerRefundId: result.providerRefundId,
+      status: result.status === 'processed' ? 'processed' : 'pending',
+      actor,
+    }))
+    return {
+      state: result.status === 'processed' ? 'seats_refunded' : 'seats_refund_pending',
+      order: existing,
+      seats: refund.seatCount,
+      amountMinor: refund.amountMinor,
+    }
   }
 
   /** Asks the order's gateway, server to server, and applies the answer. */
@@ -301,6 +399,14 @@ export function createCoursePaymentService(deps: {
       return { handled: true, revalidatePaths: paths }
     }
 
+    // D3: a refund of some seats of a pack belongs to its seat refund; the order itself stays paid.
+    if (order.seatPack && order.refundStatus === null) {
+      const seatRefund = await findSeatRefundForEvent(tx, order.id, event.providerRefundId)
+      if (!seatRefund) return { handled: false, reason: 'order_unknown' }
+      if (event.status === 'failed') await failSeatRefund(tx, { refundId: seatRefund.id, reason: 'gateway_refund_failed', providerRefundId: event.providerRefundId, actor })
+      else await completeSeatRefund(tx, { refundId: seatRefund.id, providerRefundId: event.providerRefundId, status: event.status, actor })
+      return { handled: true, revalidatePaths: paths }
+    }
     if (event.status === 'failed') {
       await repository.recordRefundFailure(tx, { orderId: order.id, reason: 'gateway_refund_failed', actor, providerRefundId: event.providerRefundId })
     } else {
@@ -315,5 +421,7 @@ export function createCoursePaymentService(deps: {
     confirmByProviderOrderId,
     refundOrder,
     applyGatewayEvent,
+    startSeatCheckout,
+    refundSeats,
   }
 }

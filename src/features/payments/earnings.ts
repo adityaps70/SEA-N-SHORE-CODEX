@@ -319,6 +319,62 @@ export async function reverseSaleEarning(tx: DatabaseQueryClient, input: {
 }
 
 /**
+ * D3: takes back the part of a sale's earning that a partial refund returned (some seats of a company's seat pack). A
+ * negative 'adjustment' earning for that share of the gross, its fee and its net is added (status available), so the
+ * seller's balance and next payout drop by exactly that share. Idempotent: one adjustment per earning.
+ */
+export async function adjustSaleEarningPart(tx: DatabaseQueryClient, input: {
+  sourceType: EarningSourceType
+  sourceId: string
+  refundedGrossMinor: number
+  reason: string
+  actor?: LedgerActor
+}): Promise<ReverseEarningOutcome> {
+  const actor = input.actor ?? SYSTEM
+  const reason = input.reason.slice(0, 500)
+  const locked = await tx.query<EarningRow>(`
+    select ${EARNING_COLUMNS} from public.seller_earnings
+    where source_type = $1::text and source_id = $2::text
+    for update
+  `, [input.sourceType, input.sourceId])
+  const current = locked.rows[0] ? mapEarning(locked.rows[0]) : null
+  if (!current) return { outcome: 'not_found' }
+  if (current.status === 'reversed') return { outcome: 'already_reversed', earning: current }
+  const gross = Math.min(Math.max(0, Math.floor(input.refundedGrossMinor)), current.grossMinor)
+  if (gross <= 0) return { outcome: 'not_found' }
+  const fee = Math.round((current.platformFeeMinor * gross) / current.grossMinor)
+  const [profileId, companyId] = sellerColumns(current.seller)
+  const inserted = await tx.query<EarningRow>(`
+    insert into public.seller_earnings (
+      seller_profile_id, seller_company_id, source_type, source_id, adjusts_earning_id, currency,
+      gross_minor, platform_fee_percent, platform_fee_minor, net_minor, status, available_at, reversed_reason
+    )
+    values ($1::uuid, $2::uuid, 'adjustment', $3::text, $3::uuid, $4::text, $5::bigint, $6::numeric, $7::bigint, $8::bigint, 'available', now(), $9::text)
+    on conflict (source_type, source_id) do nothing
+    returning ${EARNING_COLUMNS}
+  `, [profileId, companyId, current.id, current.currency, -gross, current.platformFeePercent, -fee, -(gross - fee), reason])
+  if (!inserted.rows[0]) {
+    const existing = await tx.query<EarningRow>(`
+      select ${EARNING_COLUMNS} from public.seller_earnings where source_type = 'adjustment' and source_id = $1::text
+    `, [current.id])
+    return { outcome: 'adjusted', earning: current, adjustment: mapEarning(existing.rows[0]!) }
+  }
+  const adjustment = mapEarning(inserted.rows[0])
+  await recordPaymentAudit(tx, {
+    actorType: actor.type,
+    actorProfileId: actor.profileId ?? null,
+    subjectType: 'seller_earning',
+    subjectId: adjustment.id,
+    action: 'earning_adjustment_created',
+    toStatus: 'available',
+    amountMinor: adjustment.netMinor,
+    currency: adjustment.currency,
+    details: { reason, adjustsEarningId: current.id, adjustedStatus: current.status, partial: true, sourceType: input.sourceType, sourceId: input.sourceId },
+  })
+  return { outcome: 'adjusted', earning: current, adjustment }
+}
+
+/**
  * Job helper: flips every pending earning whose hold has passed to 'available' and
  * writes one audit row each. Safe to run at any time and as often as you like.
  * Balances already treat such rows as available, so this only makes it explicit

@@ -16,6 +16,8 @@ import { GATEWAY_ORDER_LIFETIME_MINUTES } from '@/features/payments/event-paymen
 import { notifyEnrolled } from './learning-notifications'
 import { resolveOrderBilling, sameBilling, type BillingInput, type BillingRefusal, type OrderBilling } from '@/features/tax/billing'
 import { issueCreditNoteForOrder, issueInvoiceForOrder, withTaxSavepoint } from '@/features/tax/tax-document-repository'
+import { loadTrainingCompany } from './company-training/company-access'
+import { isSeatQuantity, SeatError, seatPackQuote, seatValidUntil, type SeatPackQuote } from './company-training/seat-rules'
 import { COURSE_CHECKOUT_REUSE_MINUTES, COURSE_PENDING_CHECK_MINUTES, type CoursePurchaseBlocker, type CourseRefundDueReason } from './course-payment-rules'
 
 /**
@@ -65,6 +67,16 @@ export type CoursePaymentOrder = {
   invoiceNumber: string | null
   creditNoteId: string | null
   creditNoteNumber: string | null
+  /** D3: a company's seat pack (null or absent for a learner's own purchase). */
+  seatPack?: SeatPackDetails | null
+}
+
+export type SeatPackDetails = {
+  companyId: string
+  quantity: number
+  /** The price of one seat after the volume discount. */
+  unitMinor: number
+  volumeDiscountBasisPoints: number
 }
 
 /** A purchase as the learner sees it (My Learning → Purchases). */
@@ -128,6 +140,10 @@ type OrderRow = QueryResultRow & {
   invoice_number?: string | null
   credit_note_id?: string | null
   credit_note_number?: string | null
+  seat_company_id?: string | null
+  seat_quantity?: number | string | null
+  seat_unit_price_minor?: number | string | null
+  seat_volume_discount_basis_points?: number | string | null
 }
 
 type CourseRow = QueryResultRow & {
@@ -168,7 +184,8 @@ const ORDER_COLUMNS = `
   o.enrollment_id, o.enrollment_confirmed_at, o.refund_due_reason, o.failure_reason, o.paid_at, o.refunded_at,
   o.refund_status, o.refund_attempts, o.provider_refund_id, o.created_at,
   o.plan_id, o.plan_name, o.access_months, o.promo_code, o.promo_discount_minor,
-  o.billing_state_code, o.billing_country, o.billing_company, o.billing_gstin
+  o.billing_state_code, o.billing_country, o.billing_company, o.billing_gstin,
+  o.seat_company_id, o.seat_quantity, o.seat_unit_price_minor, o.seat_volume_discount_basis_points
 `
 
 /** C4: the GST invoice and credit note issued for the order, read with every order. */
@@ -232,6 +249,14 @@ export function mapCourseOrder(row: OrderRow): CoursePaymentOrder {
     invoiceNumber: row.invoice_number ?? null,
     creditNoteId: row.credit_note_id ?? null,
     creditNoteNumber: row.credit_note_number ?? null,
+    seatPack: row.seat_company_id && row.seat_quantity !== null && row.seat_quantity !== undefined
+      ? {
+          companyId: row.seat_company_id,
+          quantity: Number(row.seat_quantity),
+          unitMinor: Number(row.seat_unit_price_minor ?? 0),
+          volumeDiscountBasisPoints: Number(row.seat_volume_discount_basis_points ?? 0),
+        }
+      : null,
   }
 }
 
@@ -586,6 +611,122 @@ async function prepareCheckoutOrder(input: {
   }
 }
 
+/**
+ * D3: starts (or reuses) a company's checkout for a pack of seats of one course. The price per seat is the plan's price
+ * (its sale price when set) less the volume discount, worked out here with the course locked. Seat packs are sold in
+ * rupees with a business GST invoice, so the company name and GSTIN are required. No promo code applies.
+ */
+async function prepareSeatCheckoutOrder(input: {
+  profileId: string
+  companyId: string
+  courseId: string
+  provider: PaymentProviderName
+  quantity: number
+  planId?: string | null
+  billing?: BillingInput | null
+  currencies?: readonly PaymentCurrency[]
+  now?: Date
+}): Promise<{ order: CoursePaymentOrder; reused: boolean; quote: SeatPackQuote }> {
+  const now = input.now ?? new Date()
+  const actor: CoursePaymentActor = { type: 'member', profileId: input.profileId }
+  if (!isSeatQuantity(input.quantity)) throw new SeatError('seat_quantity_invalid')
+  try {
+    return await withTransaction(async (client) => {
+      const company = await loadTrainingCompany(clientRows(client), { actorId: input.profileId }, input.companyId, { manage: true, lock: true })
+      const course = await lockCourseForPurchase(client, input.courseId, input.profileId)
+      if (!course || !course.visible) throw new CoursePurchaseError('course_not_found')
+      if (course.accessType !== 'paid') throw new CoursePurchaseError('course_not_paid')
+      if (course.companyId === company.id) throw new CoursePurchaseError('course_team_has_access')
+      const plan = await resolvePlan(client, course, input.planId)
+      const price = planPrice(plan)
+      if (!price) throw new CoursePurchaseError('course_price_missing')
+      if (price.currency !== 'INR') throw new SeatError('seat_pack_currency_unsupported')
+      if (input.currencies && !input.currencies.includes('INR')) throw new CoursePurchaseError('course_currency_unsupported')
+      const resolved = resolveOrderBilling(input.billing, 'INR')
+      if (!resolved.ok) throw new CoursePurchaseError(resolved.reason)
+      if (!resolved.billing.gstin || !resolved.billing.company) throw new SeatError('seat_pack_gstin_required')
+      const billing = resolved.billing
+      const quote = seatPackQuote({ quantity: input.quantity, listUnitMinor: price.listPriceMinor, baseUnitMinor: price.amountMinor, currency: 'INR' })
+
+      const open = await client.query<OrderRow>(`
+        select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
+        from public.course_payment_orders o
+        where o.course_id = $1::uuid and o.profile_id = $2::uuid and o.status = 'created'
+        for update
+      `, [input.courseId, input.profileId])
+      const existing = open.rows[0] ? mapCourseOrder(open.rows[0]) : null
+      if (existing) {
+        const ageMs = now.getTime() - Date.parse(existing.createdAt)
+        const sameOrder = existing.seatPack?.companyId === company.id
+          && existing.seatPack.quantity === quote.quantity
+          && existing.amountMinor === quote.totalMinor
+          && existing.planId === plan.id
+          && sameBilling(existing.billing, billing)
+        if (sameOrder && existing.provider === input.provider && existing.providerOrderId && ageMs < COURSE_CHECKOUT_REUSE_MINUTES * 60_000) {
+          return { order: existing, reused: true, quote }
+        }
+        if (!existing.providerOrderId && ageMs < 60_000) throw new CoursePurchaseError('checkout_in_progress')
+        await client.query(`
+          update public.course_payment_orders
+          set status = 'cancelled', failure_reason = 'superseded', updated_at = now()
+          where id = $1::uuid and status = 'created'
+        `, [existing.id])
+        await releasePromoUse(client, existing.id)
+        await audit(client, existing, 'checkout_superseded', { actor, fromStatus: 'created', toStatus: 'cancelled' })
+      }
+
+      const inserted = await client.query<OrderRow>(`
+        insert into public.course_payment_orders as o (
+          course_id, profile_id, course_title, list_price_minor, discount_price_minor, amount_minor, currency, provider,
+          plan_id, plan_name, access_months, billing_state_code, billing_country, billing_company, billing_gstin,
+          seat_company_id, seat_quantity, seat_unit_price_minor, seat_volume_discount_basis_points
+        )
+        values ($1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint, 'INR', $7::text,
+                $8::uuid, $9::text, $10::integer, $11::text, $12::text, $13::text, $14::text,
+                $15::uuid, $16::integer, $17::bigint, $18::integer)
+        returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
+      `, [
+        input.courseId, input.profileId, course.title, quote.listTotalMinor, quote.discountTotalMinor, quote.totalMinor, input.provider,
+        plan.id, plan.name, plan.accessMonths, billing.stateCode, billing.country, billing.company, billing.gstin,
+        company.id, quote.quantity, quote.unitMinor, quote.volumeDiscountBasisPoints,
+      ])
+      const order = mapCourseOrder(inserted.rows[0]!)
+      await audit(client, order, 'checkout_started', {
+        actor,
+        toStatus: 'created',
+        details: {
+          companyId: company.id,
+          seatQuantity: quote.quantity,
+          seatUnitPriceMinor: quote.unitMinor,
+          volumeDiscountBasisPoints: quote.volumeDiscountBasisPoints,
+          planId: plan.id,
+          accessMonths: plan.accessMonths,
+        },
+      })
+      return { order, reused: false, quote }
+    })
+  } catch (error) {
+    if (isUniqueViolation(error)) throw new CoursePurchaseError('checkout_in_progress')
+    throw error
+  }
+}
+
+/** D3: what a pack would cost, worked out exactly as checkout does, without starting one. */
+async function previewSeatPack(input: { profileId: string; companyId: string; courseId: string; quantity: number; planId?: string | null }): Promise<{ quote: SeatPackQuote; plan: CoursePlan }> {
+  if (!isSeatQuantity(input.quantity)) throw new SeatError('seat_quantity_invalid')
+  return withTransaction(async (client) => {
+    await loadTrainingCompany(clientRows(client), { actorId: input.profileId }, input.companyId, { manage: true })
+    const course = await lockCourseForPurchase(client, input.courseId, input.profileId)
+    if (!course || !course.visible) throw new CoursePurchaseError('course_not_found')
+    if (course.accessType !== 'paid') throw new CoursePurchaseError('course_not_paid')
+    const plan = await resolvePlan(client, course, input.planId)
+    const price = planPrice(plan)
+    if (!price) throw new CoursePurchaseError('course_price_missing')
+    if (price.currency !== 'INR') throw new SeatError('seat_pack_currency_unsupported')
+    return { plan, quote: seatPackQuote({ quantity: input.quantity, listUnitMinor: price.listPriceMinor, baseUnitMinor: price.amountMinor, currency: 'INR' }) }
+  })
+}
+
 async function attachProviderOrder(orderId: string, providerOrderId: string, providerSessionId: string | null = null) {
   return withTransaction(async (client) => {
     const result = await client.query<OrderRow>(`
@@ -745,6 +886,8 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
     details: amountMatches ? {} : { receivedAmountMinor: input.amountMinor ?? null, receivedCurrency: input.currency ?? null },
   })
 
+  if (current.seatPack) return confirmSeatPack(client, current, { amountMatches, actor, now })
+
   let reason: CourseRefundDueReason | null = amountMatches ? null : 'amount_mismatch'
   const course = current.courseId && current.profileId ? await lockCourseForPurchase(client, current.courseId, current.profileId) : null
   const enrollment = course && current.profileId ? await lockEnrollment(client, course.id, current.profileId) : null
@@ -836,6 +979,60 @@ async function confirmPaidOrder(client: DatabaseQueryClient, input: {
 }
 
 /**
+ * D3: a paid seat pack. The company gets its seats (each assignable for 12 months from the payment), the B2B GST
+ * invoice is issued and the seller's earning recorded, all in the confirming transaction. Nobody is enrolled yet: an
+ * admin assigns the seats to crew members later. A pack for a course that is no longer on sale is refunded instead.
+ */
+async function confirmSeatPack(client: DatabaseQueryClient, current: CoursePaymentOrder, input: { amountMatches: boolean; actor: CoursePaymentActor; now: Date }): Promise<CourseConfirmOutcome> {
+  const { actor, now } = input
+  let reason: CourseRefundDueReason | null = input.amountMatches ? null : 'amount_mismatch'
+  const course = current.courseId && current.profileId ? await lockCourseForPurchase(client, current.courseId, current.profileId) : null
+  if (!reason && (!course || !course.visible)) reason = 'course_not_found'
+  if (reason) {
+    const updated = await client.query<OrderRow>(`
+      update public.course_payment_orders o
+      set refund_due_reason = $2::text, updated_at = now()
+      where o.id = $1::uuid
+      returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
+    `, [current.id, reason])
+    const order = mapCourseOrder(updated.rows[0]!)
+    await audit(client, order, 'refund_due', { actor, toStatus: 'paid', details: { reason } })
+    return { state: 'refund_due', order, reason }
+  }
+
+  const paidAt = current.paidAt ? new Date(current.paidAt) : now
+  const validUntil = seatValidUntil(paidAt)
+  const pack = current.seatPack!
+  await client.query(`
+    insert into public.company_training_seats (company_id, order_id, course_id, valid_until)
+    select $1::uuid, $2::uuid, $3::uuid, $4::timestamptz from generate_series(1, $5::integer)
+  `, [pack.companyId, current.id, course!.id, validUntil.toISOString(), pack.quantity])
+  const confirmed = await client.query<OrderRow>(`
+    update public.course_payment_orders o
+    set enrollment_confirmed_at = now(), refund_due_reason = null, updated_at = now()
+    where o.id = $1::uuid
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
+  `, [current.id])
+  const order = mapCourseOrder(confirmed.rows[0]!)
+  await audit(client, order, 'seats_issued', { actor, toStatus: 'paid', details: { companyId: pack.companyId, seatQuantity: pack.quantity, validUntil: validUntil.toISOString() } })
+  await withTaxSavepoint(client, 'invoice', () => issueInvoiceForOrder(client, order.id))
+
+  const seller = course!.companyId ? { companyId: course!.companyId } : course!.sellerProfileId ? { profileId: course!.sellerProfileId } : null
+  if (seller) {
+    await recordSaleEarning(client, {
+      sourceType: 'course_purchase',
+      sourceId: order.id,
+      seller,
+      grossMinor: order.amountMinor,
+      currency: order.currency,
+      availableAfter: paidAt,
+      actor,
+    })
+  }
+  return { state: 'enrolled', order }
+}
+
+/**
  * Starts a refund: checks the order can be refunded and marks it 'requested' so a
  * double click cannot send two refunds. Returns the attempt number for the refund id.
  */
@@ -854,6 +1051,14 @@ async function requestRefund(client: DatabaseQueryClient, input: { orderId: stri
     if (!stale.rows[0]?.stale) throw new CoursePurchaseError('refund_in_progress')
   }
   if (current.refundAttempts >= 20) throw new CoursePurchaseError('refund_not_allowed')
+  // D3: a whole seat pack can be refunded only while none of its seats is assigned and none was refunded on its own.
+  if (current.seatPack) {
+    const blocked = await client.query<QueryResultRow & { blocked: boolean }>(`
+      select exists (select 1 from public.company_training_seats where order_id = $1::uuid and status <> 'available')
+          or exists (select 1 from public.company_training_seat_refunds where order_id = $1::uuid) as blocked
+    `, [current.id])
+    if (blocked.rows[0]?.blocked) throw new CoursePurchaseError('refund_not_allowed')
+  }
 
   const updated = await client.query<OrderRow>(`
     update public.course_payment_orders o
@@ -912,6 +1117,12 @@ async function markOrderRefunded(
         enrollmentRevoked: revoked.rows.map((row) => row.id),
       },
     })
+    // D3: every seat of a fully refunded pack (none was assigned) is refunded with it.
+    if (order.seatPack) await client.query(`
+      update public.company_training_seats
+      set status = 'refunded', refunded_at = now(), updated_at = now()
+      where order_id = $1::uuid and status = 'available'
+    `, [orderId])
     await reverseSaleEarning(client, { sourceType: 'course_purchase', sourceId: orderId, reason: refund.reason ?? 'course_refunded', actor })
     // C4: a credit note against the invoice; the invoice itself is never changed.
     await withTaxSavepoint(client, 'credit_note', () => issueCreditNoteForOrder(client, orderId, { reason: 'Course purchase refunded' }))
@@ -943,7 +1154,7 @@ async function listLearnerPurchases(profileId: string): Promise<LearnerCoursePur
     select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}, course.slug as course_slug
     from public.course_payment_orders o
     left join public.learning_courses course on course.id = o.course_id
-    where o.profile_id = $1::uuid and o.status in ('paid', 'refunded')
+    where o.profile_id = $1::uuid and o.status in ('paid', 'refunded') and o.seat_company_id is null
     order by coalesce(o.paid_at, o.created_at) desc, o.id desc
     limit 200
   `, [profileId])
@@ -977,7 +1188,7 @@ async function listCourseSales(input: { managerId: string; allCourses?: boolean 
 async function getRecentOpenOrder(profileId: string, courseId: string) {
   const rows = await query<OrderRow>(`
     select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
-    where o.profile_id = $1::uuid and o.course_id = $2::uuid and o.status = 'created'
+    where o.profile_id = $1::uuid and o.course_id = $2::uuid and o.status = 'created' and o.seat_company_id is null
       and o.provider_order_id is not null
       and o.created_at > now() - make_interval(mins => $3::integer)
     order by o.created_at desc
@@ -991,6 +1202,7 @@ async function getRefundDueOrder(profileId: string, courseId: string) {
   const rows = await query<OrderRow>(`
     select ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS} from public.course_payment_orders o
     where o.profile_id = $1::uuid and o.course_id = $2::uuid and o.status = 'paid' and o.enrollment_confirmed_at is null
+      and o.seat_company_id is null
     order by o.created_at desc
     limit 1
   `, [profileId, courseId])
@@ -1016,6 +1228,8 @@ async function getCourseSlug(courseId: string | null) {
 export const coursePaymentRepository = {
   prepareCheckoutOrder,
   previewCheckout,
+  prepareSeatCheckoutOrder,
+  previewSeatPack,
   attachProviderOrder,
   markOrderFailed,
   recordAttemptFailure,

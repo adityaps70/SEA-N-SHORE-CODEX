@@ -1,5 +1,6 @@
 import type { DatabaseQueryClient } from '@/lib/db/client'
-import { courseViewerResult } from '@/features/learning/course-payment-messages'
+import { trainingRepository } from '@/features/learning/company-training/training-repository'
+import { courseViewerResult, seatViewerResult } from '@/features/learning/course-payment-messages'
 import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
 import { coursePaymentService } from '@/features/learning/course-payment-runtime'
 import type { GatewayOrderEvent, OrderHandlerResult, ViewerConfirmResult } from './order-handler-types'
@@ -20,6 +21,8 @@ export async function confirmCoursePaymentOrder(tx: DatabaseQueryClient, event: 
 /** The signed-in buyer returned from a course checkout (/payments/return?order=crs_…). */
 export async function confirmCourseCheckoutForViewer(input: { profileId: string; providerOrderId: string }): Promise<ViewerConfirmResult> {
   const outcome = await coursePaymentService.confirmByProviderOrderId(input)
+  // D3: a company's seat pack returns to the company's training page.
+  if (outcome?.order.seatPack) return seatViewerResult(outcome, await trainingRepository.companySlug(outcome.order.seatPack.companyId))
   const slug = outcome ? await coursePaymentRepository.getCourseSlug(outcome.order.courseId) : null
   return courseViewerResult(outcome, slug)
 }
