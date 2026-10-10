@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { checkUsernameAvailability } from '../username-actions'
 import { normalizeUsername, USERNAME_MAX_LENGTH, USERNAME_RULES_HINT, usernameSchema } from '../username'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'current' | 'taken' | 'invalid' | 'error'
 
@@ -64,7 +65,7 @@ export function UsernameField({
     ready = false
   } else if (!parsed.success) {
     status = value ? 'invalid' : 'idle'
-    message = value ? (parsed.error.issues[0]?.message ?? 'Choose a valid username.') : ''
+    message = value ? (firstPlainIssue(parsed.error, 'Choose a valid username.')) : ''
     ready = false
   } else if (isCurrent) {
     status = 'current'

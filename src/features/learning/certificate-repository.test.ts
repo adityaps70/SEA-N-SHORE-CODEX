@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createCertificateRepository, issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
 
 const learnerId = '11111111-1111-4111-8111-111111111111'
@@ -151,6 +151,15 @@ describe('learning certificate repository', () => {
       completedAt: '2026-09-15T08:00:00.000Z',
       issuedAt: '2026-09-15T08:01:00.000Z',
     })
+  })
+
+  it('matches nothing, without a query, for a verification code that is not a UUID (round C)', async () => {
+    const query = vi.fn(async () => [certificateRow()])
+    const repository = createCertificateRepository({ query })
+    for (const code of ['abc', '', `${verificationCode}0`, '55555555555545558555555555555555']) {
+      await expect(repository.getCertificateByVerificationCode(code)).resolves.toBeNull()
+    }
+    expect(query).not.toHaveBeenCalled()
   })
 
   it('issues an organization-course certificate using the organization name as publisher', async () => {

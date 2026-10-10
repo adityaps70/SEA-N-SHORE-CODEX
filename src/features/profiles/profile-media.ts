@@ -7,6 +7,13 @@ const extensionByType: Record<string, string> = {
   'image/webp': 'webp',
 }
 
+/** The messages a member may see from an upload; anything else (storage errors, internal codes) stays private. */
+export const PROFILE_IMAGE_MESSAGES = ['Please upload a JPG, PNG or WebP image.', 'Image must be 5 MB or smaller.'] as const
+
+export function profileMediaErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && (PROFILE_IMAGE_MESSAGES as readonly string[]).includes(error.message) ? error.message : fallback
+}
+
 export function validateProfileImage(file: { type: string; size: number }): { ok: true } | { ok: false; error: string } {
   if (!extensionByType[file.type]) {
     return { ok: false, error: 'Please upload a JPG, PNG or WebP image.' }

@@ -9,6 +9,7 @@ import { AUTH_EMAIL_RATE_LIMITED_MESSAGE, DISPOSABLE_EMAIL_MESSAGE } from '@/lib
 import type { AuthEmailAction, AuthEmailLimiter } from './email-limits'
 import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
 import { cognitoPasswordRule, failedPasswordRules, PASSWORD_MAX_LENGTH, passwordRulesMessage } from './password-rules'
+import { plainIssueMessage } from '@/lib/validation/plain-messages'
 
 export type CognitoAuthActionState = {
   error?: string
@@ -228,7 +229,7 @@ export function createCognitoAuthActions(input: {
           if (password.length > PASSWORD_MAX_LENGTH) return { error: `Use ${PASSWORD_MAX_LENGTH} characters or fewer for your password.` }
           return { error: passwordRulesMessage(failedPasswordRules(password)) }
         }
-        return { error: issue?.message ?? 'Check your details.' }
+        return { error: issue ? plainIssueMessage(issue, { fullName: 'Full name', email: 'Email address' }) : 'Check your details.' }
       }
       // The pool's password policy, checked here first so the message names the exact rule (and a
       // typo does not count against the sign-up email limit).

@@ -186,7 +186,8 @@ describe('editing a published course through a draft revision', () => {
     expect(item.revisionOf).toEqual({ courseId: course.courseId, slug: course.slug, title: 'Fixture SIRE Readiness' })
     const changes = item.review.changesFromLiveCourse!
     expect(changes).toEqual(expect.arrayContaining([
-      { area: 'details', change: 'changed', label: 'Course details', fields: ['Access type', 'Price'] },
+      // Round C: a course that becomes paid gets its first pricing plan, which the reviewer sees too.
+      { area: 'details', change: 'changed', label: 'Course details', fields: ['Access type', 'Price', 'Pricing plans and access periods'] },
       { area: 'material', change: 'changed', label: 'Introduction', fields: ['title', 'article content'] },
       { area: 'material', change: 'changed', label: 'Knowledge check', fields: ['quiz questions'] },
       { area: 'material', change: 'added', label: 'New bonus reading', fields: [] },

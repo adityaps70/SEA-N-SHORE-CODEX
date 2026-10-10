@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { courseOpenToNewLearnersSql, learnerCourseAccessSql } from './course-publication'
+import { enrollmentAccessOpenSql } from './course-access'
 
 /**
  * Who may read a video's captions (learning round A, A7): a learner enrolled in the course once the
@@ -34,6 +35,7 @@ export function createCaptionRepository(input: { query?: Query } = {}) {
          ${COURSE_JOINS}
          inner join public.learning_enrollments enrollment
            on enrollment.course_id = course.id and enrollment.learner_id = $2 and enrollment.status in ('active', 'completed')
+          and ${enrollmentAccessOpenSql()}
          where lesson.id = $1
            and lesson.lesson_type = 'video'
            and lesson.caption_path is not null

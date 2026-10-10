@@ -12,6 +12,8 @@ import { CourseWithdrawControl } from '@/features/learning/components/course-wit
 import { CourseRevisionDiscardControl, CourseRevisionStartControl } from '@/features/learning/components/course-revision-controls'
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import { CertificateSettingsPanel } from '@/features/learning/components/certificate-settings-panel'
+import { CoursePricingPlansPanel } from '@/features/learning/components/course-pricing-plans-panel'
+import { coursePlanRepository } from '@/features/learning/course-plan-repository'
 import { DEFAULT_CERTIFICATE_SETTINGS } from '@/features/learning/certificate-settings'
 import {
   courseRepository,
@@ -23,6 +25,10 @@ import { canMentorEditCourse } from '@/features/learning/course-workflow'
 import { mentorMaterialRepository } from '@/features/learning/mentor-material-repository'
 import { ARTICLE_IMAGE_PATH_ATTRIBUTE, renderArticleHtml } from '@/features/learning/article-html'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { courseAnnouncementRepository } from '@/features/learning/course-announcement-repository'
+import { courseCommunityRepository } from '@/features/learning/course-community-repository'
+import { CourseAnnouncementsPanel } from '@/features/learning/components/course-announcements-panel'
+import { CourseCommunityPanel } from '@/features/learning/components/course-community-panel'
 
 export const metadata: Metadata = { title: 'Edit course' }
 
@@ -188,10 +194,12 @@ export default async function EditMentorCoursePage({
   const course = await courseRepository.getOwnedCourse(user.id, courseId)
   if (!course) return notFound()
 
-  const [curriculum, sellerFee] = await Promise.all([
+  const [curriculum, sellerFee, plans] = await Promise.all([
     mentorMaterialRepository.getCurriculum(user.id, courseId),
     // The seller is the course's organization, or the trainer who owns a personal course.
     loadSellerFeeTerms(course.companyId ? { companyId: course.companyId } : { profileId: user.id }),
+    // Round C (C3): the plans this draft sells.
+    coursePlanRepository.list(course.id).catch(() => []),
   ])
   if (!curriculum) return notFound()
   // Article images are stored by path; the editor shows them through short-lived signed URLs.
@@ -209,6 +217,16 @@ export default async function EditMentorCoursePage({
 
   const isRevision = Boolean(course.revisionOf)
   const editable = canMentorEditCourse(course.status) && !course.revisionClosed
+  // Learning round C: announcements and the course community belong to the live course (a draft revision's
+  // edit page works on the course it revises). Announcements need a course learners can be enrolled in.
+  const liveCourseId = course.revisionOf?.courseId ?? course.id
+  const liveCourseHasLearners = isRevision || course.status === 'published' || course.status === 'archived'
+  const [announcementData, communityLink] = course.revisionClosed
+    ? [null, null]
+    : await Promise.all([
+      liveCourseHasLearners ? courseAnnouncementRepository.listForManager(user.id, liveCourseId).catch(() => null) : Promise.resolve(null),
+      courseCommunityRepository.getLinkForManager(user.id, liveCourseId).catch(() => null),
+    ])
 
   const initialValue: CourseDraftInput = {
     // A draft copy shows (and keeps) the live course's address.
@@ -271,6 +289,10 @@ export default async function EditMentorCoursePage({
         </div>
 
         <div className="mt-5">
+          <CoursePricingPlansPanel courseId={course.id} paid={course.accessType === 'paid'} plans={plans} readOnly={!editable} />
+        </div>
+
+        <div className="mt-5">
           <CertificateSettingsPanel
             courseId={course.id}
             initial={course.certificate ?? DEFAULT_CERTIFICATE_SETTINGS}
@@ -294,6 +316,13 @@ export default async function EditMentorCoursePage({
           </div>
         ) : null}
       </CourseEditSession>
+
+      {announcementData || communityLink ? (
+        <div className="mt-5 space-y-5">
+          {announcementData ? <CourseAnnouncementsPanel data={announcementData} /> : null}
+          {communityLink ? <CourseCommunityPanel link={communityLink} /> : null}
+        </div>
+      ) : null}
     </div>
   )
 }

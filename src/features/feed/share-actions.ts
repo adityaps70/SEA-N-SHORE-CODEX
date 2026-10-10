@@ -7,6 +7,7 @@ import { getNetworkHub } from '@/features/network/queries'
 import { getPostById } from './queries'
 import { sendPostInputSchema, shareRecipientSearchSchema } from './schemas'
 import { composeSharedPostMessage, postShareUrl } from './share-message'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type ShareRecipient = {
   id: string
@@ -63,7 +64,7 @@ export async function sendPostToConnection(input: {
 }): Promise<SendPostResult> {
   const parsed = sendPostInputSchema.safeParse(input)
   if (!parsed.success) {
-    const noteError = parsed.error.flatten().fieldErrors.note?.[0]
+    const noteError = plainFieldErrors(parsed.error).note?.[0]
     return { ok: false, error: noteError ?? 'Choose a connection to send this post to.' }
   }
 

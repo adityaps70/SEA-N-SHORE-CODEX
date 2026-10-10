@@ -23,6 +23,7 @@ import {
 } from './job-lifecycle'
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from './types'
 import { validateJobRoles } from '@/features/roles/job-role-input'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter dates as full dates.').nullable()
@@ -102,7 +103,7 @@ class HiringValidationError extends Error {
 }
 
 function validationError(error: z.ZodError) {
-  return error.issues[0]?.message ?? 'Please check the information and try again.'
+  return firstPlainIssue(error, 'Please check the information and try again.')
 }
 
 function safeMutationError(error: unknown) {

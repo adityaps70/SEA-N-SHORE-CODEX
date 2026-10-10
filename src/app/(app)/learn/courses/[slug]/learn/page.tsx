@@ -10,30 +10,25 @@ import { MaterialPlayer } from '@/features/learning/components/material-player'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import {
   learnerCourseRepository,
-  type LearnerCourse,
   type LearnerLesson,
 } from '@/features/learning/learner-course-repository'
+import { curriculumLessons, defaultPlayerLesson } from '@/features/learning/next-lesson'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import { renderArticleHtml } from '@/features/learning/article-html'
 import { PlayerFocusShell } from '@/features/learning/components/player-focus-mode'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
+import { courseAnnouncementRepository, type CourseAnnouncement } from '@/features/learning/course-announcement-repository'
+import { courseCommunityRepository } from '@/features/learning/course-community-repository'
+import { courseRatingRepository } from '@/features/learning/course-rating-repository'
+import { CourseAnnouncementsList } from '@/features/learning/components/course-announcements-list'
+import { CourseDiscussButton } from '@/features/learning/components/course-discuss-button'
+import { CourseRatingWidget } from '@/features/learning/components/course-rating-widget'
+import { PlayerTabs } from '@/features/learning/components/player-tabs'
 
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
-  searchParams?: Promise<{ lesson?: string }>
-}
-
-function allLessons(course: LearnerCourse) {
-  return course.sections.flatMap((section) => section.lessons)
-}
-
-function defaultLesson(course: LearnerCourse) {
-  const lessons = allLessons(course)
-  return lessons.find((lesson) => lesson.isAvailable && !lesson.completed)
-    ?? lessons.find((lesson) => lesson.isAvailable)
-    ?? lessons[0]
-    ?? null
+  searchParams?: Promise<{ lesson?: string; tab?: string }>
 }
 
 function lessonHref(slug: string, lessonId: string) {
@@ -70,7 +65,7 @@ function PhoneCourseProgress({ percent, completed, total }: { percent: number; c
 export default async function LearnerCoursePage({ params, searchParams }: LearnerCoursePageProps) {
   const [{ slug }, query, user] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve<{ lesson?: string }>({}),
+    searchParams ?? Promise.resolve<{ lesson?: string; tab?: string }>({}),
     requireAwsUser(),
   ])
 
@@ -83,11 +78,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     if (!stillOnTeam) return redirect(`/learn/courses/${course.slug}`)
   }
 
-  const lessons = allLessons(course)
+  const lessons = curriculumLessons(course)
   const requestedLessonId = query.lesson
   const selectedLesson = requestedLessonId
     ? lessons.find((lesson) => lesson.id === requestedLessonId) ?? null
-    : defaultLesson(course)
+    : defaultPlayerLesson(lessons)
 
   if (requestedLessonId && !selectedLesson) return notFound()
 
@@ -108,6 +103,14 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   const selectedArticleHtml = selectedLesson?.isAvailable && selectedLesson.articleFormat === 'html' && selectedLesson.articleBody
     ? await renderArticleHtml(selectedLesson.articleBody, (path) => createMediaReadUrl(path))
     : null
+  // Learning round C: rating, announcements and the course community. Conveniences: the player works without them.
+  const [ratingEligibility, announcements, discussion] = await Promise.all([
+    courseRatingRepository.getEligibility(user.id, course.courseId).catch(() => null),
+    courseAnnouncementRepository.listForLearner(user.id, course.courseId).catch(() => null),
+    courseCommunityRepository.getDiscussion(course.courseId).catch(() => null),
+  ])
+  const courseAnnouncements: CourseAnnouncement[] = announcements ?? []
+  const discussButton = discussion ? <CourseDiscussButton courseId={course.courseId} communityName={discussion.name} /> : null
 
   const lessonTitles = new Map(lessons.map((lesson) => [lesson.id, lesson.title]))
   const curriculumList = (
@@ -188,6 +191,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">My Learning · {course.category}</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{course.title}</h1>
             <p className="mt-1 text-sm text-slate-500">Mentored by {course.mentorName}</p>
+            {discussButton ? <div className="mt-3">{discussButton}</div> : null}
           </div>
 
           <div className="min-w-56 rounded-2xl bg-slate-50 px-4 py-3">
@@ -208,6 +212,22 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
           </div>
         </div>
       </header>
+
+      {course.accessExpired ? (
+        <section aria-label="Access ended" className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm max-md:mt-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-amber-950">
+                Your access ended{course.accessExpiresAt ? ` on ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(course.accessExpiresAt))}` : ''}
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-amber-900">The course is read-only: your progress, results and certificate are kept. Renew to open the materials again.</p>
+            </div>
+            <Link href={`/learn/courses/${course.slug}#renew`} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+              Renew access
+            </Link>
+          </div>
+        </section>
+      ) : null}
 
       {course.enrollmentStatus === 'completed' ? (
         <section aria-label="Course completed" className="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm max-md:order-last max-md:mt-4 max-md:p-5 sm:p-8">
@@ -241,57 +261,81 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
         </nav>
 
         <main>
-          {selectedLesson ? (
-            <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 max-md:text-amber-800">
-                <span className="md:hidden">Lesson {lessonPosition} of {lessons.length} ·</span>
-                <span>{activityLabel(selectedLesson)}</span>
-                {selectedLesson.durationSeconds ? <span>· {Math.ceil(selectedLesson.durationSeconds / 60)} min</span> : null}
-                {selectedLesson.completed ? <span>· Completed</span> : !selectedLesson.isAvailable ? <span>· Locked</span> : null}
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 max-md:mt-2 max-md:text-xl max-md:font-bold max-md:text-navy-950 sm:text-3xl">{selectedLesson.title}</h2>
-              <PhoneCourseProgress percent={course.progressPercent} completed={course.completedLessons} total={course.totalLessons} />
-              {selectedLesson.summary ? <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLesson.summary}</p> : null}
+          <PlayerTabs
+            initialTab={query.tab === 'announcements' ? 'announcements' : 'lesson'}
+            announcementCount={courseAnnouncements.length}
+            lesson={(
+              <>
+                {selectedLesson ? (
+                  <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 max-md:text-amber-800">
+                      <span className="md:hidden">Lesson {lessonPosition} of {lessons.length} ·</span>
+                      <span>{activityLabel(selectedLesson)}</span>
+                      {selectedLesson.durationSeconds ? <span>· {Math.ceil(selectedLesson.durationSeconds / 60)} min</span> : null}
+                      {selectedLesson.completed ? <span>· Completed</span> : !selectedLesson.isAvailable ? <span>· Locked</span> : null}
+                    </div>
+                    <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 max-md:mt-2 max-md:text-xl max-md:font-bold max-md:text-navy-950 sm:text-3xl">{selectedLesson.title}</h2>
+                    <PhoneCourseProgress percent={course.progressPercent} completed={course.completedLessons} total={course.totalLessons} />
+                    {selectedLesson.summary ? <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLesson.summary}</p> : null}
 
-              <div className="mt-7 max-md:mt-5">
-                <MaterialPlayer
-                  lesson={selectedLesson}
-                  mediaUrl={selectedMediaUrl}
-                  slug={course.slug}
-                  quiz={selectedQuiz}
-                  articleHtml={selectedArticleHtml}
-                  nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
-                  phoneActions={curriculumSheet}
-                />
-              </div>
+                    <div className="mt-7 max-md:mt-5">
+                      <MaterialPlayer
+                        lesson={selectedLesson}
+                        mediaUrl={selectedMediaUrl}
+                        slug={course.slug}
+                        quiz={selectedQuiz}
+                        articleHtml={selectedArticleHtml}
+                        nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
+                        phoneActions={curriculumSheet}
+                      />
+                    </div>
 
-              {previousLesson || nextLesson ? (
-                // Phones: one full-width "Next material" pill; the previous lesson is in the Curriculum sheet.
-                <nav aria-label="Lesson navigation" className={`mt-7 flex items-center justify-between gap-3 border-t border-slate-200 pt-6 max-md:mt-5 max-md:border-t-0 max-md:pt-0 ${nextLesson ? '' : 'max-md:hidden'}`}>
-                  <div className="max-md:hidden">
-                    {previousLesson ? (
-                      <Link href={lessonHref(course.slug, previousLesson.id)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
-                        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Previous material
-                      </Link>
+                    {previousLesson || nextLesson ? (
+                      // Phones: one full-width "Next material" pill; the previous lesson is in the Curriculum sheet.
+                      <nav aria-label="Lesson navigation" className={`mt-7 flex items-center justify-between gap-3 border-t border-slate-200 pt-6 max-md:mt-5 max-md:border-t-0 max-md:pt-0 ${nextLesson ? '' : 'max-md:hidden'}`}>
+                        <div className="max-md:hidden">
+                          {previousLesson ? (
+                            <Link href={lessonHref(course.slug, previousLesson.id)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
+                              <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Previous material
+                            </Link>
+                          ) : null}
+                        </div>
+                        <div className="max-md:w-full">
+                          {nextLesson ? (
+                            <Link href={lessonHref(course.slug, nextLesson.id)} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 max-md:min-h-11 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:py-0 max-md:text-[15px] max-md:hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500">
+                              Next material <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                            </Link>
+                          ) : null}
+                        </div>
+                      </nav>
                     ) : null}
+                  </section>
+                ) : (
+                  <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+                    <h2 className="text-xl font-semibold text-slate-950">No materials published yet</h2>
+                    <p className="mt-2 text-sm text-slate-500">This enrolled course does not currently contain published learning material.</p>
+                    {lessons.length ? <div className="mt-4 flex md:hidden">{curriculumSheet}</div> : null}
+                  </section>
+                )}
+                {ratingEligibility ? <CourseRatingWidget courseId={course.courseId} eligibility={ratingEligibility} /> : null}
+                {discussButton ? <div className="mt-2 border-t border-slate-200 py-4 md:hidden">{discussButton}</div> : null}
+              </>
+            )}
+            announcements={(
+              <section aria-label="Course announcements" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight text-slate-950 max-md:font-bold max-md:text-navy-950">Announcements</h2>
+                    <p className="mt-1 text-sm text-slate-500">News from {course.mentorName} for everyone in this course, newest first.</p>
                   </div>
-                  <div className="max-md:w-full">
-                    {nextLesson ? (
-                      <Link href={lessonHref(course.slug, nextLesson.id)} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 max-md:min-h-11 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:py-0 max-md:text-[15px] max-md:hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500">
-                        Next material <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                      </Link>
-                    ) : null}
-                  </div>
-                </nav>
-              ) : null}
-            </section>
-          ) : (
-            <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-950">No materials published yet</h2>
-              <p className="mt-2 text-sm text-slate-500">This enrolled course does not currently contain published learning material.</p>
-              {lessons.length ? <div className="mt-4 flex md:hidden">{curriculumSheet}</div> : null}
-            </section>
-          )}
+                  {discussButton}
+                </div>
+                <div className="mt-5">
+                  <CourseAnnouncementsList announcements={courseAnnouncements} />
+                </div>
+              </section>
+            )}
+          />
         </main>
       </div>
       </PlayerFocusShell>

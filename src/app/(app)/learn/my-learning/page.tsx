@@ -1,16 +1,40 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
-import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Download, ExternalLink, GraduationCap } from 'lucide-react'
+import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Clock, Download, ExternalLink, GraduationCap, RefreshCw } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { certificateRepository } from '@/features/learning/certificate-repository'
 import { CoursePurchasesList } from '@/features/learning/components/course-purchases-list'
+import { formatLearningDate, LearnerCertificatesList, ResumeCourseCard } from '@/features/learning/components/my-learning-home'
+import { myLearningTabFrom } from '@/features/learning/components/my-learning-tab-names'
+import { MyLearningTabs } from '@/features/learning/components/my-learning-tabs'
 import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
+import { courseInvitationClaims } from '@/features/learning/course-roster-repository'
 import {
   enrollmentRepository,
   type LearnerCourseEnrollment,
 } from '@/features/learning/enrollment-repository'
+import { learnerHomeRepository } from '@/features/learning/learner-home-repository'
 
 export const metadata: Metadata = { title: 'My learning' }
+
+type MyLearningPageProps = {
+  searchParams?: Promise<{ tab?: string | string[] }>
+}
+
+function logLoadFailure(event: string) {
+  return (error: unknown) => {
+    console.error(event, { message: error instanceof Error ? error.message : null })
+    return null
+  }
+}
+
+/** A time-limited plan whose access has ended (learning round C): the learner can renew on the course page. */
+function accessEndedAt(enrollment: LearnerCourseEnrollment, now: Date) {
+  if (!enrollment.accessExpiresAt) return null
+  const endsAt = new Date(enrollment.accessExpiresAt)
+  return endsAt.getTime() <= now.getTime() ? endsAt : null
+}
 
 function levelLabel(level: LearnerCourseEnrollment['level']) {
   if (level === 'all_levels') return 'All levels'
@@ -23,8 +47,9 @@ function formatLabel(format: LearnerCourseEnrollment['courseFormat']) {
   return 'Recorded'
 }
 
-function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment }) {
+function EnrollmentCard({ enrollment, now }: { enrollment: LearnerCourseEnrollment; now: Date }) {
   const completed = enrollment.enrollmentStatus === 'completed'
+  const accessEnded = accessEndedAt(enrollment, now)
   // A course that issues on its final quiz has a certificate before every material is complete (round B).
   const certificateAvailable = (completed && enrollment.certificateEnabled) || Boolean(enrollment.certificateId)
 
@@ -88,13 +113,29 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
           </div>
         </div>
 
+        {accessEnded ? (
+          <p className="mt-4 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
+            <Clock aria-hidden="true" className="size-4 shrink-0" /> Access ended on {formatLearningDate(accessEnded)}
+          </p>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href={`/learn/courses/${enrollment.slug}/learn`}
-            className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
-          >
-            {completed ? 'Review course' : 'Continue learning'} <ArrowRight aria-hidden="true" className="size-4" />
-          </Link>
+          {accessEnded ? (
+            <Link
+              href={`/learn/courses/${enrollment.slug}`}
+              aria-label={`Renew ${enrollment.title}`}
+              className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+            >
+              <RefreshCw aria-hidden="true" className="size-4" /> Renew
+            </Link>
+          ) : (
+            <Link
+              href={`/learn/courses/${enrollment.slug}/learn`}
+              className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+            >
+              {completed ? 'Review course' : 'Continue learning'} <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          )}
 
           {certificateAvailable ? (
             <Link
@@ -120,15 +161,57 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
   )
 }
 
-export default async function MyLearningPage() {
-  const user = await requireAwsUser()
-  const [enrollments, purchases] = await Promise.all([
-    enrollmentRepository.listLearnerEnrollments(user.id),
-    coursePaymentRepository.listLearnerPurchases(user.id).catch((error: unknown) => {
-      console.error('learner_purchases_load_failed', { message: error instanceof Error ? error.message : null })
-      return null
-    }),
+export default async function MyLearningPage({ searchParams }: MyLearningPageProps = {}) {
+  const [user, query] = await Promise.all([
+    requireAwsUser(),
+    searchParams ?? Promise.resolve<{ tab?: string | string[] }>({}),
   ])
+  // Round C (C1): a course a trainer invited this email address to is enrolled before the list loads.
+  await courseInvitationClaims.forProfile(user.id).catch(logLoadFailure('course_invitation_claim_failed'))
+  const [enrollments, purchases, certificates, resume] = await Promise.all([
+    enrollmentRepository.listLearnerEnrollments(user.id),
+    coursePaymentRepository.listLearnerPurchases(user.id).catch(logLoadFailure('learner_purchases_load_failed')),
+    certificateRepository.listForLearner(user.id).catch(logLoadFailure('learner_certificates_load_failed')),
+    // The Continue card is a shortcut: if it cannot be worked out, the page still shows every course.
+    learnerHomeRepository.getResumeCourse(user.id).catch(logLoadFailure('learner_resume_load_failed')),
+  ])
+  const now = new Date()
+
+  const coursesPanel = enrollments.length ? (
+    <section aria-label="Your courses" className="mt-6 grid gap-5 max-md:mt-0 max-md:gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {enrollments.map((enrollment) => (
+        <EnrollmentCard key={enrollment.enrollmentId} enrollment={enrollment} now={now} />
+      ))}
+    </section>
+  ) : (
+    <section className="mt-6 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] max-md:mt-0 sm:p-10">
+      <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800">
+        <GraduationCap aria-hidden="true" className="size-5" />
+      </span>
+      <h2 className="mt-4 text-xl font-bold text-navy-950">No courses yet</h2>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
+        Courses you enroll in will appear here with their real progress and completion status.
+      </p>
+      <Link
+        href="/learn"
+        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+      >
+        Explore courses <ArrowRight aria-hidden="true" className="size-4" />
+      </Link>
+    </section>
+  )
+
+  const purchasesPanel = (
+    <div className="max-md:px-4 max-md:pb-6">
+      {purchases ? (
+        <CoursePurchasesList purchases={purchases} className="mt-6" />
+      ) : (
+        <p role="status" className="mt-6 rounded-[1.4rem] border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
+          We couldn&apos;t load your purchases just now. Refresh the page to try again — your courses and payments are safe.
+        </p>
+      )}
+    </div>
+  )
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
@@ -142,37 +225,20 @@ export default async function MyLearningPage() {
         </p>
       </section>
 
-      {enrollments.length ? (
-        <section className="mt-6 grid gap-5 max-md:mt-0 max-md:gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {enrollments.map((enrollment) => (
-            <EnrollmentCard key={enrollment.enrollmentId} enrollment={enrollment} />
-          ))}
-        </section>
-      ) : (
-        <section className="mt-6 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] max-md:mt-0 sm:p-10">
-          <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800">
-            <GraduationCap aria-hidden="true" className="size-5" />
-          </span>
-          <h2 className="mt-4 text-xl font-bold text-navy-950">No courses yet</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
-            Courses you enroll in will appear here with their real progress and completion status.
-          </p>
-          <Link
-            href="/learn"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
-          >
-            Explore courses <ArrowRight aria-hidden="true" className="size-4" />
-          </Link>
-        </section>
-      )}
+      {resume ? <ResumeCourseCard resume={resume} /> : null}
 
-      {purchases ? (
-        <CoursePurchasesList purchases={purchases} />
-      ) : (
-        <p role="status" className="mt-10 rounded-[1.4rem] border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
-          We couldn&apos;t load your purchases just now. Refresh the page to try again — your courses and payments are safe.
-        </p>
-      )}
+      <MyLearningTabs
+        initialTab={myLearningTabFrom(query.tab)}
+        panels={{
+          courses: coursesPanel,
+          certificates: (
+            <div className="max-md:px-4 max-md:pb-6">
+              <LearnerCertificatesList certificates={certificates} />
+            </div>
+          ),
+          purchases: purchasesPanel,
+        }}
+      />
     </main>
   )
 }

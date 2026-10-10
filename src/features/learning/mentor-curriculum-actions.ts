@@ -12,6 +12,7 @@ import {
   type MentorLessonDraft,
   type MentorQuizDefinitionInput,
 } from './mentor-curriculum-repository'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
 const directionSchema = z.enum(['up', 'down'])
@@ -78,7 +79,7 @@ type CreateSectionResult = { ok: true; sectionId: string } | { ok: false; error:
 type CreateLessonResult = { ok: true; lessonId: string } | { ok: false; error: string }
 
 function validationError(error: z.ZodError) {
-  return error.issues[0]?.message ?? 'Review the curriculum details and try again.'
+  return firstPlainIssue(error, 'Review the curriculum details and try again.')
 }
 
 function mutationError(error: unknown) {

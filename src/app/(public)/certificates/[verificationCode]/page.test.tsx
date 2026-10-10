@@ -1,13 +1,19 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ getCertificateByVerificationCode: vi.fn(), getVerifiedUser: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  getCertificateByVerificationCode: vi.fn(),
+  getVerifiedUser: vi.fn(),
+  notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
+}))
+vi.mock('next/navigation', () => ({ notFound: mocks.notFound }))
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.getVerifiedUser }))
 vi.mock('@/features/learning/certificate-repository', () => ({
   certificateRepository: { getCertificateByVerificationCode: mocks.getCertificateByVerificationCode },
 }))
 
 import CertificateVerificationPage from './page'
+import CertificateNotFound from './not-found'
 
 const verificationCode = '55555555-5555-4555-8555-555555555555'
 const certificate = {
@@ -67,6 +73,19 @@ describe('/certificates/[verificationCode]', () => {
     render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
     expect(screen.getByRole('heading', { name: 'Certificate not verified' })).toBeInTheDocument()
     expect(screen.getByText(/No Sea N Shore Learning certificate matches this verification code/)).toBeInTheDocument()
+  })
+
+  it('answers 404 with the same "not verified" page for a code that is not a UUID, without querying (round C)', async () => {
+    for (const code of ['abc', '0000000000000000', `${verificationCode}x`, "' or 1=1 --"]) {
+      await expect(CertificateVerificationPage({ params: Promise.resolve({ verificationCode: code }) })).rejects.toThrow('NEXT_NOT_FOUND')
+    }
+    expect(mocks.notFound).toHaveBeenCalledTimes(4)
+    expect(mocks.getCertificateByVerificationCode).not.toHaveBeenCalled()
+
+    render(await CertificateNotFound())
+    expect(screen.getByRole('heading', { name: 'Certificate not verified' })).toBeInTheDocument()
+    expect(screen.getByText(/No Sea N Shore Learning certificate matches this verification code/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Join now' })).toHaveAttribute('href', '/auth/sign-up')
   })
 
   it('shows signed-out visitors a slim "Join Sea N Shore" bar on phones that leads to sign-up', async () => {

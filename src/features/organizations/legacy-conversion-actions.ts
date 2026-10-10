@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PERSONAS, PROFILE_INTENTS, type Persona, type ProfileIntent } from '@/features/profiles/persona'
 import { legacyOrganizationConversionRepository } from './legacy-conversion-repository'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 const intentsSchema = z.preprocess(
   (value) => {
@@ -98,7 +99,7 @@ export async function completeLegacyOrganizationConversion(
     return {
       ok: false,
       error: 'Please correct the highlighted information and try again.',
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: plainFieldErrors(parsed.error),
       values: preserved,
     }
   }

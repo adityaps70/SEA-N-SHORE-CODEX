@@ -29,6 +29,7 @@ import { personaForProfile } from './profile-persona-rules'
 import { profilePreferencesSchema, retainedPersonaDetailsSchema } from './profile-preferences'
 import { editableRankSchema } from './schemas'
 import type { OwnProfile } from './types'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type ProfileInlineActionState = {
   error?: string
@@ -82,10 +83,10 @@ function nextFailure(
 
 function validationFailure(
   previousState: ProfileInlineActionState,
-  error: { flatten: () => { fieldErrors: unknown } },
+  error: z.ZodError,
 ): ProfileInlineActionState {
   return nextFailure(previousState, {
-    fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
+    fieldErrors: plainFieldErrors(error),
   })
 }
 
@@ -120,9 +121,9 @@ function readCardPreferences(
 ): CardPreferencesResult {
   const raw = Object.fromEntries(formData)
   const parsed = profilePreferencesSchema.safeParse({ ...raw, profileIntents: intents })
-  if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]> }
+  if (!parsed.success) return { ok: false, fieldErrors: plainFieldErrors(parsed.error) }
   const retained = retainedPersonaDetailsSchema.safeParse(raw)
-  if (!retained.success) return { ok: false, fieldErrors: retained.error.flatten().fieldErrors as Record<string, string[]> }
+  if (!retained.success) return { ok: false, fieldErrors: plainFieldErrors(retained.error) }
 
   if (parsed.data.persona === 'seafarer') {
     const rank = typeof raw.rank === 'string' ? raw.rank.trim() : ''

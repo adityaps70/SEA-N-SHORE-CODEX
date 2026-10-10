@@ -4,6 +4,8 @@ import { coursePublisherNameSql } from './course-publication'
 import { notifyCertificateIssued } from './learning-notifications'
 import { CERTIFICATE_TEMPLATES, type CertificateTemplate } from './certificate-settings'
 
+const VERIFICATION_CODE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export type CertificateQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CertificateTransaction = <T>(work: (query: CertificateQuery) => Promise<T>) => Promise<T>
 
@@ -45,6 +47,19 @@ export type ProfileLearningCertificate = {
   verificationCode: string
   hidden: boolean
   /** Worked out on the server when the profile was read. */
+  expired: boolean
+}
+
+/** A certificate on the learner's own My Learning page (learning round C, C6). */
+export type LearnerCertificateSummary = {
+  certificateId: string
+  enrollmentId: string
+  courseTitle: string
+  issuedAt: string
+  /** Null: never expires. */
+  expiresAt: string | null
+  verificationCode: string
+  /** Worked out on the server when the list was read. */
   expired: boolean
 }
 
@@ -390,6 +405,8 @@ export function createCertificateRepository(input: {
   }
 
   async function getCertificateByVerificationCode(verificationCode: string): Promise<PublicLearningCertificate | null> {
+    // The column is a uuid: a code that cannot be one matches nothing (and must not reach the comparison).
+    if (!VERIFICATION_CODE_PATTERN.test(verificationCode)) return null
     const rows = await queryRows(
       `${CERTIFICATE_SELECT}
        where certificate.verification_code = $1
@@ -438,6 +455,29 @@ export function createCertificateRepository(input: {
     })
   }
 
+  /** Every certificate the learner holds, newest first, for their own My Learning page (round C, C6). */
+  async function listForLearner(learnerId: string): Promise<LearnerCertificateSummary[]> {
+    const rows = await queryRows(
+      `${CERTIFICATE_SELECT}
+       where certificate.learner_id = $1
+       order by certificate.issued_at desc, certificate.id desc`,
+      [learnerId],
+    ) as CertificateRow[]
+    return rows.map((row) => {
+      const certificate = mapCertificate(row)
+      const expiresAt = certificate.expiresAt ?? null
+      return {
+        certificateId: certificate.certificateId,
+        enrollmentId: certificate.enrollmentId,
+        courseTitle: certificate.courseTitle,
+        issuedAt: certificate.issuedAt,
+        expiresAt,
+        verificationCode: certificate.verificationCode,
+        expired: expiresAt ? new Date(expiresAt).getTime() <= Date.now() : false,
+      }
+    })
+  }
+
   /** The member shows or hides one of their own certificates on their profile. */
   async function setHiddenFromProfile(learnerId: string, certificateId: string, hidden: boolean) {
     const rows = await queryRows(
@@ -452,6 +492,7 @@ export function createCertificateRepository(input: {
 
   return {
     listForProfile,
+    listForLearner,
     setHiddenFromProfile,
     ensureCertificateForEnrollment,
     getCertificateForLearner,

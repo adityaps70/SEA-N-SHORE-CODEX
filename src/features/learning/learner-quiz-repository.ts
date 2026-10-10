@@ -7,6 +7,7 @@ import {
 } from './learner-progress-repository'
 import { learnerCourseAccessSql } from './course-publication'
 import { issueCertificateForFinalQuizWithQuery } from './certificate-repository'
+import { enrollmentAccessOpenSql } from './course-access'
 import {
   QUIZ_SUBMIT_GRACE_SECONDS,
   QuizAnswerError,
@@ -254,6 +255,7 @@ function quizAccessQuery(lockEnrollment: boolean) {
      on enrollment.course_id = course.id
     and enrollment.learner_id = $1
     and enrollment.status in ('active', 'completed')
+    and ${enrollmentAccessOpenSql()}
    left join public.learning_progress prerequisite_progress
      on prerequisite_progress.enrollment_id = enrollment.id
     and prerequisite_progress.lesson_id = lesson.prerequisite_lesson_id

@@ -57,6 +57,18 @@ describe('learning trainer verification application server actions', () => {
     expect(mocks.submitMentorApplication).not.toHaveBeenCalled()
   })
 
+  it('rejects empty course topics on the server with the plain field message, before authentication (round C)', async () => {
+    const result = await submitMentorApplication(validInput({ proposedCourseTopics: ' , ,' as unknown as string[] }))
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Please correct the highlighted fields. Everything else you entered has been kept.',
+      fieldErrors: { proposedCourseTopics: ['Add at least one course topic, separated by commas'] },
+    })
+    expect(JSON.stringify(result)).not.toMatch(/Too small|expected array|Invalid input/)
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+  })
+
   it('submits normalized mentor data with the authenticated Sea N Shore user', async () => {
     await expect(submitMentorApplication(validInput())).resolves.toEqual({ ok: true, applicationId })
 

@@ -34,6 +34,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/learning/enrollment-actions.ts', ['openCourseAsTeamMember']],
   // Learning round B: an administrator may open a trainer's question bank (admin authority is one branch).
   ['src/features/learning/question-bank-actions.ts', ['saveBankQuestion', 'deleteBankQuestion', 'importBankQuestionsCsv', 'listBankQuestionsForQuiz']],
+  // Learning round C (C1): an administrator may manage any course's roster (admin authority is one branch).
+  ['src/features/learning/course-roster-actions.ts', ['enrolLearnerByEmail', 'cancelCourseInvitation']],
 ]
 
 /** Bodies of the top-level functions in a module, by name. */

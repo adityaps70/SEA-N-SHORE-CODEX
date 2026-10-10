@@ -4,6 +4,7 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { adminRepository } from '@/features/admin/repository'
 import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
 import { MODERATION_TARGET_TYPES } from '@/features/moderation/types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return json({
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Invalid moderation request.',
+      error: firstPlainIssue(parsed.error, 'Invalid moderation request.'),
     }, 400)
   }
 
@@ -107,6 +108,10 @@ export async function POST(request: Request) {
     if (parsed.data.targetType === 'event') {
       revalidatePath('/events')
       revalidatePath(`/events/${parsed.data.targetId}`)
+    }
+    if (parsed.data.targetType === 'course_review') {
+      // Learning round C: a removed or restored review leaves or rejoins its course page.
+      revalidatePath('/learn/courses/[slug]', 'page')
     }
 
     return json({ ok: true }, 200)

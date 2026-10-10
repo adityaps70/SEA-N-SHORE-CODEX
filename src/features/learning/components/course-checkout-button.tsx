@@ -18,16 +18,23 @@ type Props = {
   blockedMessage?: string
   /** Drop the small print (the phone sticky bar has no room for it; the course page shows it above). */
   compact?: boolean
+  /** Round C: the plan to buy (the course's first plan when absent) and an applied promo code. */
+  planId?: string | null
+  promoCode?: string | null
+  /** "Buy course" (default) or "Renew". */
+  actionVerb?: string
 }
 
 /** "Buy course — ₹X": gateway checkout, then straight into the course player once the server confirms. */
-export function CourseCheckoutButton({ courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false }: Props) {
+export function CourseCheckoutButton({
+  courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false, planId = null, promoCode = null, actionVerb = 'Buy course',
+}: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
 
   return (
     <GatewayCheckoutButton
-      actionLabel={`Buy course — ${priceLabel}`}
+      actionLabel={`${actionVerb} — ${priceLabel}`}
       description={courseTitle}
       hint={compact ? undefined : 'Secure payment by card, UPI or net banking. The course unlocks as soon as the payment succeeds.'}
       configured={paymentsConfigured}
@@ -38,7 +45,11 @@ export function CourseCheckoutButton({ courseId, courseSlug, courseTitle, priceL
       unavailableHelp={blockedMessage}
       successFallback="Payment received. You're enrolled."
       timeoutSeconds={CHECKOUT_TIMEOUT_SECONDS}
-      start={({ phone }) => startCourseCheckoutAction(courseId, phone ? { phone } : {})}
+      start={({ phone }) => startCourseCheckoutAction(courseId, {
+        ...(phone ? { phone } : {}),
+        ...(planId ? { planId } : {}),
+        ...(promoCode ? { promoCode } : {}),
+      })}
       confirm={({ orderId, proof }) => confirmCoursePaymentAction({ courseId, orderId, proof })}
       onSettled={(result) => {
         startTransition(() => {

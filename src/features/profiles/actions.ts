@@ -20,6 +20,8 @@ import { PROFILE_TYPES, type ProfileType } from './types'
 import { removeDgProfileDocumentForProfile } from './profile-document-service'
 import { normalizeUsername, usernameSchema } from './username'
 import { checkUsernameAvailabilityFromAurora, suggestAvailableUsernameFromAurora } from './username-availability'
+import type { ZodError } from 'zod'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type OnboardingFormValues = {
   profileType?: ProfileType
@@ -185,9 +187,9 @@ async function linkCurrentOrganization<T extends { currentCompany?: string; curr
   }
 }
 
-function validationFailure(previousState: ProfileActionState, formData: FormData, error: { flatten: () => { fieldErrors: unknown } }) {
+function validationFailure(previousState: ProfileActionState, formData: FormData, error: ZodError) {
   return failureState(previousState, formData, {
-    fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
+    fieldErrors: plainFieldErrors(error),
   })
 }
 

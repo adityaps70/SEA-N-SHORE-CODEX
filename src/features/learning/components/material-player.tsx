@@ -63,7 +63,9 @@ function LockedMaterial({ lesson }: { lesson: LearnerLesson }) {
       ? `Drip after enrollment: available ${lesson.dripDelayDays ?? 0} day${lesson.dripDelayDays === 1 ? '' : 's'} after enrollment.`
       : lesson.lockReason === 'prerequisite'
         ? 'Complete the required earlier material before continuing.'
-        : 'This material is not available yet.'
+        : lesson.lockReason === 'access_expired'
+          ? 'Your access to this course has ended. Your progress, results and certificate are kept: renew from the course page to continue.'
+          : 'This material is not available yet.'
 
   return (
     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">

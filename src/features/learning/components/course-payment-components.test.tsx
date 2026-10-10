@@ -196,6 +196,11 @@ describe('CoursePurchasesList', () => {
     refundAttempts: 0,
     providerRefundId: null,
     createdAt: '2030-01-01T09:55:00.000Z',
+    planId: null,
+    planName: null,
+    accessMonths: null,
+    promoCode: null,
+    promoDiscountMinor: 0,
     courseSlug: 'sire-2-masterclass',
   }
 

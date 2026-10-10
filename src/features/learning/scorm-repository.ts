@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 import { learnerCourseAccessSql } from './course-publication'
+import { enrollmentAccessOpenSql } from './course-access'
 import {
   createScormRuntimeState,
   isScormCompletionTerminal,
@@ -107,6 +108,7 @@ export function createScormRepository(input: { transaction?: ScormTransaction } 
          ) stats on true
          where enrollment.learner_id = $1
            and enrollment.status in ('active', 'completed')
+           and ${enrollmentAccessOpenSql()}
            and course.slug = $2
            and ${learnerCourseAccessSql()}
            and lesson.id = $3
@@ -182,6 +184,7 @@ export function createScormRepository(input: { transaction?: ScormTransaction } 
            on enrollment.id = attempt.enrollment_id
           and enrollment.learner_id = $1
           and enrollment.status in ('active', 'completed')
+          and ${enrollmentAccessOpenSql()}
          where attempt.id = $2
          for update of attempt`,
         [learnerId, attemptId],

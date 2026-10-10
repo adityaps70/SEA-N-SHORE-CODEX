@@ -2,6 +2,7 @@ import { posix as path } from 'node:path'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { learnerCourseAccessSql } from './course-publication'
+import { enrollmentAccessOpenSql } from './course-access'
 
 type ContentRow = QueryResultRow & { extracted_prefix: string }
 
@@ -48,6 +49,7 @@ export async function resolveLearnerScormContentKey(
       and prerequisite_progress.lesson_id = lesson.prerequisite_lesson_id
      where enrollment.learner_id = $1
        and enrollment.status in ('active', 'completed')
+       and ${enrollmentAccessOpenSql()}
        and ${learnerCourseAccessSql()}
        and (
          lesson.release_mode = 'immediate'

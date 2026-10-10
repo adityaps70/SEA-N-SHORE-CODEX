@@ -7,6 +7,7 @@ import { createLegacyInviteWorker } from '../../src/features/legacy-invites/send
 import { subscriptionService } from '../../src/features/billing/subscription-service'
 import { createUnconfirmedUserCleanup } from '../../src/features/auth/unconfirmed-user-cleanup'
 import { createLearningDigestSweep, createLearningEmailWorker } from '../../src/features/learning/learning-email-sending'
+import { createCourseInvitationWorker } from '../../src/features/learning/course-invitation-email'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -40,6 +41,11 @@ let nextLearningDigestSweepAt = 0
 let learningEmailDisabledLogged = false
 const learningEmailWorker = createLearningEmailWorker()
 const learningDigestSweep = createLearningDigestSweep()
+// Learning round C (C1): enrol people who signed up with an invited address, then send pending
+// course invitation emails. Every minute; both steps are idempotent.
+const COURSE_INVITATION_SWEEP_MS = 60 * 1000
+let nextCourseInvitationSweepAt = 0
+const courseInvitationWorker = createCourseInvitationWorker()
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -157,6 +163,19 @@ async function runLearningEmailSweepIfDue() {
   }
 }
 
+async function runCourseInvitationSweepIfDue() {
+  const now = Date.now()
+  if (now < nextCourseInvitationSweepAt) return
+  nextCourseInvitationSweepAt = now + COURSE_INVITATION_SWEEP_MS
+
+  try {
+    const result = await courseInvitationWorker.runSweep(10)
+    if (result.enrolled > 0 || result.claimed > 0) console.info('[course_invitation_sweep]', result)
+  } catch (error) {
+    console.error('[course_invitation_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -173,6 +192,7 @@ async function main() {
       await runUnconfirmedUserSweepIfDue()
       await runLearningDigestSweepIfDue()
       await runLearningEmailSweepIfDue()
+      await runCourseInvitationSweepIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

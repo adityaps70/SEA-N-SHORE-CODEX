@@ -37,6 +37,11 @@ const baseOrder: CoursePaymentOrder = {
   refundAttempts: 0,
   providerRefundId: null,
   createdAt: '2030-01-01T09:59:00.000Z',
+  planId: null,
+  planName: null,
+  accessMonths: null,
+  promoCode: null,
+  promoDiscountMinor: 0,
 }
 
 function makeGateway(overrides: Partial<PaymentGateway> = {}): PaymentGateway {
@@ -117,7 +122,7 @@ describe('course payment service: checkout', () => {
 
   it('creates a crs_ gateway order for the stored amount with return and webhook URLs', async () => {
     const session = await service().startCheckout({ profileId, courseId, customer })
-    expect(repository.prepareCheckoutOrder).toHaveBeenCalledWith({ profileId, courseId, provider: 'cashfree', currencies: ['INR'], now })
+    expect(repository.prepareCheckoutOrder).toHaveBeenCalledWith({ profileId, courseId, provider: 'cashfree', currencies: ['INR'], planId: null, promoCode: null, now })
     expect(gateway.createCheckout).toHaveBeenCalledWith(expect.objectContaining({
       gatewayOrderId: gatewayId,
       amountMinor: 400000,

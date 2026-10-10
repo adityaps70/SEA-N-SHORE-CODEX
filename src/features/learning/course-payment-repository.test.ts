@@ -154,6 +154,7 @@ describe('course payment repository: purchase rules', () => {
     price: { amountMinor: 400000, listPriceMinor: 500000, discountPriceMinor: 400000, currency: 'INR' },
     currency: 'INR',
     companyId: null,
+    mentorId: null,
     sellerProfileId: mentorProfileId,
   }
 
@@ -182,7 +183,8 @@ describe('course payment repository: starting checkout', () => {
     const result = await coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId, provider: 'cashfree', currencies: ['INR'], now })
     expect(result.reused).toBe(false)
     expect(result.order).toMatchObject({ amountMinor: 400000, listPriceMinor: 500000, discountPriceMinor: 400000, currency: 'INR', status: 'created' })
-    expect(callWith('insert into public.course_payment_orders')?.[1]).toEqual([courseId, profileId, 'SIRE 2.0 Masterclass', 500000, 400000, 400000, 'INR', 'cashfree'])
+    // Round C: the order also snapshots the plan (here the course's own price as a lifetime "Standard" plan) and no code.
+    expect(callWith('insert into public.course_payment_orders')?.[1]).toEqual([courseId, profileId, 'SIRE 2.0 Masterclass', 500000, 400000, 400000, 'INR', 'cashfree', null, 'Standard', null, null, null, 0])
     expect(sqlCalls()[0]).toContain('for update of course')
     expect(auditActions()).toEqual(['checkout_started'])
   })
@@ -246,7 +248,8 @@ describe('course payment repository: confirming payment', () => {
     expect(outcome.order).toMatchObject({ enrollmentId, status: 'paid' })
     const enroll = callWith('insert into public.learning_enrollments')
     expect(String(enroll?.[0])).toContain("'purchase', 'active'")
-    expect(enroll?.[1]).toEqual([courseId, profileId, orderId])
+    // Round C: the enrolment also records the plan and its access period (none here: a lifetime order before plans).
+    expect(enroll?.[1]).toEqual([courseId, profileId, orderId, now.toISOString(), null, null])
     const earning = callWith('insert into public.seller_earnings')
     // seller = the mentor's profile, gross ₹4,000, fee 10% = ₹400, available 7 days after the payment.
     expect(earning?.[1]).toEqual(expect.arrayContaining([mentorProfileId, null, 'course_purchase', orderId, 'INR', 400000, 40000, 360000]))
@@ -292,7 +295,7 @@ describe('course payment repository: confirming payment', () => {
     const outcome = await coursePaymentRepository.confirmPaidOrder(client, { orderId, providerPaymentId: 'cf_pay_1', now })
     expect(outcome.state).toBe('enrolled')
     expect(callWith('insert into public.learning_enrollments')).toBeUndefined()
-    expect(callWith("enrollment_source = 'purchase', revoked_at = null")?.[1]).toEqual([enrollmentId, orderId])
+    expect(callWith("enrollment_source = 'purchase', revoked_at = null")?.[1]).toEqual([enrollmentId, orderId, now.toISOString(), null, null])
   })
 })
 

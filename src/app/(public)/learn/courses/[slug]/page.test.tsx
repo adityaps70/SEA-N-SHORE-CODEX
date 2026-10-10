@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   getPublicCurriculum: vi.fn(),
   createMediaReadUrl: vi.fn(),
+  // Learning round C: approved reviews (default: none).
+  getPublicReviews: vi.fn(async () => ({ averageRating: null as number | null, reviewCount: 0, reviews: [] as unknown[] })),
 }))
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }))
@@ -24,6 +26,8 @@ vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMembe
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/public-course-repository', () => ({ publicCourseRepository: { getPublicCurriculum: mocks.getPublicCurriculum } }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
+vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getPublicReviews: mocks.getPublicReviews } }))
+vi.mock('@/features/moderation/actions', () => ({ reportContent: vi.fn() }))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
   return {
@@ -409,5 +413,36 @@ describe('/learn/courses/[slug]', () => {
     await expect(generateMetadata({ params: Promise.resolve({ slug: 'a-draft-course' }) })).resolves.toEqual({ title: 'Course not found', robots: { index: false } })
     await PublishedCoursePage({ params: Promise.resolve({ slug: 'a-draft-course' }) })
     expect(mocks.notFound).toHaveBeenCalled()
+  })
+
+  it('shows the average and the approved reviews, lets others report a review, and adds aggregateRating (round C)', async () => {
+    mocks.getPublicReviews.mockResolvedValueOnce({
+      averageRating: 4.5,
+      reviewCount: 2,
+      reviews: [
+        { id: 'r1', rating: 5, body: 'Clear and practical.', reviewedAt: '2026-10-05T10:00:00.000Z', reviewer: { id: 'fixture-a', name: 'Fixture Reviewer Ana', slug: 'fixture-ana' } },
+        { id: 'r2', rating: 4, body: '', reviewedAt: '2026-10-04T10:00:00.000Z', reviewer: { id: 'learner-1', name: 'Fixture Reviewer Me', slug: null } },
+      ],
+    })
+    const { container } = render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    expect(mocks.getPublicReviews).toHaveBeenCalledWith(freeCourse.id)
+    const section = screen.getByRole('region', { name: 'Ratings and reviews' })
+    expect(within(section).getByText('4.5')).toBeInTheDocument()
+    expect(within(section).getByText(/2 ratings/)).toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'Fixture Reviewer Ana' })).toHaveAttribute('href', '/people/fixture-ana')
+    expect(within(section).getByText('Clear and practical.')).toBeInTheDocument()
+    // The signed-in member can report someone else's review, never their own.
+    expect(within(within(section).getByRole('article', { name: 'Review by Fixture Reviewer Ana' })).getByRole('button', { name: 'Report review' })).toBeInTheDocument()
+    expect(within(within(section).getByRole('article', { name: 'Review by Fixture Reviewer Me' })).queryByRole('button', { name: 'Report review' })).not.toBeInTheDocument()
+
+    const jsonLd = JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!)
+    expect(jsonLd.aggregateRating).toEqual({ '@type': 'AggregateRating', ratingValue: '4.5', ratingCount: 2, reviewCount: 2, bestRating: 5, worstRating: 1 })
+  })
+
+  it('leaves the reviews section and aggregateRating out while no review is approved (round C)', async () => {
+    const { container } = render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    expect(screen.queryByRole('region', { name: 'Ratings and reviews' })).not.toBeInTheDocument()
+    expect(JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!)).not.toHaveProperty('aggregateRating')
   })
 })

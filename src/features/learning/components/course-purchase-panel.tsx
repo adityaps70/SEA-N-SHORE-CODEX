@@ -1,18 +1,22 @@
 import Link from 'next/link'
 import { AlertTriangle, ArrowRight, CheckCircle2, LockKeyhole } from 'lucide-react'
-import { CourseCheckoutButton } from './course-checkout-button'
+import { CoursePlanCheckout, type CoursePlanOffer } from './course-plan-checkout'
 import { CoursePaymentPendingNotice } from './course-payment-pending-notice'
 import { CourseTeamAccessControl } from './course-team-access-control'
 
 /** What a signed-in person sees for a paid course (see course-purchase-state.ts). */
 export type CoursePurchaseState =
-  | { kind: 'enrolled'; viaTeam: boolean; completed: boolean }
+  | { kind: 'enrolled'; viaTeam: boolean; completed: boolean; accessUntilLabel?: string | null }
   | { kind: 'team'; reason: string }
   | { kind: 'revoked'; message: string }
   | { kind: 'refund_due'; amountLabel: string; paidLabel: string; reason: string; refundInProgress: boolean }
   | {
       kind: 'buy'
       priceLabel: string
+      /** Round C (C3): the plans on sale (one for most courses). */
+      plans?: CoursePlanOffer[]
+      /** Round C (C3): the learner's time-limited access ended; buying a plan renews it. */
+      renewal?: { endedLabel: string } | null
       configured: boolean
       blockedMessage?: string
       pending: { orderId: string; amountLabel: string; startedLabel: string } | null
@@ -36,6 +40,9 @@ export function CoursePurchasePanel({ course, state }: Props) {
             <p className="mt-1 text-sm leading-6 text-muted">
               {state.completed ? 'You finished every lesson. You can review the course at any time.' : 'Pick up where you left off. Your progress is saved to your Sea N Shore learning profile.'}
             </p>
+            {state.accessUntilLabel ? (
+              <p className="mt-1 text-sm font-semibold text-navy-900">Access until {state.accessUntilLabel}</p>
+            ) : null}
           </div>
         </div>
         <Link
@@ -102,13 +109,22 @@ export function CoursePurchasePanel({ course, state }: Props) {
           startedLabel={state.pending.startedLabel}
         />
       ) : null}
-      <CourseCheckoutButton
+      {state.renewal ? (
+        <div id="renew" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-700" />
+          <p className="text-sm leading-6 text-amber-950">
+            Your access ended on {state.renewal.endedLabel}. Your progress and certificate are kept. Choose a plan to renew.
+          </p>
+        </div>
+      ) : null}
+      <CoursePlanCheckout
         courseId={course.id}
         courseSlug={course.slug}
         courseTitle={course.title}
-        priceLabel={state.priceLabel}
+        plans={state.plans?.length ? state.plans : [{ id: null, name: 'Standard', priceLabel: state.priceLabel, listLabel: null, accessLabel: 'Lifetime access', currency: null }]}
         paymentsConfigured={state.configured}
         blockedMessage={state.blockedMessage}
+        renewal={Boolean(state.renewal)}
       />
     </div>
   )

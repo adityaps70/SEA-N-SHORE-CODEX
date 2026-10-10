@@ -10,6 +10,7 @@ import { ASSIGNMENT_DEFAULTS } from './assignment-policy'
 import { articleImagePaths, articlePlainText, sanitizeArticleHtml } from './article-html'
 import { mentorMaterialRepository, type MentorMaterialDraft, type MaterialType } from './mentor-material-repository'
 import type { LearningMediaKind } from './media-policy'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
 const materialTypeSchema = z.enum([
@@ -185,7 +186,7 @@ export async function createCurriculumMaterial(courseId: string, sectionId: stri
   const section = uuidSchema.safeParse(sectionId)
   const material = materialSchema.safeParse(input)
   if (!course.success || !section.success) return { ok: false, error: 'Invalid course or section.' }
-  if (!material.success) return { ok: false, error: material.error.issues[0]?.message ?? 'Review the material details.' }
+  if (!material.success) return { ok: false, error: firstPlainIssue(material.error, 'Review the material details.') }
   try {
     const user = await requireAwsUser()
     await verifyAsset(user.id, course.data, material.data)
@@ -203,7 +204,7 @@ export async function updateCurriculumMaterial(courseId: string, materialId: str
   const materialIdResult = uuidSchema.safeParse(materialId)
   const material = materialSchema.safeParse(input)
   if (!course.success || !materialIdResult.success) return { ok: false, error: 'Invalid course or material.' }
-  if (!material.success) return { ok: false, error: material.error.issues[0]?.message ?? 'Review the material details.' }
+  if (!material.success) return { ok: false, error: firstPlainIssue(material.error, 'Review the material details.') }
   try {
     const user = await requireAwsUser()
     await verifyAsset(user.id, course.data, material.data)

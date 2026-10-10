@@ -1,5 +1,6 @@
 export type MaterialReleaseMode = 'immediate' | 'scheduled' | 'drip'
-export type MaterialLockReason = 'unpublished' | 'scheduled' | 'drip' | 'prerequisite' | null
+/** 'access_expired' (round C): the learner's access period ended; they can renew from the course page. */
+export type MaterialLockReason = 'unpublished' | 'scheduled' | 'drip' | 'prerequisite' | 'access_expired' | null
 export type MaterialCompletionRule =
   | 'manual'
   | 'view'

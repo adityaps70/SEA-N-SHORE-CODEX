@@ -8,6 +8,7 @@ import { organizationAccessRequestRepository } from './access-request-repository
 import { organizationWorkspaceRepository } from './workspace-repository'
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole } from './types'
 import { accessRequestErrorMessage } from './access-request-messages'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export type AccessRequestActionResult = { ok: true } | { ok: false; error: string }
 
@@ -59,7 +60,7 @@ export async function decideOrganizationAccessRequest(input: {
     grantedRole: input.grantedRole ?? null,
     note: input.note ?? null,
   })
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the decision and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the decision and try again.') }
   if (parsed.data.decision === 'approved' && !parsed.data.grantedRole) {
     return { ok: false, error: 'Choose the role to grant before approving.' }
   }
@@ -82,7 +83,7 @@ export async function decideOrganizationAccessRequest(input: {
 
 export async function escalateOrganizationAccessRequest(requestId: string, note: string): Promise<AccessRequestActionResult> {
   const parsed = escalationSchema.safeParse({ requestId, note })
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the message and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the message and try again.') }
 
   try {
     const user = await requireAwsUser()

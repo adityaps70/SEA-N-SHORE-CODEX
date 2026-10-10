@@ -139,7 +139,14 @@ export function createCoursePaymentService(deps: {
     }
   }
 
-  async function startCheckout(input: { profileId: string; courseId: string; customer: CheckoutCustomer }): Promise<CourseCheckoutSession> {
+  async function startCheckout(input: {
+    profileId: string
+    courseId: string
+    customer: CheckoutCustomer
+    /** Round C: the plan the buyer chose (the first plan when absent) and the promo code text they typed. */
+    planId?: string | null
+    promoCode?: string | null
+  }): Promise<CourseCheckoutSession> {
     const gateway = await deps.getGateway()
     if (!gateway) throw new PaymentsNotConfiguredError()
     if (gateway.requiresCustomerPhone && !input.customer.phone) throw new CustomerPhoneRequiredError()
@@ -148,6 +155,8 @@ export function createCoursePaymentService(deps: {
       courseId: input.courseId,
       provider: gateway.name,
       currencies: gateway.currencies,
+      planId: input.planId ?? null,
+      promoCode: input.promoCode ?? null,
       now: now(),
     })
     let order = prepared.order

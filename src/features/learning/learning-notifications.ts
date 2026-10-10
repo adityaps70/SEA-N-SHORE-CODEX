@@ -24,6 +24,7 @@ export const LEARNING_NOTIFICATION_KINDS = [
   'submissions_to_grade',
   'quiz_graded',
   'certificate_expiring',
+  'announcement',
 ] as const
 export type LearningNotificationKind = (typeof LEARNING_NOTIFICATION_KINDS)[number]
 
@@ -37,6 +38,9 @@ export type LearningNotificationDetails = {
   lessonTitle?: string | null
   /** lessons_released / submissions_to_grade: how many. */
   count?: number
+  /** submissions_to_grade (round C): how many are assignments and how many are quiz attempts with written answers. */
+  assignmentCount?: number
+  quizAnswerCount?: number
   percentage?: number | null
   passed?: boolean | null
   verificationCode?: string | null
@@ -45,6 +49,10 @@ export type LearningNotificationDetails = {
   /** certificate_expiring: when it expires, and how many days were left when the reminder went out. */
   expiresAt?: string | null
   daysLeft?: number
+  /** announcement (round C): the trainer's announcement; the excerpt is the start of its text. */
+  announcementId?: string
+  announcementTitle?: string
+  announcementExcerpt?: string
 }
 
 export type LearningNotificationInput = {
@@ -399,14 +407,16 @@ export async function sweepReleasedLessons(transaction: <T>(work: (query: Query)
 type SubmissionRow = QueryResultRow & { attempt_id: string; course_id: string }
 
 /**
- * Hourly: new assignment submissions waiting to be graded, as one notification per course manager
- * per course per day ("3 submissions to grade in …"). Each submission is counted into a digest once
- * (trainer_digest_at); the count shown is everything still waiting in that course.
+ * Hourly: new submissions waiting to be graded — assignment submissions and quiz attempts with written answers
+ * awaiting grading (round C) — as one notification per course manager per course per day ("3 submissions to grade
+ * in …"). Each submission is counted into a digest once (trainer_digest_at); the count shown is everything still
+ * waiting in that course.
  */
 export async function sweepSubmissionsToGrade(transaction: <T>(work: (query: Query) => Promise<T>) => Promise<T>, input: { now?: Date; limit?: number } = {}) {
   const now = input.now ?? new Date()
+  const limit = input.limit ?? 1000
   return transaction(async (query) => {
-    const fresh = await query(
+    const assignments = await query(
       `select attempt.id as attempt_id, section.course_id
        from public.learning_assignment_attempts attempt
        inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
@@ -416,43 +426,73 @@ export async function sweepSubmissionsToGrade(transaction: <T>(work: (query: Que
        order by attempt.submitted_at asc, attempt.id asc
        limit $1
        for update of attempt skip locked`,
-      [input.limit ?? 1000],
+      [limit],
     ) as SubmissionRow[]
-    if (!fresh.length) return { submissions: 0, notified: 0 }
+    const quizzes = await query(
+      `select attempt.id as attempt_id, section.course_id
+       from public.learning_quiz_attempts attempt
+       inner join public.learning_quizzes quiz on quiz.id = attempt.quiz_id
+       inner join public.learning_lessons lesson on lesson.id = quiz.lesson_id
+       inner join public.learning_course_sections section on section.id = lesson.section_id
+       where attempt.status = 'awaiting_grading'
+         and attempt.trainer_digest_at is null
+       order by attempt.submitted_at asc, attempt.id asc
+       limit $1
+       for update of attempt skip locked`,
+      [limit],
+    ) as SubmissionRow[]
+    if (!assignments.length && !quizzes.length) return { submissions: 0, notified: 0 }
 
-    await query(
-      `update public.learning_assignment_attempts set trainer_digest_at = $2::timestamptz where id = any($1::uuid[])`,
-      [fresh.map((row) => row.attempt_id), now.toISOString()],
-    )
+    if (assignments.length) {
+      await query(
+        `update public.learning_assignment_attempts set trainer_digest_at = $2::timestamptz where id = any($1::uuid[])`,
+        [assignments.map((row) => row.attempt_id), now.toISOString()],
+      )
+    }
+    if (quizzes.length) {
+      await query(
+        `update public.learning_quiz_attempts set trainer_digest_at = $2::timestamptz where id = any($1::uuid[])`,
+        [quizzes.map((row) => row.attempt_id), now.toISOString()],
+      )
+    }
 
     let notified = 0
     const day = dayKey(now)
-    for (const courseId of new Set(fresh.map((row) => row.course_id))) {
+    for (const courseId of new Set([...assignments, ...quizzes].map((row) => row.course_id))) {
       const course = await loadCourse(query, courseId)
       if (!course) continue
       const waiting = await query(
-        `select count(*)::int as count
-         from public.learning_assignment_attempts attempt
-         inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
-         inner join public.learning_course_sections section on section.id = lesson.section_id
-         where section.course_id = $1 and attempt.status = 'submitted'`,
+        `select
+           (select count(*)::int
+            from public.learning_assignment_attempts attempt
+            inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
+            inner join public.learning_course_sections section on section.id = lesson.section_id
+            where section.course_id = $1 and attempt.status = 'submitted') as assignments,
+           (select count(*)::int
+            from public.learning_quiz_attempts attempt
+            inner join public.learning_quizzes quiz on quiz.id = attempt.quiz_id
+            inner join public.learning_lessons lesson on lesson.id = quiz.lesson_id
+            inner join public.learning_course_sections section on section.id = lesson.section_id
+            where section.course_id = $1 and attempt.status = 'awaiting_grading') as quiz_answers`,
         [courseId],
       )
-      const count = Number(waiting[0]?.count ?? 0)
+      const assignmentCount = Number(waiting[0]?.assignments ?? 0)
+      const quizAnswerCount = Number(waiting[0]?.quiz_answers ?? 0)
+      const count = assignmentCount + quizAnswerCount
       if (!count) continue
       for (const managerId of await courseManagerIds(query, courseId)) {
         const ok = await recordLearningNotification(query, {
           recipientId: managerId,
           kind: 'submissions_to_grade',
           courseId,
-          details: { courseTitle: course.title, courseSlug: course.slug, studioCourseId: course.id, count },
+          details: { courseTitle: course.title, courseSlug: course.slug, studioCourseId: course.id, count, assignmentCount, quizAnswerCount },
           dedupeKey: `learning_submissions_to_grade:${courseId}:${day}`,
           refresh: true,
         }, { inTransaction: true })
         if (ok) notified += 1
       }
     }
-    return { submissions: fresh.length, notified }
+    return { submissions: assignments.length + quizzes.length, notified }
   })
 }
 
@@ -508,4 +548,49 @@ export async function sweepExpiringCertificates(transaction: <T>(work: (query: Q
     }
     return { expiring: rows.length, notified }
   })
+}
+
+/** How much of an announcement travels in the notification and email; the player shows all of it. */
+export const ANNOUNCEMENT_EXCERPT_LENGTH = 600
+
+export function announcementExcerpt(body: string) {
+  const text = body.trim()
+  if (text.length <= ANNOUNCEMENT_EXCERPT_LENGTH) return text
+  const cut = text.slice(0, ANNOUNCEMENT_EXCERPT_LENGTH - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > ANNOUNCEMENT_EXCERPT_LENGTH / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
+/**
+ * A course announcement (learning round C, C5b): one in-app notification and one queued Learning email for every
+ * recipient, written set-based (one statement each, whatever the number of learners). Dedupe keys
+ * (`learning_announcement:<announcement id>`) make a retry harmless: a learner never gets the same announcement
+ * twice. Unlike the other writers this one is not guarded: delivering the announcement is the whole action, so a
+ * failure rolls the announcement back and the trainer can post it again. Returns how many learners it reached.
+ */
+export async function notifyCourseAnnouncement(query: Query, input: {
+  announcementId: string
+  courseId: string
+  recipientIds: readonly string[]
+  details: LearningNotificationDetails
+}) {
+  if (!input.recipientIds.length) return 0
+  const details = JSON.stringify(input.details)
+  const dedupeKey = `learning_announcement:${input.announcementId}`
+  await query(
+    `insert into public.notifications (recipient_id, actor_id, notification_type, course_id, lesson_id, details, dedupe_key)
+     select recipient.id, null, 'learning_announcement'::public.network_notification_type, $2, null, $3::jsonb, $4
+     from unnest($1::uuid[]) as recipient(id)
+     on conflict (recipient_id, dedupe_key) where dedupe_key is not null do nothing`,
+    [input.recipientIds, input.courseId, details, dedupeKey],
+  )
+  await query(
+    `insert into public.learning_notification_emails (dedupe_key, recipient_id, kind, payload)
+     select recipient.id::text || ':' || $4, recipient.id, 'announcement',
+            jsonb_build_object('courseId', $2::uuid, 'details', $3::jsonb)
+     from unnest($1::uuid[]) as recipient(id)
+     on conflict (dedupe_key) do nothing`,
+    [input.recipientIds, input.courseId, details, dedupeKey],
+  )
+  return input.recipientIds.length
 }

@@ -4,6 +4,8 @@ import { AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel } from '@/
 import { pluralize } from '@/lib/format'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ModerationActionPanel } from '@/features/admin/components/moderation-action-panel'
+import { PendingCourseReviewsPanel } from '@/features/admin/components/pending-course-reviews-panel'
+import { courseRatingRepository } from '@/features/learning/course-rating-repository'
 import { adminRepository } from '@/features/admin/repository'
 import {
   MODERATION_REPORT_STATUSES,
@@ -54,11 +56,16 @@ export default async function AdminModerationPage({
     : 'all'
 
   const user = await requireAwsUser()
-  const cases = await adminRepository.listModerationCases(user.id, {
-    status,
-    targetType,
-    limit: 100,
-  })
+  // Learning round C: course reviews wait for approval before they are public; they lead the open queue.
+  const showPendingReviews = status === 'open' && (targetType === 'all' || targetType === 'course_review')
+  const [cases, pendingReviews] = await Promise.all([
+    adminRepository.listModerationCases(user.id, {
+      status,
+      targetType,
+      limit: 100,
+    }),
+    showPendingReviews ? courseRatingRepository.listPendingReviews(user.id) : Promise.resolve([]),
+  ])
 
   const statusFilters: Array<{ value: ModerationReportStatus; label: string }> = [
     { value: 'open', label: 'Open' },
@@ -74,6 +81,7 @@ export default async function AdminModerationPage({
     { value: 'event', label: 'Events' },
     { value: 'profile', label: 'Profiles' },
     { value: 'group', label: 'Groups' },
+    { value: 'course_review', label: 'Course reviews' },
   ]
 
   return (
@@ -81,8 +89,10 @@ export default async function AdminModerationPage({
       <AdminPageHeader
         title="Moderation & reports"
         meta={pluralize(cases.length, 'case') + ' in this view'}
-        description="Reports about the same post, comment, job, event or profile are grouped into one case; repeated reports raise its priority."
+        description="Reports about the same post, comment, job, event, profile or course review are grouped into one case; repeated reports raise its priority."
       />
+
+      {showPendingReviews ? <PendingCourseReviewsPanel reviews={pendingReviews} /> : null}
 
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <AdminFilterBar
@@ -132,7 +142,7 @@ export default async function AdminModerationPage({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-navy-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white">
-                      {item.targetType}
+                      {item.targetType.replaceAll('_', ' ')}
                     </span>
                     <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800">
                       {item.reportCount} report{item.reportCount === 1 ? '' : 's'}

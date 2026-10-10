@@ -15,7 +15,9 @@ import {
 } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { LessonDropOffChart, MonthlyTrendCharts, QuizDifficultyChart } from '@/features/learning/components/course-insights-charts'
 import { mentorAnalyticsRepository } from '@/features/learning/mentor-analytics-repository'
+import { mentorCourseInsightsRepository } from '@/features/learning/mentor-course-insights-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 
@@ -25,7 +27,9 @@ function statusLabel(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-export default async function MentorLearningAnalyticsPage() {
+type AnalyticsSearchParams = Promise<{ course?: string | string[] }>
+
+export default async function MentorLearningAnalyticsPage({ searchParams }: { searchParams?: AnalyticsSearchParams } = {}) {
   const user = await requireAwsUser()
   const [mentorState, organizations] = await Promise.all([
     learningRepository.getMentorApplicationState(user.id),
@@ -38,8 +42,17 @@ export default async function MentorLearningAnalyticsPage() {
     || organization.role === 'lms_manager')
   if (!hasActiveMentor && !hasOrganizationLmsAccess) return redirect('/learn/teach')
 
-  const analytics = await mentorAnalyticsRepository.getForMentor(user.id)
+  const [analytics, params] = await Promise.all([
+    mentorAnalyticsRepository.getForMentor(user.id),
+    searchParams ?? Promise.resolve<{ course?: string | string[] }>({}),
+  ])
   const { summary } = analytics
+  // Only a course this viewer manages can be picked; anything else falls back to their first course.
+  const requestedCourseId = typeof params.course === 'string' ? params.course : null
+  const selectedCourse = analytics.courses.find((course) => course.courseId === requestedCourseId) ?? analytics.courses[0] ?? null
+  const insights = selectedCourse
+    ? await mentorCourseInsightsRepository.getCourseInsights(user.id, selectedCourse.courseId)
+    : null
   const primaryMetrics = [
     { label: 'Enrollments', value: String(summary.enrollmentCount), icon: Users },
     { label: 'Completion rate', value: `${summary.completionRate}%`, icon: CheckCircle2 },
@@ -178,6 +191,51 @@ export default async function MentorLearningAnalyticsPage() {
           </div>
         )}
       </section>
+
+      {selectedCourse ? (
+        <section id="course-insights" className="mt-10 scroll-mt-6" aria-labelledby="course-insights-heading">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Course insights</p>
+              <h2 id="course-insights-heading" className="mt-1 text-2xl font-bold tracking-tight text-navy-950">Where learners drop off, struggle and sign up</h2>
+              <p className="mt-2 text-sm leading-6 text-muted">One course at a time, from learner progress, quiz answers and sales already on Sea N Shore. Aggregate only; no learner is identified.</p>
+            </div>
+            {analytics.courses.length > 1 ? (
+              <form method="get" action="/learn/studio/analytics#course-insights" className="flex w-full flex-col gap-2 sm:flex-row sm:items-end lg:w-auto">
+                <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-[0.1em] text-muted lg:w-80">
+                  Course
+                  <select
+                    name="course"
+                    defaultValue={selectedCourse.courseId}
+                    className="h-11 w-full min-w-0 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-navy-950"
+                  >
+                    {analytics.courses.map((course) => (
+                      <option key={course.courseId} value={course.courseId}>{course.title}</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit" className="h-11 shrink-0 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white transition hover:bg-navy-900">
+                  Show insights
+                </button>
+              </form>
+            ) : (
+              <p className="text-sm font-bold text-navy-950">{selectedCourse.title}</p>
+            )}
+          </div>
+
+          {insights ? (
+            <div className="mt-6 space-y-5">
+              <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+                <LessonDropOffChart funnel={insights.lessonFunnel} />
+                <QuizDifficultyChart quizzes={insights.quizDifficulty} />
+              </div>
+              <MonthlyTrendCharts trend={insights.monthlyTrend} />
+            </div>
+          ) : (
+            <p className="mt-6 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-6 text-sm text-muted">Insights for this course are not available.</p>
+          )}
+        </section>
+      ) : null}
     </div>
   )
 }

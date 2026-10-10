@@ -15,6 +15,7 @@ import {
   GROUP_RULES_MAX_LENGTH,
   GROUP_VISIBILITIES,
 } from './types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export type AdminGroupFormState = { ok: true; message: string } | { ok: false; error: string } | null
 
@@ -64,7 +65,7 @@ export async function createGroupAsAdmin(_previous: AdminGroupFormState, formDat
   const admin = await requireAdmin()
   if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can create groups.' }
   const parsed = createSchema.safeParse(readForm(formData, [...GROUP_FIELD_KEYS, 'owner']))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the group details and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the group details and try again.') }
   const { owner: ownerLookup, ...group } = parsed.data
   let created: { id: string; slug: string }
   try {
@@ -81,7 +82,7 @@ export async function updateGroupAsAdmin(_previous: AdminGroupFormState, formDat
   const admin = await requireAdmin()
   if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can edit groups.' }
   const parsed = updateSchema.safeParse(readForm(formData, ['groupId', ...GROUP_FIELD_KEYS]))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the group details and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the group details and try again.') }
   const { groupId, ...group } = parsed.data
   try {
     await communityService.updateGroupAsAdmin(admin.id, groupId, group)
@@ -96,7 +97,7 @@ export async function setGroupOwnerAsAdmin(_previous: AdminGroupFormState, formD
   const admin = await requireAdmin()
   if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can change a group owner.' }
   const parsed = ownerSchema.safeParse(readForm(formData, ['groupId', 'owner']))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Enter the new owner’s email or handle.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Enter the new owner’s email or handle.') }
   let owner: { fullName: string }
   try {
     owner = await communityService.setGroupOwner(admin.id, parsed.data.groupId, parsed.data.owner)

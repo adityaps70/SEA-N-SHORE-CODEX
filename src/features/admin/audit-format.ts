@@ -30,6 +30,7 @@ const TARGET_LABELS: Record<string, string> = {
   job: 'Job',
   event: 'Event',
   group: 'Group',
+  course_review: 'Course review',
 }
 
 export function auditTargetLabel(targetType: string) {
