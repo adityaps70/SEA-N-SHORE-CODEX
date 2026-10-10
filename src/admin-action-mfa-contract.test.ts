@@ -29,6 +29,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites']],
   ['src/features/newsletter/admin-actions.ts', ['adminUnsubscribeSubscriber', 'queueNewsletterCampaign']],
   ['src/features/payouts/admin-actions.ts', ['updateFeeSettingsAction', 'setFeeOverrideAction', 'removeFeeOverrideAction', 'searchSellersAction', 'sendPayoutAction', 'refreshPayoutStatusAction', 'retryPayoutAction', 'cancelPayoutAction']],
+  // C4: admin review of course sellers' monthly invoices.
+  ['src/features/payouts/seller-invoice-admin-actions.ts', ['approveSellerInvoiceAction', 'rejectSellerInvoiceAction']],
   ['src/features/learning/course-payment-actions.ts', ['refundCoursePaymentAction']],
   ['src/features/payments/event-payment-actions.ts', ['refundEventPaymentAction']],
   ['src/features/learning/enrollment-actions.ts', ['openCourseAsTeamMember']],

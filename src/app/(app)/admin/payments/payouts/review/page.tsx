@@ -8,8 +8,11 @@ import { AdminChip, AdminPageHeader, AdminPanel, formatAdminDate } from '@/featu
 import { releaseAvailableEarnings } from '@/features/payments/earnings'
 import { requirePaymentsAdmin } from '@/features/payouts/admin-guard'
 import { SendPayoutPanel } from '@/features/payouts/components/admin/send-payout-panel'
-import { getSellerIdentity, listPayableEarningLines } from '@/features/payouts/payout-queries'
+import { getSellerIdentity, listAwaitingInvoiceLines, listPayableEarningLines } from '@/features/payouts/payout-queries'
 import { findOpenPayout, getActivePayoutAccount, getPayoutSettings } from '@/features/payouts/payout-repository'
+import { planPayoutTax } from '@/features/payouts/payout-tax'
+import { listPeriods } from '@/features/payouts/seller-invoice-rules'
+import { formatRateBasisPoints } from '@/features/payouts/tds'
 import { formatExactMoney, formatPercentLabel, maskPayoutAccount, parseSellerKey, SOURCE_TYPE_LABELS } from '@/features/payouts/payout-rules'
 import { arePayoutsConfigured } from '@/features/payouts/payout-runtime'
 import { single } from '@/features/payouts/seller-context'
@@ -29,18 +32,27 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
     await releaseAvailableEarnings(tx)
     const identity = await getSellerIdentity(tx, seller)
     if (!identity) return null
-    const [lines, account, open, settings] = await Promise.all([
+    const [lines, awaiting, account, open, settings] = await Promise.all([
       listPayableEarningLines(tx, seller),
+      listAwaitingInvoiceLines(tx, seller),
       getActivePayoutAccount(tx, seller),
       findOpenPayout(tx, seller),
       getPayoutSettings(tx),
     ])
-    return { identity, lines, account, open, settings }
+    const grossMinor = lines.reduce((sum, line) => sum + line.netMinor, 0)
+    const coursePartMinor = lines.filter((line) => line.baseSourceType === 'course_purchase').reduce((sum, line) => sum + line.netMinor, 0)
+    // The same TDS createPayout will deduct (it refuses to send if this changes in between).
+    const tax = await planPayoutTax(tx, { seller, grossMinor, coursePartMinor, now: new Date() })
+    return { identity, lines, awaiting, account, open, settings, tax }
   })
   if (!data) notFound()
   const configured = await arePayoutsConfigured()
 
   const total = data.lines.reduce((sum, line) => sum + line.netMinor, 0)
+  const awaitingPeriods = [...new Set(data.awaiting.map((line) => line.period).filter((period): period is string => Boolean(period)))].sort()
+  const awaitingMinor = data.awaiting.reduce((sum, line) => sum + line.netMinor, 0)
+  const tax = data.tax
+  const net = tax.netMinor
   const gross = data.lines.filter((line) => line.sourceType !== 'adjustment').reduce((sum, line) => sum + line.grossMinor, 0)
   const saleFees = data.lines.filter((line) => line.sourceType !== 'adjustment').reduce((sum, line) => sum + line.feeMinor, 0)
   const deductions = data.lines.filter((line) => line.sourceType === 'adjustment').reduce((sum, line) => sum + line.netMinor, 0)
@@ -52,13 +64,21 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
       ? { text: 'Cashfree Payouts is not set up, so this payout cannot be sent yet.', link: null, linkLabel: null }
       : !data.account
         ? { text: "This seller hasn't added payout details yet. Ask them to add a bank account or UPI ID under Settings → Payout details.", link: null, linkLabel: null }
-        : !data.lines.length
-          ? { text: 'Nothing is ready for payout for this seller right now.', link: null, linkLabel: null }
-          : total <= 0
-            ? { text: 'Refunds after an earlier payout cancel out the new earnings, so there is nothing to pay.', link: null, linkLabel: null }
-            : total < data.settings.minPayoutMinor
-              ? { text: `The total is below the minimum payout of ${formatExactMoney(data.settings.minPayoutMinor)}.`, link: null, linkLabel: null }
-              : null
+        : (!data.lines.length || total <= 0) && awaitingPeriods.length
+          ? { text: `The seller's course earnings can't be paid until their invoice for ${listPeriods(awaitingPeriods)} is approved.`, link: '/admin/payments/seller-invoices', linkLabel: 'Review seller invoices' }
+          : !data.lines.length
+            ? { text: 'Nothing is ready for payout for this seller right now.', link: null, linkLabel: null }
+            : total <= 0
+              ? { text: 'Refunds after an earlier payout cancel out the new earnings, so there is nothing to pay.', link: null, linkLabel: null }
+              : total < data.settings.minPayoutMinor
+                ? { text: `The total is below the minimum payout of ${formatExactMoney(data.settings.minPayoutMinor)}.`, link: null, linkLabel: null }
+                : tax.blocker === 'tds_rate_unset'
+                  ? { text: 'The TDS rate for course payouts is not set yet, so course earnings cannot be paid. Set it first.', link: '/admin/payments/tax', linkLabel: 'Tax settings' }
+                  : tax.blocker === 'pan_missing'
+                    ? { text: "This seller hasn't added their PAN yet, so course earnings can't be paid (TDS needs it). Ask them to add their tax details under Settings → Payout details.", link: null, linkLabel: null }
+                    : net <= 0
+                      ? { text: 'After TDS there is nothing left to transfer.', link: null, linkLabel: null }
+                      : null
 
   return (
     <main className="space-y-6">
@@ -75,8 +95,11 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
         <dl className="grid gap-px bg-mist-100 sm:grid-cols-3">
           <div className="bg-white px-5 py-3">
             <dt className="text-xs font-semibold text-muted">Amount to send</dt>
-            <dd className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-navy-950">{formatExactMoney(total)}</dd>
-            <dd className="text-xs text-muted">{data.lines.length} item{data.lines.length === 1 ? '' : 's'}</dd>
+            <dd className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-navy-950">{formatExactMoney(net)}</dd>
+            <dd className="text-xs text-muted">
+              {data.lines.length} item{data.lines.length === 1 ? '' : 's'}
+              {tax.tdsMinor > 0 ? <> · {formatExactMoney(total)} earnings − {formatExactMoney(tax.tdsMinor)} TDS</> : null}
+            </dd>
           </div>
           <div className="bg-white px-5 py-3">
             <dt className="text-xs font-semibold text-muted">Sales minus platform fee</dt>
@@ -99,6 +122,44 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
           </div>
         </dl>
       </AdminPanel>
+
+      {tax.applies ? (
+        <AdminPanel>
+          <div className="border-b border-mist-100 px-5 py-3">
+            <h3 className="text-sm font-bold text-navy-950">TDS on course earnings</h3>
+            <p className="text-xs text-muted">
+              Section {tax.section} at {formatRateBasisPoints(tax.rateBasisPoints)}
+              {tax.thresholdMinor !== null ? `, once the seller's course total for ${tax.financialYear} passes ${formatExactMoney(tax.thresholdMinor)}` : ', from the first rupee (no threshold set)'}.
+              {' '}The year&apos;s TDS is caught up on each course payout.
+            </p>
+          </div>
+          <dl className="grid gap-px bg-mist-100 sm:grid-cols-4">
+            {[
+              ['Gross (all earnings)', formatExactMoney(total)],
+              ['Course part (TDS base)', formatExactMoney(Math.max(tax.coursePartMinor, 0))],
+              ['TDS deducted', tax.blocker ? '—' : formatExactMoney(tax.tdsMinor)],
+              ['Net transferred', tax.blocker ? '—' : formatExactMoney(net)],
+            ].map(([label, value]) => (
+              <div key={label} className="bg-white px-5 py-3">
+                <dt className="text-xs font-semibold text-muted">{label}</dt>
+                <dd className="mt-0.5 text-sm font-semibold tabular-nums text-navy-950">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {tax.tds ? (
+            <p className="border-t border-mist-100 px-5 py-2.5 text-xs leading-5 text-muted">
+              Course total this financial year with this payout: {formatExactMoney(tax.tds.fyGrossMinor)}{tax.tds.thresholdCrossed ? ` · TDS due on it: ${formatExactMoney(tax.tds.targetMinor)}` : ' · below the threshold, no TDS yet'}.
+            </p>
+          ) : null}
+        </AdminPanel>
+      ) : null}
+
+      {awaitingPeriods.length ? (
+        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm leading-6 text-amber-950">
+          Not included: {formatExactMoney(awaitingMinor)} of course earnings for {listPeriods(awaitingPeriods)}, waiting for the seller&apos;s approved invoice.{' '}
+          <Link href="/admin/payments/seller-invoices" className={textLinkClass}>Seller invoices</Link>
+        </p>
+      ) : null}
 
       <AdminPanel>
         <div className="border-b border-mist-100 px-5 py-3">
@@ -153,7 +214,9 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
             sellerName={data.identity.name}
             earningIds={data.lines.map((line) => line.id)}
             totalMinor={total}
-            amountLabel={formatExactMoney(total)}
+            tdsMinor={tax.tdsMinor}
+            amountLabel={formatExactMoney(net)}
+            tdsLabel={tax.tdsMinor > 0 ? formatExactMoney(tax.tdsMinor) : null}
             accountSummary={masked!.summary}
           />
         )}

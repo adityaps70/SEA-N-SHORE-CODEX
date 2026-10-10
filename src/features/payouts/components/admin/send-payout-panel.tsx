@@ -11,8 +11,14 @@ type Props = {
   sellerKey: string
   sellerName: string
   earningIds: string[]
+  /** The gross of the reviewed earnings (what createPayout checks). */
   totalMinor: number
+  /** The TDS shown on the review (createPayout refuses if it differs). Defaults to 0. */
+  tdsMinor?: number
+  /** The amount transferred (gross − TDS). */
   amountLabel: string
+  /** Set when TDS is deducted, e.g. "₹1,000.00". */
+  tdsLabel?: string | null
   accountSummary: string
 }
 
@@ -25,7 +31,7 @@ const toneByState: Record<string, string> = {
 }
 
 /** Admin review screen: "Send ₹X via Cashfree" with an in-page confirmation step. */
-export function SendPayoutPanel({ sellerKey, sellerName, earningIds, totalMinor, amountLabel, accountSummary }: Props) {
+export function SendPayoutPanel({ sellerKey, sellerName, earningIds, totalMinor, tdsMinor = 0, amountLabel, tdsLabel = null, accountSummary }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [confirming, setConfirming] = useState(false)
@@ -56,7 +62,7 @@ export function SendPayoutPanel({ sellerKey, sellerName, earningIds, totalMinor,
     setResult(null)
     let outcome: PayoutActionResult
     try {
-      outcome = await sendPayoutAction({ sellerKey, earningIds, expectedTotalMinor: totalMinor })
+      outcome = await sendPayoutAction({ sellerKey, earningIds, expectedTotalMinor: totalMinor, expectedTdsMinor: tdsMinor })
     } catch {
       outcome = { ok: false, error: "We couldn't reach Sea N Shore, so we don't know whether the payout was created. Open the payouts queue and check before trying again." }
     }
@@ -91,7 +97,7 @@ export function SendPayoutPanel({ sellerKey, sellerName, earningIds, totalMinor,
         <div role="group" aria-labelledby={titleId} onKeyDown={(event) => { if (event.key === 'Escape') cancel() }} className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
           <p id={titleId} className="font-semibold text-navy-950">Send {amountLabel} to {sellerName}?</p>
           <p className="text-sm leading-6 text-navy-800">
-            Cashfree transfers the money to {accountSummary} straight away. A sent payout can&apos;t be called back. The {earningIds.length} item{earningIds.length === 1 ? '' : 's'} listed above will be marked as paid once the bank confirms.
+            Cashfree transfers the money to {accountSummary} straight away.{tdsLabel ? ` ${tdsLabel} TDS is kept back and shown on the seller's statement.` : ''} A sent payout can&apos;t be called back. The {earningIds.length} item{earningIds.length === 1 ? '' : 's'} listed above will be marked as paid once the bank confirms.
           </p>
           <div className="flex flex-wrap gap-2">
             <button ref={confirmRef} type="button" onClick={() => { void send() }} disabled={pending} aria-busy={pending || undefined} className={primaryButtonClass}>

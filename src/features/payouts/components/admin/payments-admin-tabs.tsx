@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 const tabs = [
   { href: '/admin/payments', label: 'Overview', exact: true },
   { href: '/admin/payments/payouts', label: 'Payouts', exact: false },
+  { href: '/admin/payments/seller-invoices', label: 'Seller invoices', exact: false },
   { href: '/admin/payments/fees', label: 'Fees', exact: false },
   { href: '/admin/payments/tax', label: 'Tax', exact: false },
   { href: '/admin/payments/transactions', label: 'Payments', exact: false },

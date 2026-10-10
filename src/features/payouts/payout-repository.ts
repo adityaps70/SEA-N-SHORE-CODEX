@@ -2,6 +2,8 @@ import type { QueryResultRow } from 'pg'
 import type { DatabaseQueryClient } from '@/lib/db/client'
 import { recordPaymentAudit, type PaymentAuditActorType } from '@/features/payments/audit'
 import { releaseAvailableEarnings, type Seller } from '@/features/payments/earnings'
+import { awaitingInvoiceSql, courseEarningSql, indiaMonthSql, payableEarningSql, readyEarningSql } from './course-payable'
+import { planPayoutTax } from './payout-tax'
 import {
   DEFAULT_MIN_PAYOUT_MINOR,
   DISPATCH_RETRY_AFTER_MS,
@@ -34,10 +36,15 @@ export class PayoutError extends Error {
     | 'payout_in_progress'
     | 'nothing_to_pay'
     | 'below_minimum'
+    | 'invoice_missing'
+    | 'pan_missing'
+    | 'tds_rate_unset'
     | 'balance_changed'
     | 'payout_not_found'
     | 'payout_not_cancellable'
-    | 'account_not_found') {
+    | 'account_not_found',
+  /** For invoice_missing: the months (YYYY-MM) whose seller invoice is not approved yet. */
+  readonly periods: string[] = []) {
     super(code)
     this.name = 'PayoutError'
   }
@@ -64,7 +71,16 @@ export type Payout = {
   id: string
   seller: Seller
   payoutAccountId: string
+  /** The amount transferred: the gross less any TDS. */
   amountMinor: number
+  /** The earnings in the payout (null on payouts made before C4, where it equals amountMinor). */
+  grossMinor: number | null
+  /** The course part of this payout that TDS was worked out on (0 when there are no course earnings). */
+  tdsBaseMinor: number
+  tdsMinor: number
+  tdsSection: string | null
+  tdsRateBasisPoints: number | null
+  tdsFinancialYear: string | null
   currency: 'INR'
   status: PayoutStatus
   transferId: string
@@ -117,6 +133,12 @@ type PayoutRow = QueryResultRow & {
   seller_company_id: string | null
   payout_account_id: string
   amount_minor: string | number
+  gross_minor?: string | number | null
+  tds_base_minor?: string | number | null
+  tds_minor?: string | number | null
+  tds_section?: string | null
+  tds_rate_basis_points?: number | string | null
+  tds_financial_year?: string | null
   currency: 'INR'
   status: PayoutStatus
   transfer_id: string
@@ -145,7 +167,8 @@ export const ACCOUNT_COLUMNS = `
 export const PAYOUT_COLUMNS = `
   id, seller_profile_id, seller_company_id, payout_account_id, amount_minor, currency, status, transfer_id,
   transfer_mode, cf_transfer_id, provider_status, provider_status_code, utr, failure_reason, dispatch_attempts,
-  last_dispatch_at, approved_by, approved_at, sent_at, completed_at, last_checked_at, created_at, updated_at
+  last_dispatch_at, approved_by, approved_at, sent_at, completed_at, last_checked_at, created_at, updated_at,
+  gross_minor, tds_base_minor, tds_minor, tds_section, tds_rate_basis_points, tds_financial_year
 `
 
 function iso(value: string | Date | null): string | null {
@@ -192,6 +215,12 @@ export function mapPayout(row: PayoutRow): Payout {
     seller: sellerOf(row),
     payoutAccountId: row.payout_account_id,
     amountMinor: Number(row.amount_minor),
+    grossMinor: row.gross_minor === null || row.gross_minor === undefined ? null : Number(row.gross_minor),
+    tdsBaseMinor: Number(row.tds_base_minor ?? 0),
+    tdsMinor: Number(row.tds_minor ?? 0),
+    tdsSection: row.tds_section ?? null,
+    tdsRateBasisPoints: row.tds_rate_basis_points === null || row.tds_rate_basis_points === undefined ? null : Number(row.tds_rate_basis_points),
+    tdsFinancialYear: row.tds_financial_year ?? null,
     currency: row.currency,
     status: row.status,
     transferId: row.transfer_id,
@@ -440,19 +469,43 @@ export async function updatePayoutSettings(tx: DatabaseQueryClient, input: { min
 // Payouts
 // ---------------------------------------------------------------------------
 
-type PayableRow = QueryResultRow & { id: string; net_minor: string | number }
+type PayableRow = QueryResultRow & { id: string; net_minor: string | number; is_course: boolean }
 
-/** Earnings that a payout for this seller would include now (INR, available, not in a payout). */
-export async function lockPayableEarnings(tx: DatabaseQueryClient, seller: Seller) {
+export type PayableEarning = { id: string; netMinor: number; isCourse: boolean }
+
+/**
+ * Earnings that a payout for this seller would include now: INR, available, not in a payout, and past the course
+ * invoice gate (course-payable.ts: a month's positive course earnings wait for its approved seller invoice).
+ */
+export async function lockPayableEarnings(tx: DatabaseQueryClient, seller: Seller): Promise<PayableEarning[]> {
   const [profileId, companyId] = sellerParams(seller)
   const result = await tx.query<PayableRow>(`
-    select id, net_minor from public.seller_earnings
-    where ${sellerFilter('', 1, 2)}
-      and status = 'available' and currency = 'INR' and payout_id is null
-    order by created_at asc, id asc
-    for update
+    select e.id, e.net_minor, ${courseEarningSql('e')} as is_course from public.seller_earnings e
+    where ${sellerFilter('e', 1, 2)}
+      and ${readyEarningSql('e')}
+      and ${payableEarningSql('e')}
+    order by e.created_at asc, e.id asc
+    for update of e
   `, [profileId, companyId])
-  return result.rows.map((row) => ({ id: row.id, netMinor: Number(row.net_minor) }))
+  return result.rows.map((row) => ({ id: row.id, netMinor: Number(row.net_minor), isCourse: Boolean(row.is_course) }))
+}
+
+/** Ready course earnings held back because their month's seller invoice is not approved yet (oldest first). */
+export async function listAwaitingInvoiceEarnings(client: DatabaseQueryClient, seller: Seller) {
+  const [profileId, companyId] = sellerParams(seller)
+  const result = await client.query<QueryResultRow & { id: string; net_minor: string | number; period: string }>(`
+    select e.id, e.net_minor, ${indiaMonthSql('e')} as period from public.seller_earnings e
+    where ${sellerFilter('e', 1, 2)}
+      and ${readyEarningSql('e')}
+      and ${awaitingInvoiceSql('e')}
+    order by e.created_at asc, e.id asc
+  `, [profileId, companyId])
+  return result.rows.map((row) => ({ id: row.id, netMinor: Number(row.net_minor), period: String(row.period) }))
+}
+
+/** The months (YYYY-MM, oldest first) whose seller invoice must be approved before their course earnings are paid. */
+export function awaitingPeriods(earnings: Array<{ period: string }>) {
+  return [...new Set(earnings.map((earning) => earning.period))].sort()
 }
 
 export async function lockOpenPayout(tx: DatabaseQueryClient, seller: Seller) {
@@ -505,17 +558,26 @@ export type CreatePayoutResult =
  * returned instead (the unique "one open payout per seller" index backs this up).
  * The admin reviewed a specific list of earnings; if the payable set or total changed
  * since then, nothing is created (balance_changed).
+ *
+ * Course earnings (C4): a month's positive course earnings are payable only once the seller's invoice for that month
+ * is approved (invoice_missing otherwise). A payout with a positive course part needs the TDS rate to be set
+ * (tds_rate_unset) and the seller's PAN (pan_missing); its TDS (payout-tax.ts / tds.ts) is deducted, so amount_minor
+ * (the Cashfree transfer) = gross_minor − tds_minor. When the admin's review showed a TDS amount
+ * (expectedTdsMinor), a different TDS now also refuses (balance_changed).
  */
 export async function createPayout(tx: DatabaseQueryClient, input: {
   payoutId: string
   seller: Seller
   earningIds: string[]
   expectedTotalMinor: number
+  /** The TDS the admin saw on the review screen, if any. */
+  expectedTdsMinor?: number
   minPayoutMinor: number
   actorProfileId: string
   now?: Date
 }): Promise<CreatePayoutResult> {
-  await releaseAvailableEarnings(tx, input.now ?? new Date())
+  const now = input.now ?? new Date()
+  await releaseAvailableEarnings(tx, now)
   // Lock the seller's account row first: concurrent sends for one seller queue up here.
   const account = await getActivePayoutAccount(tx, input.seller, { lock: true })
   const open = await lockOpenPayout(tx, input.seller)
@@ -526,20 +588,38 @@ export async function createPayout(tx: DatabaseQueryClient, input: {
   const total = payable.reduce((sum, earning) => sum + earning.netMinor, 0)
   const expected = new Set(input.earningIds)
   const sameSet = expected.size === payable.length && payable.every((earning) => expected.has(earning.id))
-  if (!sameSet || total !== input.expectedTotalMinor) throw new PayoutError('balance_changed')
-  if (total <= 0) throw new PayoutError('nothing_to_pay')
+  if (!sameSet || total !== input.expectedTotalMinor || total <= 0) {
+    // Course earnings whose month has no approved seller invoice are never paid; say so rather than "changed".
+    const awaiting = await listAwaitingInvoiceEarnings(tx, input.seller)
+    const periods = awaitingPeriods(awaiting)
+    if (awaiting.some((earning) => expected.has(earning.id)) || (periods.length && total <= 0)) throw new PayoutError('invoice_missing', periods)
+    if (!sameSet || total !== input.expectedTotalMinor) throw new PayoutError('balance_changed')
+    throw new PayoutError('nothing_to_pay')
+  }
   if (total < input.minPayoutMinor) throw new PayoutError('below_minimum')
+
+  const coursePartMinor = payable.filter((earning) => earning.isCourse).reduce((sum, earning) => sum + earning.netMinor, 0)
+  const tax = await planPayoutTax(tx, { seller: input.seller, grossMinor: total, coursePartMinor, now })
+  if (tax.blocker) throw new PayoutError(tax.blocker)
+  if (input.expectedTdsMinor !== undefined && input.expectedTdsMinor !== tax.tdsMinor) throw new PayoutError('balance_changed')
+  if (tax.netMinor <= 0) throw new PayoutError('nothing_to_pay')
 
   const [profileId, companyId] = sellerParams(input.seller)
   const transferId = transferIdForPayout(input.payoutId)
   const inserted = await tx.query<PayoutRow>(`
     insert into public.payouts (
       id, seller_profile_id, seller_company_id, payout_account_id, amount_minor, currency, status, provider,
-      transfer_id, transfer_mode, dispatch_attempts, last_dispatch_at, approved_by, approved_at
+      transfer_id, transfer_mode, dispatch_attempts, last_dispatch_at, approved_by, approved_at,
+      gross_minor, tds_base_minor, tds_minor, tds_section, tds_rate_basis_points, tds_financial_year, seller_pan
     )
-    values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::bigint, 'INR', 'draft', 'cashfree', $6::text, $7::text, 1, now(), $8::uuid, now())
+    values ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::bigint, 'INR', 'draft', 'cashfree', $6::text, $7::text, 1, now(), $8::uuid, now(),
+      $9::bigint, $10::bigint, $11::bigint, $12::text, $13::integer, $14::text, $15::text)
     returning ${PAYOUT_COLUMNS}
-  `, [input.payoutId, profileId, companyId, account.id, total, transferId, account.method === 'upi' ? 'upi' : 'banktransfer', input.actorProfileId])
+  `, [
+    input.payoutId, profileId, companyId, account.id, tax.netMinor, transferId, account.method === 'upi' ? 'upi' : 'banktransfer', input.actorProfileId,
+    total, tax.tds?.tdsBaseMinor ?? 0, tax.tdsMinor, tax.applies ? tax.section : null, tax.applies ? tax.rateBasisPoints : null,
+    tax.applies ? tax.financialYear : null, tax.applies ? tax.pan : null,
+  ])
   const payout = mapPayout(inserted.rows[0]!)
 
   const ids = payable.map((earning) => earning.id)
@@ -577,7 +657,18 @@ export async function createPayout(tx: DatabaseQueryClient, input: {
     currency: 'INR',
     provider: 'cashfree',
     providerReference: transferId,
-    details: { earningCount: ids.length, payoutAccountId: account.id, sellerType: companyId ? 'organization' : 'profile', sellerId: companyId ?? profileId },
+    details: {
+      earningCount: ids.length,
+      payoutAccountId: account.id,
+      sellerType: companyId ? 'organization' : 'profile',
+      sellerId: companyId ?? profileId,
+      grossMinor: total,
+      tdsBaseMinor: payout.tdsBaseMinor,
+      tdsMinor: payout.tdsMinor,
+      tdsSection: payout.tdsSection,
+      tdsRateBasisPoints: payout.tdsRateBasisPoints,
+      tdsFinancialYear: payout.tdsFinancialYear,
+    },
   })
   return { kind: 'created', payout, account }
 }

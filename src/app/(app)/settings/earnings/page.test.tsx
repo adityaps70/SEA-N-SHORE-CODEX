@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   configured: true,
   release: vi.fn(async () => 0),
   sellerSeen: [] as unknown[],
+  taxProfile: null as unknown,
+  invoiceMonths: [] as unknown[],
+  extraPayouts: [] as unknown[],
 }))
 
 vi.mock('@/lib/db/client', () => ({ query: vi.fn(), withTransaction: async (work: (tx: unknown) => unknown) => work({}) }))
@@ -39,14 +42,22 @@ vi.mock('@/features/payouts/payout-queries', () => ({
     id: 'p1', seller: { profileId: USER }, amountMinor: 89820, currency: 'INR', status: 'success', utr: 'N123456789', createdAt: '2026-09-10T10:00:00.000Z',
     account: { method: 'bank', summary: 'Bank account ••••1772 · HDFC0000001', holderName: 'Arjun Rao', ifsc: 'HDFC0000001', last4: '1772', maskedVpa: null },
     sellerIdentity: { seller: { profileId: USER }, name: 'Arjun Rao', slug: 'arjun', kind: 'profile' },
-  }],
+  }, ...mocks.extraPayouts],
 }))
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('@/features/payouts/seller-tax-actions', () => ({ startSellerInvoiceUploadAction: vi.fn(), submitSellerInvoiceAction: vi.fn(), saveTaxDetailsAction: vi.fn() }))
+vi.mock('@/features/payouts/payout-tax', () => ({ getPayoutTaxProfile: async () => mocks.taxProfile }))
+vi.mock('@/features/payouts/seller-invoices', () => ({ listSellerInvoiceMonths: async () => mocks.invoiceMonths }))
 
 import EarningsPage from './page'
 
 beforeEach(() => {
   mocks.configured = true
   mocks.sellerSeen = []
+  mocks.taxProfile = null
+  mocks.invoiceMonths = []
+  mocks.extraPayouts = []
   vi.clearAllMocks()
 })
 afterEach(() => cleanup())
@@ -87,5 +98,51 @@ describe('Settings → Earnings', () => {
     mocks.configured = false
     render(await EarningsPage({ searchParams: Promise.resolve({}) }))
     expect(screen.getByText(/Payouts are not switched on yet/)).toBeInTheDocument()
+  })
+
+  it('shows each month of course earnings with the amount to invoice and its status, and TDS on course payouts (C4)', async () => {
+    mocks.taxProfile = { legalName: 'Fixture Seller', pan: 'ABCDE1234F', gstRegistered: false, gstin: null, updatedAt: '2026-09-01T10:00:00.000Z' }
+    mocks.invoiceMonths = [
+      { period: '2026-10', expectedMinor: 90000, state: 'open', invoice: null },
+      { period: '2026-09', expectedMinor: 180000, state: 'due', invoice: null },
+      {
+        period: '2026-08', expectedMinor: 120000, state: 'rejected',
+        invoice: { id: '99999999-9999-4999-8999-999999999999', kind: 'bill_of_supply', documentNumber: 'B-7', amountMinor: 120000, fileName: 'bill.pdf', status: 'rejected', reviewNote: 'The bill is not signed.', reviewedAt: '2026-09-03T10:00:00.000Z', createdAt: '2026-09-02T10:00:00.000Z' },
+      },
+      { period: '2026-07', expectedMinor: -5000, state: 'not_needed', invoice: null },
+    ]
+    mocks.extraPayouts = [{
+      id: 'p2', seller: { profileId: USER }, amountMinor: 162000, grossMinor: 180000, tdsBaseMinor: 180000, tdsMinor: 18000, tdsSection: '194J', tdsRateBasisPoints: 1000, tdsFinancialYear: '2026-27',
+      currency: 'INR', status: 'success', utr: 'N999', createdAt: '2026-09-20T10:00:00.000Z', account: null,
+      sellerIdentity: { seller: { profileId: USER }, name: 'Arjun Rao', slug: 'arjun', kind: 'profile' },
+    }]
+    render(await EarningsPage({ searchParams: Promise.resolve({}) }))
+    const section = screen.getByRole('region', { name: 'Monthly invoices for course earnings' })
+    expect(section).toHaveTextContent('upload a bill of supply (no GST)')
+    const september = within(section).getByText('September 2026').closest('li') as HTMLElement
+    expect(within(september).getByText('₹1,800.00')).toBeInTheDocument()
+    expect(within(september).getByText('Invoice needed')).toBeInTheDocument()
+    expect(within(september).getByRole('button', { name: 'Upload invoice' })).toBeInTheDocument()
+    const august = within(section).getByText('August 2026').closest('li') as HTMLElement
+    expect(august).toHaveTextContent('The bill is not signed.')
+    expect(within(august).getByRole('link', { name: 'bill.pdf' })).toHaveAttribute('href', '/api/payouts/seller-invoices/99999999-9999-4999-8999-999999999999')
+    expect(within(august).getByRole('button', { name: 'Upload a new invoice' })).toBeInTheDocument()
+    const october = within(section).getByText('October 2026').closest('li') as HTMLElement
+    expect(within(october).getByText('Month in progress')).toBeInTheDocument()
+    expect(within(october).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(section).getByText('July 2026').closest('li')).toHaveTextContent('No invoice needed')
+    // The payout shows gross, TDS (section and rate) and net; the PAN never reaches the page.
+    const payout = screen.getByText('N999').closest('li') as HTMLElement
+    expect(payout).toHaveTextContent('Earnings ₹1,800.00 − TDS ₹180.00 (section 194J, 10%, on ₹1,800.00 of course earnings) = paid ₹1,620.00')
+    expect(document.body.textContent).not.toContain('ABCDE1234F')
+  })
+
+  it('asks for tax details before course invoices can be uploaded', async () => {
+    mocks.invoiceMonths = [{ period: '2026-09', expectedMinor: 180000, state: 'due', invoice: null }]
+    render(await EarningsPage({ searchParams: Promise.resolve({}) }))
+    const section = screen.getByRole('region', { name: 'Monthly invoices for course earnings' })
+    expect(within(section).getByText(/Add tax details first/)).toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'Add tax details' })).toHaveAttribute('href', '/settings/payouts')
+    expect(within(section).queryByRole('button', { name: 'Upload invoice' })).not.toBeInTheDocument()
   })
 })
