@@ -3,6 +3,7 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { runtimeAdminUserControlService } from '@/features/admin/runtime-user-control-service'
 import { AdminSignInControlError } from '@/features/admin/sign-in-control-error'
 import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -68,7 +69,7 @@ export async function POST(
   }
   const parsed = bodySchema.safeParse(body)
   if (!parsed.success) {
-    return json({ ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid permanent deletion request.' }, 400)
+    return json({ ok: false, error: firstPlainIssue(parsed.error, 'Invalid permanent deletion request.') }, 400)
   }
 
   try {

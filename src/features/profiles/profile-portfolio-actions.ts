@@ -19,6 +19,7 @@ import {
   profileExperienceIdSchema,
   profileExperienceInputSchema,
 } from './profile-portfolio-schemas'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type ProfilePortfolioActionState = {
   error?: string
@@ -59,7 +60,7 @@ export async function createProfileExperience(
 
   const parsed = profileExperienceInputSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
-    return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+    return validationFailure(previousState, plainFieldErrors(parsed.error))
   }
   // Round 11: vessel details are only kept on sea service, which only seafarers and cadets add.
   if (parsed.data.track === 'sea_service' && !personaOffersSeaService(personaForProfile(profile))) {
@@ -90,7 +91,7 @@ export async function updateProfileExperience(
 
   const parsed = profileExperienceInputSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
-    return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+    return validationFailure(previousState, plainFieldErrors(parsed.error))
   }
 
   if (parsed.data.track === 'sea_service' && !personaOffersSeaService(personaForProfile(profile))) {
@@ -144,7 +145,7 @@ export async function createProfileCredential(
 
   const parsed = profileCredentialInputSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
-    return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+    return validationFailure(previousState, plainFieldErrors(parsed.error))
   }
 
   try {
@@ -171,7 +172,7 @@ export async function updateProfileCredential(
 
   const parsed = profileCredentialInputSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) {
-    return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+    return validationFailure(previousState, plainFieldErrors(parsed.error))
   }
 
   try {

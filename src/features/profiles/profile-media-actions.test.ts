@@ -73,3 +73,18 @@ describe('profile media actions', () => {
     expectProfileMediaRevalidation()
   })
 })
+
+describe('profile media action messages (round C)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('shows the plain image rules, and hides storage errors and internal codes behind a plain retry message', async () => {
+    mockedUpload.mockRejectedValueOnce(new Error('Image must be 5 MB or smaller.'))
+    await expect(uploadAvatarAction({}, imageForm())).resolves.toEqual({ error: 'Image must be 5 MB or smaller.' })
+
+    mockedUpload.mockRejectedValueOnce(new Error('profile_media_profile_missing'))
+    await expect(uploadCoverAction({}, imageForm())).resolves.toEqual({ error: 'We could not upload this image. Please try again.' })
+
+    mockedRemove.mockRejectedValueOnce(new Error('AccessDenied: s3://bucket/profiles/key'))
+    await expect(removeAvatarAction(new FormData())).resolves.toEqual({ error: 'We could not remove this image. Please try again.' })
+  })
+})

@@ -7,6 +7,7 @@ import { organizationRepository, type OrganizationApplicationInput } from './rep
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole, type CompanySearchResult } from './types'
 import { organizationApplicationSchema } from './schemas'
 import { unclaimedOrganizationRepository } from './unclaimed-organization-repository'
+import { firstPlainIssue, plainFieldErrors } from '@/lib/validation/plain-messages'
 
 type OrganizationFailure = {
   ok: false
@@ -43,7 +44,7 @@ function validationFailure(error: z.ZodError): OrganizationFailure {
   return {
     ok: false,
     error: 'Please correct the highlighted information and try again.',
-    fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
+    fieldErrors: plainFieldErrors(error),
   }
 }
 
@@ -71,7 +72,7 @@ function refreshOrganizationHiring() {
 export async function searchOrganizations(term: string): Promise<OrganizationSearchResult> {
   const parsed = organizationSearchSchema.safeParse(term)
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Enter an organization name to search.' }
+    return { ok: false, error: firstPlainIssue(parsed.error, 'Enter an organization name to search.') }
   }
 
   try {
@@ -89,7 +90,7 @@ export async function requestOrganizationAccess(
 ): Promise<OrganizationAccessRequestResult> {
   const parsed = organizationAccessRequestSchema.safeParse({ companyId, requestedRole, message })
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the organization access request and try again.' }
+    return { ok: false, error: firstPlainIssue(parsed.error, 'Check the organization access request and try again.') }
   }
 
   try {

@@ -1,8 +1,10 @@
+import { isRawValidationMessage } from '@/lib/validation/plain-messages'
 import { describe, expect, it } from 'vitest'
 import {
   MENTOR_APPLICATION_STATUSES,
   canApplicantEditMentorApplication,
   canTransitionMentorApplicationStatus,
+  COURSE_TOPICS_REQUIRED_MESSAGE,
   mentorApplicationSchema,
 } from './mentor-application'
 
@@ -50,6 +52,42 @@ describe('learning mentor application', () => {
     })
 
     expect(result.success).toBe(false)
+  })
+
+  it('counts course topics after dropping blank items and trailing commas, and words every rule plainly (round C)', () => {
+    const input = {
+      name: 'Capt. Maya Nair',
+      currentLastRank: 'Chief Officer',
+      yearsExperience: 12,
+      vesselTypes: ['Oil Tanker'],
+      specialization: 'Tanker Safety',
+      certifications: ['Train the Trainer'],
+      linkedInUrl: null,
+      shortBio: 'Maritime professional focused on practical tanker safety, competence and mentoring seafarers.',
+      profilePhotoPath: null,
+    }
+    for (const empty of ['', ' ', ',', ' , ,, ', []]) {
+      const result = mentorApplicationSchema.safeParse({ ...input, proposedCourseTopics: empty })
+      expect(result.success).toBe(false)
+      expect(result.error?.issues.map((issue) => [issue.path.join('.'), issue.message])).toEqual([
+        ['proposedCourseTopics', COURSE_TOPICS_REQUIRED_MESSAGE],
+      ])
+    }
+    expect(mentorApplicationSchema.parse({ ...input, proposedCourseTopics: 'SIRE 2.0, , sire 2.0, Bridge,' }).proposedCourseTopics)
+      .toEqual(['SIRE 2.0', 'Bridge'])
+
+    // Every message is written for members, never zod's own wording; an unparseable URL fails instead of throwing.
+    const everythingWrong = mentorApplicationSchema.safeParse({
+      name: '', currentLastRank: '', yearsExperience: Number.NaN, vesselTypes: ',', specialization: '', certifications: '',
+      linkedInUrl: 'not a url', shortBio: 'short', profilePhotoPath: null, proposedCourseTopics: '',
+    })
+    expect(everythingWrong.success).toBe(false)
+    for (const issue of everythingWrong.error!.issues) {
+      expect(isRawValidationMessage(issue.message), issue.message).toBe(false)
+    }
+    expect(everythingWrong.error!.issues.map((issue) => issue.path[0])).toEqual([
+      'name', 'currentLastRank', 'yearsExperience', 'vesselTypes', 'specialization', 'certifications', 'linkedInUrl', 'shortBio', 'proposedCourseTopics',
+    ])
   })
 
   it('defines an explicit admin-reviewed application lifecycle', () => {

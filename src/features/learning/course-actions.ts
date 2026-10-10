@@ -17,6 +17,7 @@ import { CourseRevisionError, courseRevisionRepository } from './course-revision
 import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
 import { learningMediaRepository } from './media-repository'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const courseIdSchema = z.string().uuid()
 const revisionSchema = z.number().int().min(1).nullable()
@@ -125,7 +126,7 @@ export type CourseSaveActionResult =
 export type CourseSubmitActionResult = CourseActionResult
 
 function validationError(error: z.ZodError) {
-  return error.issues[0]?.message ?? 'Review the course details and try again.'
+  return firstPlainIssue(error, 'Review the course details and try again.')
 }
 
 function detailText(error: CourseSubmissionReadinessError, key: string) {

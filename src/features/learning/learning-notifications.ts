@@ -37,6 +37,9 @@ export type LearningNotificationDetails = {
   lessonTitle?: string | null
   /** lessons_released / submissions_to_grade: how many. */
   count?: number
+  /** submissions_to_grade (round C): how many are assignments and how many are quiz attempts with written answers. */
+  assignmentCount?: number
+  quizAnswerCount?: number
   percentage?: number | null
   passed?: boolean | null
   verificationCode?: string | null
@@ -399,14 +402,16 @@ export async function sweepReleasedLessons(transaction: <T>(work: (query: Query)
 type SubmissionRow = QueryResultRow & { attempt_id: string; course_id: string }
 
 /**
- * Hourly: new assignment submissions waiting to be graded, as one notification per course manager
- * per course per day ("3 submissions to grade in …"). Each submission is counted into a digest once
- * (trainer_digest_at); the count shown is everything still waiting in that course.
+ * Hourly: new submissions waiting to be graded — assignment submissions and quiz attempts with written answers
+ * awaiting grading (round C) — as one notification per course manager per course per day ("3 submissions to grade
+ * in …"). Each submission is counted into a digest once (trainer_digest_at); the count shown is everything still
+ * waiting in that course.
  */
 export async function sweepSubmissionsToGrade(transaction: <T>(work: (query: Query) => Promise<T>) => Promise<T>, input: { now?: Date; limit?: number } = {}) {
   const now = input.now ?? new Date()
+  const limit = input.limit ?? 1000
   return transaction(async (query) => {
-    const fresh = await query(
+    const assignments = await query(
       `select attempt.id as attempt_id, section.course_id
        from public.learning_assignment_attempts attempt
        inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
@@ -416,43 +421,73 @@ export async function sweepSubmissionsToGrade(transaction: <T>(work: (query: Que
        order by attempt.submitted_at asc, attempt.id asc
        limit $1
        for update of attempt skip locked`,
-      [input.limit ?? 1000],
+      [limit],
     ) as SubmissionRow[]
-    if (!fresh.length) return { submissions: 0, notified: 0 }
+    const quizzes = await query(
+      `select attempt.id as attempt_id, section.course_id
+       from public.learning_quiz_attempts attempt
+       inner join public.learning_quizzes quiz on quiz.id = attempt.quiz_id
+       inner join public.learning_lessons lesson on lesson.id = quiz.lesson_id
+       inner join public.learning_course_sections section on section.id = lesson.section_id
+       where attempt.status = 'awaiting_grading'
+         and attempt.trainer_digest_at is null
+       order by attempt.submitted_at asc, attempt.id asc
+       limit $1
+       for update of attempt skip locked`,
+      [limit],
+    ) as SubmissionRow[]
+    if (!assignments.length && !quizzes.length) return { submissions: 0, notified: 0 }
 
-    await query(
-      `update public.learning_assignment_attempts set trainer_digest_at = $2::timestamptz where id = any($1::uuid[])`,
-      [fresh.map((row) => row.attempt_id), now.toISOString()],
-    )
+    if (assignments.length) {
+      await query(
+        `update public.learning_assignment_attempts set trainer_digest_at = $2::timestamptz where id = any($1::uuid[])`,
+        [assignments.map((row) => row.attempt_id), now.toISOString()],
+      )
+    }
+    if (quizzes.length) {
+      await query(
+        `update public.learning_quiz_attempts set trainer_digest_at = $2::timestamptz where id = any($1::uuid[])`,
+        [quizzes.map((row) => row.attempt_id), now.toISOString()],
+      )
+    }
 
     let notified = 0
     const day = dayKey(now)
-    for (const courseId of new Set(fresh.map((row) => row.course_id))) {
+    for (const courseId of new Set([...assignments, ...quizzes].map((row) => row.course_id))) {
       const course = await loadCourse(query, courseId)
       if (!course) continue
       const waiting = await query(
-        `select count(*)::int as count
-         from public.learning_assignment_attempts attempt
-         inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
-         inner join public.learning_course_sections section on section.id = lesson.section_id
-         where section.course_id = $1 and attempt.status = 'submitted'`,
+        `select
+           (select count(*)::int
+            from public.learning_assignment_attempts attempt
+            inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
+            inner join public.learning_course_sections section on section.id = lesson.section_id
+            where section.course_id = $1 and attempt.status = 'submitted') as assignments,
+           (select count(*)::int
+            from public.learning_quiz_attempts attempt
+            inner join public.learning_quizzes quiz on quiz.id = attempt.quiz_id
+            inner join public.learning_lessons lesson on lesson.id = quiz.lesson_id
+            inner join public.learning_course_sections section on section.id = lesson.section_id
+            where section.course_id = $1 and attempt.status = 'awaiting_grading') as quiz_answers`,
         [courseId],
       )
-      const count = Number(waiting[0]?.count ?? 0)
+      const assignmentCount = Number(waiting[0]?.assignments ?? 0)
+      const quizAnswerCount = Number(waiting[0]?.quiz_answers ?? 0)
+      const count = assignmentCount + quizAnswerCount
       if (!count) continue
       for (const managerId of await courseManagerIds(query, courseId)) {
         const ok = await recordLearningNotification(query, {
           recipientId: managerId,
           kind: 'submissions_to_grade',
           courseId,
-          details: { courseTitle: course.title, courseSlug: course.slug, studioCourseId: course.id, count },
+          details: { courseTitle: course.title, courseSlug: course.slug, studioCourseId: course.id, count, assignmentCount, quizAnswerCount },
           dedupeKey: `learning_submissions_to_grade:${courseId}:${day}`,
           refresh: true,
         }, { inTransaction: true })
         if (ok) notified += 1
       }
     }
-    return { submissions: fresh.length, notified }
+    return { submissions: assignments.length + quizzes.length, notified }
   })
 }
 

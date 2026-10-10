@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { generateAvailableUsername, normalizeUsername, usernameSchema } from './username'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 type UsernameOwnerRow = QueryResultRow & { id: string; slug?: string | null }
 type UsernameQuery = (text: string, values?: readonly unknown[]) => Promise<UsernameOwnerRow[]>
@@ -18,7 +19,7 @@ export function createUsernameAvailabilityRepository(input: { query: UsernameQue
         available: false,
         current: false,
         valid: false,
-        message: parsed.error.issues[0]?.message ?? 'Choose a valid username.',
+        message: firstPlainIssue(parsed.error, 'Choose a valid username.'),
       }
     }
 

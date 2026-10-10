@@ -4,6 +4,7 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { adminRepository } from '@/features/admin/repository'
 import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
 import { MODERATION_TARGET_TYPES } from '@/features/moderation/types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return json({
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Invalid moderation request.',
+      error: firstPlainIssue(parsed.error, 'Invalid moderation request.'),
     }, 400)
   }
 

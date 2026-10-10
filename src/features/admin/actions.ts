@@ -8,6 +8,7 @@ import { adminRepository, type AdminCompanyAccessDecision, type AdminOrganizatio
 import { MODERATION_TARGET_TYPES, type ModerationAction } from '@/features/moderation/types'
 import { accessRequestErrorMessage } from '@/features/organizations/access-request-messages'
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole } from '@/features/organizations/types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const accessReviewSchema = z.object({
   requestId: z.string().uuid(),
@@ -91,7 +92,7 @@ export async function reviewCompanyAccessRequest(
 ): Promise<AdminReviewActionResult> {
   const parsed = accessReviewSchema.safeParse({ requestId, decision, reviewerNote, grantedRole })
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid organization access review request.' }
+    return { ok: false, error: firstPlainIssue(parsed.error, 'Invalid organization access review request.') }
   }
 
   const user = await requireAwsUser()
@@ -128,7 +129,7 @@ export async function reviewOrganizationApplication(
 ): Promise<AdminReviewActionResult> {
   const parsed = reviewSchema.safeParse({ applicationId, decision, reviewerNote })
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid organization review request.' }
+    return { ok: false, error: firstPlainIssue(parsed.error, 'Invalid organization review request.') }
   }
 
   const user = await requireAwsUser()
@@ -171,7 +172,7 @@ export async function moderateContent(input: {
 }): Promise<AdminModerationActionResult> {
   const parsed = moderationSchema.safeParse(input)
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid moderation request.' }
+    return { ok: false, error: firstPlainIssue(parsed.error, 'Invalid moderation request.') }
   }
 
   const user = await requireAwsUser()

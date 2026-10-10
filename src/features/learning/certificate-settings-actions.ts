@@ -8,6 +8,7 @@ import { certificateSettingsSchema, type CourseCertificateSettings } from './cer
 import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
 import { learningMediaRepository } from './media-repository'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 type Result = { ok: true; settings: CourseCertificateSettings } | { ok: false; error: string }
 
@@ -16,7 +17,7 @@ export async function saveCourseCertificateSettings(courseId: string, input: Cou
   const parsedCourse = z.string().uuid().safeParse(courseId)
   if (!parsedCourse.success) return { ok: false, error: 'Invalid course.' }
   const parsed = certificateSettingsSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the certificate settings and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the certificate settings and try again.') }
 
   try {
     const user = await requireAwsUser()

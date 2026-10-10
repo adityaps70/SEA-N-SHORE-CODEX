@@ -4,6 +4,8 @@ import { coursePublisherNameSql } from './course-publication'
 import { notifyCertificateIssued } from './learning-notifications'
 import { CERTIFICATE_TEMPLATES, type CertificateTemplate } from './certificate-settings'
 
+const VERIFICATION_CODE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export type CertificateQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CertificateTransaction = <T>(work: (query: CertificateQuery) => Promise<T>) => Promise<T>
 
@@ -390,6 +392,8 @@ export function createCertificateRepository(input: {
   }
 
   async function getCertificateByVerificationCode(verificationCode: string): Promise<PublicLearningCertificate | null> {
+    // The column is a uuid: a code that cannot be one matches nothing (and must not reach the comparison).
+    if (!VERIFICATION_CODE_PATTERN.test(verificationCode)) return null
     const rows = await queryRows(
       `${CERTIFICATE_SELECT}
        where certificate.verification_code = $1

@@ -9,6 +9,7 @@ import {
   type CourseAdminDecision,
   type MentorReviewDecision,
 } from './admin-repository'
+import { firstPlainIssue, plainIssueMessage } from '@/lib/validation/plain-messages'
 
 const mentorReviewSchema = z.object({
   applicationId: z.string().uuid(),
@@ -102,7 +103,7 @@ export async function reviewMentorApplication(
 ): Promise<MentorReviewActionResult> {
   const parsed = mentorReviewSchema.safeParse({ applicationId, decision, reviewerNote })
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid trainer verification review request.' }
+    return { ok: false, error: firstPlainIssue(parsed.error, 'Invalid trainer verification review request.') }
   }
 
   const user = await requireAwsUser()
@@ -130,7 +131,7 @@ export async function reviewCourse(
   const parsed = courseReviewSchema.safeParse({ courseId, decision, reviewerNote })
   if (!parsed.success) {
     const issue = parsed.error.issues[0]
-    if (issue?.path[0] === 'reviewerNote') return { ok: false, error: issue.message }
+    if (issue?.path[0] === 'reviewerNote') return { ok: false, error: plainIssueMessage(issue, { reviewerNote: 'Reviewer note' }) }
     return { ok: false, error: 'Invalid course review request.' }
   }
 

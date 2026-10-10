@@ -83,6 +83,44 @@ describe('MentorApplicationForm', () => {
     expect(await screen.findByText('Application resubmitted for review.')).toBeInTheDocument()
   })
 
+  it('shows a plain message under empty course topics, highlights the field and keeps everything typed (round C)', async () => {
+    render(<MentorApplicationForm initialValue={initial} />)
+
+    fireEvent.change(screen.getByLabelText('Specialization'), { target: { value: 'Cargo operations and SIRE 2.0' } })
+    fireEvent.change(screen.getByLabelText('Proposed course topics'), { target: { value: ' , ,' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit trainer verification application' }))
+
+    const topics = screen.getByLabelText('Proposed course topics')
+    expect(await screen.findByText('Add at least one course topic, separated by commas')).toHaveAttribute('id', 'proposedCourseTopics-error')
+    expect(topics).toHaveAttribute('aria-invalid', 'true')
+    expect(topics.getAttribute('aria-describedby')).toContain('proposedCourseTopics-error')
+    expect(topics).toHaveFocus()
+    expect(topics).toHaveValue(' , ,')
+    expect(screen.getByLabelText('Specialization')).toHaveValue('Cargo operations and SIRE 2.0')
+    expect(screen.queryByText(/Too small|expected array/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(mocks.submitMentorApplication).not.toHaveBeenCalled()
+
+    // Editing the field clears its message.
+    fireEvent.change(topics, { target: { value: 'Cargo watch' } })
+    expect(screen.queryByText('Add at least one course topic, separated by commas')).not.toBeInTheDocument()
+    expect(topics).toHaveAttribute('aria-invalid', 'false')
+  })
+
+  it('shows field messages the server returns under their fields', async () => {
+    mocks.submitMentorApplication.mockResolvedValueOnce({
+      ok: false,
+      error: 'Please correct the highlighted fields. Everything else you entered has been kept.',
+      fieldErrors: { shortBio: ['Write a short bio of at least 40 characters.'] },
+    })
+    render(<MentorApplicationForm initialValue={initial} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Submit trainer verification application' }))
+
+    expect(await screen.findByText('Write a short bio of at least 40 characters.')).toHaveAttribute('id', 'shortBio-error')
+    expect(screen.getByLabelText('Short bio')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Short bio')).toHaveValue(initial.shortBio)
+  })
+
   it('surfaces a safe action error without clearing the member input', async () => {
     mocks.submitMentorApplication.mockResolvedValueOnce({ ok: false, error: 'We could not save the trainer verification application. Please try again.' })
     render(<MentorApplicationForm initialValue={initial} />)

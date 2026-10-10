@@ -166,6 +166,16 @@ test('production image trusts the official Mumbai RDS CA without disabling TLS v
   assert.doesNotMatch(dockerfile, /NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*0/)
 })
 
+test('the image build never pulls from Docker Hub: base images come from Amazon ECR Public (round C)', () => {
+  const dockerfile = text('Dockerfile')
+  const bases = [...dockerfile.matchAll(/^FROM\s+(\S+)/gm)].map((match) => match[1])
+
+  assert.equal(bases.length, 3)
+  for (const base of bases) assert.match(base, /^public\.ecr\.aws\/docker\/library\/node:22-bookworm-slim$/)
+  // A "# syntax=" directive would fetch a Dockerfile frontend image from Docker Hub.
+  assert.doesNotMatch(dockerfile, /^#\s*syntax\s*=/im)
+})
+
 test('remote HTTP verification matches the Phase 4 CloudFront redirect contract', () => {
   const workflow = text('.github/workflows/aws-remote-verify.yml')
 

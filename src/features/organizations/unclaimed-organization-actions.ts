@@ -8,6 +8,7 @@ import { organizationApplicationSchema } from './schemas'
 import type { OrganizationApplicationInput } from './types'
 import { unclaimedOrganizationSchema, UNCLAIMED_ORGANIZATIONS_PER_DAY, type UnclaimedOrganizationInput } from './unclaimed-organization-policy'
 import { UnclaimedOrganizationError, unclaimedOrganizationRepository } from './unclaimed-organization-repository'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type CreateUnclaimedOrganizationResult =
   | { ok: true; organization: LinkedOrganization }
@@ -53,7 +54,7 @@ export async function createUnclaimedOrganization(input: UnclaimedOrganizationIn
     return {
       ok: false,
       error: 'Please correct the highlighted information and try again.',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: plainFieldErrors(parsed.error),
     }
   }
 
@@ -109,7 +110,7 @@ export async function submitOrganizationClaim(companyId: string, input: Organiza
     return {
       ok: false,
       error: 'Please correct the highlighted information and try again.',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: plainFieldErrors(parsed.error),
     }
   }
 

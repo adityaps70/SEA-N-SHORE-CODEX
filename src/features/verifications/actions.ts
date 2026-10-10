@@ -10,6 +10,7 @@ import {
   type CreatorVerificationType,
 } from './application'
 import { creatorVerificationRepository } from './repository'
+import { firstPlainIssue, plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type CreatorVerificationActionState = {
   ok?: boolean
@@ -59,7 +60,7 @@ export async function submitCreatorVerification(
     return {
       ok: false,
       error: 'Please correct the highlighted information and try again.',
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: plainFieldErrors(parsed.error),
       values,
     }
   }
@@ -128,7 +129,7 @@ export async function reviewCreatorVerificationApplication(
   if (!parsed.success) {
     return {
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Check the verification review and try again.',
+      error: firstPlainIssue(parsed.error, 'Check the verification review and try again.'),
     }
   }
 

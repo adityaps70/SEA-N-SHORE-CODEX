@@ -15,6 +15,7 @@ import {
   GROUP_RULES_MAX_LENGTH,
   GROUP_VISIBILITIES,
 } from './types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export type CreateCommunityState = { ok: false; error: string } | { ok: true; id: string; slug: string } | null
 
@@ -41,7 +42,7 @@ function readForm(formData: FormData, keys: string[]) {
 export async function createCommunity(_previous: CreateCommunityState, formData: FormData): Promise<CreateCommunityState> {
   const user = await requireAwsUser()
   const parsed = createSchema.safeParse(readForm(formData, ['as', 'name', 'description', 'rules', 'joinPolicy', 'visibility', 'category']))
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the community details and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the community details and try again.') }
 
   const options = await getCommunityCreationEligibility(user.id)
   const { eligibility } = options

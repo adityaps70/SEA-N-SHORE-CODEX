@@ -177,6 +177,37 @@ describe('learning notifications', () => {
     expect((await emailsFor(trainer.userId)).filter((email) => email.kind === 'submissions_to_grade')).toHaveLength(1)
   }, 120_000)
 
+  it('counts quiz attempts with written answers awaiting grading in the same digest (round C)', async () => {
+    const trainer = await createActiveMentor(db.query)
+    const course = await createPublishedCourse(db.query, trainer)
+    const one = await enrollLearner(db.query, course.courseId, 'Learner Q1')
+    const two = await enrollLearner(db.query, course.courseId, 'Learner Q2')
+    await submitAttempt(course, one.enrollmentId, one.learnerId)
+    const awaiting = async (learner: { enrollmentId: string; learnerId: string }) => db.query(
+      `insert into public.learning_quiz_attempts (quiz_id, enrollment_id, learner_id, score, total_questions, percentage, pass_percentage, passed, attempt_number, status)
+       values ($1, $2, $3, 0, 1, 0, 70, false, 1, 'awaiting_grading') returning id`,
+      [course.quiz!.quizId, learner.enrollmentId, learner.learnerId],
+    )
+    await awaiting(two)
+    // A graded (completed) attempt is not waiting.
+    await db.query(
+      `insert into public.learning_quiz_attempts (quiz_id, enrollment_id, learner_id, score, total_questions, percentage, pass_percentage, passed, attempt_number, status)
+       values ($1, $2, $3, 1, 1, 100, 70, true, 2, 'completed')`,
+      [course.quiz!.quizId, two.enrollmentId, two.learnerId],
+    )
+
+    const first = await sweepSubmissionsToGrade(db.transaction)
+    const again = await sweepSubmissionsToGrade(db.transaction)
+
+    expect(first.submissions).toBe(2)
+    expect(again).toEqual({ submissions: 0, notified: 0 })
+    const rows = (await notificationsFor(trainer.userId)).filter((row) => row.type === 'learning_submissions_to_grade')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.details).toMatchObject({ count: 2, assignmentCount: 1, quizAnswerCount: 1 })
+    const emails = (await emailsFor(trainer.userId)).filter((email) => email.kind === 'submissions_to_grade')
+    expect(emails).toHaveLength(1)
+  }, 120_000)
+
   it('emails each notification once, honours the Learning email setting and its one-click unsubscribe', async () => {
     const trainer = await createActiveMentor(db.query)
     const course = await createPublishedCourse(db.query, trainer)

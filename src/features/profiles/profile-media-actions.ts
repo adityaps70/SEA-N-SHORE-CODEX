@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { profileMediaErrorMessage } from './profile-media'
 import { removeProfileMedia, uploadProfileMedia } from './profile-media-service'
 import type { ProfileMediaKind } from './profile-media-repository'
 
@@ -34,7 +35,7 @@ function actionFor(kind: ProfileMediaKind) {
         bytes: new Uint8Array(await image.arrayBuffer()),
       })
     } catch (error) {
-      return { error: error instanceof Error ? error.message : 'Unable to upload image.' }
+      return { error: profileMediaErrorMessage(error, 'We could not upload this image. Please try again.') }
     }
 
     revalidateProfileMedia()
@@ -49,7 +50,7 @@ function removeActionFor(kind: ProfileMediaKind) {
     try {
       await removeProfileMedia(user.id, kind)
     } catch (error) {
-      return { error: error instanceof Error ? error.message : 'Unable to remove image.' }
+      return { error: profileMediaErrorMessage(error, 'We could not remove this image. Please try again.') }
     }
     revalidateProfileMedia()
     return { success: true }

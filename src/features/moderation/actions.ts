@@ -9,6 +9,7 @@ import {
   type ModerationReportReason,
   type ModerationTargetType,
 } from './types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export type ModerationReportResult = { ok: true } | { ok: false; error: string }
 
@@ -49,7 +50,7 @@ export async function reportContent(input: {
   if (!parsed.success) {
     return {
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Please check this report and try again.',
+      error: firstPlainIssue(parsed.error, 'Please check this report and try again.'),
     }
   }
 

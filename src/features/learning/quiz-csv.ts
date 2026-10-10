@@ -1,7 +1,8 @@
 import { csvCell } from '@/features/newsletter/csv'
 import { ROLE_DEPARTMENTS, departmentByKey, normaliseLegacyRank, normaliseRoleText, roleByKey } from '@/features/roles/taxonomy'
-import { questionInputSchema, type QuestionInput } from './quiz-question-schema'
+import { QUESTION_FIELD_LABELS, questionInputSchema, type QuestionInput } from './quiz-question-schema'
 import { TRUE_FALSE_LABELS, marksLabel, type QuestionType } from './quiz-model'
+import { plainIssueMessage } from '@/lib/validation/plain-messages'
 
 /**
  * Learning round B (B1): question bank CSV. One question per row; lists inside a cell are separated by "|".
@@ -188,7 +189,7 @@ function readRow(cells: Record<string, string>): { question?: QuestionInput; mes
     departmentKey: departmentKey ?? (roleKey ? roleByKey(roleKey)?.department ?? null : null),
     roleKey,
   })
-  if (!parsed.success) return { messages: [...new Set(parsed.error.issues.map((issue) => issue.message))] }
+  if (!parsed.success) return { messages: [...new Set(parsed.error.issues.map((issue) => plainIssueMessage(issue, QUESTION_FIELD_LABELS)))] }
   return { question: parsed.data, messages: [] }
 }
 

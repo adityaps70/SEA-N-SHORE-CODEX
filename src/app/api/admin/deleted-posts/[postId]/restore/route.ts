@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { adminRepository } from '@/features/admin/repository'
 import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,7 +63,7 @@ export async function POST(
   if (!parsed.success) {
     return json({
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Add a valid recovery reason.',
+      error: firstPlainIssue(parsed.error, 'Add a valid recovery reason.'),
     }, 400)
   }
 

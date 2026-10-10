@@ -53,6 +53,7 @@ import {
   updatePostWithAurora,
 } from './service'
 import { POST_CATEGORIES, type FeedComment, type FeedCursor, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 export type RepostActionResult = { ok: true; postId: string } | { ok: false; error: string }
@@ -300,7 +301,7 @@ export async function discardPendingPostMedia(input: { postId: string; storagePa
 export async function createPost(_previousState: PostComposerState, formData: FormData): Promise<PostComposerState> {
   const parsed = createPostInputSchema.safeParse(postInputFromFormData(formData))
   if (!parsed.success) {
-    return { fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>, values: safePostValues(formData) }
+    return { fieldErrors: plainFieldErrors(parsed.error), values: safePostValues(formData) }
   }
   const data = parsed.data
   const moderation = assessPlatformText([
@@ -468,7 +469,7 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
 export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[]; organizationMentionIds?: string[] }): Promise<UpdatePostActionResult> {
   const parsed = updatePostInputSchema.safeParse(input)
   if (!parsed.success) {
-    const fieldErrors = parsed.error.flatten().fieldErrors
+    const fieldErrors = plainFieldErrors(parsed.error)
     return { ok: false, error: fieldErrors.body?.[0] ?? fieldErrors.mentionProfileIds?.[0] ?? 'This post could not be found. Refresh the page and try again.' }
   }
   const moderation = parsed.data.body ? assessPlatformText([parsed.data.body]) : null
@@ -528,7 +529,7 @@ export async function repostPost(
 ): Promise<RepostActionResult> {
   const parsed = repostInputSchema.safeParse({ postId, body: input.body, mentionProfileIds: input.mentionProfileIds, organizationMentionIds: input.organizationMentionIds })
   if (!parsed.success) {
-    const bodyError = parsed.error.flatten().fieldErrors.body?.[0]
+    const bodyError = plainFieldErrors(parsed.error).body?.[0]
     return { ok: false, error: bodyError ?? 'Invalid post.' }
   }
   const commentary = parsed.data.body
@@ -649,7 +650,7 @@ export async function addComment(_previousState: CommentActionState, formData: F
   const parsed = commentInputSchema.safeParse(raw)
   if (!parsed.success) {
     return {
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: plainFieldErrors(parsed.error),
       value: typeof raw.body === 'string' && raw.body.length <= 2000 ? raw.body : undefined,
     }
   }
@@ -687,7 +688,7 @@ export async function updateComment(_previousState: CommentActionState, formData
   })
   if (!parsed.success) {
     return {
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: plainFieldErrors(parsed.error),
       value: rawValue,
     }
   }

@@ -1,13 +1,15 @@
-# syntax=docker/dockerfile:1.7
-
-FROM node:22-bookworm-slim AS dependencies
+# Base images come from Amazon ECR Public (the Docker official images mirror), so a deploy never depends on
+# Docker Hub (round C: a deploy failed on a Docker Hub sign-in timeout). Anonymous pulls: no credentials, no paid
+# service. No "# syntax=" line: BuildKit's built-in Dockerfile frontend covers everything used here, and the
+# docker/dockerfile frontend image is only on Docker Hub.
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS dependencies
 WORKDIR /app
 # Round 14 (3.10): install exactly what package-lock.json pins.
 COPY package.json package-lock.json ./
 RUN npm install -g npm@11.6.0 \
     && npm ci --no-audit --no-fund
 
-FROM node:22-bookworm-slim AS builder
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
@@ -24,7 +26,7 @@ RUN npm run build \
     && test -f dist/workers/publish-outbox.mjs \
     && test -f dist/workers/consume-notifications.mjs
 
-FROM node:22-bookworm-slim AS runner
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

@@ -10,6 +10,7 @@ import { createMediaUploadUrl, deleteMediaObject, headMediaObject } from '@/lib/
 import { organizationWorkspaceRepository } from './workspace-repository'
 import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
 import { COMPANY_SIZE_VALUES, MAX_SPECIALTIES, TAGLINE_MAX_LENGTH, type CompanySize } from './organization-page-profile'
+import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
 const assignableRoles = [
@@ -214,7 +215,7 @@ export async function updateOrganizationBranding(
   if (!parsed.success) {
     return {
       error: 'Please correct the highlighted organization information.',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: plainFieldErrors(parsed.error),
     }
   }
 
@@ -234,7 +235,7 @@ export async function updateOrganizationBranding(
       if (!support.success) {
         return {
           error: 'Please correct the highlighted organization information.',
-          fieldErrors: support.error.flatten().fieldErrors as Record<string, string[]>,
+          fieldErrors: plainFieldErrors(support.error),
         }
       }
       supportDetails = support.data
@@ -251,7 +252,7 @@ export async function updateOrganizationBranding(
       if (!details.success) {
         return {
           error: 'Please correct the highlighted organization information.',
-          fieldErrors: details.error.flatten().fieldErrors as Record<string, string[]>,
+          fieldErrors: plainFieldErrors(details.error),
         }
       }
       pageDetails = details.data

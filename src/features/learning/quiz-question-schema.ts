@@ -12,6 +12,7 @@ import {
   type Difficulty,
   type QuestionType,
 } from './quiz-model'
+import { plainIssueMessage } from '@/lib/validation/plain-messages'
 
 /**
  * One validation for a question wherever it is written: the quiz editor, the question bank and CSV import.
@@ -136,11 +137,37 @@ export const quizDefinitionSchema = z.object({
   }
 })
 
+/** Field names for any rule that does not word its own message (round C: never zod's wording). */
+export const QUESTION_FIELD_LABELS = {
+  type: 'Question type',
+  prompt: 'The question',
+  options: 'Answer options',
+  marks: 'Marks',
+  negativeMarks: 'Negative marks',
+  explanation: 'Explanation',
+  acceptedAnswers: 'Accepted answers',
+  topic: 'Topic',
+  difficulty: 'Difficulty',
+  departmentKey: 'Department',
+  roleKey: 'Rank or role',
+}
+
+export const QUIZ_FIELD_LABELS = {
+  passPercentage: 'Pass mark',
+  instructions: 'Instructions',
+  questions: 'Questions',
+  timeLimitMinutes: 'Time limit',
+  drawCount: 'Questions to draw',
+  answerPolicy: 'When answers are shown',
+}
+
 /** The issue a trainer sees first, numbered by question. */
 export function firstQuizIssue(error: z.ZodError) {
   const issue = error.issues[0]
   if (!issue) return 'Review the quiz and try again.'
   const [root, index] = issue.path
-  if (root === 'questions' && typeof index === 'number' && issue.path.length > 2) return `Question ${index + 1}: ${issue.message}`
-  return issue.message
+  if (root === 'questions' && typeof index === 'number' && issue.path.length > 2) {
+    return `Question ${index + 1}: ${plainIssueMessage({ ...issue, path: issue.path.slice(2) }, QUESTION_FIELD_LABELS)}`
+  }
+  return plainIssueMessage(issue, QUIZ_FIELD_LABELS)
 }

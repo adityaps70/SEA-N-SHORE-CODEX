@@ -3,16 +3,23 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { mentorApplicationSchema, type MentorApplicationInput } from './mentor-application'
+import { plainFieldErrors, type PlainFieldErrors } from '@/lib/validation/plain-messages'
+import { MENTOR_APPLICATION_FIELD_LABELS, mentorApplicationSchema, type MentorApplicationInput } from './mentor-application'
 import { learningRepository } from './repository'
 
-type LearningActionResult = { ok: true } | { ok: false; error: string }
-type MentorApplicationSubmitResult = { ok: true; applicationId: string } | { ok: false; error: string }
+type ValidationFailure = { ok: false; error: string; fieldErrors?: PlainFieldErrors }
+type LearningActionResult = { ok: true } | ValidationFailure
+type MentorApplicationSubmitResult = { ok: true; applicationId: string } | ValidationFailure
 
 const applicationIdSchema = z.string().uuid()
 
-function validationError(error: z.ZodError) {
-  return error.issues[0]?.message ?? 'Please check the trainer verification application and try again.'
+/** Plain messages for each field (shown under the field); never zod's own wording. */
+function validationFailure(error: z.ZodError): ValidationFailure {
+  return {
+    ok: false,
+    error: 'Please correct the highlighted fields. Everything else you entered has been kept.',
+    fieldErrors: plainFieldErrors(error, MENTOR_APPLICATION_FIELD_LABELS),
+  }
 }
 
 function mutationError(error: unknown) {
@@ -38,7 +45,7 @@ function refreshMentorLearning() {
 
 export async function submitMentorApplication(input: MentorApplicationInput): Promise<MentorApplicationSubmitResult> {
   const parsed = mentorApplicationSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (!parsed.success) return validationFailure(parsed.error)
 
   try {
     const user = await requireAwsUser()
@@ -57,7 +64,7 @@ export async function resubmitMentorApplication(
   const parsedId = applicationIdSchema.safeParse(applicationId)
   const parsed = mentorApplicationSchema.safeParse(input)
   if (!parsedId.success) return { ok: false, error: 'Invalid trainer verification application.' }
-  if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (!parsed.success) return validationFailure(parsed.error)
 
   try {
     const user = await requireAwsUser()

@@ -6,6 +6,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from './mfa-gate'
 import { CAPABILITIES } from '@/features/access/policy'
 import { adminMembershipRepository } from './membership-repository'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const reasonSchema = z.string()
   .trim()
@@ -48,7 +49,7 @@ export async function grantAdminEntitlement(input: {
   if (!parsed.success) {
     return {
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Check the entitlement grant and try again.',
+      error: firstPlainIssue(parsed.error, 'Check the entitlement grant and try again.'),
     }
   }
 
@@ -79,7 +80,7 @@ export async function revokeAdminEntitlement(
   if (!parsed.success) {
     return {
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Check the entitlement revocation and try again.',
+      error: firstPlainIssue(parsed.error, 'Check the entitlement revocation and try again.'),
     }
   }
 

@@ -6,6 +6,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { learnerAssignmentRepository, type LearnerAssignmentState, type VerifiedAssignmentAttachment } from './learner-assignment-repository'
 import { AssignmentAttachmentError, createPendingAssignmentUpload, verifyAssignmentUpload } from './assignment-attachments'
 import { ASSIGNMENT_ATTACHMENT_LIMITS } from './assignment-policy'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const slugSchema = z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const uuidSchema = z.string().uuid()
@@ -107,7 +108,7 @@ export async function submitLearningAssignment(
   const parsedLesson = uuidSchema.safeParse(lessonId)
   const parsed = submissionSchema.safeParse(input)
   if (!parsedSlug.success || !parsedLesson.success) return { ok: false, error: 'Invalid assignment.' }
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid assignment submission.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Invalid assignment submission.') }
   if (!parsed.data.responseText && parsed.data.attachments.length === 0) {
     return { ok: false, error: 'Write a response or attach a file before submitting.' }
   }

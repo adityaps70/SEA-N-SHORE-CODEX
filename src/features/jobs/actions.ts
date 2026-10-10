@@ -15,6 +15,7 @@ import { scoreJobMatch } from './matching'
 import { jobsRepository } from './repository'
 import { parseJobSearchParams } from './search'
 import type { JobListing } from './types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export type ApplyToJobResult =
   | { ok: true; alreadyApplied: boolean }
@@ -123,7 +124,7 @@ export async function applyToJob(
   if (!parsed.success) return { ok: false, error: 'Invalid job.' }
   const parsedCoverNote = coverNoteSchema.safeParse(coverNoteInput ?? null)
   if (!parsedCoverNote.success) {
-    return { ok: false, error: parsedCoverNote.error.issues[0]?.message ?? 'Check your message to the employer.' }
+    return { ok: false, error: firstPlainIssue(parsedCoverNote.error, 'Check your message to the employer.') }
   }
   const coverNote = parsedCoverNote.data ? parsedCoverNote.data : null
 

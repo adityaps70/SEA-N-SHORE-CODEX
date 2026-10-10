@@ -119,8 +119,14 @@ export function learningNotificationCopy(kind: LearningNotificationKind, details
     }
     case 'submissions_to_grade': {
       const count = details.count ?? 1
+      const quizAnswers = details.quizAnswerCount ?? 0
+      const assignments = details.assignmentCount ?? count - quizAnswers
+      const parts = [
+        assignments > 0 ? `${assignments} assignment ${assignments === 1 ? 'submission' : 'submissions'}` : null,
+        quizAnswers > 0 ? `${quizAnswers} quiz ${quizAnswers === 1 ? 'attempt' : 'attempts'} with written answers` : null,
+      ].filter(Boolean)
       return {
-        message: `${count} assignment ${count === 1 ? 'submission is' : 'submissions are'} waiting to be graded in ${course}.`,
+        message: `${parts.length ? parts.join(' and ') : `${count} assignment submission`} ${count === 1 ? 'is' : 'are'} waiting to be graded in ${course}.`,
         path: '/learn/studio/assignments',
         subject: `${count} ${count === 1 ? 'submission' : 'submissions'} to grade in ${course}`,
         action: 'Grade submissions',

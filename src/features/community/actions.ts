@@ -13,6 +13,7 @@ import {
   GROUP_VISIBILITIES,
   type MembershipStatus,
 } from './types'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export type CommunityActionResult = { ok: true } | { ok: false; error: string }
 export type JoinGroupResult = { ok: true; status: MembershipStatus } | { ok: false; error: string }
@@ -157,7 +158,7 @@ export async function updateGroup(input: {
   category?: string | null
 }): Promise<CommunityActionResult> {
   const parsed = groupEditSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the group details and try again.' }
+  if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the group details and try again.') }
   const user = await requireAwsUser()
   const { groupId, ...changes } = parsed.data
   return run(() => communityService.updateGroup(user.id, groupId, changes), 'We could not save the group. Please try again.')

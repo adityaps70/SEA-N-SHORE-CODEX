@@ -6,6 +6,7 @@ import { runtimeAccountDeletionService } from '@/features/account-deletion/runti
 import { AccountDeletionError } from '@/features/account-deletion/service'
 import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
+import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return json({
       ok: false,
-      error: parsed.error.issues[0]?.message ?? 'Check the deletion confirmation and try again.',
+      error: firstPlainIssue(parsed.error, 'Check the deletion confirmation and try again.'),
     }, 400)
   }
 
