@@ -52,38 +52,38 @@ Owner decisions (10 October):
 ## PR 1: C0 + C1 + C2 + C3
 
 C0 — small fixes
-- [ ] Teach form: plain message under "Proposed course topics", field highlighted, values kept, same message from the server
-- [ ] Raw validation messages mapped to plain field messages across member-facing forms, with tests
-- [ ] `/certificates/<non-UUID>`: "Certificate not verified" with 404, with a test
-- [ ] Trainer digest counts written quiz answers awaiting grading, with a test
-- [ ] Base images from Amazon ECR Public (no Docker Hub in the deploy path, no new paid service)
+- [x] Teach form: plain message under "Proposed course topics", field highlighted, values kept, same message from the server
+- [x] Raw validation messages mapped to plain field messages across member-facing forms, with tests
+- [x] `/certificates/<non-UUID>`: "Certificate not verified" with 404, with a test
+- [x] Trainer digest counts written quiz answers awaiting grading, with a test
+- [x] Base images from Amazon ECR Public (no Docker Hub in the deploy path, no new paid service)
 - [x] The round's runner comes from the guarded-migration template
 
 C1 — learner roster
-- [ ] Studio → course → Learners: name, rank, enrolled, progress, last active, quiz scores, certificate status
-- [ ] Enrol by email: a member is enrolled now ("enrolled by trainer"); a non-member gets an invitation and is enrolled on sign-up
-- [ ] CSV export, recorded in audit_events (who, course, rows; no personal data)
-- [ ] "Message all learners" posts a C5 announcement, rate limited
+- [x] Studio → course → Learners: name, rank, enrolled, progress, last active, quiz scores, certificate status
+- [x] Enrol by email: a member is enrolled now ("enrolled by trainer"); a non-member gets an invitation and is enrolled on sign-up
+- [x] CSV export, recorded in audit_events (who, course, rows; no personal data)
+- [x] "Message all learners" posts a C5 announcement, rate limited
 
 C2 — promo codes
-- [ ] Per course or all of a trainer's courses; percent or fixed; maximum discount; total and per-member limits; window
-- [ ] Validated and applied on the server at checkout; usage reserved atomically; never below ₹1/$1; fee on the paid amount
-- [ ] Redemptions and revenue per code in Studio
-- [ ] Real-SQL tests: expired, exhausted, per-member reuse, race on the last use
+- [x] Per course or all of a trainer's courses; percent or fixed; maximum discount; total and per-member limits; window
+- [x] Validated and applied on the server at checkout; usage reserved atomically; never below ₹1/$1; fee on the paid amount
+- [x] Redemptions and revenue per code in Studio
+- [x] Real-SQL tests: expired, exhausted, per-member reuse, race on the last use
 
 C3 — pricing plans and access expiry
-- [ ] Several plans per course (price, sale price, INR/USD, 6 / 12 months or lifetime)
-- [ ] Expired access is read-only with "Renew"; progress and certificates kept
-- [ ] Existing courses: one "Standard" lifetime plan; nothing changes for current buyers
+- [x] Several plans per course (price, sale price, INR/USD, 6 / 12 months or lifetime)
+- [x] Expired access is read-only with "Renew"; progress and certificates kept
+- [x] Existing courses: one "Standard" lifetime plan; nothing changes for current buyers
 
 ## PR 2: C5 + C6 + C7 + C8
 
-- [ ] C5 Rate this course (1–5 stars + review, ≥20% progress, one per learner, editable), moderated, average and
+- [x] C5 Rate this course (1–5 stars + review, ≥20% progress, one per learner, editable), moderated, average and
       approved reviews on the course page; announcements tab in the player + Learning email
-- [ ] C6 resume card ("Continue: course · lesson X of Y") and Courses / Certificates / Purchases tabs
-- [ ] C7 link a course to one community the trainer runs; "Ask the trainer / Discuss" in the player; private
+- [x] C6 resume card ("Continue: course · lesson X of Y") and Courses / Certificates / Purchases tabs
+- [x] C7 link a course to one community the trainer runs; "Ask the trainer / Discuss" in the player; private
       communities open to enrolled learners
-- [ ] C8 Studio charts: per-lesson drop-off, quiz item difficulty, enrolments and revenue over time
+- [x] C8 Studio charts: per-lesson drop-off, quiz item difficulty, enrolments and revenue over time
 
 ## C4 — GST invoices (waiting for the owner)
 
@@ -91,6 +91,24 @@ Questions sent on 10 October: issuing entity (GSTIN, legal name, address); who s
 the trainer); SAC code and rate, and whether prices include GST; place of supply (CGST+SGST vs IGST); USD and
 overseas buyers (export with LUT); numbering scheme. Proposed: numbered PDF invoices (pdf-lib) stored in the private
 media bucket, linked from My Learning → Purchases and emailed with the payment confirmation.
+
+## Decisions made while building
+
+- Expired access: the outline, progress, quiz results and certificate stay visible; lessons are locked and nothing
+  new is recorded until the learner renews. Renewing early extends from the current end date.
+- A refund ends access, renewals included. A refunded purchase keeps its promo-code use counted.
+- "All my courses" codes cover a trainer's own courses. Organisation courses get per-course codes owned by the
+  organisation.
+- Trainer enrolment by email: a verified member email is enrolled at once (source `trainer`, `enrolled_by` set,
+  in-app notification). Ended or revoked access is reopened as lifetime access. Limit: 30 an hour and 200 a day per
+  person, counted from their own `learning.roster_enrolled` audit rows. Invitations stay open for 60 days and are
+  claimed on My Learning and by the outbox worker every minute. The identity sign-up code is not changed.
+- Reviews: approved by a moderator before they appear. Reported reviews go through the existing moderation queue.
+  Approve and reject decisions are recorded in `audit_events`.
+- Announcements: 3 per course per 24 hours. Recipients are active and completed learners, including those whose access
+  has ended. The trainer is not sent their own announcement.
+- Shipping: one code PR carries C0–C3 and C5–C8 together, because the work was merged on one branch; the migration
+  and the deploy arm PRs are the other two. This keeps within 2–3 PRs and one deploy.
 
 ## Release
 
