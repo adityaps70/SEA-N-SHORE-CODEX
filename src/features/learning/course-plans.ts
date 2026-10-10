@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { maxTicketPriceMinor, minTicketPriceMinor } from '@/features/payments/currency'
+import { formatMoney, maxTicketPriceMinor, minTicketPriceMinor } from '@/features/payments/currency'
 import { PAYMENT_CURRENCIES, type PaymentCurrency } from '@/features/payments/types'
 import { coursePrice, formatCourseAmount, type CoursePrice } from './course-pricing'
 
@@ -97,4 +97,19 @@ export const coursePlansSchema = z.array(planInputSchema)
 
 export function isPaymentCurrencyPlan(currency: string): currency is PaymentCurrency {
   return (PAYMENT_CURRENCIES as readonly string[]).includes(currency)
+}
+
+/**
+ * The plan and promo code an order was bought with, for receipts and the sales list ("6-month · 6 months of access",
+ * "SIRE20 (₹1,000 off)"). Orders from before plans existed have no plan name and show nothing.
+ */
+export function orderPlanDetails(
+  order: { planName: string | null; accessMonths: AccessMonths; promoCode: string | null; promoDiscountMinor: number; currency: PaymentCurrency },
+) {
+  return {
+    plan: order.planName ? `${order.planName} · ${accessPeriodLabel(order.accessMonths)}` : null,
+    code: order.promoCode
+      ? `${order.promoCode}${order.promoDiscountMinor > 0 ? ` (${formatMoney(order.promoDiscountMinor, order.currency)} off)` : ''}`
+      : null,
+  }
 }

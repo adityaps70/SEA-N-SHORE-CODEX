@@ -3,6 +3,7 @@ import { Receipt } from 'lucide-react'
 import { formatMoney } from '@/features/payments/currency'
 import type { LearnerCoursePurchase } from '../course-payment-repository'
 import { courseOrderReference, coursePurchaseStatusLabel } from '../course-payment-rules'
+import { orderPlanDetails } from '../course-plans'
 
 function formatDate(value: string | null) {
   if (!value) return '—'
@@ -40,7 +41,9 @@ export function CoursePurchasesList({ purchases, className = 'mt-10' }: { purcha
           {purchases.map((purchase) => {
             const status = coursePurchaseStatusLabel(purchase)
             const note = refundLine(purchase)
-            const discounted = purchase.discountPriceMinor !== null && purchase.discountPriceMinor < purchase.listPriceMinor
+            // A sale price or a promo code (round C) brought the amount below the list price.
+            const discounted = purchase.amountMinor < purchase.listPriceMinor
+            const details = orderPlanDetails(purchase)
             return (
               <li key={purchase.id} className="rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -59,6 +62,18 @@ export function CoursePurchasesList({ purchases, className = 'mt-10' }: { purcha
                       <dl className="mt-2 grid gap-x-6 gap-y-1 text-xs text-muted sm:grid-cols-[auto_1fr]">
                         <dt className="font-semibold text-navy-700">Paid on</dt>
                         <dd>{formatDate(purchase.paidAt)}</dd>
+                        {details.plan ? (
+                          <>
+                            <dt className="font-semibold text-navy-700">Plan</dt>
+                            <dd>{details.plan}</dd>
+                          </>
+                        ) : null}
+                        {details.code ? (
+                          <>
+                            <dt className="font-semibold text-navy-700">Promo code</dt>
+                            <dd>{details.code}</dd>
+                          </>
+                        ) : null}
                         <dt className="font-semibold text-navy-700">Order ID</dt>
                         <dd className="break-all font-mono text-[11px] text-navy-900">{courseOrderReference(purchase)}</dd>
                       </dl>

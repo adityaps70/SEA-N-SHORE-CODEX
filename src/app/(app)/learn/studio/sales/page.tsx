@@ -8,6 +8,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseRefundButton } from '@/features/learning/components/course-refund-button'
 import { coursePaymentRepository, type CourseSaleRow } from '@/features/learning/course-payment-repository'
 import { courseOrderReference, coursePurchaseStatusLabel, courseRefundReasonLabel } from '@/features/learning/course-payment-rules'
+import { orderPlanDetails } from '@/features/learning/course-plans'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 import { formatMoney } from '@/features/payments/currency'
@@ -48,6 +49,7 @@ function SaleItem({ sale }: { sale: CourseSaleRow }) {
   const amount = formatMoney(sale.amountMinor, sale.currency)
   const learner = sale.buyerName ?? 'Former member'
   const refundDue = sale.status === 'paid' && !sale.enrollmentConfirmedAt
+  const details = orderPlanDetails(sale)
   return (
     <li className="rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -70,6 +72,18 @@ function SaleItem({ sale }: { sale: CourseSaleRow }) {
           <dl className="grid gap-x-5 gap-y-0.5 pt-1 text-xs text-muted sm:grid-cols-[auto_1fr]">
             <dt className="font-semibold text-navy-700">Paid</dt>
             <dd>{formatDate(sale.paidAt)}</dd>
+            {details.plan ? (
+              <>
+                <dt className="font-semibold text-navy-700">Plan</dt>
+                <dd>{details.plan}</dd>
+              </>
+            ) : null}
+            {details.code ? (
+              <>
+                <dt className="font-semibold text-navy-700">Promo code</dt>
+                <dd>{details.code}</dd>
+              </>
+            ) : null}
             {sale.refundedAt ? (
               <>
                 <dt className="font-semibold text-navy-700">Refunded</dt>
