@@ -105,7 +105,13 @@ event payouts unchanged; the seller-invoice period is the calendar month (IST); 
 - [x] Seller monthly invoices (upload, admin approval), PAN, TDS deduction on course payouts, statement, TDS CSV
 - [x] Invoice PDF screenshot to the owner before the deploy arm
 - [ ] Backfill of past paid orders: only if the owner asks (none issued automatically)
-- [ ] C4 release: one code PR, migration arm (owner), rearm, deploy arm (owner), rearm, Remote Verify, report
+- [x] C4 release: code PR #187 (merge 28743fa3); migration arm #188 → run 38055649597 applied 0076
+  (APPLY_VERIFIED, tables=8 columns=11 triggers=2), guard rearmed (2da76276); deploy arm #189 → run 38057426457
+  (web :243, outbox :125, notification :124), guard rearmed (8bae7ec5); Remote Verify 38058306547, Google auth and
+  logo checks green; signed-out live checks: home, /learn, course page 200; invoice, GST/TDS export and seller invoice
+  routes 401; admin tax and earnings pages redirect to sign-in
+- [ ] Owner: save the LUT ARN for 2026-27 (USD purchases stay off until then) and set the TDS rate/threshold
+  (course payouts hold until then)
 
 ## Decisions made while building
 
