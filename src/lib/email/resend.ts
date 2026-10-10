@@ -106,6 +106,8 @@ export type ResendEmailInput = {
   html: string
   headers?: Array<{ Name: string; Value: string }>
   tags?: Array<{ name: string; value: string }>
+  /** Files attached to the email; `content` is base64. */
+  attachments?: Array<{ filename: string; content: string }>
   idempotencyKey?: string
 }
 
@@ -126,6 +128,9 @@ export function createResendEmailClient(options: { apiKey: string; fetch?: Fetch
           .filter((header) => clean(header.Name) && clean(header.Value))
           .map((header) => [header.Name, header.Value]),
       )
+      const attachments = (input.attachments ?? [])
+        .filter((attachment) => clean(attachment.filename) && clean(attachment.content))
+        .map((attachment) => ({ filename: clean(attachment.filename), content: clean(attachment.content) }))
       const payload = {
         from: input.from,
         to: [input.to],
@@ -134,6 +139,7 @@ export function createResendEmailClient(options: { apiKey: string; fetch?: Fetch
         html: input.html,
         ...(Object.keys(customHeaders).length ? { headers: customHeaders } : {}),
         ...(input.tags?.length ? { tags: input.tags } : {}),
+        ...(attachments.length ? { attachments } : {}),
       }
 
       let response: Response

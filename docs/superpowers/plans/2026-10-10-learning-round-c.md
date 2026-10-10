@@ -46,8 +46,8 @@ Owner decisions (10 October):
       `scripts/aws/templates/guarded-migration/`; round checks after apply (tables, columns, the five checks, no paid
       course without a plan)
 - [x] Applies cleanly after every earlier migration in PGlite
-- [ ] Plan run on the merged head
-- [ ] Arm PR (owner merges and approves), migrate-once, rearm to plan
+- [x] Plan run on the merged head (run 38035159195 on 17580b6f: ADDITIVE, 33-statement preview rolled back, PLAN_ONLY_NO_APPLY)
+- [x] Arm PR #185 (owner merged), migrate-once run 38041336747: 0074 and 0075 applied, APPLY_VERIFIED=true, 1 Standard plan backfilled, 0 paid courses without a plan; rearmed to plan (cb50b601)
 
 ## PR 1: C0 + C1 + C2 + C3
 
@@ -85,12 +85,27 @@ C3 — pricing plans and access expiry
       communities open to enrolled learners
 - [x] C8 Studio charts: per-lesson drop-off, quiz item difficulty, enrolments and revenue over time
 
-## C4 — GST invoices (waiting for the owner)
+## C4 — GST invoices and payout tax (owner answers, confirmed with the CA)
 
-Questions sent on 10 October: issuing entity (GSTIN, legal name, address); who supplies the course (Sea N Shore or
-the trainer); SAC code and rate, and whether prices include GST; place of supply (CGST+SGST vs IGST); USD and
-overseas buyers (export with LUT); numbering scheme. Proposed: numbered PDF invoices (pdf-lib) stored in the private
-media bucket, linked from My Learning → Purchases and emailed with the payment confirmation.
+Issuer on every invoice: Beaufort Marine Services LLP (Sea N Shore), GSTIN 27AASFB2030K1ZE (Regular), Panvel,
+Maharashtra 410206. Sea N Shore supplies every course (not a marketplace, no TCS). SAC 999293, GST 18% included in
+the price. Owner decisions (10 Oct): rules apply to course earnings of all course sellers (mentors and organisations),
+event payouts unchanged; the seller-invoice period is the calendar month (IST); TDS uses the catch-up rule; PDFs print
+"INR" instead of the rupee sign.
+
+- [x] Migration 0076 (additive) + guarded runner `gst-tax-migration` from the template
+- [x] Billing state (required), optional company + GSTIN (format + check character + same state) at checkout
+- [x] GST worked out of the price per invoice (half-up to the paisa; parts always equal the price paid); CGST/SGST for
+      Maharashtra, IGST elsewhere; USD buyers abroad: zero-rated export under LUT
+- [x] Invoice SNS/YY-YY/000001 issued in the payment transaction (counter row per financial year, no gaps or reuse);
+      credit note SNC/YY-YY/000001 on refund; issued documents can't be changed or deleted (database triggers)
+- [x] USD purchases off until an LUT ARN is saved for the current financial year (checkout and course page)
+- [x] Admin → Payments → Tax: GST details, LUT ARN per financial year, TDS section/rate/threshold
+- [x] Invoice/credit-note PDF, email with the PDF, download in My Learning → Purchases, monthly GST CSV
+- [x] Seller monthly invoices (upload, admin approval), PAN, TDS deduction on course payouts, statement, TDS CSV
+- [x] Invoice PDF screenshot to the owner before the deploy arm
+- [ ] Backfill of past paid orders: only if the owner asks (none issued automatically)
+- [ ] C4 release: one code PR, migration arm (owner), rearm, deploy arm (owner), rearm, Remote Verify, report
 
 ## Decisions made while building
 
@@ -112,6 +127,15 @@ media bucket, linked from My Learning → Purchases and emailed with the payment
 
 ## Release
 
-- [ ] One guarded migration (0074–0075), one deploy, rearm, Remote Verify green
-- [ ] Live checks on seanshore.in
-- [ ] Report
+- [x] One guarded migration (0074–0075), one deploy, rearm, Remote Verify green
+  - The round's code went live in the owner's jobs-feed deploy (#184, run 38036424831, `deploy-once 17580b6f`) at 08:15 UTC,
+    70 minutes before the migration applied at 09:27 UTC. No separate round C deploy was needed. Task definitions:
+    web :240 → :241, outbox worker :122 → :123, notification worker :121 → :122. Deploy guard rearmed to plan (2e739345).
+  - Remote Verify 38037221357 green right after the deploy. The re-run after the migration (38042373553) failed on
+    2 `database_query_failed` lines logged before the migration (its log window starts at the deployment, 08:06 UTC).
+    The re-run at 10:57 still showed only those 2 lines after 539 more events (no new errors after the migration).
+  - Round C deploy: arm PR #186 (owner merged and approved), run 38046770266 on 0514179b: web :241 → :242, outbox worker
+    :123 → :124, notification worker :122 → :123. Remote Verify 38047592414 green; logo and Google sign-in checks green.
+    Deploy guard rearmed to plan (ee40e6c2).
+- [x] Live checks on seanshore.in (signed out: home, /learn, course page 200; /certificates/abc 404 with the not-verified page; signed-in checks are for the owner)
+- [x] Report

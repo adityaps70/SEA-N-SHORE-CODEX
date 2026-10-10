@@ -135,7 +135,8 @@ function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: Co
     // Round C: a choice of plans, or a renewal, is made in the "Course access" card.
     if (purchase.renewal) return { kind: 'choose', label: 'Renew access' }
     if ((purchase.plans?.length ?? 0) > 1) return { kind: 'choose', label: 'See plans' }
-    return { kind: 'buy', priceLabel: purchase.priceLabel }
+    // C4: buying needs the billing state for the GST invoice, so the phone bar opens the checkout section.
+    return { kind: 'choose', label: `Buy — ${purchase.priceLabel}` }
   }
   return null
 }

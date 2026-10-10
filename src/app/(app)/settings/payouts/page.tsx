@@ -5,7 +5,9 @@ import { ArrowLeft, Clock3 } from 'lucide-react'
 import { backLinkClass, textLinkClass } from '@/components/ui/interactive-styles'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PayoutAccountPanel } from '@/features/payouts/components/payout-account-panel'
+import { TaxDetailsPanel } from '@/features/payouts/components/tax-details-panel'
 import { getActivePayoutAccount, hasOpenPayout } from '@/features/payouts/payout-repository'
+import { getPayoutTaxProfile, maskTaxProfile } from '@/features/payouts/payout-tax'
 import { maskPayoutAccount } from '@/features/payouts/payout-rules'
 import { arePayoutsConfigured, readClient } from '@/features/payouts/payout-runtime'
 import { loadSellerOptions } from '@/features/payouts/seller-context'
@@ -24,6 +26,7 @@ export default async function PayoutSettingsPage() {
         option,
         account: await getActivePayoutAccount(readClient, option.seller),
         busy: await hasOpenPayout(readClient, option.seller),
+        tax: await getPayoutTaxProfile(readClient, option.seller),
       })))
     : []
 
@@ -59,23 +62,30 @@ export default async function PayoutSettingsPage() {
         </section>
       ) : (
         <div className="space-y-5">
-          {sellers.map(({ option, account, busy }) => {
+          {sellers.map(({ option, account, busy, tax }) => {
             const masked = account ? maskPayoutAccount(account) : null
             return (
-              <PayoutAccountPanel
-                key={option.key}
-                sellerKey={option.key}
-                sellerName={option.name}
-                kind={option.kind}
-                account={account && masked ? {
-                  method: account.method,
-                  summary: masked.summary,
-                  holderName: account.holderName,
-                  savedAt: account.createdAt,
-                  verified: account.providerVerified,
-                } : null}
-                lockedReason={busy ? 'A payout is on its way to these details. You can change or remove them once it completes.' : null}
-              />
+              <div key={option.key} className="space-y-3">
+                <PayoutAccountPanel
+                  sellerKey={option.key}
+                  sellerName={option.name}
+                  kind={option.kind}
+                  account={account && masked ? {
+                    method: account.method,
+                    summary: masked.summary,
+                    holderName: account.holderName,
+                    savedAt: account.createdAt,
+                    verified: account.providerVerified,
+                  } : null}
+                  lockedReason={busy ? 'A payout is on its way to these details. You can change or remove them once it completes.' : null}
+                />
+                <TaxDetailsPanel
+                  sellerKey={option.key}
+                  sellerName={option.name}
+                  kind={option.kind}
+                  profile={tax ? maskTaxProfile(tax) : null}
+                />
+              </div>
             )
           })}
         </div>

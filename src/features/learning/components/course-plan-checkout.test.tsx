@@ -166,17 +166,49 @@ describe('CoursePlanCheckout', () => {
     fireEvent.click(screen.getAllByRole('radio')[1]!)
     openAndApply('FIXTURE20')
     await screen.findByRole('status')
+    fireEvent.change(screen.getByLabelText('Billing state'), { target: { value: '29' } })
     fireEvent.click(screen.getByRole('button', { name: 'Buy course — ₹1,600' }))
 
-    await waitFor(() => expect(mocks.startCourseCheckoutAction).toHaveBeenCalledWith(courseId, { planId: sixMonthPlanId, promoCode: 'FIXTURE20' }))
+    await waitFor(() => expect(mocks.startCourseCheckoutAction).toHaveBeenCalledWith(courseId, { planId: sixMonthPlanId, promoCode: 'FIXTURE20', billing: { stateCode: '29' } }))
   })
 
   it('starts checkout without a plan or code for a course that has no saved plans', async () => {
     renderCheckout({ plans: [{ id: null, name: 'Standard', priceLabel: '₹999', listLabel: null, accessLabel: 'Lifetime access', currency: 'INR' }] })
 
+    fireEvent.change(screen.getByLabelText('Billing state'), { target: { value: '27' } })
     fireEvent.click(screen.getByRole('button', { name: 'Buy course — ₹999' }))
 
-    await waitFor(() => expect(mocks.startCourseCheckoutAction).toHaveBeenCalledWith(courseId, {}))
+    await waitFor(() => expect(mocks.startCourseCheckoutAction).toHaveBeenCalledWith(courseId, { billing: { stateCode: '27' } }))
+  })
+
+  it('asks for the billing state before checkout and shows the GST in the price (C4)', async () => {
+    renderCheckout({ plans: [{ id: null, name: 'Standard', priceLabel: '₹999', listLabel: null, accessLabel: 'Lifetime access', currency: 'INR', amountMinor: 99_900 }] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Buy course — ₹999' }))
+    expect(await screen.findByText('Choose your billing state. It decides the GST on your invoice.')).toBeInTheDocument()
+    expect(mocks.startCourseCheckoutAction).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Billing state'), { target: { value: '27' } })
+    expect(screen.getByText(/CGST 9% ₹76\.20 \+ SGST 9% ₹76\.19/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Billing state'), { target: { value: '07' } })
+    expect(screen.getByText(/IGST 18% ₹152\.39/)).toBeInTheDocument()
+  })
+
+  it('refuses a GSTIN that fails its check, and sends a valid one with the company name', async () => {
+    renderCheckout({ plans: [{ id: null, name: 'Standard', priceLabel: '₹999', listLabel: null, accessLabel: 'Lifetime access', currency: 'INR', amountMinor: 99_900 }] })
+    fireEvent.change(screen.getByLabelText('Billing state'), { target: { value: '27' } })
+    fireEvent.click(screen.getByRole('button', { name: /Add its GSTIN/ }))
+    fireEvent.change(screen.getByLabelText('Company name'), { target: { value: 'Fixture Shipping LLP' } })
+    fireEvent.change(screen.getByLabelText('GSTIN'), { target: { value: '27AASFB2030K1ZF' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buy course — ₹999' }))
+    expect(await screen.findByText(/This GSTIN is not valid/)).toBeInTheDocument()
+    expect(mocks.startCourseCheckoutAction).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('GSTIN'), { target: { value: '27aasfb2030k1ze' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buy course — ₹999' }))
+    await waitFor(() => expect(mocks.startCourseCheckoutAction).toHaveBeenCalledWith(courseId, {
+      billing: { stateCode: '27', company: 'Fixture Shipping LLP', gstin: '27aasfb2030k1ze' },
+    }))
   })
 })
 

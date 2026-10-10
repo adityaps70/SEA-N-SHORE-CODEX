@@ -1,3 +1,5 @@
+import type { BillingInput } from '@/features/tax/billing'
+import { lutForDate } from '@/features/tax/tax-settings'
 import { withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { GATEWAY_ORDER_LIFETIME_MINUTES } from '@/features/payments/event-payment-rules'
 import {
@@ -68,12 +70,21 @@ export function createCoursePaymentService(deps: {
   log?: (message: string, details?: Record<string, unknown>) => void
   siteUrl?: () => string | null
   now?: () => Date
+  /** C4: the LUT ARN for the financial year of an instant; USD (export) sales are off without one. */
+  lutForDate?: (at: Date) => Promise<string | null>
 }) {
   const repository = deps.repository ?? coursePaymentRepository
   const transaction = deps.transaction ?? withTransaction
   const log = deps.log ?? ((message, details) => console.error(message, details ?? {}))
   const siteUrl = deps.siteUrl ?? (() => siteUrlFromEnvironment())
   const now = deps.now ?? (() => new Date())
+  const lutFor = deps.lutForDate ?? ((at: Date) => lutForDate(at))
+
+  /** What the gateway can charge, less USD until an LUT is saved for the current financial year (C4). */
+  async function chargeableCurrencies(gateway: PaymentGateway, at: Date) {
+    if (!gateway.currencies.includes('USD')) return gateway.currencies
+    return (await lutFor(at)) ? gateway.currencies : gateway.currencies.filter((currency) => currency !== 'USD')
+  }
 
   async function gatewayFor(order: CoursePaymentOrder) {
     const gateway = await deps.getGatewayByName(order.provider)
@@ -146,18 +157,22 @@ export function createCoursePaymentService(deps: {
     /** Round C: the plan the buyer chose (the first plan when absent) and the promo code text they typed. */
     planId?: string | null
     promoCode?: string | null
+    /** C4: billing state or country, and an optional company + GSTIN, for the GST invoice. */
+    billing?: BillingInput | null
   }): Promise<CourseCheckoutSession> {
     const gateway = await deps.getGateway()
     if (!gateway) throw new PaymentsNotConfiguredError()
     if (gateway.requiresCustomerPhone && !input.customer.phone) throw new CustomerPhoneRequiredError()
+    const at = now()
     const prepared = await repository.prepareCheckoutOrder({
       profileId: input.profileId,
       courseId: input.courseId,
       provider: gateway.name,
-      currencies: gateway.currencies,
+      currencies: await chargeableCurrencies(gateway, at),
       planId: input.planId ?? null,
       promoCode: input.promoCode ?? null,
-      now: now(),
+      billing: input.billing ?? null,
+      now: at,
     })
     let order = prepared.order
     if (prepared.reused && order.providerOrderId) {

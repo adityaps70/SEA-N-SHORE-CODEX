@@ -55,7 +55,8 @@ describe('SendPayoutPanel', () => {
     expect(await screen.findByRole('button', { name: 'Sending…' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Sending…' }))
     expect(mocks.send).toHaveBeenCalledTimes(1)
-    expect(mocks.send).toHaveBeenCalledWith({ sellerKey: props.sellerKey, earningIds: [E1], expectedTotalMinor: 44910 })
+    // C4: the TDS the admin saw (none here) is sent too, so a different TDS at send time refuses.
+    expect(mocks.send).toHaveBeenCalledWith({ sellerKey: props.sellerKey, earningIds: [E1], expectedTotalMinor: 44910, expectedTdsMinor: 0 })
     await act(async () => resolve({ ok: true, state: 'processing', payoutId: PAYOUT, message: '₹449.10 is on its way to Arjun Rao.' }))
     expect(screen.getByRole('status')).toHaveTextContent('on its way')
     expect(screen.getByRole('link', { name: 'View this payout' })).toHaveAttribute('href', `/admin/payments/payouts/${PAYOUT}`)

@@ -83,7 +83,12 @@ describe('paid course orders schema (migration 0047)', () => {
 
   it('is what the repository reads and writes', () => {
     const roundC = readFileSync(resolve(root, 'infra/aws/database/migrations/0075_learning_round_c.sql'), 'utf8')
-    const table = `${statements(sql())[0]!}\n${statements(roundC).find((statement) => statement.startsWith('alter table public.course_payment_orders\n  add column'))!}`
+    const gst = readFileSync(resolve(root, 'infra/aws/database/migrations/0076_gst_invoices_payout_tax.sql'), 'utf8')
+    const table = [
+      statements(sql())[0]!,
+      statements(roundC).find((statement) => statement.startsWith('alter table public.course_payment_orders\n  add column'))!,
+      statements(gst).find((statement) => statement.startsWith('alter table public.course_payment_orders\n  add column'))!,
+    ].join('\n')
     const columns = /const ORDER_COLUMNS = `([^`]+)`/.exec(repository())![1]!
       .split(',')
       .map((column) => column.trim().replace(/^o\./, ''))

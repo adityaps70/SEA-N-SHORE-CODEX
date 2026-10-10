@@ -2,7 +2,11 @@
 
 import { useId, useState, useTransition } from 'react'
 import { CheckCircle2, Loader2, Tag } from 'lucide-react'
+import { CheckoutBillingFields } from '@/features/tax/components/checkout-billing-fields'
+import { billingRefusalMessage, resolveOrderBilling, type BillingInput } from '@/features/tax/billing'
+import { gstBreakup, supplyTypeFor } from '@/features/tax/gst'
 import { previewCoursePriceAction, type CoursePriceQuoteResult } from '../course-payment-actions'
+import { formatCourseAmount } from '../course-pricing'
 import { CourseCheckoutButton } from './course-checkout-button'
 
 /** A plan as the course page shows it; every amount comes from the server. */
@@ -16,6 +20,10 @@ export type CoursePlanOffer = {
   listLabel: string | null
   accessLabel: string
   currency: string | null
+  /** C4: what the plan costs now in minor units (the GST breakup is worked out of it). */
+  amountMinor?: number | null
+  /** C4: why this plan can't be bought yet (e.g. USD before an LUT is saved). */
+  unavailableMessage?: string | null
 }
 
 type Props = {
@@ -37,6 +45,8 @@ type AppliedCode = Extract<CoursePriceQuoteResult, { ok: true }>
  */
 export function CoursePlanCheckout({ courseId, courseSlug, courseTitle, plans, paymentsConfigured, blockedMessage, renewal = false }: Props) {
   const [planIndex, setPlanIndex] = useState(0)
+  const [billing, setBilling] = useState<BillingInput>({})
+  const [billingError, setBillingError] = useState<string | null>(null)
   const [codeOpen, setCodeOpen] = useState(false)
   const [codeText, setCodeText] = useState('')
   const [applied, setApplied] = useState<AppliedCode | null>(null)
@@ -71,7 +81,19 @@ export function CoursePlanCheckout({ courseId, courseSlug, courseTitle, plans, p
   }
 
   const priceLabel = applied?.totalLabel ?? plan.priceLabel
-  const disabled = Boolean(blockedMessage)
+  const planBlocked = blockedMessage ?? plan.unavailableMessage ?? undefined
+  const disabled = Boolean(planBlocked)
+  const currency = plan.currency === 'USD' ? 'USD' : 'INR'
+  const amountMinor = applied?.amountMinor ?? plan.amountMinor ?? null
+  const supplyType = supplyTypeFor({ currency, billingStateCode: billing.stateCode ?? null })
+  const breakup = amountMinor && amountMinor > 0 && (currency === 'USD' || billing.stateCode) ? gstBreakup(amountMinor, supplyType) : null
+
+  function checkBilling() {
+    const resolved = resolveOrderBilling(billing, currency)
+    const problem = resolved.ok ? null : billingRefusalMessage(resolved.reason)
+    setBillingError(problem)
+    return problem
+  }
 
   return (
     <div className="space-y-4" id="course-access">
@@ -184,16 +206,44 @@ export function CoursePlanCheckout({ courseId, courseSlug, courseTitle, plans, p
         </button>
       )}
 
+      {disabled ? null : (
+        <CheckoutBillingFields
+          currency={currency}
+          value={billing}
+          onChange={(next) => {
+            setBilling(next)
+            setBillingError(null)
+          }}
+          error={billingError}
+        />
+      )}
+
+      {breakup ? (
+        <p className="text-xs leading-5 text-muted" aria-live="polite">
+          {breakup.supplyType === 'export_lut'
+            ? 'Export of services: 0% GST under LUT. You pay '
+            : 'Price includes GST: '}
+          {breakup.supplyType === 'intra_state'
+            ? `taxable value ${formatCourseAmount(breakup.taxableMinor, currency)} + CGST 9% ${formatCourseAmount(breakup.cgstMinor, currency)} + SGST 9% ${formatCourseAmount(breakup.sgstMinor, currency)}.`
+            : breakup.supplyType === 'inter_state'
+              ? `taxable value ${formatCourseAmount(breakup.taxableMinor, currency)} + IGST 18% ${formatCourseAmount(breakup.igstMinor, currency)}.`
+              : `${formatCourseAmount(breakup.totalMinor, currency)}.`}
+          {' '}A GST invoice is emailed to you and kept in My Learning → Purchases.
+        </p>
+      ) : null}
+
       <CourseCheckoutButton
         courseId={courseId}
         courseSlug={courseSlug}
         courseTitle={courseTitle}
         priceLabel={priceLabel}
         paymentsConfigured={paymentsConfigured}
-        blockedMessage={blockedMessage}
+        blockedMessage={planBlocked}
         planId={plan.id}
         promoCode={applied?.codeLabel ?? null}
         actionVerb={renewal ? 'Renew' : 'Buy course'}
+        billing={billing}
+        validate={checkBilling}
       />
     </div>
   )

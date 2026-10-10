@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Receipt } from 'lucide-react'
+import { FileText, Receipt } from 'lucide-react'
 import { formatMoney } from '@/features/payments/currency'
 import type { LearnerCoursePurchase } from '../course-payment-repository'
 import { courseOrderReference, coursePurchaseStatusLabel } from '../course-payment-rules'
@@ -22,6 +22,30 @@ function refundLine(purchase: LearnerCoursePurchase) {
     return 'We could not unlock the course for this payment. The Sea N Shore team will refund the full amount.'
   }
   return null
+}
+
+/** C4: the GST tax invoice and, after a refund, the credit note. Plain links: the route sends the PDF as a download. */
+function TaxDocumentLinks({ purchase }: { purchase: LearnerCoursePurchase }) {
+  if (!purchase.invoiceId && !purchase.creditNoteId) return null
+  const linkClass = 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 px-3 text-xs font-semibold text-ocean-700 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500'
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {purchase.invoiceId ? (
+        <a href={`/api/learn/invoices/${purchase.invoiceId}`} className={linkClass}>
+          <FileText aria-hidden="true" className="size-4" />
+          <span>Download invoice</span>
+          {purchase.invoiceNumber ? <span className="font-mono text-[11px] font-normal text-navy-700">{purchase.invoiceNumber}</span> : null}
+        </a>
+      ) : null}
+      {purchase.creditNoteId ? (
+        <a href={`/api/learn/credit-notes/${purchase.creditNoteId}`} className={linkClass}>
+          <FileText aria-hidden="true" className="size-4" />
+          <span>Download credit note</span>
+          {purchase.creditNoteNumber ? <span className="font-mono text-[11px] font-normal text-navy-700">{purchase.creditNoteNumber}</span> : null}
+        </a>
+      ) : null}
+    </div>
+  )
 }
 
 /** Receipt-like list of the learner's course purchases (My Learning → Purchases). */
@@ -92,6 +116,7 @@ export function CoursePurchasesList({ purchases, className = 'mt-10' }: { purcha
                   </div>
                 </div>
                 {note ? <p className="mt-3 rounded-xl bg-mist-50 px-3 py-2 text-xs leading-5 text-navy-700">{note}</p> : null}
+                <TaxDocumentLinks purchase={purchase} />
               </li>
             )
           })}

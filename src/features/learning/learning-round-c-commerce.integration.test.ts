@@ -46,7 +46,7 @@ async function code(mentorId: string, values: Record<string, unknown>) {
 }
 
 async function checkout(profileId: string, course: Course, options: { promoCode?: string; planId?: string | null; now?: Date } = {}) {
-  return coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId: course.courseId, provider: 'cashfree', currencies: ['INR', 'USD'], ...options })
+  return coursePaymentRepository.prepareCheckoutOrder({ profileId, courseId: course.courseId, provider: 'cashfree', currencies: ['INR', 'USD'], billing: { stateCode: '27', country: 'US' }, ...options })
 }
 
 /** A pg-shaped client over one PGlite transaction (what confirmPaidOrder runs in). */

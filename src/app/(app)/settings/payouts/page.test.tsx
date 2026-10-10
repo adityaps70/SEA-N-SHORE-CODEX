@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   accounts: new Map<string, unknown>(),
   busy: new Set<string>(),
   orgs: [] as Array<{ id: string; name: string; slug: string; role: string }>,
+  taxProfiles: new Map<string, unknown>(),
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
@@ -18,6 +19,12 @@ vi.mock('@/features/payouts/payout-repository', () => ({
   hasOpenPayout: async (_client: unknown, seller: { profileId?: string; companyId?: string }) => mocks.busy.has(seller.companyId ?? seller.profileId ?? ''),
 }))
 
+vi.mock('@/features/payouts/seller-tax-actions', () => ({ saveTaxDetailsAction: vi.fn() }))
+vi.mock('@/features/payouts/payout-tax', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/payouts/payout-tax')>()),
+  getPayoutTaxProfile: async (_client: unknown, seller: { profileId?: string; companyId?: string }) => mocks.taxProfiles.get(seller.companyId ?? seller.profileId ?? '') ?? null,
+}))
+
 import PayoutSettingsPage from './page'
 
 const COMPANY = '55555555-5555-4555-8555-555555555555'
@@ -27,6 +34,7 @@ beforeEach(() => {
   mocks.accounts.clear()
   mocks.busy.clear()
   mocks.orgs = []
+  mocks.taxProfiles.clear()
 })
 afterEach(() => cleanup())
 
@@ -53,5 +61,19 @@ describe('Settings → Payout details', () => {
     expect(screen.getByText('UPI bl•••@okicici')).toBeInTheDocument()
     expect(screen.queryByText('blueanchor@okicici')).not.toBeInTheDocument()
     expect(screen.getByText(/A payout is on its way to these details/)).toBeInTheDocument()
+  })
+
+  it('shows a Tax details section per seller, with the PAN and GSTIN masked once saved (C4)', async () => {
+    mocks.orgs = [{ id: COMPANY, name: 'Blue Anchor Shipping', slug: 'blue-anchor', role: 'owner' }]
+    mocks.taxProfiles.set(COMPANY, { legalName: 'Blue Anchor Shipping Private Limited', pan: 'ABCDE1234F', gstRegistered: true, gstin: '27ABCDE1234F1Z5', updatedAt: '2026-09-01T10:00:00.000Z' })
+    render(await PayoutSettingsPage())
+    expect(screen.getByRole('heading', { name: 'Your tax details' })).toBeInTheDocument()
+    expect(screen.getByText(/No tax details yet/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add tax details' })).toBeInTheDocument()
+    const company = screen.getByRole('region', { name: 'Tax details · Blue Anchor Shipping' })
+    expect(company).toHaveTextContent('ABCDE****F')
+    expect(company).toHaveTextContent('Registered · 27ABCDE****F1Z5')
+    expect(document.body.textContent).not.toContain('ABCDE1234F')
+    expect(screen.getByRole('button', { name: 'Change tax details' })).toBeInTheDocument()
   })
 })

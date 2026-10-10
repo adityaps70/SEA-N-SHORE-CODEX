@@ -8,7 +8,9 @@ import { requirePaymentsAdmin } from '@/features/payouts/admin-guard'
 import { PaymentsAdminTabs } from '@/features/payouts/components/admin/payments-admin-tabs'
 import { PayoutStatusActions } from '@/features/payouts/components/admin/payout-status-actions'
 import { listPayoutQueue, listPayouts, type PayoutLine, type PayoutQueueLine } from '@/features/payouts/payout-queries'
+import { listPeriods } from '@/features/payouts/seller-invoice-rules'
 import { getPayoutSettings } from '@/features/payouts/payout-repository'
+import { getTaxSettings } from '@/features/tax/tax-settings'
 import { formatExactMoney, PAYOUT_STATUS_LABELS, sellerKey } from '@/features/payouts/payout-rules'
 import { arePayoutsConfigured } from '@/features/payouts/payout-runtime'
 
@@ -31,12 +33,24 @@ function SellerName({ line }: { line: { sellerIdentity: PayoutLine['sellerIdenti
   )
 }
 
-function QueueAction({ line, minPayoutMinor, configured }: { line: PayoutQueueLine; minPayoutMinor: number; configured: boolean }) {
+/** Why a queue line cannot be paid through the course tax rules (C4), or null. */
+function taxBlocker(line: PayoutQueueLine, tdsRateSet: boolean) {
+  if ((line.courseMinor ?? 0) <= 0) return null
+  if (!tdsRateSet) return 'TDS rate not set (Payments → Tax)'
+  if (!line.hasTaxProfile) return "Waiting for the seller's PAN"
+  return null
+}
+
+function QueueAction({ line, minPayoutMinor, configured, tdsRateSet }: { line: PayoutQueueLine; minPayoutMinor: number; configured: boolean; tdsRateSet: boolean }) {
+  const awaiting = line.awaitingPeriods ?? []
   if (line.openPayout) return <AdminChip tone="info">Payout in progress</AdminChip>
   if (line.currency !== 'INR') return <span className="text-xs leading-5 text-muted">USD balance: pay outside Cashfree</span>
+  if (line.availableMinor <= 0 && awaiting.length) return <span className="text-xs leading-5 text-amber-900">No approved invoice for {listPeriods(awaiting)}</span>
   if (line.availableMinor <= 0) return <span className="text-xs leading-5 text-muted">Owes {formatExactMoney(-line.availableMinor)} from refunds; deducted from future sales</span>
   if (line.availableMinor < minPayoutMinor) return <span className="text-xs leading-5 text-muted">Below the {formatExactMoney(minPayoutMinor)} minimum</span>
   if (!line.account) return <span className="text-xs leading-5 text-amber-900">Waiting for payout details</span>
+  const blocker = taxBlocker(line, tdsRateSet)
+  if (blocker) return <span className="text-xs leading-5 text-amber-900">{blocker}</span>
   if (!configured) return <span className="text-xs leading-5 text-muted">Cashfree Payouts not set up</span>
   return (
     <Link
@@ -78,16 +92,18 @@ export default async function AdminPayoutsQueuePage() {
   await requirePaymentsAdmin()
   const data = await withTransaction(async (tx) => {
     await releaseAvailableEarnings(tx)
-    const [queue, open, recent, settings] = await Promise.all([
+    const [queue, open, recent, settings, tax] = await Promise.all([
       listPayoutQueue(tx),
       listPayouts(tx, { statuses: ['draft', 'processing'], limit: 100 }),
       listPayouts(tx, { statuses: ['success', 'failed', 'reversed', 'cancelled'], limit: 30 }),
       getPayoutSettings(tx),
+      getTaxSettings(tx),
     ])
-    return { queue, open, recent, settings }
+    return { queue, open, recent, settings, tax }
   })
   const configured = await arePayoutsConfigured()
-  const payable = data.queue.filter((line) => line.currency === 'INR' && line.availableMinor >= data.settings.minPayoutMinor && line.account && !line.openPayout)
+  const tdsRateSet = data.tax.tdsRateBasisPoints !== null
+  const payable = data.queue.filter((line) => line.currency === 'INR' && line.availableMinor >= data.settings.minPayoutMinor && line.account && !line.openPayout && !taxBlocker(line, tdsRateSet))
   const payableTotal = payable.reduce((sum, line) => sum + line.availableMinor, 0)
 
   return (
@@ -129,9 +145,15 @@ export default async function AdminPayoutsQueuePage() {
                   <p className="break-words text-xs text-muted">
                     {line.earningCount} item{line.earningCount === 1 ? '' : 's'} · {line.account ? line.account.masked.summary : 'No payout details yet'}
                   </p>
+                  {line.awaitingPeriods?.length && line.awaitingInvoiceMinor ? (
+                    <p className="break-words text-xs text-amber-900">
+                      Not included: {formatExactMoney(line.awaitingInvoiceMinor)} of course earnings waiting for the seller&apos;s invoice for {listPeriods(line.awaitingPeriods)}.{' '}
+                      <Link href="/admin/payments/seller-invoices" className={textLinkClass}>Seller invoices</Link>
+                    </p>
+                  ) : null}
                 </div>
                 <p className={`font-bold tabular-nums md:text-right ${line.availableMinor < 0 ? 'text-red-700' : 'text-navy-950'}`}>{formatExactMoney(line.availableMinor, line.currency)}</p>
-                <div className="md:text-right"><QueueAction line={line} minPayoutMinor={data.settings.minPayoutMinor} configured={configured} /></div>
+                <div className="md:text-right"><QueueAction line={line} minPayoutMinor={data.settings.minPayoutMinor} configured={configured} tdsRateSet={tdsRateSet} /></div>
               </li>
             ))}
           </ul>
