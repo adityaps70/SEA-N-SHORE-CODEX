@@ -270,6 +270,12 @@ function createFakeDatabase() {
       }]
     }
 
+    // Round C (C3): saving the course price keeps its first pricing plan in step (no plans for a free course).
+    if (text.startsWith('select access_type, price_minor, discount_price_minor, currency from public.learning_courses where id = $1')) {
+      return v[0] === course.id ? [{ access_type: course.access_type, price_minor: course.price_minor, discount_price_minor: course.discount_price_minor, currency: course.currency }] : []
+    }
+    if (text.includes('public.learning_course_plans')) return []
+
     throw new Error(`Unhandled query in fake database:\n${text}`)
   }
 
