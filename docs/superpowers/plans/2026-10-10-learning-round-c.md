@@ -85,12 +85,26 @@ C3 — pricing plans and access expiry
       communities open to enrolled learners
 - [x] C8 Studio charts: per-lesson drop-off, quiz item difficulty, enrolments and revenue over time
 
-## C4 — GST invoices (waiting for the owner)
+## C4 — GST invoices and payout tax (owner answers, confirmed with the CA)
 
-Questions sent on 10 October: issuing entity (GSTIN, legal name, address); who supplies the course (Sea N Shore or
-the trainer); SAC code and rate, and whether prices include GST; place of supply (CGST+SGST vs IGST); USD and
-overseas buyers (export with LUT); numbering scheme. Proposed: numbered PDF invoices (pdf-lib) stored in the private
-media bucket, linked from My Learning → Purchases and emailed with the payment confirmation.
+Issuer on every invoice: Beaufort Marine Services LLP (Sea N Shore), GSTIN 27AASFB2030K1ZE (Regular), Panvel,
+Maharashtra 410206. Sea N Shore supplies every course (not a marketplace, no TCS). SAC 999293, GST 18% included in
+the price. Owner decisions (10 Oct): rules apply to course earnings of all course sellers (mentors and organisations),
+event payouts unchanged; the seller-invoice period is the calendar month (IST); TDS uses the catch-up rule; PDFs print
+"INR" instead of the rupee sign.
+
+- [x] Migration 0076 (additive) + guarded runner `gst-tax-migration` from the template
+- [x] Billing state (required), optional company + GSTIN (format + check character + same state) at checkout
+- [x] GST worked out of the price per invoice (half-up to the paisa; parts always equal the price paid); CGST/SGST for
+      Maharashtra, IGST elsewhere; USD buyers abroad: zero-rated export under LUT
+- [x] Invoice SNS/YY-YY/000001 issued in the payment transaction (counter row per financial year, no gaps or reuse);
+      credit note SNC/YY-YY/000001 on refund; issued documents can't be changed or deleted (database triggers)
+- [x] USD purchases off until an LUT ARN is saved for the current financial year (checkout and course page)
+- [x] Admin → Payments → Tax: GST details, LUT ARN per financial year, TDS section/rate/threshold
+- [ ] Invoice/credit-note PDF, email with the PDF, download in My Learning → Purchases, monthly GST CSV
+- [ ] Seller monthly invoices (upload, admin approval), PAN, TDS deduction on course payouts, statement, TDS CSV
+- [ ] Invoice PDF screenshot to the owner before the deploy arm
+- [ ] Backfill of past paid orders: only if the owner asks (none issued automatically)
 
 ## Decisions made while building
 
