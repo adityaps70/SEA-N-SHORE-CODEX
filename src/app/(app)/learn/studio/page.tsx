@@ -135,7 +135,7 @@ function TeachingBatches({ teaching }: { teaching: readonly TeachingBatch[] }) {
           <li key={batch.id}>
             <Link
               href={`/learn/studio/courses/${batch.courseId}/batches/${batch.id}`}
-              className="block rounded-[1.2rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] hover:border-teal-300"
+              className="block rounded-[1.2rem] border border-mist-200 bg-white p-4 shadow-[var(--shadow-card)] hover:border-teal-300"
             >
               <span className="block text-xs font-bold uppercase tracking-[0.12em] text-muted">{courseTitle}</span>
               <span className="mt-1 block break-words font-bold text-navy-950">{batch.title}</span>

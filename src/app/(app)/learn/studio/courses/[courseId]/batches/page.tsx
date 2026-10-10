@@ -57,7 +57,7 @@ export default async function CourseBatchesPage({ params }: { params: Promise<{ 
                       <li key={batch.id}>
                         <Link
                           href={`/learn/studio/courses/${course.id}/batches/${batch.id}`}
-                          className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] hover:border-teal-300"
+                          className="flex items-center justify-between gap-3 rounded-[1.2rem] border border-mist-200 bg-white p-4 shadow-[var(--shadow-card)] hover:border-teal-300"
                         >
                           <span className="min-w-0">
                             <span className="block break-words font-bold text-navy-950">{batch.title}</span>

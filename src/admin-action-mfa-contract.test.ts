@@ -40,6 +40,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/tax/admin-actions.ts', ['updateTdsSettingsAction', 'saveLutAction']],
   // Learning round C (C1): an administrator may manage any course's roster (admin authority is one branch).
   ['src/features/learning/course-roster-actions.ts', ['enrolLearnerByEmail', 'cancelCourseInvitation']],
+  // Learning round D (D1): an administrator may run any course's batches (admin authority is one branch).
+  ['src/features/learning/batches/batch-actions.ts', ['saveBatchSettingsAction', 'createBatchAction', 'updateBatchAction', 'setBatchManagerAction', 'addBatchInstructorAction', 'removeBatchInstructorAction', 'moveLearnerToBatchAction']],
 ]
 
 /** Bodies of the top-level functions in a module, by name. */
