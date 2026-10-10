@@ -12,6 +12,8 @@ import { CourseWithdrawControl } from '@/features/learning/components/course-wit
 import { CourseRevisionDiscardControl, CourseRevisionStartControl } from '@/features/learning/components/course-revision-controls'
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import { CertificateSettingsPanel } from '@/features/learning/components/certificate-settings-panel'
+import { CoursePricingPlansPanel } from '@/features/learning/components/course-pricing-plans-panel'
+import { coursePlanRepository } from '@/features/learning/course-plan-repository'
 import { DEFAULT_CERTIFICATE_SETTINGS } from '@/features/learning/certificate-settings'
 import {
   courseRepository,
@@ -188,10 +190,12 @@ export default async function EditMentorCoursePage({
   const course = await courseRepository.getOwnedCourse(user.id, courseId)
   if (!course) return notFound()
 
-  const [curriculum, sellerFee] = await Promise.all([
+  const [curriculum, sellerFee, plans] = await Promise.all([
     mentorMaterialRepository.getCurriculum(user.id, courseId),
     // The seller is the course's organization, or the trainer who owns a personal course.
     loadSellerFeeTerms(course.companyId ? { companyId: course.companyId } : { profileId: user.id }),
+    // Round C (C3): the plans this draft sells.
+    coursePlanRepository.list(course.id).catch(() => []),
   ])
   if (!curriculum) return notFound()
   // Article images are stored by path; the editor shows them through short-lived signed URLs.
@@ -268,6 +272,10 @@ export default async function EditMentorCoursePage({
             slugLocked={isRevision}
             sellerFees={{ default: sellerFee }}
           />
+        </div>
+
+        <div className="mt-5">
+          <CoursePricingPlansPanel courseId={course.id} paid={course.accessType === 'paid'} plans={plans} readOnly={!editable} />
         </div>
 
         <div className="mt-5">
