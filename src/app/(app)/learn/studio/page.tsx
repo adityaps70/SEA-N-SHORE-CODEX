@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Library, Plus, Receipt, Tag, Users, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Library, Plus, Receipt, Tag, Users, Wallet } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
@@ -10,6 +10,8 @@ import { assignmentGradingRepository } from '@/features/learning/assignment-grad
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+import { batchRepository, type TeachingBatch } from '@/features/learning/batches/batch-repository'
+import { batchStartLabel, batchStatusLabel } from '@/features/learning/batches/batch-rules'
 
 export const metadata: Metadata = { title: 'Learning Studio' }
 
@@ -79,6 +81,13 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
         </div>
         {editable || livePublished ? (
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/learn/studio/courses/${course.id}/batches`}
+              aria-label={`Batches of ${course.title}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+            >
+              <CalendarDays aria-hidden="true" className="size-4" /> Batches
+            </Link>
             {livePublished ? (
               <Link
                 href={`/learn/studio/courses/${course.id}/learners`}
@@ -116,6 +125,29 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
   )
 }
 
+/** Round D (D1): batches this member runs as manager or instructor, on any course. */
+function TeachingBatches({ teaching }: { teaching: readonly TeachingBatch[] }) {
+  return (
+    <section aria-labelledby="teaching-batches-heading" className="mt-6">
+      <h2 id="teaching-batches-heading" className="text-xl font-bold text-navy-950">Batches you teach</h2>
+      <ul className="mt-3 grid gap-3 md:grid-cols-2">
+        {teaching.map(({ batch, courseTitle, role }) => (
+          <li key={batch.id}>
+            <Link
+              href={`/learn/studio/courses/${batch.courseId}/batches/${batch.id}`}
+              className="block rounded-[1.2rem] border border-mist-200 bg-white p-4 shadow-[var(--shadow-card)] hover:border-teal-300"
+            >
+              <span className="block text-xs font-bold uppercase tracking-[0.12em] text-muted">{courseTitle}</span>
+              <span className="mt-1 block break-words font-bold text-navy-950">{batch.title}</span>
+              <span className="mt-1 block text-sm text-muted">{batchStartLabel(batch)} · {batchStatusLabel(batch.status)} · {role === 'manager' ? 'Batch manager' : 'Instructor'}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export default async function MentorStudioPage() {
   const user = await requireAwsUser()
   const [mentorState, organizations] = await Promise.all([
@@ -128,8 +160,18 @@ export default async function MentorStudioPage() {
     || organization.role === 'administrator'
     || organization.role === 'lms_manager')
 
+  const teaching = await batchRepository.listTeaching(user.id)
+
   if (!hasActiveMentor && !hasOrganizationLmsAccess) {
-    return redirect('/learn/teach')
+    if (!teaching.length) return redirect('/learn/teach')
+    // A batch manager or instructor who does not publish courses sees only their batches.
+    return (
+      <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+        <MobilePageBar backHref="/learn" title="Learning Studio" />
+        <h1 className="text-2xl font-bold text-navy-950 max-md:hidden">Learning Studio</h1>
+        <TeachingBatches teaching={teaching} />
+      </div>
+    )
   }
 
   const [courses, assignmentAttempts] = await Promise.all([
@@ -294,6 +336,7 @@ export default async function MentorStudioPage() {
           </div>
         )}
       </section>
+      {teaching.length ? <TeachingBatches teaching={teaching} /> : null}
     </div>
   )
 }

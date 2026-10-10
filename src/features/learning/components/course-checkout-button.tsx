@@ -27,11 +27,13 @@ type Props = {
   /** C4: billing details for the GST invoice, and a check run before checkout starts (returns a message to show). */
   billing?: BillingInput | null
   validate?: () => string | null
+  /** Round D: the batch chosen on a batch course. */
+  batchId?: string | null
 }
 
 /** "Buy course — ₹X": gateway checkout, then straight into the course player once the server confirms. */
 export function CourseCheckoutButton({
-  courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false, planId = null, promoCode = null, actionVerb = 'Buy course', billing = null, validate,
+  courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false, planId = null, promoCode = null, actionVerb = 'Buy course', billing = null, validate, batchId = null,
 }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -57,6 +59,7 @@ export function CourseCheckoutButton({
           ...(planId ? { planId } : {}),
           ...(promoCode ? { promoCode } : {}),
           ...(billing ? { billing } : {}),
+          ...(batchId ? { batchId } : {}),
         })
       }}
       confirm={({ orderId, proof }) => confirmCoursePaymentAction({ courseId, orderId, proof })}

@@ -25,11 +25,14 @@ export type CoursePurchaseState =
 type Props = {
   course: { id: string; slug: string; title: string }
   state: CoursePurchaseState
+  /** Round D: the batch chosen on a batch course (from the batch list above). */
+  batchId?: string | null
+  batchRequired?: boolean
 }
 
 const CARD = 'rounded-[1.5rem] border border-white/10 bg-white p-4 text-navy-950 shadow-[var(--shadow-card)] sm:p-5'
 
-export function CoursePurchasePanel({ course, state }: Props) {
+export function CoursePurchasePanel({ course, state, batchId = null, batchRequired = false }: Props) {
   if (state.kind === 'enrolled') {
     return (
       <div className={CARD}>
@@ -125,6 +128,8 @@ export function CoursePurchasePanel({ course, state }: Props) {
         paymentsConfigured={state.configured}
         blockedMessage={state.blockedMessage}
         renewal={Boolean(state.renewal)}
+        batchId={batchId}
+        batchRequired={batchRequired && !state.renewal}
       />
     </div>
   )

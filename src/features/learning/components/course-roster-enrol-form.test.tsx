@@ -52,7 +52,7 @@ describe('CourseRosterEnrolForm', () => {
     addLearner('fixture@example.test')
 
     expect(await screen.findByRole('status')).toHaveTextContent(text)
-    expect(mocks.enrolLearnerByEmail).toHaveBeenCalledWith(courseId, 'fixture@example.test')
+    expect(mocks.enrolLearnerByEmail).toHaveBeenCalledWith(courseId, 'fixture@example.test', null)
     expect(screen.getByRole('textbox', { name: 'Email address' })).toHaveValue('')
     expect(mocks.refresh).toHaveBeenCalledTimes(1)
   })

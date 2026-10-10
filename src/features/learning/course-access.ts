@@ -30,3 +30,41 @@ export function courseManagerAccessSql(courseAlias: string, actorParam: string) 
 export function enrollmentAccessOpenSql(enrollmentAlias = 'enrollment') {
   return `(${enrollmentAlias}.access_expires_at is null or ${enrollmentAlias}.access_expires_at > now())`
 }
+
+/**
+ * Round D: who may run one batch (its learners, sessions, attendance and recordings): the course's managers (as
+ * above), the batch's manager, or one of its instructors. `batchAlias` is a public.learning_course_batches row. Batch
+ * staff do not get course editing, prices or other batches. Platform admins are allowed by the caller, as for courses.
+ */
+export function batchStaffAccessSql(batchAlias: string, actorParam: string) {
+  return `(
+    ${batchAlias}.manager_profile_id = ${actorParam}
+    or exists (
+      select 1
+      from public.learning_batch_instructors access_bi
+      where access_bi.batch_id = ${batchAlias}.id
+        and access_bi.profile_id = ${actorParam}
+    )
+    or exists (
+      select 1
+      from public.learning_courses access_bc
+      where access_bc.id = ${batchAlias}.course_id
+        and ${courseManagerAccessSql('access_bc', actorParam)}
+    )
+  )`
+}
+
+/**
+ * Round D: the moment a learner's drip lessons count from. A course with drip_anchor 'batch_start' counts from the
+ * start of the learner's batch; every other case (self-paced courses, learners without a batch) from enrolled_at, as
+ * before. `enrollmentAlias` is a public.learning_enrollments row.
+ */
+export function dripAnchorSql(enrollmentAlias = 'enrollment') {
+  return `coalesce((
+    select anchor_batch.starts_at
+    from public.learning_course_batches anchor_batch
+    inner join public.learning_courses anchor_course on anchor_course.id = anchor_batch.course_id
+    where anchor_batch.id = ${enrollmentAlias}.batch_id
+      and anchor_course.drip_anchor = 'batch_start'
+  ), ${enrollmentAlias}.enrolled_at)`
+}

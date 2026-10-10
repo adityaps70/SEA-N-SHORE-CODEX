@@ -3,7 +3,7 @@ import { withTransaction as databaseTransaction, type DatabaseQueryClient } from
 import { issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
 import { nextMediaProgress } from './media-watch-policy'
 import { learnerCourseAccessSql } from './course-publication'
-import { enrollmentAccessOpenSql } from './course-access'
+import { enrollmentAccessOpenSql, dripAnchorSql } from './course-access'
 
 export type LearnerProgressQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type ProgressTransaction = <T>(work: (query: LearnerProgressQuery) => Promise<T>) => Promise<T>
@@ -49,7 +49,7 @@ const accessPolicySql = `
      and (
        lesson.release_mode = 'immediate'
        or (lesson.release_mode = 'scheduled' and lesson.release_at <= now())
-       or (lesson.release_mode = 'drip' and enrollment.enrolled_at + make_interval(days => lesson.drip_delay_days) <= now())
+       or (lesson.release_mode = 'drip' and ${dripAnchorSql()} + make_interval(days => lesson.drip_delay_days) <= now())
      )
      and (
        lesson.prerequisite_lesson_id is null

@@ -2,7 +2,7 @@ import { posix as path } from 'node:path'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { learnerCourseAccessSql } from './course-publication'
-import { enrollmentAccessOpenSql } from './course-access'
+import { enrollmentAccessOpenSql, dripAnchorSql } from './course-access'
 
 type ContentRow = QueryResultRow & { extracted_prefix: string }
 
@@ -54,7 +54,7 @@ export async function resolveLearnerScormContentKey(
        and (
          lesson.release_mode = 'immediate'
          or (lesson.release_mode = 'scheduled' and lesson.release_at <= now())
-         or (lesson.release_mode = 'drip' and enrollment.enrolled_at + make_interval(days => lesson.drip_delay_days) <= now())
+         or (lesson.release_mode = 'drip' and ${dripAnchorSql()} + make_interval(days => lesson.drip_delay_days) <= now())
        )
        and (lesson.prerequisite_lesson_id is null or prerequisite_progress.completed = true)
        and (

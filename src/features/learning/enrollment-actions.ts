@@ -6,6 +6,8 @@ import { userCan } from '@/features/access/server'
 import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { coursePaymentRepository } from './course-payment-repository'
+import { BatchError } from './batches/batch-repository'
+import { batchRefusalMessage } from './batches/batch-rules'
 import { enrollmentRepository } from './enrollment-repository'
 
 const courseIdSchema = z.string().uuid()
@@ -15,6 +17,7 @@ type EnrollmentActionResult =
   | { ok: false; error: string }
 
 function enrollmentError(error: unknown) {
+  if (error instanceof BatchError) return batchRefusalMessage(error.code) ?? 'Choose another batch and try again.'
   if (error instanceof Error) {
     if (error.message === 'course_not_enrollable') {
       return 'This course is not currently available for free enrollment.'
@@ -26,16 +29,18 @@ function enrollmentError(error: unknown) {
   return 'We could not enroll you in this course. Please try again.'
 }
 
-export async function enrollInFreeCourse(courseId: string): Promise<EnrollmentActionResult> {
+export async function enrollInFreeCourse(courseId: string, batchId: string | null = null): Promise<EnrollmentActionResult> {
   const parsedId = courseIdSchema.safeParse(courseId)
   if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
+  const parsedBatch = batchId === null ? null : courseIdSchema.safeParse(batchId)
+  if (parsedBatch && !parsedBatch.success) return { ok: false, error: 'Choose a batch and try again.' }
 
   try {
     const user = await requireAwsUser()
     if (!await userCan(user.id, 'course.enroll')) {
       return { ok: false, error: 'Your account cannot enroll in courses right now.' }
     }
-    const result = await enrollmentRepository.enrollFreeCourse(user.id, parsedId.data)
+    const result = await enrollmentRepository.enrollFreeCourse(user.id, parsedId.data, parsedBatch?.data ?? null)
     revalidatePath('/learn')
     revalidatePath('/learn/my-learning')
     return {

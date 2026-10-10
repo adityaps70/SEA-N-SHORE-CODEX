@@ -7,12 +7,15 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
 import { ROSTER_EMAIL_MESSAGE, ROSTER_ENROL_LIMITS, rosterEmailSchema, type RosterEnrolOutcome } from './course-roster'
 import { courseRosterRepository } from './course-roster-repository'
+import { BatchError } from './batches/batch-repository'
+import { batchRefusalMessage } from './batches/batch-rules'
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string }
 
 const uuid = z.string().uuid()
 
 function rosterError(error: unknown) {
+  if (error instanceof BatchError) return error.code === 'batch_required' ? 'Choose the batch to add this learner to.' : batchRefusalMessage(error.code) ?? 'Choose another batch and try again.'
   if (error instanceof Error) {
     if (error.message === 'course_not_found') return 'Only this course’s trainers can add learners.'
     if (error.message === 'course_not_enrollable') return 'Learners can be added once the course is published and open to new learners.'
@@ -24,19 +27,21 @@ function rosterError(error: unknown) {
   return 'We could not add this learner. Please try again.'
 }
 
-async function access(courseId: string) {
+async function access(courseId: string, batchId: string | null = null) {
   const user = await requireAwsUser()
-  return { actorId: user.id, courseId, allCourses: await canUsePlatformAdminAuthority(user.id) }
+  return { actorId: user.id, courseId, allCourses: await canUsePlatformAdminAuthority(user.id), batchId }
 }
 
 /** Round C (C1): enrol a member by email now, or invite someone who is not a member yet. */
-export async function enrolLearnerByEmail(courseId: string, email: string): Promise<Result<{ outcome: RosterEnrolOutcome }>> {
+export async function enrolLearnerByEmail(courseId: string, email: string, batchId: string | null = null): Promise<Result<{ outcome: RosterEnrolOutcome }>> {
   const parsedCourse = uuid.safeParse(courseId)
   if (!parsedCourse.success) return { ok: false, error: 'This course link is no longer valid. Reload the page and try again.' }
+  const parsedBatch = uuid.nullable().safeParse(batchId)
+  if (!parsedBatch.success) return { ok: false, error: 'Choose a batch and try again.' }
   const parsedEmail = rosterEmailSchema.safeParse(email)
   if (!parsedEmail.success) return { ok: false, error: firstPlainIssue(parsedEmail.error, ROSTER_EMAIL_MESSAGE) }
   try {
-    const outcome = await courseRosterRepository.enrolByEmail(await access(parsedCourse.data), parsedEmail.data)
+    const outcome = await courseRosterRepository.enrolByEmail(await access(parsedCourse.data, parsedBatch.data), parsedEmail.data)
     revalidatePath(`/learn/studio/courses/${parsedCourse.data}/learners`)
     return { ok: true, outcome }
   } catch (error) {

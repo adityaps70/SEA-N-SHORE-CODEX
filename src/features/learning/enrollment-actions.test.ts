@@ -56,7 +56,7 @@ describe('learning enrollment server action', () => {
     })
 
     expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
-    expect(mocks.enrollFreeCourse).toHaveBeenCalledWith('learner-1', courseId)
+    expect(mocks.enrollFreeCourse).toHaveBeenCalledWith('learner-1', courseId, null)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn')
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/my-learning')
   })

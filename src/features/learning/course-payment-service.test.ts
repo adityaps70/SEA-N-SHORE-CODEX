@@ -136,7 +136,7 @@ describe('course payment service: checkout', () => {
 
   it('creates a crs_ gateway order for the stored amount with return and webhook URLs', async () => {
     const session = await service().startCheckout({ profileId, courseId, customer })
-    expect(repository.prepareCheckoutOrder).toHaveBeenCalledWith({ profileId, courseId, provider: 'cashfree', currencies: ['INR'], planId: null, promoCode: null, billing: null, now })
+    expect(repository.prepareCheckoutOrder).toHaveBeenCalledWith({ profileId, courseId, provider: 'cashfree', currencies: ['INR'], planId: null, promoCode: null, billing: null, batchId: null, now })
     expect(gateway.createCheckout).toHaveBeenCalledWith(expect.objectContaining({
       gatewayOrderId: gatewayId,
       amountMinor: 400000,

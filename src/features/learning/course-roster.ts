@@ -38,6 +38,9 @@ export type RosterLearner = {
   lastActiveAt: string
   quizScores: RosterQuizScore[]
   certificate: RosterCertificateStatus
+  /** Round D: the learner's batch on a batch course (null when self-paced or not in a batch). */
+  batchId: string | null
+  batchTitle: string | null
 }
 
 export type RosterInvitation = {
@@ -96,9 +99,15 @@ const COLUMNS: ReadonlyArray<readonly [string, (learner: RosterLearner) => strin
   ['Access until', (learner) => isoDate(learner.accessExpiresAt) || 'Lifetime'],
 ]
 
-/** The roster as CSV (UTF-8 with BOM for spreadsheet apps; formula-looking cells are neutralised by csvCell). */
-export function rosterToCsv(learners: readonly RosterLearner[]) {
-  const header = COLUMNS.map(([name]) => name).join(',')
-  const lines = learners.map((learner) => COLUMNS.map(([, read]) => csvCell(read(learner))).join(','))
+/**
+ * The roster as CSV (UTF-8 with BOM for spreadsheet apps; formula-looking cells are neutralised by csvCell). A batch
+ * course (round D) adds a Batch column after Rank; a self-paced course's export is unchanged.
+ */
+export function rosterToCsv(learners: readonly RosterLearner[], options: { includeBatch?: boolean } = {}) {
+  const columns = options.includeBatch
+    ? [COLUMNS[0]!, COLUMNS[1]!, ['Batch', (learner: RosterLearner) => learner.batchTitle ?? ''] as const, ...COLUMNS.slice(2)]
+    : COLUMNS
+  const header = columns.map(([name]) => name).join(',')
+  const lines = learners.map((learner) => columns.map(([, read]) => csvCell(read(learner))).join(','))
   return `﻿${[header, ...lines].join('\r\n')}\r\n`
 }

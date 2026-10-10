@@ -35,6 +35,9 @@ type Props = {
   blockedMessage?: string
   /** Renewing ended access (the button says Renew). */
   renewal?: boolean
+  /** Round D: the batch chosen on a batch course; `batchRequired` holds the button until one is chosen. */
+  batchId?: string | null
+  batchRequired?: boolean
 }
 
 type AppliedCode = Extract<CoursePriceQuoteResult, { ok: true }>
@@ -43,7 +46,7 @@ type AppliedCode = Extract<CoursePriceQuoteResult, { ok: true }>
  * Round C (C2, C3): choose a plan, optionally apply a promo code, then pay. "Apply" asks the server for the price
  * (the same rules checkout uses); the checkout re-checks the plan and the code when it starts.
  */
-export function CoursePlanCheckout({ courseId, courseSlug, courseTitle, plans, paymentsConfigured, blockedMessage, renewal = false }: Props) {
+export function CoursePlanCheckout({ courseId, courseSlug, courseTitle, plans, paymentsConfigured, blockedMessage, renewal = false, batchId = null, batchRequired = false }: Props) {
   const [planIndex, setPlanIndex] = useState(0)
   const [billing, setBilling] = useState<BillingInput>({})
   const [billingError, setBillingError] = useState<string | null>(null)
@@ -238,12 +241,13 @@ export function CoursePlanCheckout({ courseId, courseSlug, courseTitle, plans, p
         courseTitle={courseTitle}
         priceLabel={priceLabel}
         paymentsConfigured={paymentsConfigured}
-        blockedMessage={planBlocked}
+        blockedMessage={planBlocked ?? (batchRequired && !batchId ? 'Choose a batch above, then buy.' : undefined)}
         planId={plan.id}
         promoCode={applied?.codeLabel ?? null}
         actionVerb={renewal ? 'Renew' : 'Buy course'}
         billing={billing}
         validate={checkBilling}
+        batchId={batchId}
       />
     </div>
   )
