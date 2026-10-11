@@ -42,8 +42,45 @@ const HEADING = 'Your Sea N Shore profile is waiting'
  */
 export function legacyReminderEmail(input: { fullName: string; email: string; claimToken: string; unsubscribeToken: string; siteUrl?: string }) {
   const siteUrl = legacySiteUrl(input.siteUrl)
-  const claimUrl = legacyClaimUrl(siteUrl, input.claimToken)
-  const unsubscribe = legacyUnsubscribeLinks(siteUrl, input.unsubscribeToken)
+  return renderLegacyReminder({
+    subject: LEGACY_REMINDER_SUBJECT,
+    fullName: input.fullName,
+    email: input.email,
+    claimUrl: legacyClaimUrl(siteUrl, input.claimToken),
+    unsubscribe: legacyUnsubscribeLinks(siteUrl, input.unsubscribeToken),
+  })
+}
+
+/** The sample person shown in a test reminder. */
+export const LEGACY_REMINDER_TEST_SAMPLE = { fullName: 'Test Admin', email: 'test.admin@example.com' } as const
+
+/** Where a test reminder's links go: a page that says it is a test, and a one-click endpoint that changes nothing. */
+export function legacyReminderTestLinks(siteUrl?: string) {
+  const base = legacySiteUrl(siteUrl)
+  return {
+    claim: `${base}/email/legacy/test-link`,
+    page: `${base}/email/legacy/test-link?link=unsubscribe`,
+    oneClick: `${base}/api/email/legacy/test-unsubscribe`,
+  }
+}
+
+/**
+ * The exact second reminder, for an admin's "Send test to me": the same HTML, text and headers, with the sample
+ * person, "[TEST] " before the subject, and links that change nothing (no claim token, no unsubscribe token).
+ */
+export function legacyReminderTestEmail(input: { siteUrl?: string } = {}) {
+  const links = legacyReminderTestLinks(input.siteUrl)
+  return renderLegacyReminder({
+    subject: `[TEST] ${LEGACY_REMINDER_SUBJECT}`,
+    fullName: LEGACY_REMINDER_TEST_SAMPLE.fullName,
+    email: LEGACY_REMINDER_TEST_SAMPLE.email,
+    claimUrl: links.claim,
+    unsubscribe: { page: links.page, oneClick: links.oneClick },
+  })
+}
+
+function renderLegacyReminder(input: { subject: string; fullName: string; email: string; claimUrl: string; unsubscribe: { page: string; oneClick: string } }) {
+  const { claimUrl, unsubscribe } = input
   const firstName = legacyFirstName(input.fullName)
   const whatsapp = LEGACY_REMINDER_WHATSAPP
 
@@ -171,7 +208,7 @@ export function legacyReminderEmail(input: { fullName: string; email: string; cl
 </html>`
 
   return {
-    subject: LEGACY_REMINDER_SUBJECT,
+    subject: input.subject,
     preheader: LEGACY_REMINDER_PREHEADER,
     text,
     html,

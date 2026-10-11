@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { emailDeliveryRepository } from '@/features/email-delivery/repository'
-import { LegacyInviteControls } from '@/features/legacy-invites/controls'
+import { LegacyInviteControls, LegacyReminderTestButton } from '@/features/legacy-invites/controls'
 import { LEGACY_INVITE_FROM, legacyInviteEmail } from '@/features/legacy-invites/email'
 import { legacyReminderEmail } from '@/features/legacy-invites/reminder-email'
 import { legacyReminderRepository, REMINDER_EXCLUSIONS } from '@/features/legacy-invites/reminder-repository'
@@ -236,6 +236,14 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
           <div className="mt-5">
             <LegacyInviteControls mode="reminder" prepared={metrics.prepared} queued={metrics.queued} failed={metrics.failed} sending={metrics.sending} />
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">Send yourself a test</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            A test is not a reminder: it does not change eligibility or the queue. Its links open a page that says it is a test, and its unsubscribe link changes nothing.
+          </p>
+          <div className="mt-3"><LegacyReminderTestButton /></div>
         </section>
 
         <Preview

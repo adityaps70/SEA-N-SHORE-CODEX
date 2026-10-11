@@ -6,11 +6,13 @@ import {
   cancelPreparedLegacyReminders,
   prepareLegacyInviteBatch,
   prepareLegacyReminderBatch,
+  sendLegacyReminderTest,
   startPreparedLegacyInvites,
   startPreparedLegacyReminders,
   stopUnsentLegacyInvites,
   stopUnsentLegacyReminders,
 } from '@/features/legacy-invites/admin-actions'
+import type { LegacyReminderTestResult } from '@/features/legacy-invites/reminder-test'
 
 const MODES = {
   invite: {
@@ -123,6 +125,48 @@ export function LegacyInviteControls(props: {
         </p>
       ) : null}
       {message ? <p className="text-xs text-muted">{message}</p> : null}
+    </div>
+  )
+}
+
+const TEST_MESSAGES: Record<LegacyReminderTestResult['status'], (to: string) => string> = {
+  sent: (to) => `Test sent to ${to}. It is not a reminder and changes nothing.`,
+  no_verified_email: () => 'No test was sent: your sign-in email is not verified.',
+  rate_limited: () => 'No test was sent: you have sent 5 tests in the last hour. Try again later.',
+  unavailable: () => 'No test was sent: email sending is not configured.',
+  failed: (to) => `Resend did not accept the test to ${to}. The attempt is in the audit log.`,
+}
+
+/** "Send test to me": the exact reminder, with sample details, to the signed-in admin's own verified email only. */
+export function LegacyReminderTestButton() {
+  const [pending, startTransition] = useTransition()
+  const [message, setMessage] = useState<string | null>(null)
+
+  function send() {
+    setMessage(null)
+    startTransition(async () => {
+      try {
+        const result = await sendLegacyReminderTest()
+        setMessage(TEST_MESSAGES[result.status]('to' in result ? result.to : ''))
+      } catch {
+        setMessage('No test was sent: the request failed.')
+      }
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        disabled={pending}
+        onClick={send}
+        className="min-h-10 rounded-xl border border-ocean-200 bg-white px-4 text-sm font-bold text-ocean-800 transition hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {pending ? 'Sending test…' : 'Send test to me'}
+      </button>
+      <p className="text-xs leading-5 text-muted">
+        {message ?? 'Sends this exact email, with sample details, to your own verified sign-in email. Up to 5 an hour.'}
+      </p>
     </div>
   )
 }

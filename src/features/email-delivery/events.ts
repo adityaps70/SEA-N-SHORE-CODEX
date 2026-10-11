@@ -119,11 +119,16 @@ export function backfillEvent(input: { resendEmailId: string; lastEvent: string 
   }
 }
 
+/** Resend categories of admin test sends. Their events are logged but never put anyone on the do-not-email list. */
+export const TEST_SEND_CATEGORIES: readonly string[] = ['legacy_profile_reminder_test']
+
 /**
  * Whether the event puts its recipients on the do-not-email list. A bounce counts as hard unless Resend says it was
  * temporary: Resend reports "bounced" only for permanent rejections, and the backfill sees no bounce type at all.
+ * Events from an admin's test send never do.
  */
-export function suppressionReasonFor(event: Pick<DeliveryEvent, 'type' | 'bounceType'>): SuppressionReason | null {
+export function suppressionReasonFor(event: Pick<DeliveryEvent, 'type' | 'bounceType'> & { category?: string | null }): SuppressionReason | null {
+  if (event.category && TEST_SEND_CATEGORIES.includes(event.category)) return null
   if (event.type === 'complained') return 'complaint'
   if (event.type === 'suppressed') return 'provider_suppressed'
   if (event.type === 'bounced') {

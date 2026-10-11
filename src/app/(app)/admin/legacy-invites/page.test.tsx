@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -16,12 +16,14 @@ const mocks = vi.hoisted(() => ({
   })),
   reminderMetrics: vi.fn(async () => ({ prepared: 10, queued: 0, sending: 0, sent: 0, failed: 0, skipped: 0, cancelled: 0 })),
   reminderRecent: vi.fn(async () => []),
+  sendTest: vi.fn(async () => ({ status: 'sent', to: 'admin@example.test' })),
 }))
 
 vi.mock('@/features/admin/access', () => ({ requirePlatformAdministratorUser: mocks.requireAdmin }))
 vi.mock('@/features/legacy-invites/admin-actions', () => ({
   prepareLegacyInviteBatch: vi.fn(), startPreparedLegacyInvites: vi.fn(), cancelPreparedLegacyInvites: vi.fn(), stopUnsentLegacyInvites: vi.fn(),
   prepareLegacyReminderBatch: vi.fn(), startPreparedLegacyReminders: vi.fn(), cancelPreparedLegacyReminders: vi.fn(), stopUnsentLegacyReminders: vi.fn(),
+  sendLegacyReminderTest: mocks.sendTest,
 }))
 vi.mock('@/features/legacy-invites/repository', () => ({ legacyInviteRepository: { metrics: mocks.inviteMetrics, recent: mocks.inviteRecent } }))
 vi.mock('@/features/email-delivery/repository', () => ({ emailDeliveryRepository: { backfillProgress: mocks.backfill } }))
@@ -69,5 +71,25 @@ describe('Admin → Legacy invites', () => {
     expect(frame).toHaveAttribute('sandbox', '')
     expect(frame.getAttribute('srcdoc')).toContain('src="https://seanshore.in/brand/email/sea-n-shore-logo.png"')
     expect(frame.getAttribute('srcdoc')).toContain('<strong>captain@example.com</strong>')
+  })
+
+  it('has a "Send test to me" button with no recipient field, and shows where the test went', async () => {
+    render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({ mode: 'reminder' }) }))
+    const section = screen.getByRole('heading', { name: 'Send yourself a test' }).closest('section')!
+    expect(within(section).queryByRole('textbox')).toBeNull()
+    expect(section.querySelector('input, select, textarea')).toBeNull()
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Send test to me' }))
+
+    expect(await within(section).findByText('Test sent to admin@example.test. It is not a reminder and changes nothing.')).toBeInTheDocument()
+    expect(mocks.sendTest).toHaveBeenCalledTimes(1)
+    expect(mocks.sendTest).toHaveBeenCalledWith()
+  })
+
+  it('says when the hourly test limit is reached', async () => {
+    mocks.sendTest.mockResolvedValueOnce({ status: 'rate_limited' } as never)
+    render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({ mode: 'reminder' }) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send test to me' }))
+    expect(await screen.findByText('No test was sent: you have sent 5 tests in the last hour. Try again later.')).toBeInTheDocument()
   })
 })
