@@ -4,12 +4,10 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getLearnerCourse: vi.fn(),
   isCourseManager: vi.fn(),
-  canAccessPlatformAdmin: vi.fn(),
   createLessonMediaUrl: vi.fn(),
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
-vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
 vi.mock('@/lib/aws/storage', () => ({ createLessonMediaUrl: mocks.createLessonMediaUrl }))
 vi.mock('./course-payment-repository', () => ({ coursePaymentRepository: { isCourseManager: mocks.isCourseManager } }))
 vi.mock('./learner-course-repository', () => ({ learnerCourseRepository: { getLearnerCourse: mocks.getLearnerCourse } }))
@@ -65,7 +63,6 @@ describe('refreshLessonMediaUrl (round E)', () => {
   it('refuses course team access once the person has left the team', async () => {
     mocks.getLearnerCourse.mockResolvedValue(course({ enrollmentSource: 'admin' }))
     mocks.isCourseManager.mockResolvedValue(false)
-    mocks.canAccessPlatformAdmin.mockResolvedValue(false)
     expect((await refreshLessonMediaUrl(slug, videoId)).ok).toBe(false)
     mocks.isCourseManager.mockResolvedValue(true)
     expect((await refreshLessonMediaUrl(slug, videoId)).ok).toBe(true)

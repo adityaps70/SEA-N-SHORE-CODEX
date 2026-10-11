@@ -1,7 +1,6 @@
 'use server'
 
 import { z } from 'zod'
-import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { createLessonMediaUrl } from '@/lib/aws/storage'
 import { coursePaymentRepository } from './course-payment-repository'
@@ -27,9 +26,10 @@ export async function refreshLessonMediaUrl(slug: string, lessonId: string): Pro
     const user = await requireAwsUser()
     const course = await learnerCourseRepository.getLearnerCourse(user.id, parsedSlug.data)
     if (!course) return { ok: false, error: 'This lesson is not available in your learning enrollment.' }
-    if (course.enrollmentSource === 'admin') {
-      const stillOnTeam = await coursePaymentRepository.isCourseManager(user.id, course.courseId) || await canAccessPlatformAdmin(user.id)
-      if (!stillOnTeam) return { ok: false, error: 'This lesson is not available in your learning enrollment.' }
+    // Course team access lasts only while the person still manages the course. (No platform-admin authority here:
+    // server actions that use it must be MFA-gated, Round 15; an administrator simply reloads the page.)
+    if (course.enrollmentSource === 'admin' && !await coursePaymentRepository.isCourseManager(user.id, course.courseId)) {
+      return { ok: false, error: 'This lesson is not available in your learning enrollment.' }
     }
     const lesson = curriculumLessons(course).find((item) => item.id === parsedLesson.data)
     if (!lesson || !lesson.isAvailable || !lesson.assetPath || !['video', 'audio'].includes(lesson.lessonType)) {

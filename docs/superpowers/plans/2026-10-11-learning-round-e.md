@@ -117,6 +117,8 @@ done by the round's read-only runner (below), and the output shows titles and sl
 - **E3 video**: our own control bar (play, seek, time, volume and mute, speed 0.75-2×, captions, picture in picture,
   full screen) over a `<video>` with no `controls`, `controlsList="nodownload noremoteplayback"`,
   `disableRemotePlayback` and no context menu. Audio, previews and the trailer get `nodownload` too.
+  - The refresh action uses no platform-admin authority (Round 15: such server actions must be MFA-gated), so an
+    administrator viewing through admin access without being on the course team reloads the page after 20 minutes.
   - Lesson video and audio are signed for 20 minutes with `ResponseContentDisposition=inline`
     (`createLessonMediaUrl`). The player asks `refreshLessonMediaUrl` for a fresh URL 3 minutes before expiry, or
     after a playback error, and continues from the same second (playing if it was playing). The refresh runs the
@@ -145,8 +147,9 @@ done by the round's read-only runner (below), and the output shows titles and sl
   dragged into place within their section (a new reorder action; arrow buttons stay for keyboards and phones). The
   read-only view shows no edit, move, delete or upload controls, and the tab title matches the heading.
 - **E10**: LMS loading skeletons (catalogue, course page, player, My Learning, Studio, editor) that pulse only when
-  motion is welcome; a 2px ocean-600 focus outline everywhere (5.3:1, was 1px teal-500 at 2.9:1) and a visible ring
-  on LMS text fields; the remaining redundant eyebrows on these screens are gone.
+  motion is welcome; on learning pages a 2px ocean-600 focus outline (5.3:1, was 1px teal-500 at 2.9:1) and a
+  visible ring on text fields (the rest of the site keeps its pinned focus style); the remaining redundant eyebrows on
+  these screens are gone.
 - **Draft changes page** (`/learn/studio/courses/<draft id>/changes`): for the course team and platform
   administrators. Each changed material shows a word-by-word diff, a "Same words. Only the layout and heading
   capitals change." check, and the live and draft versions side by side.

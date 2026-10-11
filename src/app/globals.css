@@ -149,12 +149,24 @@ input[type="checkbox"]:focus-visible,
 input[type="radio"]:focus-visible,
 input[type="range"]:focus-visible,
 input[type="file"]:focus-visible {
-  /* Round E (E10): 2px ocean-600 (5.3:1 on white) instead of 1px teal-500 (2.9:1), so focus is always visible. */
+  outline: 1px solid var(--teal-500);
+  outline-offset: 2px;
+}
+
+/* Round E (E10): on learning pages, a 2px ocean-600 outline (5.3:1 on white) instead of 1px teal-500 (2.9:1), and
+   text fields get a visible ring too (the border alone was 2.9:1). */
+.lms a:focus-visible,
+.lms button:focus-visible,
+.lms [role="button"]:focus-visible,
+.lms [tabindex]:focus-visible,
+.lms summary:focus-visible,
+.lms input[type="checkbox"]:focus-visible,
+.lms input[type="radio"]:focus-visible,
+.lms input[type="range"]:focus-visible {
   outline: 2px solid var(--ocean-600);
   outline-offset: 2px;
 }
 
-/* Round E (E10): learning pages also give text fields a visible focus ring (the border alone was 2.9:1). */
 .lms input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
 .lms textarea:focus-visible,
 .lms select:focus-visible {
