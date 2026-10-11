@@ -41,7 +41,7 @@ function Metric({ label, value }: { label: string; value: number }) {
   )
 }
 
-function Preview(props: { title: string; subject: string; preheader?: string; html: string; text: string; extra?: Array<[string, string]> }) {
+function Preview(props: { title: string; subject: string; preheader?: string; html: string; text: string; extra?: Array<[string, string]>; tall?: boolean }) {
   return (
     <section className="rounded-2xl border border-mist-100 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -74,7 +74,7 @@ function Preview(props: { title: string; subject: string; preheader?: string; ht
       </dl>
 
       <div className="mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50">
-        <iframe title={`${props.title} preview`} srcDoc={props.html} sandbox="" className="h-[650px] w-full bg-white" />
+        <iframe title={`${props.title} preview`} srcDoc={props.html} sandbox="" className={`${props.tall ? 'h-[1080px]' : 'h-[650px]'} w-full bg-white`} />
       </div>
 
       <details className="mt-4 rounded-xl border border-mist-100 bg-mist-50 p-4">
@@ -245,6 +245,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
           html={preview.html}
           text={preview.text}
           extra={preview.headers.map((header) => [header.Name, header.Value])}
+          tall
         />
 
         <RecentTable title="Recent reminders" empty="No reminders have been prepared yet." rows={recent} />
