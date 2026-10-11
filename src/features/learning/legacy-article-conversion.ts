@@ -8,17 +8,21 @@
  * The result is saved into a draft revision for the owner to review; nothing is published by this code.
  */
 
+// Words that are also everyday English ("IT", "US", "CO", "CE", "CAP") are left out: an all-caps heading can't tell them
+// apart, and "Why It Had to Change" is the commoner reading. Plurals ("KPIS", "PIFS") are handled in titleWord.
 const ACRONYMS = new Set([
-  'SIRE', 'OCIMF', 'VIQ', 'VIQ7', 'PIQ', 'HVPQ', 'SMS', 'ISM', 'ISPS', 'MARPOL', 'SOLAS', 'STCW', 'IMO', 'OVID', 'CDI',
-  'HSE', 'HSEQ', 'TMSA', 'PPE', 'MLC', 'PSC', 'CAP', 'DPA', 'CSO', 'SSO', 'ECDIS', 'GMDSS', 'AIS', 'ARPA', 'BRM', 'ERM',
+  'SIRE', 'OCIMF', 'VIQ', 'VIQ7', 'CVIQ', 'PIQ', 'HVPQ', 'SMS', 'ISM', 'ISPS', 'MARPOL', 'SOLAS', 'STCW', 'IMO', 'OVID',
+  'CDI', 'HSE', 'HSEQ', 'TMSA', 'PPE', 'MLC', 'PSC', 'DPA', 'CSO', 'SSO', 'ECDIS', 'GMDSS', 'AIS', 'ARPA', 'BRM', 'ERM',
   'BTM', 'LNG', 'LPG', 'IGS', 'COW', 'SOPEP', 'SMPEP', 'VGP', 'ODME', 'OWS', 'ORB', 'GHG', 'EEXI', 'CII', 'SEEMP', 'KPI',
-  'KPIS', 'MOC', 'JHA', 'JSA', 'PTW', 'LOTO', 'QA', 'QC', 'UK', 'US', 'USA', 'EU', 'IT', 'OOW', 'CE', 'CO', 'C/O', 'C/E',
-  'II', 'III', 'IV', 'AI', 'FAQ', 'FAQS', 'Q&A', 'STS', 'SBM', 'SPM', 'CBT', 'OJT', 'SMC', 'DOC',
+  'MOC', 'JHA', 'JSA', 'PTW', 'LOTO', 'QA', 'QC', 'UK', 'USA', 'EU', 'OOW', 'C/O', 'C/E', 'II', 'III', 'IV', 'AI', 'FAQ',
+  'Q&A', 'STS', 'SBM', 'SPM', 'CBT', 'OJT', 'SMC', 'DOC', 'PIF', 'CAPA', 'RCA', 'HF',
 ])
 const SMALL_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'nor', 'but', 'of', 'to', 'in', 'on', 'for', 'with', 'at', 'by', 'from', 'as', 'vs', 'via', 'per'])
 
+// Text only (never attributes), escaped exactly as the article sanitiser writes it, so a converted article passes
+// sanitizeArticleHtml unchanged: quotes stay as typed.
 function escapeHtml(text: string) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function hasLetters(text: string) {
@@ -40,19 +44,29 @@ export function isLegacyHeading(line: string) {
   return isAllCaps(text)
 }
 
+function titlePart(part: string, edge: boolean) {
+  const upper = part.toUpperCase()
+  // Known acronyms, their plurals ("KPIS" → "KPIs") and anything with a digit ("2.0", "VIQ7") keep their capitals.
+  if (ACRONYMS.has(upper) || /\d/.test(part)) return part
+  if (upper.endsWith('S') && ACRONYMS.has(upper.slice(0, -1))) return `${upper.slice(0, -1)}s`
+  const lower = part.toLowerCase()
+  // Small words stay lower case, except at the start or end of a title or subtitle.
+  if (!edge && SMALL_WORDS.has(lower)) return lower
+  return lower.charAt(0).toUpperCase() + lower.slice(1)
+}
+
 function titleWord(word: string, edge: boolean) {
   // Keep punctuation around the word: "(SIRE" → "(SIRE", "INSPECTION:" → "Inspection:".
   const match = /^([^\p{L}\p{N}]*)(.*?)([^\p{L}\p{N}]*)$/u.exec(word)
   if (!match) return word
   const [, lead, core, trail] = match
   if (!core) return word
-  // Known acronyms, anything with a digit, and a short word in brackets ("(STS)") keep their capitals.
-  if (ACRONYMS.has(core.toUpperCase()) || /\d/.test(core) || (lead.includes('(') && trail.includes(')') && core.length <= 6)) return `${lead}${core}${trail}`
-  const lower = core.toLowerCase()
-  // Small words stay lower case, except as the first or last word.
-  if (!edge && SMALL_WORDS.has(lower) && !lead) return `${lead}${lower}${trail}`
-  // Hyphenated words capitalise each part: "SHIP-TO-SHIP" → "Ship-to-Ship".
-  const cased = lower.split('-').map((part, index) => (index > 0 && SMALL_WORDS.has(part) ? part : part.charAt(0).toUpperCase() + part.slice(1))).join('-')
+  // A short word in brackets ("(STS)") keeps its capitals.
+  if (lead.includes('(') && trail.includes(')') && core.length <= 6) return `${lead}${core}${trail}`
+  if (ACRONYMS.has(core.toUpperCase())) return `${lead}${core}${trail}`
+  // Hyphenated words are cased part by part: "SHIP-TO-SHIP" → "Ship-to-Ship", "14-DAY" → "14-Day".
+  const parts = core.split('-')
+  const cased = parts.map((part, index) => titlePart(part, index === 0 && (edge || !!lead || parts.length > 1))).join('-')
   return `${lead}${cased}${trail}`
 }
 
@@ -63,7 +77,9 @@ export function toTitleCase(line: string) {
   const prefix = numbered ? `${numbered[1]} ` : ''
   const body = numbered ? numbered[2]! : text
   const words = body.split(/\s+/)
-  return prefix + words.map((word, index) => titleWord(word, index === 0 || index === words.length - 1)).join(' ')
+  // A word after a colon or a dash starts a subtitle: "PART ONE - THE SCENARIO" → "Part One - The Scenario".
+  const startsSubtitle = (index: number) => index > 0 && /(?:[:—–]|^-)$/.test(words[index - 1]!)
+  return prefix + words.map((word, index) => titleWord(word, index === 0 || index === words.length - 1 || startsSubtitle(index))).join(' ')
 }
 
 const BULLET = /^\s*[-•*]\s+(.*)$/

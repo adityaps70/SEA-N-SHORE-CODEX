@@ -90,8 +90,10 @@ done by the round's read-only runner (below), and the output shows titles and sl
 - [x] PR 2: E9 editor section nav, read-only view, Studio home tidy-up, status tabs
 - [x] PR 2: E10 skeletons, focus rings, 390 px pass
 - [x] PR 2: revision diff page and the `learning-round-e-content` runner (plan / apply-once)
-- [ ] Deploy (one), rearm, Remote Verify
-- [ ] Runner plan, then arm, then the draft revision for the SIRE articles; send the diff link
+- [x] Deploy, rearm, Remote Verify (run 38167020632; the second deploy, run 38170527805, carried the #217 slug fix)
+- [x] Runner plan on the live course (run 38171703705): 9/9 quizzes have shuffle off; 1 test-course candidate;
+  9 plain articles, all with the same words, but 8 refused (see the converter fix below)
+- [ ] Converter fix deployed, plan re-run with 9/9 safe, then arm, then the draft revision; send the diff link
 - [ ] Report
 
 ## PR 1 notes
@@ -159,4 +161,11 @@ done by the round's read-only runner (below), and the output shows titles and sl
   converts the plain-text articles in that draft only (refusing any article whose words would change). Nothing is
   submitted, published or deleted, and an already open draft is left alone. A push-triggered plan waits for a
   deployed image that contains the worker.
+- **Converter fix after the live plan**: the plan refused 8 of 9 SIRE articles. Every one had the same words; the
+  refusal came from the "sanitiser leaves it unchanged" check, because the converter wrote `"` as `&quot;` and the
+  sanitiser writes a plain `"` (the one article without double quotes passed). Text is now escaped exactly as the
+  sanitiser writes it (`&`, `<`, `>`). The same run showed heading-case slips, now fixed: "Why IT Had to Change"
+  (IT, US, CO, CE and CAP are no longer treated as acronyms), "Pifs" and "Capa" (acronym plurals and CAPA, PIF,
+  CVIQ added), "14-DAY" (digits keep only their own hyphen part), and a small word after a colon or dash ("Drill: the
+  Three-Lens") now starts the subtitle with a capital.
 
