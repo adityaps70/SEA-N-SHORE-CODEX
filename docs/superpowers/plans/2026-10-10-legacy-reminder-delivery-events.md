@@ -114,16 +114,26 @@ in plaintext as `sea-n-shore/resend-admin`.
 - [x] First-invitation worker: claimed-but-untried invitations go back to the queue after a retryable error
 - [x] Tests: signature checks, eligibility rules on the real schema, one-per-person, unsubscribe, webhook handler,
   backfill, runner contract
-- [ ] Feature PR, migration arm, deploy arm, webhook arm, rearms, Remote Verify
+- [x] Feature PR, migration arm, deploy arm, webhook arm, rearms, Remote Verify
 
 ## Release
 
 | Step | Result |
 | --- | --- |
-| Feature PR (migration 0080 + runners + code) | pending |
-| Migration plan | pending |
-| Migration arm (`scripts/aws/legacy-reminder-migration-action.txt`) | pending |
-| Deploy arm (`scripts/aws/staging-deploy-action.txt`) | pending |
-| Webhook arm (`scripts/aws/resend-delivery-webhook-action.txt`) | pending; after the deploy, because the endpoint must be live |
-| Backfill | runs by itself after the deploy; progress shows on the First invitation tab |
+| Feature PR (migration 0080, runners, code; admin key and first-invitation fix) | #201, merged as `f0e720d5` |
+| Migration plan | run 38090301062: ADDITIVE, 14 statements, pending 0080, PLAN_VERIFIED |
+| Webhook plan | run 38090301060: admin secret readable, no webhook, domain tracking already off, endpoint 404 (not yet deployed) |
+| Migration arm | #202, merged by the owner |
+| Migration apply | run 38117294898: APPLY_VERIFIED (3 tables, 4 columns, 2 unique indexes, no invitation changed) |
+| Migration rearm | `6a2630a7` (guard back to `plan`) |
+| Deploy arm | #203, merged by the owner |
+| Deploy | run 38120799830: web `:246`, outbox worker `:128`, notification worker `:127` |
+| Post-deploy checks | Remote Verify 38121520242, Google auth 38121521520, logo 38121522687: all green |
+| Deploy rearm | `d6685cae` (guard back to `plan`) |
+| Webhook arm, first try | #204, closed unmerged: its CI failed because the runner's contract test required the guard to read `plan` |
+| Contract test fix | #205, merged as `42898bfe` |
+| Webhook arm | #206, merged by the owner |
+| Webhook apply | run 38123704521: webhook `c3601cf7-634a-4202-9990-96cbad3710c6` created for the six events, signing secret stored, signed probe accepted. The final unsigned probe reached the second web task while it still cached the missing secret (30 s) and got 503, so the run ended red. Checked right after: 12 of 12 unsigned probes answer `400 invalid_signature`. The verification now requires 6 matching answers in a row (this PR). |
+| Webhook rearm | `3e48f335` (guard back to `plan`) |
+| Backfill | runs by itself in the outbox worker since the deploy; progress shows on the First invitation tab |
 | Second reminder | the owner prepares, reviews and starts it |

@@ -41,6 +41,8 @@ EVENTS = [
     "email.suppressed",
 ]
 REGION = os.environ.get("AWS_REGION", "ap-south-1")
+# Consecutive matching answers that show every web task behind the load balancer has the new secret.
+STABLE_PROBES = 6
 
 
 def local_override(name, default):
@@ -57,6 +59,8 @@ RESEND_API = local_override("RESEND_DELIVERY_WEBHOOK_TEST_RESEND_API", "https://
 SITE = local_override("RESEND_DELIVERY_WEBHOOK_TEST_SITE", "https://seanshore.in")
 ENDPOINT = "https://seanshore.in/api/email/resend/webhook"
 PROBE_URL = SITE + "/api/email/resend/webhook"
+# Seconds between verification probes; the local test fake answers at once.
+PROBE_INTERVAL = 0.05 if os.environ.get("RESEND_DELIVERY_WEBHOOK_TEST_SITE") else 3
 
 
 def out(line):
@@ -277,18 +281,29 @@ def main():
             fail("Open or click tracking is still on for the sending domain.")
         out("DOMAIN_TRACKING_TURNED_OFF=true")
 
-    # The web tasks cache a missing secret for 30 s; allow a few minutes for every task to read the new one.
-    for _ in range(36):
+    # Every web task caches a missing secret for 30 s, and the load balancer spreads probes across tasks, so one good
+    # answer proves only one task. Require several in a row (a wrong answer resets the count), for up to 3 minutes.
+    def settled(check, label):
+        streak, last = 0, None
+        for _ in range(60):
+            ok, last = check()
+            streak = streak + 1 if ok else 0
+            if streak >= STABLE_PROBES:
+                return
+            time.sleep(PROBE_INTERVAL)
+        fail(f"{label} (last HTTP {last}).")
+
+    def signed_ok():
         status, payload = probe(signing_secret)
-        if status == 200 and payload.get("status") == "ignored":
-            break
-        time.sleep(5)
-    else:
-        fail(f"The endpoint did not accept a delivery signed with the stored secret (last HTTP {status}).")
+        return status == 200 and payload.get("status") == "ignored", status
+
+    def unsigned_refused():
+        status, _ = probe()
+        return status == 400, status
+
+    settled(signed_ok, "The endpoint did not keep accepting deliveries signed with the stored secret")
     out("SIGNED_PROBE_ACCEPTED=true")
-    status, _ = probe()
-    if status != 400:
-        fail(f"The endpoint did not refuse an unsigned delivery (HTTP {status}).")
+    settled(unsigned_refused, "The endpoint did not keep refusing unsigned deliveries")
     out("UNSIGNED_PROBE_REFUSED=true")
     out("APPLY_VERIFIED=true")
 
