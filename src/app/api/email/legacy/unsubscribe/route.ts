@@ -1,4 +1,5 @@
 import { legacyReminderRepository } from '@/features/legacy-invites/reminder-repository'
+import { siteUrlFor } from '@/lib/site-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
 /** Opening the link in a browser shows the confirmation page instead of unsubscribing on GET (link scanners prefetch GETs). */
 export async function GET(request: Request) {
   const url = new URL(request.url)
-  const target = new URL('/email/legacy/unsubscribe', url.origin)
+  const target = siteUrlFor('/email/legacy/unsubscribe')
   const token = url.searchParams.get('token')
   if (token) target.searchParams.set('token', token)
   return Response.redirect(target, 303)

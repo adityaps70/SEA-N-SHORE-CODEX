@@ -265,9 +265,9 @@ describe('legacy reminder unsubscribe', () => {
     await legacyReminderRepository.prepareEligible(10, ADMIN.id)
     const token = (await reminderFor(person.id))!.unsubscribe_token as string
 
-    const get = await unsubscribeRoute.GET(new Request(`https://seanshore.in/api/email/legacy/unsubscribe?token=${token}`))
+    const get = await unsubscribeRoute.GET(new Request(`http://10.0.1.23:3000/api/email/legacy/unsubscribe?token=${token}`))
     expect(get.status).toBe(303)
-    expect(get.headers.get('location')).toBe(`https://seanshore.in/email/legacy/unsubscribe?token=${token}`)
+    expect(get.headers.get('location')).toBe(`${process.env.NEXT_PUBLIC_SITE_URL}/email/legacy/unsubscribe?token=${token}`)
     expect(await db.query(`select 1 from public.email_suppressions`)).toHaveLength(0)
 
     const post = await unsubscribeRoute.POST(new Request(`https://seanshore.in/api/email/legacy/unsubscribe?token=${token}`, { method: 'POST', body: 'List-Unsubscribe=One-Click' }))
