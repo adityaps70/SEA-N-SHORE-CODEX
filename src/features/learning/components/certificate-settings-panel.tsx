@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { Award, CheckCircle2, Loader2, Save } from 'lucide-react'
 import { saveCourseCertificateSettings } from '../certificate-settings-actions'
+import { useUnsavedChanges, type SaveOutcome } from './course-edit-session'
 import {
   CERTIFICATE_TEMPLATES,
   CERTIFICATE_TEMPLATE_LABELS,
@@ -48,28 +49,41 @@ export function CertificateSettingsPanel({
   const [pending, startTransition] = useTransition()
   const set = <K extends keyof CourseCertificateSettings>(key: K, value: CourseCertificateSettings[K]) => setSettings((current) => ({ ...current, [key]: value }))
   const preview = normaliseSerialPrefix(settings.serialPrefix)
+  const fingerprint = (value: CourseCertificateSettings, months: string) => JSON.stringify([value, months.trim()])
+  const [baseline, setBaseline] = useState(() => fingerprint(initial, initial.validityMonths ? String(initial.validityMonths) : ''))
+  const dirty = !readOnly && fingerprint(settings, validity) !== baseline
+
+  async function persist(): Promise<SaveOutcome> {
+    setMessage(null)
+    const result = await saveCourseCertificateSettings(courseId, {
+      ...settings,
+      validityMonths: validity.trim() ? Number(validity) : null,
+      finalLessonId: settings.issueTrigger === 'final_quiz' ? settings.finalLessonId : null,
+    })
+    if (!result.ok) {
+      setMessage({ tone: 'error', text: result.error })
+      return { ok: false, error: result.error }
+    }
+    const savedValidity = result.settings.validityMonths ? String(result.settings.validityMonths) : ''
+    setSettings(result.settings)
+    setValidity(savedValidity)
+    setBaseline(fingerprint(result.settings, savedValidity))
+    setMessage({ tone: 'success', text: 'Certificate settings saved. New certificates use them; certificates already issued keep their design.' })
+    return { ok: true }
+  }
+
+  // Round E (E9): unsaved certificate settings show in the editor's save bar and the leave warning.
+  useUnsavedChanges('certificate-settings', dirty, 'Certificate settings', persist)
 
   function save() {
-    setMessage(null)
     startTransition(async () => {
-      const result = await saveCourseCertificateSettings(courseId, {
-        ...settings,
-        validityMonths: validity.trim() ? Number(validity) : null,
-        finalLessonId: settings.issueTrigger === 'final_quiz' ? settings.finalLessonId : null,
-      })
-      if (!result.ok) {
-        setMessage({ tone: 'error', text: result.error })
-        return
-      }
-      setSettings(result.settings)
-      setMessage({ tone: 'success', text: 'Certificate settings saved. New certificates use them; certificates already issued keep their design.' })
+      await persist()
     })
   }
 
   return (
     <section className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8" aria-label="Certificate">
-      <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-700"><Award className="size-4" aria-hidden="true" /> Certificate</p>
-      <h2 className="mt-2 text-2xl font-bold text-navy-950">Certificate design and issuing</h2>
+      <h2 className="flex items-center gap-2 text-section-title font-bold text-navy-950"><Award className="size-5 text-teal-700" aria-hidden="true" /> Certificate</h2>
       {!certificateEnabled ? (
         <p className="mt-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900">Certificates are turned off in the course details above. Turn them on there to issue certificates.</p>
       ) : null}

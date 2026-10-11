@@ -66,8 +66,7 @@ export function CourseSubmitControl({ courseId, resubmission = false, revision =
     <section className="rounded-[1.5rem] border border-teal-100 bg-teal-50/60 p-5 sm:p-6" aria-labelledby={`course-submit-${courseId}`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Ready for quality review?</p>
-          <h2 id={`course-submit-${courseId}`} className="mt-1 text-lg font-bold text-navy-950">
+          <h2 id={`course-submit-${courseId}`} className="text-card-title font-semibold text-navy-950">
             {revision
               ? 'Submit these changes to Sea N Shore'
               : resubmission ? 'Resubmit this course to Sea N Shore' : 'Submit this course to Sea N Shore'}

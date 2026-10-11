@@ -153,6 +153,27 @@ input[type="file"]:focus-visible {
   outline-offset: 2px;
 }
 
+/* Round E (E10): on learning pages, a 2px ocean-600 outline (5.3:1 on white) instead of 1px teal-500 (2.9:1), and
+   text fields get a visible ring too (the border alone was 2.9:1). */
+.lms a:focus-visible,
+.lms button:focus-visible,
+.lms [role="button"]:focus-visible,
+.lms [tabindex]:focus-visible,
+.lms summary:focus-visible,
+.lms input[type="checkbox"]:focus-visible,
+.lms input[type="radio"]:focus-visible,
+.lms input[type="range"]:focus-visible {
+  outline: 2px solid var(--ocean-600);
+  outline-offset: 2px;
+}
+
+.lms input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+.lms textarea:focus-visible,
+.lms select:focus-visible {
+  border-color: var(--ocean-600) !important;
+  box-shadow: 0 0 0 1px var(--ocean-600) !important;
+}
+
 .onboarding-maritime-fields { display: grid; }
 
 @supports selector(.onboarding-form:has(input:checked)) {
@@ -203,3 +224,14 @@ input[type="file"]:focus-visible {
 .lesson-article th { background: var(--mist-50); font-weight: 700; color: var(--navy-950); }
 .lesson-article .selectedCell { background: var(--ocean-50); }
 .lesson-article.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted); float: left; height: 0; pointer-events: none; }
+
+/* Round E (E3): the lesson video's faint moving watermark (member code and date) and the seek bar's reachable part. */
+@keyframes lesson-watermark {
+  0% { left: 4%; top: 6%; }
+  25% { left: 62%; top: 18%; }
+  50% { left: 48%; top: 64%; }
+  75% { left: 6%; top: 52%; }
+  100% { left: 4%; top: 6%; }
+}
+.lesson-video-watermark { left: 4%; top: 6%; animation: lesson-watermark 90s linear infinite; }
+.lesson-video-seek { background: linear-gradient(to right, rgb(255 255 255 / 0.55) var(--reachable, 0%), rgb(255 255 255 / 0.2) var(--reachable, 0%)); border-radius: 9999px; }

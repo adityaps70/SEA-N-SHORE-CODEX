@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   updateLesson: vi.fn(),
   deleteLesson: vi.fn(),
   moveLesson: vi.fn(),
+  reorderSection: vi.fn(),
+  reorderLesson: vi.fn(),
   saveQuizDefinition: vi.fn(),
 }))
 
@@ -26,6 +28,8 @@ vi.mock('./mentor-curriculum-repository', async (importOriginal) => {
       updateSection: mocks.updateSection,
       deleteSection: mocks.deleteSection,
       moveSection: mocks.moveSection,
+      reorderSection: mocks.reorderSection,
+      reorderLesson: mocks.reorderLesson,
       createLesson: mocks.createLesson,
       updateLesson: mocks.updateLesson,
       deleteLesson: mocks.deleteLesson,
@@ -42,6 +46,8 @@ import {
   deleteCurriculumSection,
   moveCurriculumLesson,
   moveCurriculumSection,
+  reorderCurriculumLesson,
+  reorderCurriculumSection,
   saveCurriculumQuiz,
   updateCurriculumLesson,
   updateCurriculumSection,
@@ -230,5 +236,21 @@ describe('mentor curriculum server actions', () => {
       ok: false,
       error: 'Your curriculum changes were not saved because this course is in review or published. Reload the page to see its current status.',
     })
+  })
+
+  it('reorders by drag and drop to a validated position (round E)', async () => {
+    mocks.requireAwsUser.mockResolvedValue({ id: 'user-1' })
+    mocks.reorderSection.mockResolvedValue(true)
+    mocks.reorderLesson.mockResolvedValue(true)
+
+    await expect(reorderCurriculumSection(courseId, sectionId, 2)).resolves.toEqual({ ok: true })
+    await expect(reorderCurriculumLesson(courseId, lessonId, 0)).resolves.toEqual({ ok: true })
+    expect(mocks.reorderSection).toHaveBeenCalledWith('user-1', courseId, sectionId, 2)
+    expect(mocks.reorderLesson).toHaveBeenCalledWith('user-1', courseId, lessonId, 0)
+
+    await expect(reorderCurriculumSection(courseId, sectionId, -1)).resolves.toEqual({ ok: false, error: 'Invalid position.' })
+    await expect(reorderCurriculumLesson(courseId, lessonId, 1.5)).resolves.toEqual({ ok: false, error: 'Invalid position.' })
+    await expect(reorderCurriculumSection('not-a-course', sectionId, 0)).resolves.toMatchObject({ ok: false })
+    expect(mocks.reorderSection).toHaveBeenCalledTimes(1)
   })
 })

@@ -139,6 +139,8 @@ describe('learning enrollment repository', () => {
           mentor_name: 'Capt. Maya Singh',
           total_lessons: '8',
           completed_lessons: '3',
+          course_archived: false,
+          last_activity_at: new Date('2026-09-20T08:30:00.000Z'),
         }]
       },
     })
@@ -164,6 +166,8 @@ describe('learning enrollment repository', () => {
       totalLessons: 8,
       completedLessons: 3,
       progressPercent: 38,
+      courseArchived: false,
+      lastActivityAt: '2026-09-20T08:30:00.000Z',
     }])
 
     expect(seen[0]?.values).toEqual([learnerId])
@@ -172,7 +176,10 @@ describe('learning enrollment repository', () => {
     expect(seen[0]?.text).toContain('public.learning_progress')
     expect(seen[0]?.text).toContain('public.companies company')
     expect(seen[0]?.text).toContain('company.is_verified = true')
-    expect(seen[0]?.text).toContain('order by enrollment.updated_at desc, enrollment.id desc')
+    // Round E (E7): newest activity first (lesson progress or an enrollment change), and whether the course is archived.
+    expect(seen[0]?.text).toContain('greatest(enrollment.updated_at, max(progress.updated_at)) as last_activity_at')
+    expect(seen[0]?.text).toContain('order by last_activity_at desc nulls last, enrollment.id desc')
+    expect(seen[0]?.text).toContain("(course.status = 'archived' or course.removed_at is not null) as course_archived")
     expect(seen[0]?.text).toContain('enrollment.access_expires_at')
   })
 

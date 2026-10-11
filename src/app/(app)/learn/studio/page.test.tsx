@@ -105,21 +105,31 @@ describe('/learn/studio', () => {
 
     expect(screen.getByRole('heading', { name: 'Learning Studio' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /create course/i })).toHaveAttribute('href', '/learn/studio/courses/new')
-    expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
-    expect(screen.getByRole('link', { name: /analytics/i })).toHaveAttribute('href', '/learn/studio/analytics')
-    expect(screen.getByRole('link', { name: /analytics/i })).toHaveClass('max-md:hidden')
     expect(screen.getByRole('link', { name: /create course/i })).not.toHaveClass('max-md:hidden')
+    // Round E (E9): no stray back link on desktop; the secondary pages sit in one "Tools" menu.
+    expect(screen.queryByRole('link', { name: /trainer verification/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
+    const tools = screen.getByRole('menu', { name: 'Studio tools' })
+    expect(within(tools).getByRole('menuitem', { name: 'Analytics' })).toHaveAttribute('href', '/learn/studio/analytics')
+    expect(within(tools).getByRole('menuitem', { name: 'Review assignments' })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByRole('link', { name: /review 1 learner submission/i })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByText('Learner reviews')).toBeInTheDocument()
-    expect(screen.getByText('Assignments awaiting review')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /1 learner submission needs your review/ })).toBeInTheDocument()
+    // Status tabs: nothing is live, so Drafts opens; the course in review is one tab away.
+    const tabs = screen.getByRole('navigation', { name: 'Course status' })
+    expect(within(tabs).getByRole('link', { name: /Drafts\s*1/ })).toHaveAttribute('aria-current', 'page')
+    expect(within(tabs).getByRole('link', { name: /In review\s*1/ })).toHaveAttribute('href', '/learn/studio?status=review')
     expect(screen.getByText('SIRE 2.0 Readiness for Tanker Officers')).toBeInTheDocument()
-    expect(screen.getByText('Bridge Leadership Under Pressure')).toBeInTheDocument()
+    expect(screen.queryByText('Bridge Leadership Under Pressure')).not.toBeInTheDocument()
     expect(screen.getByText('Draft')).toBeInTheDocument()
-    expect(screen.getAllByText('In review')).toHaveLength(2)
+    // "Recorded" and the level are capitalised.
+    expect(screen.getByText('Recorded')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /edit sire 2.0 readiness for tanker officers/i })).toHaveAttribute(
       'href',
       '/learn/studio/courses/33333333-3333-4333-8333-333333333333/edit',
     )
+    cleanup()
+    render(await MentorStudioPage({ searchParams: Promise.resolve({ status: 'review' }) }))
     // Courses in review stay reachable (read-only, with a withdraw option) instead of disappearing behind a redirect.
     expect(screen.getByRole('link', { name: /view bridge leadership under pressure/i })).toHaveTextContent('View or withdraw')
     expect(mocks.listOwnedCourses).toHaveBeenCalledWith('user-1')
@@ -146,9 +156,10 @@ describe('/learn/studio', () => {
 
     render(await MentorStudioPage())
 
-    expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
+    fireEvent.click(screen.getByRole('button', { name: /^Tools/ }))
+    expect(screen.getByRole('menuitem', { name: 'Review assignments' })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByText('Learner reviews')).toBeInTheDocument()
-    expect(screen.queryByText('Assignments awaiting review')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /need.* your review/ })).not.toBeInTheDocument()
   })
 
   it('shows a useful empty state for an approved mentor with no courses yet', async () => {

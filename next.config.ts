@@ -49,6 +49,10 @@ const nextConfig: NextConfig = {
     maximumResponseBody: 15 * 1024 * 1024,
     maximumDiskCacheSize: 2 * 1024 * 1024 * 1024,
   },
+  async redirects() {
+    // Round E (E7): people type /learn/my; the page is /learn/my-learning. A 301, as asked for.
+    return [{ source: '/learn/my', destination: '/learn/my-learning', statusCode: 301 }]
+  },
   async headers() {
     // Round 14 (3.1): public brand and landing images are not content-hashed, so the browser and
     // CloudFront keep them for a day and refresh them in the background for a week after that.

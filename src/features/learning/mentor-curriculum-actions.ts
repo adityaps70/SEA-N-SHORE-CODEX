@@ -261,6 +261,44 @@ export async function moveCurriculumLesson(courseId: string, lessonId: string, d
   }
 }
 
+const targetIndexSchema = z.number().int().min(0).max(10_000)
+
+/** Round E (E9): drag and drop a section to a new place. */
+export async function reorderCurriculumSection(courseId: string, sectionId: string, targetIndex: number): Promise<ActionResult> {
+  const parsedCourse = parseCourseId(courseId)
+  if (!parsedCourse.ok) return parsedCourse
+  const parsedSection = parseSectionId(sectionId)
+  if (!parsedSection.ok) return parsedSection
+  const parsedIndex = targetIndexSchema.safeParse(targetIndex)
+  if (!parsedIndex.success) return { ok: false, error: 'Invalid position.' }
+  try {
+    const user = await requireAwsUser()
+    await mentorCurriculumRepository.reorderSection(user.id, parsedCourse.id, parsedSection.id, parsedIndex.data)
+    refreshCurriculum(parsedCourse.id)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: mutationError(error) }
+  }
+}
+
+/** Round E (E9): drag and drop a material to a new place within its section. */
+export async function reorderCurriculumLesson(courseId: string, lessonId: string, targetIndex: number): Promise<ActionResult> {
+  const parsedCourse = parseCourseId(courseId)
+  if (!parsedCourse.ok) return parsedCourse
+  const parsedLesson = parseLessonId(lessonId)
+  if (!parsedLesson.ok) return parsedLesson
+  const parsedIndex = targetIndexSchema.safeParse(targetIndex)
+  if (!parsedIndex.success) return { ok: false, error: 'Invalid position.' }
+  try {
+    const user = await requireAwsUser()
+    await mentorCurriculumRepository.reorderLesson(user.id, parsedCourse.id, parsedLesson.id, parsedIndex.data)
+    refreshCurriculum(parsedCourse.id)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: mutationError(error) }
+  }
+}
+
 export async function saveCurriculumQuiz(courseId: string, lessonId: string, input: MentorQuizDefinitionInput): Promise<ActionResult> {
   const parsedCourse = parseCourseId(courseId)
   if (!parsedCourse.ok) return parsedCourse

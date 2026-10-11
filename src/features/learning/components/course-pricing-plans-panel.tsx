@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { CheckCircle2, Layers, Loader2, Plus, Save, Trash2 } from 'lucide-react'
 import { formatMoney, minorToPriceInput, parsePriceToMinor } from '@/features/payments/currency'
 import { PAYMENT_CURRENCIES, type PaymentCurrency } from '@/features/payments/types'
+import { useUnsavedChanges, type SaveOutcome } from './course-edit-session'
 import { saveCoursePlans } from '../course-plan-actions'
 import { ACCESS_PERIODS, accessPeriodLabel, COURSE_PLAN_LIMITS, type AccessMonths, type CoursePlan } from '../course-plans'
 
@@ -46,8 +47,47 @@ export function CoursePricingPlansPanel({
   readOnly?: boolean
 }) {
   const [rows, setRows] = useState<Row[]>(() => plans.map(toRow))
+  const [baseline, setBaseline] = useState(() => JSON.stringify(plans.map(toRow)))
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [pending, startTransition] = useTransition()
+  const dirty = !readOnly && paid && JSON.stringify(rows) !== baseline
+
+  function buildPayload() {
+    const payload = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      priceMinor: parsePriceToMinor(row.price, row.currency) ?? Number.NaN,
+      discountPriceMinor: row.sale.trim() ? parsePriceToMinor(row.sale, row.currency) ?? Number.NaN : null,
+      currency: row.currency,
+      accessMonths: row.accessMonths,
+    }))
+    const invalid = payload.findIndex((plan) => !Number.isSafeInteger(plan.priceMinor) || (plan.discountPriceMinor !== null && !Number.isSafeInteger(plan.discountPriceMinor)))
+    return invalid >= 0
+      ? { ok: false as const, error: `Plan ${invalid + 1}: enter prices as numbers, for example 4999 or 4999.50.` }
+      : { ok: true as const, payload }
+  }
+
+  async function persist(): Promise<SaveOutcome> {
+    setMessage(null)
+    const built = buildPayload()
+    if (!built.ok) {
+      setMessage({ tone: 'error', text: built.error })
+      return built
+    }
+    const result = await saveCoursePlans(courseId, built.payload)
+    if (!result.ok) {
+      setMessage({ tone: 'error', text: result.error })
+      return { ok: false, error: result.error }
+    }
+    const saved = result.plans.map(toRow)
+    setRows(saved)
+    setBaseline(JSON.stringify(saved))
+    setMessage({ tone: 'success', text: 'Plans saved. Changes to a published course go live when the review is approved.' })
+    return { ok: true }
+  }
+
+  // Round E (E9): unsaved plans show in the editor's save bar and the leave warning.
+  useUnsavedChanges('pricing-plans', dirty, 'Pricing plans', persist)
 
   if (!paid || !rows.length) {
     return (
@@ -65,28 +105,14 @@ export function CoursePricingPlansPanel({
   const update = (index: number, patch: Partial<Row>) => setRows((current) => current.map((row, at) => (at === index ? { ...row, ...patch } : row)))
 
   function save() {
-    setMessage(null)
-    const payload = rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      priceMinor: parsePriceToMinor(row.price, row.currency) ?? Number.NaN,
-      discountPriceMinor: row.sale.trim() ? parsePriceToMinor(row.sale, row.currency) ?? Number.NaN : null,
-      currency: row.currency,
-      accessMonths: row.accessMonths,
-    }))
-    const invalid = payload.findIndex((plan) => !Number.isSafeInteger(plan.priceMinor) || (plan.discountPriceMinor !== null && !Number.isSafeInteger(plan.discountPriceMinor)))
-    if (invalid >= 0) {
-      setMessage({ tone: 'error', text: `Plan ${invalid + 1}: enter prices as numbers, for example 4999 or 4999.50.` })
+    // Wrong prices are reported at once, without a server call.
+    const built = buildPayload()
+    if (!built.ok) {
+      setMessage({ tone: 'error', text: built.error })
       return
     }
     startTransition(async () => {
-      const result = await saveCoursePlans(courseId, payload)
-      if (!result.ok) {
-        setMessage({ tone: 'error', text: result.error })
-        return
-      }
-      setRows(result.plans.map(toRow))
-      setMessage({ tone: 'success', text: 'Plans saved. Changes to a published course go live when the review is approved.' })
+      await persist()
     })
   }
 
@@ -103,7 +129,7 @@ export function CoursePricingPlansPanel({
         {rows.map((row, index) => (
           <li key={row.id ?? `new-${index}`} className="rounded-2xl border border-mist-200 p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">{index === 0 ? 'Main plan' : `Plan ${index + 1}`}</p>
+              <p className="text-meta font-semibold text-muted">{index === 0 ? 'Main plan' : `Plan ${index + 1}`}</p>
               {index > 0 && !readOnly ? (
                 <button
                   type="button"

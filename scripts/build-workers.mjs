@@ -4,7 +4,8 @@
 import { build } from 'esbuild'
 
 await build({
-  entryPoints: ['scripts/workers/publish-outbox.ts', 'scripts/workers/consume-notifications.ts'],
+  // Round E: the one-off learning content task (plan / apply-once) is run from the image by its guarded runner.
+  entryPoints: ['scripts/workers/publish-outbox.ts', 'scripts/workers/consume-notifications.ts', 'scripts/workers/learning-round-e-content.ts'],
   outdir: 'dist/workers',
   outExtension: { '.js': '.mjs' },
   bundle: true,

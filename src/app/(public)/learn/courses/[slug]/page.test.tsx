@@ -386,7 +386,11 @@ describe('/learn/courses/[slug]', () => {
       const { container } = render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
 
       expect(mocks.createMediaReadUrl).toHaveBeenCalledWith(freeCourse.trailerPath)
-      expect(screen.getAllByLabelText(`${freeCourse.title} trailer`)[0]).toHaveAttribute('src', 'https://bucket.example/trailer.mp4?signed')
+      // Round E: one trailer <video> (the slot matching the screen), without a download button.
+      const trailers = screen.getAllByLabelText(`${freeCourse.title} trailer`)
+      expect(trailers).toHaveLength(1)
+      expect(trailers[0]).toHaveAttribute('src', 'https://bucket.example/trailer.mp4?signed')
+      expect(trailers[0]).toHaveAttribute('controlsList', 'nodownload noremoteplayback')
       const jsonLd = JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!)
       expect(jsonLd).toMatchObject({
         '@type': 'Course',

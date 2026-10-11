@@ -36,6 +36,8 @@ type CourseEditSessionValue = {
   saveAll: () => Promise<SaveAllOutcome>
   getDetailsRevision: () => number | null
   setDetailsRevision: (revision: number) => void
+  /** Round E (E9): the page shows one save bar for every editor, so editors drop their own. */
+  hasSaveBar: boolean
 }
 
 type CourseEditRegistry = Omit<CourseEditSessionValue, 'unsavedLabels'>
@@ -51,6 +53,7 @@ const fallbackSession: CourseEditSessionValue = {
   saveAll: async () => ({ ok: true }),
   getDetailsRevision: () => null,
   setDetailsRevision: () => undefined,
+  hasSaveBar: false,
 }
 
 export function useCourseEditSession(): CourseEditSessionValue {
@@ -114,9 +117,12 @@ function internalDestination(anchor: HTMLAnchorElement) {
 export function CourseEditSession({
   children,
   initialDetailsRevision = null,
+  saveBar = false,
 }: {
   children: ReactNode
   initialDetailsRevision?: number | null
+  /** Round E (E9): one sticky "Unsaved changes · Save draft" bar for the whole editor. */
+  saveBar?: boolean
 }) {
   const router = useRouter()
   const entriesRef = useRef(new Map<string, UnsavedEntry>())
@@ -235,12 +241,14 @@ export function CourseEditSession({
     setDetailsRevision: (revision: number) => {
       revisionRef.current = revision
     },
-  }), [saveAll, setEntry])
+    hasSaveBar: saveBar,
+  }), [saveAll, saveBar, setEntry])
 
   return (
     <CourseEditRegistryContext.Provider value={registry}>
       <CourseEditUnsavedContext.Provider value={unsavedLabels}>
       {children}
+      {saveBar ? <CourseEditSaveBar unsaved={unsaved} saveAll={saveAll} /> : null}
       {pendingHref ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-navy-950/35 p-4 sm:items-center" onMouseDown={(event) => {
           if (event.target === event.currentTarget && !leaving) closeDialog()
@@ -299,6 +307,59 @@ export function CourseEditSession({
       ) : null}
       </CourseEditUnsavedContext.Provider>
     </CourseEditRegistryContext.Provider>
+  )
+}
+
+/**
+ * Round E (E9): the editor's one save bar, sticky at the bottom of the page. It lists what is unsaved across every
+ * editor (details, curriculum, materials, quizzes) and saves all of it with "Save draft".
+ */
+function CourseEditSaveBar({ unsaved, saveAll }: { unsaved: Array<{ label: string; canSave: boolean }>; saveAll: () => Promise<SaveAllOutcome> }) {
+  const [state, setState] = useState<SaveStatusState>({ kind: 'idle' })
+  const dirty = unsaved.length > 0
+  const canSave = dirty && unsaved.every((item) => item.canSave)
+
+  async function save() {
+    setState({ kind: 'saving' })
+    const result = await saveAll()
+    if (!result.ok) {
+      setState({ kind: 'error', message: `${result.label}: ${result.error}` })
+      return
+    }
+    setState({ kind: 'saved', at: new Date().toISOString() })
+  }
+
+  return (
+    <div
+      role="region"
+      aria-label="Save changes"
+      className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur md:bottom-4"
+    >
+      <SaveStatus state={state} dirty={dirty} />
+      {dirty ? (
+        <p className="min-w-0 flex-1 truncate text-meta text-muted" title={unsaved.map((item) => item.label).join(', ')}>
+          {unsaved.map((item) => item.label).join(' · ')}
+        </p>
+      ) : <span className="flex-1" />}
+      <button
+        type="button"
+        disabled={!canSave || state.kind === 'saving'}
+        onClick={() => void save()}
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {state.kind === 'saving' ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+        {state.kind === 'saving' ? 'Saving…' : 'Save draft'}
+      </button>
+      {state.kind === 'error' ? (
+        <p role="alert" className="flex w-full items-start gap-2 text-sm leading-6 text-rose-900">
+          <AlertTriangle aria-hidden="true" className="mt-1 size-4 shrink-0 text-rose-700" />
+          <span>{state.message}</span>
+        </p>
+      ) : null}
+      {dirty && !canSave ? (
+        <p className="w-full text-meta text-muted">Finish or cancel the open change (an upload or a new material) before saving everything.</p>
+      ) : null}
+    </div>
   )
 }
 

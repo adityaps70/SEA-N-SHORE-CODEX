@@ -61,7 +61,7 @@ describe('CourseAnnouncementsPanel (learning round C)', () => {
 
   it('lists sent announcements with their recipients and offers the composer while posts remain', () => {
     render(<CourseAnnouncementsPanel data={{ liveCourseId: courseId, announcements: sent, remainingToday: 2 }} />)
-    const panel = screen.getByRole('region', { name: 'Message everyone enrolled' })
+    const panel = screen.getByRole('region', { name: 'Announcements' })
     expect(within(panel).getByText(/2 left right now/)).toBeInTheDocument()
     expect(within(panel).getByRole('form', { name: 'New announcement' })).toBeInTheDocument()
     expect(within(panel).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['Sent announcements', 'Live Q&A', 'Welcome'])

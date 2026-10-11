@@ -67,6 +67,24 @@ export async function createMediaReadUrl(
   return getSignedUrl(getS3Client(), command, windowedSigningOptions(expiresInSeconds))
 }
 
+/** Lesson video and audio (learning round E): about 20 minutes, refreshed by the player before it expires. */
+export const LESSON_MEDIA_URL_EXPIRY_SECONDS = 20 * 60
+
+/**
+ * Read URL for a lesson's video or audio: valid for about 20 minutes (not windowed), served inline (never as
+ * an attachment), and not kept in shared caches. The player asks the server for a fresh one before it expires.
+ */
+export async function createLessonMediaUrl(key: string, now = Date.now()): Promise<{ url: string; expiresAt: string }> {
+  const command = new GetObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: key,
+    ResponseCacheControl: 'private, max-age=1200',
+    ResponseContentDisposition: 'inline',
+  })
+  const url = await getSignedUrl(getS3Client(), command, { expiresIn: LESSON_MEDIA_URL_EXPIRY_SECONDS })
+  return { url, expiresAt: new Date(now + LESSON_MEDIA_URL_EXPIRY_SECONDS * 1000).toISOString() }
+}
+
 /**
  * Short-lived read URL that also pins the response Content-Type and
  * Content-Disposition, so a private file is always served as its verified

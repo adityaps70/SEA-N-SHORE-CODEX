@@ -632,6 +632,16 @@ export const courseRevisionRepository = createCourseRevisionRepository()
  * mapped back to the live rows they were copied from, so an untouched material is not reported.
  */
 export async function revisionChangesFromLiveCourse(query: Query, revisionCourseId: string, liveCourseId: string) {
+  const snapshots = await mappedRevisionSnapshots(query, revisionCourseId, liveCourseId)
+  return snapshots ? diffCourseSnapshots(snapshots.live, snapshots.mapped) : null
+}
+
+/**
+ * The live course and its draft revision as snapshots, with the revision's sections and materials renamed to the
+ * ids of the live rows they were copied from (new rows keep their own ids). Used for the change list above and the
+ * round E side-by-side review page.
+ */
+export async function mappedRevisionSnapshots(query: Query, revisionCourseId: string, liveCourseId: string) {
   const [live, revision] = await Promise.all([
     loadCourseSnapshot(query, liveCourseId),
     loadCourseSnapshot(query, revisionCourseId),
@@ -664,5 +674,5 @@ export async function revisionChangesFromLiveCourse(query: Query, revisionCourse
       })),
     })),
   }
-  return diffCourseSnapshots(live, mapped)
+  return { live, mapped }
 }

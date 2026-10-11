@@ -21,6 +21,10 @@ type Props = {
   articleHtml?: string | null
   /** Free preview for a visitor: read or watch only; nothing is recorded. */
   preview?: boolean
+  /** Round E: when the signed video/audio URL expires (the player refreshes it shortly before). */
+  mediaExpiresAt?: string | null
+  /** Round E: the faint video watermark (member code and date; never a name or email). */
+  watermark?: string | null
 }
 
 function safeEmbedUrl(url: string, kind: LearnerLesson['embedKind']) {
@@ -78,7 +82,7 @@ function LockedMaterial({ lesson }: { lesson: LearnerLesson }) {
 }
 
 /** The material itself (no completion controls). Also used on its own for free previews. */
-export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false }: Props) {
+export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false, mediaExpiresAt = null, watermark = null }: Props) {
   switch (lesson.lessonType) {
     case 'article': {
       // Round E (E5): a readable measure (68ch) at the article size (17/30), with the reading time.
@@ -103,13 +107,14 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
     case 'video':
       if (preview && mediaUrl) {
         return (
-          <video controls preload="metadata" src={mediaUrl} className="aspect-video w-full rounded-2xl bg-navy-950">
+          <video controls controlsList="nodownload noremoteplayback" disableRemotePlayback preload="metadata" src={mediaUrl} className="aspect-video w-full rounded-2xl bg-navy-950">
             {lesson.hasCaptions ? <track kind="captions" src={`/api/learn/captions/${lesson.id}`} srcLang="en" label="Captions" default /> : null}
           </video>
         )
       }
       return mediaUrl ? (
         <ResumableLessonMedia
+          key={lesson.id}
           kind="video"
           src={mediaUrl}
           slug={slug}
@@ -119,6 +124,8 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           initialWatchedSeconds={lesson.watchedSeconds ?? 0}
           completed={lesson.completed}
           captionsSrc={lesson.hasCaptions ? `/api/learn/captions/${lesson.id}` : null}
+          expiresAt={mediaExpiresAt}
+          watermark={watermark}
         />
       ) : lesson.externalUrl ? (
         <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
@@ -127,9 +134,10 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
       ) : null
 
     case 'audio':
-      if (preview && mediaUrl) return <audio controls preload="metadata" src={mediaUrl} className="w-full" />
+      if (preview && mediaUrl) return <audio controls controlsList="nodownload noremoteplayback" preload="metadata" src={mediaUrl} className="w-full" />
       return mediaUrl ? (
         <ResumableLessonMedia
+          key={lesson.id}
           kind="audio"
           src={mediaUrl}
           slug={slug}
@@ -138,6 +146,7 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           initialFurthestSeconds={lesson.furthestPositionSeconds ?? 0}
           initialWatchedSeconds={lesson.watchedSeconds ?? 0}
           completed={lesson.completed}
+          expiresAt={mediaExpiresAt}
         />
       ) : null
 

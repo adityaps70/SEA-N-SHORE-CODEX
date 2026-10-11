@@ -49,7 +49,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
       ) : null}
 
       <div>
-        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-500">Upcoming</h3>
+        <h3 className="text-card-title font-semibold text-navy-950">Upcoming</h3>
         {upcoming.length ? (
           <ul className="mt-2 divide-y divide-slate-100">
             {upcoming.map((session) => {
@@ -82,7 +82,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
 
       {past.length ? (
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-500">Past</h3>
+          <h3 className="text-card-title font-semibold text-navy-950">Past</h3>
           <ul className="mt-2 divide-y divide-slate-100">
             {past.map((session) => (
               <li key={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -106,7 +106,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
 
       {recordings.length ? (
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-500">Recordings</h3>
+          <h3 className="text-card-title font-semibold text-navy-950">Recordings</h3>
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
             {recordings.map((session) => (
               <li key={session.id}>

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getLearnerCourse: vi.fn(),
   getQuizForLearner: vi.fn(),
   createMediaReadUrl: vi.fn(),
+  createLessonMediaUrl: vi.fn(async () => ({ url: 'https://signed.example.com/bridge-readiness.mp4', expiresAt: '2026-10-11T10:20:00.000Z' })),
   materialPlayer: vi.fn(),
   notFound: vi.fn(),
   redirect: vi.fn(),
@@ -49,7 +50,7 @@ vi.mock('@/features/learning/components/material-player', () => ({
     return <div data-testid="material-player">{props.lesson.title}</div>
   },
 }))
-vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
+vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl, createLessonMediaUrl: mocks.createLessonMediaUrl }))
 vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getEligibility: mocks.getEligibility } }))
 vi.mock('@/features/learning/course-announcement-repository', () => ({ courseAnnouncementRepository: { listForLearner: mocks.listForLearner } }))
 vi.mock('@/features/learning/course-community-repository', () => ({ courseCommunityRepository: { getDiscussion: mocks.getDiscussion } }))
@@ -211,14 +212,19 @@ describe('/learn/courses/[slug]/learn', () => {
 
     const player = screen.getByRole('region', { name: 'Current lesson' })
     expect(within(player).getByRole('heading', { name: videoLesson.title })).toBeInTheDocument()
-    expect(mocks.createMediaReadUrl).toHaveBeenCalledWith(videoLesson.assetPath)
+    // Round E: a 20-minute inline URL the player refreshes, and a watermark with a member code (no name or email).
+    expect(mocks.createLessonMediaUrl).toHaveBeenCalledWith(videoLesson.assetPath)
+    expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.materialPlayer).toHaveBeenCalledWith({
       lesson: videoLesson,
       mediaUrl: 'https://signed.example.com/bridge-readiness.mp4',
+      mediaExpiresAt: '2026-10-11T10:20:00.000Z',
+      watermark: expect.stringMatching(/^SNS-LEARNER1 · \d{1,2} [A-Z][a-z]{2,3} \d{4}$/),
       slug: course.slug,
       quiz: null,
       articleHtml: null,
     })
+    expect(JSON.stringify(mocks.materialPlayer.mock.calls[0]![0].watermark)).not.toContain('learner@example.com')
     expect(within(player).getByTestId('material-player')).toHaveTextContent(videoLesson.title)
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
     // One bar for every lesson type: Previous, and Complete & next, locked until 90% of the video is played.
@@ -288,6 +294,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.materialPlayer).toHaveBeenCalledWith({
       lesson: articleLesson,
       mediaUrl: null,
+      mediaExpiresAt: null,
+      watermark: null,
       slug: course.slug,
       quiz: null,
       articleHtml: null,
@@ -305,6 +313,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.materialPlayer).toHaveBeenCalledWith({
       lesson: quizLesson,
       mediaUrl: null,
+      mediaExpiresAt: null,
+      watermark: null,
       slug: course.slug,
       quiz,
       articleHtml: null,
@@ -345,6 +355,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.materialPlayer).toHaveBeenCalledWith({
       lesson: lockedQuiz,
       mediaUrl: null,
+      mediaExpiresAt: null,
+      watermark: null,
       slug: course.slug,
       quiz: null,
       articleHtml: null,

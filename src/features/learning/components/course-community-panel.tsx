@@ -40,10 +40,10 @@ export function CourseCommunityPanel({ link }: { link: CourseCommunityLink }) {
 
   return (
     <section aria-labelledby="course-community-heading" className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-x-0 max-md:p-4 max-md:shadow-none sm:p-8">
-      <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">
-        <MessagesSquare aria-hidden="true" className="size-4" /> Course discussion
-      </p>
-      <h2 id="course-community-heading" className="mt-2 text-2xl font-bold text-navy-950 max-md:text-xl">Discuss in a community</h2>
+      <h2 id="course-community-heading" className="flex items-center gap-2 text-section-title font-bold text-navy-950 max-md:text-xl">
+        <MessagesSquare aria-hidden="true" className="size-5 text-teal-700" /> Course community
+      </h2>
+      <p className="mt-1 text-meta font-semibold text-navy-800">Discuss the course in a Sea N Shore community</p>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
         Link this course to a Sea N Shore community you run, so learners can ask you questions and talk to each other.
         If the community is private, enrolled learners are let in when they open it from the course, and they stay members after their access ends.

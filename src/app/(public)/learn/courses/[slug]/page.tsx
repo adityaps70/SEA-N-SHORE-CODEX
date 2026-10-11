@@ -24,6 +24,7 @@ import { jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { courseJsonLd, courseMetadata } from '@/features/learning/course-seo'
 import { publicCourseRepository, type PublicCurriculumSection } from '@/features/learning/public-course-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { CourseTrailer } from '@/features/learning/components/course-trailer'
 import { CourseActionBar, type CourseActionBarMode } from '@/features/learning/components/course-action-bar'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import { EnrollFreeControl } from '@/features/learning/components/enroll-free-control'
@@ -175,13 +176,22 @@ function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIE
     <div data-testid="phone-course-header" className="-mx-4 -mt-3 bg-white md:hidden max-md:order-1">
       <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800">
         {trailerUrl ? (
-          <video
-            controls
-            preload="metadata"
+          <CourseTrailer
+            slot="phone"
             src={trailerUrl}
             poster={course.thumbnailPath ? `/api/learning-media/${course.thumbnailPath}` : undefined}
-            aria-label={`${course.title} trailer`}
+            label={`${course.title} trailer`}
             className="absolute inset-0 size-full bg-navy-950 object-contain"
+            fallback={course.thumbnailPath ? (
+              <Image
+                unoptimized
+                fill
+                sizes="100vw"
+                src={`/api/learning-media/${course.thumbnailPath}`}
+                alt={`${course.title} course cover`}
+                className="object-cover"
+              />
+            ) : null}
           />
         ) : course.thumbnailPath ? (
           <Image
@@ -394,13 +404,13 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
             <RatingSummary reviews={reviews} className="mt-4 text-sm text-white/85" />
             <CourseDescription text={course.description} />
             {trailerUrl ? (
-              <video
-                controls
-                preload="metadata"
+              <CourseTrailer
+                slot="desktop"
                 src={trailerUrl}
                 poster={course.thumbnailPath ? `/api/learning-media/${course.thumbnailPath}` : undefined}
-                aria-label={`${course.title} trailer`}
+                label={`${course.title} trailer`}
                 className="mt-6 aspect-video w-full max-w-3xl rounded-2xl bg-navy-900"
+                fallback={<div aria-hidden="true" className="mt-6 aspect-video w-full max-w-3xl rounded-2xl bg-navy-900 max-md:hidden" />}
               />
             ) : null}
 
