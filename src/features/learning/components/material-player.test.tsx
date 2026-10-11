@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LearnerLesson } from '../learner-course-repository'
 
@@ -53,34 +53,10 @@ describe('MaterialPlayer on phones', () => {
     expect(open.closest('div')).toHaveClass('md:hidden')
   })
 
-  it('puts the phone actions (Curriculum n/N) beside Mark complete', () => {
-    render(
-      <MaterialPlayer
-        lesson={lesson({ lessonType: 'article', articleBody: 'Read this.', assetPath: null })}
-        slug="sire"
-        mediaUrl={null}
-        quiz={null}
-        phoneActions={<button type="button">Curriculum 3/12</button>}
-      />,
-    )
-    const complete = screen.getByRole('button', { name: 'Mark complete' })
-    const row = complete.closest('div.max-md\\:flex') as HTMLElement
-    expect(row).not.toBeNull()
-    expect(within(row).getByRole('button', { name: 'Curriculum 3/12' })).toBeInTheDocument()
-  })
-
-  it('still shows the phone actions for a locked lesson and for lessons without Mark complete', () => {
-    render(
-      <MaterialPlayer
-        lesson={lesson({ isAvailable: false, lockReason: 'prerequisite' })}
-        slug="sire"
-        mediaUrl={null}
-        quiz={null}
-        phoneActions={<button type="button">Curriculum 2/12</button>}
-      />,
-    )
+  it('shows the locked notice for a locked lesson, without its content', () => {
+    render(<MaterialPlayer lesson={lesson({ isAvailable: false, lockReason: 'prerequisite' })} slug="sire" mediaUrl={null} quiz={null} />)
     expect(screen.getByText('Material locked')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Curriculum 2/12' }).parentElement).toHaveClass('md:hidden')
+    expect(screen.queryByRole('link', { name: /Open PDF/ })).not.toBeInTheDocument()
   })
 
   it('tells phone learners SCORM works best on a computer', () => {
@@ -98,19 +74,18 @@ describe('MaterialPlayer on phones', () => {
     expect(screen.getByRole('button', { name: /Start SCORM material/ })).toBeInTheDocument()
   })
 
-  it('keeps "Continue to next material" for desktop only (phones use the page\'s Next material pill)', () => {
+  it('leaves completing and moving on to the player\'s bottom bar (round E)', () => {
     render(
       <MaterialPlayer
-        lesson={lesson({ lessonType: 'article', articleBody: 'Read this.', assetPath: null, completed: true, completionRule: 'view' })}
+        lesson={lesson({ lessonType: 'article', articleBody: 'Read this.', assetPath: null, completed: true, completionRule: 'manual' })}
         slug="sire"
         mediaUrl={null}
         quiz={null}
-        nextLessonHref="/learn/courses/sire/learn?lesson=next"
       />,
     )
-    const link = screen.getByRole('link', { name: /Continue to next material/ })
-    expect(link).toHaveAttribute('href', '/learn/courses/sire/learn?lesson=next')
-    expect(link).toHaveClass('max-md:hidden')
+    expect(screen.queryByRole('button', { name: /Mark complete|Complete/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Continue to next material/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Completed')).not.toBeInTheDocument()
   })
 })
 
@@ -140,3 +115,16 @@ describe('MaterialPlayer articles', () => {
     expect(container.innerHTML).not.toContain('<script')
   })
 })
+
+describe('MaterialPlayer article reading (round E)', () => {
+  it('shows the reading time and a reading-progress bar at a readable measure', () => {
+    const body = Array.from({ length: 660 }, (_, index) => `word${index}`).join(' ')
+    const { container } = render(
+      <MaterialPlayer lesson={lesson({ lessonType: 'article', articleFormat: 'plain', articleBody: body, assetPath: null })} slug="sire" mediaUrl={null} quiz={null} />,
+    )
+    expect(screen.getByText('≈ 3 min read')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Reading progress' })).toHaveAttribute('aria-valuemax', '100')
+    expect(container.querySelector('.lesson-article')).toHaveClass('max-w-[68ch]')
+  })
+})
+

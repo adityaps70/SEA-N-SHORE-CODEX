@@ -80,51 +80,55 @@ function PricingLabel({ course }: { course: MarketplaceCourse }) {
   )
 }
 
+/**
+ * Round E (E8): the image shows on its own (16:9, nothing laid over it), so text baked into a thumbnail is
+ * never covered; the category and price sit in the card body.
+ */
 function CourseCard({ course }: { course: MarketplaceCourse }) {
   const firstOutcome = course.learningOutcomes[0] ?? null
   const thumbnailPath = course.thumbnailPath
 
   return (
     <article className="group overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] transition duration-200 hover:-translate-y-0.5 hover:border-teal-200">
-      <div className="relative min-h-44 overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800 p-5 text-white">
+      <div className="relative aspect-video overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800 text-white">
         {thumbnailPath ? (
-          <>
-            <Image
-              unoptimized
-              fill
-              sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
-              src={`/api/learning-media/${thumbnailPath}`}
-              alt={`${course.title} course cover`}
-              className="object-cover transition duration-300 group-hover:scale-[1.02]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-navy-950/45 via-transparent to-transparent" />
-          </>
+          <Image
+            unoptimized
+            fill
+            sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+            src={`/api/learning-media/${thumbnailPath}`}
+            alt={`${course.title} course cover`}
+            className="object-cover transition duration-300 group-hover:scale-[1.02]"
+          />
         ) : (
           <>
             <div className="absolute -right-10 -top-14 size-40 rounded-full border border-white/10 bg-white/5" />
             <div className="absolute -bottom-16 -left-8 size-36 rounded-full border border-teal-200/15 bg-teal-300/5" />
+            <p className="absolute inset-x-5 bottom-5 text-sm font-medium text-white/85">Practical maritime learning from verified trainers and organizations</p>
           </>
         )}
-        <div className="relative flex min-h-36 flex-col justify-between gap-8">
-          <div className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-navy-950/55 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
-              <BookOpen aria-hidden="true" className="size-3.5" /> {course.category}
-            </span>
-            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.1em] text-navy-950">
-              <PricingLabel course={course} />
-            </span>
-          </div>
-          {thumbnailPath ? null : (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-200">Sea N Shore Learning</p>
-              <p className="mt-1 text-sm font-medium text-white/85">Practical maritime learning from verified trainers and organizations</p>
-            </div>
-          )}
-        </div>
       </div>
 
       <div className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex min-w-0 items-center gap-1.5 text-meta font-semibold text-teal-800">
+            <BookOpen aria-hidden="true" className="size-3.5 shrink-0" /> <span className="truncate">{course.category}</span>
+          </span>
+          <span className="shrink-0 rounded-full bg-navy-950 px-2.5 py-1 text-meta font-bold text-white">
+            <PricingLabel course={course} />
+          </span>
+        </div>
+
+        <Link
+          href={`/learn/courses/${course.slug}`}
+          className="mt-3 inline-flex items-start gap-2 text-card-title font-bold text-navy-950 transition group-hover:text-teal-800"
+        >
+          {course.title}
+          <ArrowRight aria-hidden="true" className="mt-1 size-4 shrink-0" />
+        </Link>
+        {course.subtitle ? <p className="mt-2 text-sm leading-6 text-muted">{course.subtitle}</p> : null}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
           <span className="rounded-full bg-mist-50 px-2.5 py-1">{levelLabel(course.level)}</span>
           <span className="rounded-full bg-mist-50 px-2.5 py-1">{formatLabel(course.courseFormat)}</span>
           <span className="rounded-full bg-mist-50 px-2.5 py-1">{course.language}</span>
@@ -134,15 +138,6 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
             </span>
           ) : null}
         </div>
-
-        <Link
-          href={`/learn/courses/${course.slug}`}
-          className="mt-4 inline-flex items-start gap-2 text-xl font-bold tracking-tight text-navy-950 transition group-hover:text-teal-800"
-        >
-          {course.title}
-          <ArrowRight aria-hidden="true" className="mt-1 size-4 shrink-0" />
-        </Link>
-        {course.subtitle ? <p className="mt-2 text-sm leading-6 text-muted">{course.subtitle}</p> : null}
 
         <div className="mt-4 flex items-center gap-2 border-t border-mist-100 pt-4">
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-navy-950 text-xs font-extrabold text-white">
@@ -158,14 +153,14 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
 
         {firstOutcome ? (
           <div className="mt-4 rounded-xl border border-mist-100 bg-mist-50/70 p-3">
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-muted">You&apos;ll learn</p>
-            <p className="mt-1.5 text-sm font-semibold leading-6 text-navy-950">{firstOutcome}</p>
+            <p className="text-meta font-semibold text-muted">You&apos;ll learn</p>
+            <p className="mt-1 text-sm font-semibold leading-6 text-navy-950">{firstOutcome}</p>
           </div>
         ) : null}
 
         <Link
           href={`/learn/courses/${course.slug}`}
-          className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900"
+          className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900"
         >
           View course <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
@@ -227,10 +222,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
       <section className="overflow-hidden rounded-2xl bg-navy-950 px-5 py-5 text-white shadow-md max-md:py-4 sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200 max-md:hidden">
-              Sea N Shore Learning
-            </p>
-            <h1 className="mt-1 max-w-3xl text-2xl font-bold tracking-tight max-md:mt-0 max-md:text-lg sm:text-3xl">
+            <h1 className="max-w-3xl text-page-title font-bold max-md:text-lg">
               Learn from verified maritime professionals.
             </h1>
             <p className="mt-1.5 hidden max-w-2xl text-sm leading-6 text-white/72 md:block">
@@ -302,8 +294,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
       <section className="mt-7 max-md:mt-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 max-md:hidden">Explore learning</p>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-[17px]">{hasFilters ? 'Courses matching your filters' : 'Published maritime courses'}</h2>
+            <h2 className="text-section-title font-bold text-navy-950 max-md:text-card-title">{hasFilters ? 'Courses matching your filters' : 'Published maritime courses'}</h2>
           </div>
           <p className="text-sm font-semibold text-muted">{courses.length} {courses.length === 1 ? 'course' : 'courses'}</p>
         </div>

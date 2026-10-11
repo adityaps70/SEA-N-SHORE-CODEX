@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Captions, PictureInPicture2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { saveLearningPlaybackPosition } from '../learner-progress-actions'
+import { announceLessonCompleted } from '../lesson-completion-events'
 import { PLAYBACK_RATES, seekLimit } from '../media-watch-policy'
 import { formatTimestamp, parseWebVtt, type CaptionCue } from '../webvtt'
 
@@ -48,6 +50,8 @@ export function ResumableLessonMedia({
   completed = false,
   captionsSrc = null,
 }: ResumableLessonMediaProps) {
+  const router = useRouter()
+  const announcedRef = useRef(completed)
   const mediaRef = useRef<HTMLMediaElement | null>(null)
   const lastPersistedPositionRef = useRef(wholeSeconds(initialPositionSeconds))
   const queuedPositionRef = useRef<{ position: number; duration?: number; watched?: number } | null>(null)
@@ -83,13 +87,19 @@ export function ResumableLessonMedia({
             if (typeof result.furthestPositionSeconds === 'number') {
               furthestRef.current = Math.max(furthestRef.current, result.furthestPositionSeconds)
             }
+            // The server just completed the lesson: unlock "Complete & next" and refresh the progress shown.
+            if (result.completed && !announcedRef.current) {
+              announcedRef.current = true
+              announceLessonCompleted(lessonId)
+              router.refresh()
+            }
           }
         }
       } finally {
         savingRef.current = false
       }
     })()
-  }, [lessonId, slug])
+  }, [lessonId, router, slug])
 
   const queuePosition = useCallback((positionSeconds: number, durationSeconds?: number) => {
     const normalizedPosition = wholeSeconds(positionSeconds)

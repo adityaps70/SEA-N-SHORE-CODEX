@@ -162,6 +162,8 @@ describe('learner progress repository', () => {
       enrollmentId,
       lessonId,
       lastPositionSeconds: 125,
+      // Round E: whether the lesson is complete, so the player can unlock "Complete & next" at once.
+      completed: false,
     })
 
     expect(seen).toHaveLength(2)

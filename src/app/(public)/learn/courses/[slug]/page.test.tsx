@@ -183,7 +183,9 @@ describe('/learn/courses/[slug]', () => {
     const curriculum = screen.getByRole('region', { name: 'Curriculum' })
     expect(curriculum).not.toHaveClass('md:hidden')
     expect(within(curriculum).getByText('2 materials · 1 free preview')).toBeInTheDocument()
-    expect(within(curriculum).getByText('2. Inspection day')).toBeInTheDocument()
+    // Round E (E1): the outline is an accordion; Module 1 opens, the rest are collapsed.
+    expect(within(curriculum).getByRole('button', { name: /Module 1\s*Inspection foundations/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(curriculum).getByRole('button', { name: /Module 2\s*Inspection day/ })).toHaveAttribute('aria-expanded', 'false')
 
     const bar = screen.getByTestId('course-action-bar')
     expect(bar).toHaveClass('md:hidden', 'sticky')
@@ -194,7 +196,7 @@ describe('/learn/courses/[slug]', () => {
     expect(mocks.refresh).not.toHaveBeenCalled()
 
     // Phone-only extras stay off desktop: the promo card and the trainer-credentials blurb are hidden on phones only.
-    expect(screen.getByText('Quality standard').closest('section')).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('heading', { name: 'Built for professional maritime development' }).closest('section')).toHaveClass('max-md:hidden')
     expect(screen.getByText(/Trainer credentials and this course were reviewed/).closest('div.rounded-\\[1\\.3rem\\]')).toHaveClass('max-md:hidden')
   })
 
@@ -373,7 +375,9 @@ describe('/learn/courses/[slug]', () => {
       expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
       const curriculum = screen.getByRole('region', { name: 'Curriculum' })
       expect(within(curriculum).getByText('Why SIRE 2.0 changed')).toBeInTheDocument()
-      expect(within(curriculum).getByRole('link', { name: 'Free preview' })).toHaveAttribute('href', `/learn/courses/${freeCourse.slug}/preview/66666666-6666-4666-8666-666666666666`)
+      expect(within(curriculum).getByRole('link', { name: /Free preview\s*Why SIRE 2.0 changed/ })).toHaveAttribute('href', `/learn/courses/${freeCourse.slug}/preview/66666666-6666-4666-8666-666666666666`)
+      // Each module shows its item count and total time.
+      expect(within(curriculum).getByText('2 items · 7 min')).toBeInTheDocument()
       expect(within(curriculum).getAllByLabelText('Locked')).toHaveLength(2)
       expect(within(curriculum).getByText(/Enrol to continue/)).toBeInTheDocument()
     })

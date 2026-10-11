@@ -20,6 +20,8 @@ const ALLOWED_TAGS = [
   'p', 'br', 'h2', 'h3', 'h4', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre',
   'a', 'ul', 'ol', 'li', 'blockquote', 'hr',
   'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img',
+  // Round E (E5): images with captions.
+  'figure', 'figcaption',
 ]
 
 function sanitize(html: string, options: { keepImageSources: boolean }) {

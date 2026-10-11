@@ -19,7 +19,8 @@ const mocks = vi.hoisted(() => ({
   getDiscussion: vi.fn(async () => null as unknown),
 }))
 
-vi.mock('next/navigation', () => ({ notFound: mocks.notFound, redirect: mocks.redirect }))
+vi.mock('next/navigation', () => ({ notFound: mocks.notFound, redirect: mocks.redirect, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
+vi.mock('@/features/learning/learner-progress-actions', () => ({ completeLearningLesson: vi.fn() }))
 vi.mock('@/features/learning/course-payment-repository', () => ({ coursePaymentRepository: { isCourseManager: mocks.isCourseManager } }))
 vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
@@ -43,11 +44,9 @@ vi.mock('@/features/learning/components/material-player', () => ({
     mediaUrl: string | null
     slug: string
     quiz: LearnerQuiz | null
-    nextLessonHref?: string | null
-    phoneActions?: React.ReactNode
   }) => {
     mocks.materialPlayer(props)
-    return <div data-testid="material-player">{props.lesson.title}{props.phoneActions}</div>
+    return <div data-testid="material-player">{props.lesson.title}</div>
   },
 }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
@@ -57,7 +56,7 @@ vi.mock('@/features/learning/course-community-repository', () => ({ courseCommun
 vi.mock('@/features/learning/course-rating-actions', () => ({ saveCourseReview: vi.fn() }))
 vi.mock('@/features/learning/course-community-actions', () => ({ openCourseDiscussion: vi.fn() }))
 
-import LearnerCoursePage from './page'
+import LearnerCoursePage, { generateMetadata } from './page'
 
 const articleId = '66666666-6666-4666-8666-666666666666'
 const videoId = '77777777-7777-4777-8777-777777777777'
@@ -203,9 +202,12 @@ describe('/learn/courses/[slug]/learn', () => {
 
     expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
     expect(mocks.getLearnerCourse).toHaveBeenCalledWith('learner-1', course.slug)
-    expect(screen.getByRole('heading', { name: course.title })).toBeInTheDocument()
-    expect(screen.getByText('1 of 3 materials completed')).toBeInTheDocument()
-    expect(screen.getByText('Open navigation is enabled.')).toBeInTheDocument()
+    // Round E: the course block sits at the top of the sidebar; no developer wording about navigation.
+    const sidebar = screen.getByRole('complementary', { name: 'Course' })
+    expect(within(sidebar).getByRole('heading', { name: course.title })).toBeInTheDocument()
+    expect(within(sidebar).getByText('1 of 3 · 33%')).toBeInTheDocument()
+    expect(within(sidebar).getByText(`Mentored by ${course.mentorName}`)).toBeInTheDocument()
+    expect(screen.queryByText(/navigation is enabled/i)).not.toBeInTheDocument()
 
     const player = screen.getByRole('region', { name: 'Current lesson' })
     expect(within(player).getByRole('heading', { name: videoLesson.title })).toBeInTheDocument()
@@ -215,16 +217,20 @@ describe('/learn/courses/[slug]/learn', () => {
       mediaUrl: 'https://signed.example.com/bridge-readiness.mp4',
       slug: course.slug,
       quiz: null,
-      nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=${quizLessonId}`,
-      phoneActions: expect.anything(),
       articleHtml: null,
     })
     expect(within(player).getByTestId('material-player')).toHaveTextContent(videoLesson.title)
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
-    expect(within(player).getByRole('link', { name: 'Previous material' })).toHaveAttribute(
+    // One bar for every lesson type: Previous, and Complete & next, locked until 90% of the video is played.
+    const bar = within(player).getByRole('navigation', { name: 'Lesson navigation' })
+    expect(within(bar).getByRole('link', { name: 'Previous lesson' })).toHaveAttribute(
       'href',
       `/learn/courses/${course.slug}/learn?lesson=${articleId}`,
     )
+    expect(within(bar).getByRole('button', { name: /Complete & next/ })).toBeDisabled()
+    expect(within(player).getAllByText('Play 90% of this material to continue.').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Continue to next material/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Next material/ })).not.toBeInTheDocument()
   })
 
   it('puts the lesson first on phones and opens the curriculum from a "Curriculum n/N" sheet', async () => {
@@ -233,15 +239,16 @@ describe('/learn/courses/[slug]/learn', () => {
       searchParams: Promise.resolve({ lesson: articleId }),
     }))
 
-    // Phone page bar: back to the course page with the course title; the desktop header card and nav are phone-hidden.
+    // Phone page bar: back to the course page with the course title; the desktop sidebar is hidden below lg.
     expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', `/learn/courses/${course.slug}`)
-    expect(screen.getByRole('navigation', { name: 'Course curriculum' })).toHaveClass('max-md:hidden')
-    expect(screen.getByRole('heading', { name: course.title }).closest('header')).toHaveClass('max-md:hidden')
-    expect(screen.getByText('Lesson 1 of 3 ·')).toHaveClass('md:hidden')
+    expect(screen.getByRole('complementary', { name: 'Course' })).toHaveClass('max-lg:hidden')
+    expect(screen.getByText(/Lesson 1 of 3 ·/)).toHaveClass('md:hidden')
     expect(screen.getByText(/% complete · 1 of 3/)).toBeInTheDocument()
 
+    // The "Curriculum n/N" button sits in the lesson's bottom bar on phones and tablets.
     const toggle = screen.getByRole('button', { name: 'Curriculum 1/3' })
-    expect(toggle).toHaveClass('md:hidden')
+    expect(toggle).toHaveClass('lg:hidden')
+    expect(toggle.closest('[data-lesson-action-bar]')).not.toBeNull()
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
@@ -258,9 +265,9 @@ describe('/learn/courses/[slug]/learn', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('link', { name: /Bridge readiness/i }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
-    // One "Next material" action on phones: a full-width ocean pill (the player hides its duplicate link there).
-    const next = within(screen.getByRole('navigation', { name: 'Lesson navigation' })).getByRole('link', { name: /Next material/ })
-    expect(next).toHaveClass('max-md:w-full', 'max-md:rounded-full', 'max-md:bg-ocean-700', 'bg-slate-950')
+    // The article is complete, so the one primary action is "Next lesson".
+    const next = within(screen.getByRole('navigation', { name: 'Lesson navigation' })).getByRole('link', { name: /Next lesson/ })
+    expect(next).toHaveAttribute('href', `/learn/courses/${course.slug}/learn?lesson=${videoId}`)
   })
 
   it('renders a selected article without signing media and keeps curriculum navigation intact', async () => {
@@ -270,8 +277,12 @@ describe('/learn/courses/[slug]/learn', () => {
     }))
 
     const curriculum = screen.getByRole('navigation', { name: 'Course curriculum' })
-    expect(within(curriculum).getByText('Inspection foundations')).toBeInTheDocument()
-    expect(within(curriculum).getByText('Operational readiness')).toBeInTheDocument()
+    // Round E (E1): modules are accordion headers; only the current lesson's module is open.
+    const current = within(curriculum).getByRole('button', { name: /Module 1\s*Inspection foundations/ })
+    const other = within(curriculum).getByRole('button', { name: /Module 2\s*Operational readiness/ })
+    expect(current).toHaveAttribute('aria-expanded', 'true')
+    expect(other).toHaveAttribute('aria-expanded', 'false')
+    expect(within(curriculum).getByRole('link', { current: 'page' })).toHaveAttribute('href', `/learn/courses/${course.slug}/learn?lesson=${articleId}`)
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
     expect(mocks.materialPlayer).toHaveBeenCalledWith({
@@ -279,8 +290,6 @@ describe('/learn/courses/[slug]/learn', () => {
       mediaUrl: null,
       slug: course.slug,
       quiz: null,
-      nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=${videoId}`,
-      phoneActions: expect.anything(),
       articleHtml: null,
     })
   })
@@ -298,10 +307,10 @@ describe('/learn/courses/[slug]/learn', () => {
       mediaUrl: null,
       slug: course.slug,
       quiz,
-      nextLessonHref: null,
-      phoneActions: expect.anything(),
       articleHtml: null,
     })
+    // The quiz must be passed before moving on (round A's completion rule).
+    expect(screen.getAllByText('Pass the quiz to continue.').length).toBeGreaterThan(0)
   })
 
   it('does not fetch protected content for a locked material', async () => {
@@ -328,8 +337,9 @@ describe('/learn/courses/[slug]/learn', () => {
       searchParams: Promise.resolve({ lesson: quizLessonId }),
     }))
 
-    expect(screen.getByText('Sequential learning is enabled.')).toBeInTheDocument()
-    expect(screen.getByText(/quiz · locked/i)).toBeInTheDocument()
+    expect(screen.getByText('Lessons unlock in order.')).toBeInTheDocument()
+    expect(screen.getAllByText(/quiz · locked/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('img', { name: 'Locked' })).toBeInTheDocument()
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.materialPlayer).toHaveBeenCalledWith({
@@ -337,8 +347,6 @@ describe('/learn/courses/[slug]/learn', () => {
       mediaUrl: null,
       slug: course.slug,
       quiz: null,
-      nextLessonHref: null,
-      phoneActions: expect.anything(),
       articleHtml: null,
     })
   })
@@ -369,6 +377,27 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(completion).getByText(/all 3 published materials are complete/i)).toBeInTheDocument()
     expect(within(completion).getByText(/eligible sea n shore certificate is issued/i)).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: `${course.title} progress` })).toHaveAttribute('aria-valuenow', '100')
+  })
+
+  it('names the browser tab after the lesson and the course (round E)', async () => {
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: articleId }) })
+    expect(metadata.title).toBe(`${articleLesson.title} · ${course.title}`)
+  })
+
+  it('gives a manual lesson one "Complete & next" button in the bottom bar (round E)', async () => {
+    const manual = lesson({ ...videoLesson, completionRule: 'manual', completed: false })
+    mocks.getLearnerCourse.mockResolvedValueOnce({ ...course, sections: [{ ...course.sections[0]!, lessons: [articleLesson, manual] }, course.sections[1]!] })
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: videoId }) }))
+    const bar = screen.getByRole('navigation', { name: 'Lesson navigation' })
+    expect(within(bar).getByRole('button', { name: /Complete & next/ })).toBeEnabled()
+    expect(screen.getAllByRole('navigation', { name: 'Lesson navigation' })).toHaveLength(1)
+  })
+
+  it('hides the site footer while the player is open (round E)', async () => {
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({}) }))
+    expect(document.documentElement.dataset.learnPlayer).toBe('on')
+    cleanup()
+    expect(document.documentElement.dataset.learnPlayer).toBeUndefined()
   })
 
   it('fails closed when the learner cannot access the published course', async () => {

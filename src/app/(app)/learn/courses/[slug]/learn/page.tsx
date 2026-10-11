@@ -1,23 +1,29 @@
+import { cache } from 'react'
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Circle, GraduationCap, LockKeyhole } from 'lucide-react'
+import { BookOpen, CheckCircle2, ChevronRight, GraduationCap } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
 import { CourseCurriculumSheet } from '@/features/learning/components/course-curriculum-sheet'
+import { CurriculumAccordion, type CurriculumModuleView } from '@/features/learning/components/curriculum-accordion'
+import { LessonActionBar } from '@/features/learning/components/lesson-action-bar'
 import { MaterialPlayer } from '@/features/learning/components/material-player'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import {
   learnerCourseRepository,
+  type LearnerCourse,
   type LearnerLesson,
 } from '@/features/learning/learner-course-repository'
 import { curriculumLessons, defaultPlayerLesson } from '@/features/learning/next-lesson'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import { renderArticleHtml } from '@/features/learning/article-html'
-import { PlayerFocusShell } from '@/features/learning/components/player-focus-mode'
+import { FocusModeToggle, FocusSidebarToggle, PlayerShell, SidebarRailToggle } from '@/features/learning/components/player-shell'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
+import { readingMinutes } from '@/features/learning/reading-time'
 import { courseAnnouncementRepository, type CourseAnnouncement } from '@/features/learning/course-announcement-repository'
 import { courseCommunityRepository } from '@/features/learning/course-community-repository'
 import { courseRatingRepository } from '@/features/learning/course-rating-repository'
@@ -38,13 +44,13 @@ function lessonHref(slug: string, lessonId: string) {
   return `/learn/courses/${slug}/learn?lesson=${lessonId}`
 }
 
-function activityLabel(lesson: LearnerLesson) {
-  return lessonTypeLabel(lesson.lessonType)
-}
-
-function sectionProgress(lessons: readonly LearnerLesson[]) {
-  const done = lessons.filter((lesson) => lesson.completed).length
-  return { done, total: lessons.length, percent: lessons.length ? Math.round((done / lessons.length) * 100) : 0 }
+function lessonMeta(lesson: LearnerLesson) {
+  // Articles show their reading time from the text (round E), other materials the trainer's duration.
+  if (lesson.lessonType === 'article' && lesson.articleBody) {
+    return `${lessonTypeLabel(lesson.lessonType)} · ${readingMinutes(lesson.articleBody, lesson.articleFormat === 'html' ? 'html' : 'plain')} min read`
+  }
+  const minutes = lesson.durationSeconds ? ` · ${Math.max(1, Math.round(lesson.durationSeconds / 60))} min` : ''
+  return `${lessonTypeLabel(lesson.lessonType)}${minutes}`
 }
 
 function shouldSignLessonAsset(lesson: LearnerLesson) {
@@ -53,26 +59,66 @@ function shouldSignLessonAsset(lesson: LearnerLesson) {
     && !['article', 'quiz', 'assignment', 'external_embed', 'scorm', 'live_session'].includes(lesson.lessonType)
 }
 
-/** Phones: course progress sits under the lesson title instead of in the header card. */
+/** One load per request, shared by the page and its metadata (the tab title). */
+const loadCourse = cache(async (slug: string) => {
+  const user = await requireAwsUser()
+  return { user, course: await learnerCourseRepository.getLearnerCourse(user.id, slug) }
+})
+
+function selectLesson(course: LearnerCourse, requestedLessonId: string | undefined) {
+  const lessons = curriculumLessons(course)
+  const selected = requestedLessonId
+    ? lessons.find((lesson) => lesson.id === requestedLessonId) ?? null
+    : defaultPlayerLesson(lessons)
+  return { lessons, selected }
+}
+
+export async function generateMetadata({ params, searchParams }: LearnerCoursePageProps): Promise<Metadata> {
+  const [{ slug }, query] = await Promise.all([params, searchParams ?? Promise.resolve<{ lesson?: string }>({})])
+  try {
+    const { course } = await loadCourse(slug)
+    if (!course) return { title: 'Course' }
+    const { selected } = selectLesson(course, query.lesson)
+    // "<Lesson title> · <Course title> | Sea N Shore" (the root layout adds the site name).
+    return { title: selected ? `${selected.title} · ${course.title}` : course.title }
+  } catch {
+    return { title: 'Course' }
+  }
+}
+
+/** Phones: course progress sits under the lesson title (the sidebar is in the curriculum sheet). */
 function PhoneCourseProgress({ percent, completed, total }: { percent: number; completed: number; total: number }) {
   return (
-    <div className="mt-3 md:hidden">
+    <div className="mt-3 lg:hidden">
       <div aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-mist-100">
         <div className="h-full rounded-full bg-teal-500" style={{ width: `${percent}%` }} />
       </div>
-      <p className="mt-1.5 text-sm text-muted">{percent}% complete · {completed} of {total}</p>
+      <p className="mt-1.5 text-meta text-muted">{percent}% complete · {completed} of {total}</p>
+    </div>
+  )
+}
+
+function CourseProgressBar({ course }: { course: LearnerCourse }) {
+  return (
+    <div
+      className="h-2 overflow-hidden rounded-full bg-mist-100"
+      role="progressbar"
+      aria-label={`${course.title} progress`}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={course.progressPercent}
+    >
+      <div className="h-full rounded-full bg-teal-500" style={{ width: `${course.progressPercent}%` }} />
     </div>
   )
 }
 
 export default async function LearnerCoursePage({ params, searchParams }: LearnerCoursePageProps) {
-  const [{ slug }, query, user] = await Promise.all([
+  const [{ slug }, query] = await Promise.all([
     params,
     searchParams ?? Promise.resolve<{ lesson?: string; tab?: string; join?: string }>({}),
-    requireAwsUser(),
   ])
-
-  const course = await learnerCourseRepository.getLearnerCourse(user.id, slug)
+  const { user, course } = await loadCourse(slug)
   if (!course) return notFound()
   // Course team access (no purchase) lasts only while the person is still on the team.
   if (course.enrollmentSource === 'admin') {
@@ -81,13 +127,8 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     if (!stillOnTeam) return redirect(`/learn/courses/${course.slug}`)
   }
 
-  const lessons = curriculumLessons(course)
-  const requestedLessonId = query.lesson
-  const selectedLesson = requestedLessonId
-    ? lessons.find((lesson) => lesson.id === requestedLessonId) ?? null
-    : defaultPlayerLesson(lessons)
-
-  if (requestedLessonId && !selectedLesson) return notFound()
+  const { lessons, selected: selectedLesson } = selectLesson(course, query.lesson)
+  if (query.lesson && !selectedLesson) return notFound()
 
   const selectedLessonIndex = selectedLesson
     ? lessons.findIndex((lesson) => lesson.id === selectedLesson.id)
@@ -120,64 +161,52 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   const courseAnnouncements: CourseAnnouncement[] = announcements ?? []
   const discussButton = discussion ? <CourseDiscussButton courseId={course.courseId} communityName={discussion.name} /> : null
 
+  // Round E (E1): the curriculum as an accordion, shared by the desktop sidebar and the phone sheet.
   const lessonTitles = new Map(lessons.map((lesson) => [lesson.id, lesson.title]))
-  const curriculumList = (
-    <div className="space-y-4">
-      {course.sections.map((section) => {
-        const progress = sectionProgress(section.lessons)
-        return (
-        <section key={section.id} aria-label={section.title}>
-          <div className="flex items-baseline justify-between gap-2 px-2">
-            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{section.title}</h3>
-            <span className="shrink-0 text-xs font-semibold text-slate-500" aria-label={`${progress.done} of ${progress.total} completed`}>{progress.done}/{progress.total} · {progress.percent}%</span>
-          </div>
-          <div className="mt-2 space-y-1">
-            {section.lessons.map((lesson) => {
-              const active = selectedLesson?.id === lesson.id
-              const prerequisite = !lesson.completed && lesson.prerequisiteLessonId ? lessonTitles.get(lesson.prerequisiteLessonId) ?? null : null
-              return (
-                <Link
-                  key={lesson.id}
-                  href={lessonHref(course.slug, lesson.id)}
-                  aria-current={active ? 'page' : undefined}
-                  className={`flex items-start gap-3 rounded-xl px-3 py-3 text-sm transition ${active ? 'bg-slate-950 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
-                >
-                  {lesson.completed ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  ) : lesson.isAvailable ? (
-                    <Circle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  ) : (
-                    <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  )}
-                  <span className="min-w-0">
-                    <span className="block font-medium">{lesson.title}</span>
-                    <span className={`mt-1 block text-xs ${active ? 'text-slate-300' : 'text-slate-500'}`}>
-                      {activityLabel(lesson)}{lesson.completed ? ' · Completed' : !lesson.isAvailable ? ' · Locked' : ''}
-                    </span>
-                    {prerequisite ? (
-                      <span className={`mt-1 inline-flex max-w-full rounded-full px-2 py-0.5 text-[11px] font-semibold ${active ? 'bg-white/15 text-white' : 'bg-amber-50 text-amber-800'}`}>
-                        <span className="truncate">After “{prerequisite}”</span>
-                      </span>
-                    ) : null}
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-        )
-      })}
-    </div>
-  )
+  const curriculumModules: CurriculumModuleView[] = course.sections.map((section) => ({
+    id: section.id,
+    title: section.title,
+    done: section.lessons.filter((lesson) => lesson.completed).length,
+    items: section.lessons.map((lesson) => {
+      const prerequisite = !lesson.completed && lesson.prerequisiteLessonId ? lessonTitles.get(lesson.prerequisiteLessonId) ?? null : null
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        href: lessonHref(course.slug, lesson.id),
+        meta: lessonMeta(lesson),
+        status: lesson.completed ? 'completed' : lesson.isAvailable ? 'available' : 'locked',
+        statusLabel: lesson.completed ? 'Completed' : lesson.isAvailable ? null : 'Locked',
+        note: prerequisite ? `After “${prerequisite}”` : null,
+      }
+    }),
+  }))
+  const selectedModuleIndex = selectedLesson
+    ? course.sections.findIndex((section) => section.lessons.some((lesson) => lesson.id === selectedLesson.id))
+    : -1
   const lessonPosition = selectedLessonIndex + 1
   const curriculumSheet = (
-    <CourseCurriculumSheet position={lessonPosition} total={lessons.length}>
-      {curriculumList}
-    </CourseCurriculumSheet>
+    <CourseCurriculumSheet
+      position={lessonPosition}
+      total={lessons.length}
+      modules={curriculumModules}
+      currentItemId={selectedLesson?.id ?? null}
+      storageKey={course.slug}
+    />
   )
+  const sequentialNote = course.navigationMode === 'sequential' ? 'Lessons unlock in order.' : null
+
+  const breadcrumb = selectedLesson && selectedModuleIndex >= 0 ? (
+    <nav aria-label="Breadcrumb" className="min-w-0 flex-1 max-md:hidden">
+      <ol className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
+        <li className="shrink-0">Module {selectedModuleIndex + 1}</li>
+        <li aria-hidden="true"><ChevronRight className="size-3.5" /></li>
+        <li className="min-w-0 truncate font-semibold text-navy-900" aria-current="page">{selectedLesson.title}</li>
+      </ol>
+    </nav>
+  ) : <span className="flex-1 max-md:hidden" />
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl px-4 py-2 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 max-md:pb-32 sm:px-6 lg:px-8">
       <MobilePageBar
         backHref={`/learn/courses/${course.slug}`}
         title={course.title}
@@ -191,157 +220,145 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
           />
         )}
       />
-      <PlayerFocusShell className="max-md:flex max-md:flex-col">
-      {/* A compact course card (learning round A, A7); focus mode hides it. */}
-      <header className="rounded-3xl border border-slate-200 bg-white px-6 py-4 shadow-sm max-md:hidden group-data-[focus=on]/player:hidden">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">My Learning · {course.category}</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{course.title}</h1>
-            <p className="mt-1 text-sm text-slate-500">Mentored by {course.mentorName}</p>
-            {discussButton ? <div className="mt-3">{discussButton}</div> : null}
-          </div>
-
-          <div className="min-w-56 rounded-2xl bg-slate-50 px-4 py-3">
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="font-medium text-slate-700">{course.completedLessons} of {course.totalLessons} materials completed</span>
-              <span className="font-semibold text-slate-950">{course.progressPercent}%</span>
+      <PlayerShell className="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-6 lg:data-[sidebar=hidden]:grid-cols-[minmax(0,1fr)] lg:data-[sidebar=rail]:grid-cols-[64px_minmax(0,1fr)]">
+        {/* Desktop sidebar (round E): the course block, then the curriculum, scrolling on its own. */}
+        <aside
+          aria-label="Course"
+          className="flex flex-col overflow-hidden rounded-3xl border border-mist-200 bg-white shadow-sm max-lg:hidden lg:sticky lg:top-22 lg:max-h-[calc(100dvh-7rem)] group-data-[focus=on]/player:lg:top-4 group-data-[focus=on]/player:lg:max-h-[calc(100dvh-2rem)] group-data-[sidebar=hidden]/player:hidden"
+        >
+          <div className="border-b border-mist-100 p-5 group-data-[sidebar=rail]/player:hidden">
+            <div className="flex items-start justify-between gap-2">
+              <h2 className="text-card-title font-bold text-navy-950">{course.title}</h2>
+              <SidebarRailToggle collapsed={false} className="-mr-2 -mt-1 shrink-0" />
             </div>
-            <div
-              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"
-              role="progressbar"
-              aria-label={`${course.title} progress`}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={course.progressPercent}
-            >
-              <div className="h-full rounded-full bg-slate-950" style={{ width: `${course.progressPercent}%` }} />
+            <p className="mt-1 text-meta text-muted">Mentored by {course.mentorName}</p>
+            <div className="mt-4 flex items-center justify-between gap-3 text-meta">
+              <span className="text-navy-800">{course.completedLessons} of {course.totalLessons} · {course.progressPercent}%</span>
+            </div>
+            <div className="mt-2"><CourseProgressBar course={course} /></div>
+            {discussButton ? <div className="mt-4">{discussButton}</div> : null}
+          </div>
+          <div data-curriculum-scroll="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 group-data-[sidebar=rail]/player:hidden">
+            {sequentialNote ? <p className="px-2 pb-2 text-meta text-muted">{sequentialNote}</p> : null}
+            <nav aria-label="Course curriculum">
+              <CurriculumAccordion modules={curriculumModules} currentItemId={selectedLesson?.id ?? null} storageKey={course.slug} />
+            </nav>
+          </div>
+          {/* Collapsed rail: progress and a button to expand. */}
+          <div className="hidden flex-col items-center gap-3 py-4 group-data-[sidebar=rail]/player:flex">
+            <SidebarRailToggle collapsed />
+            <span className="text-meta font-semibold text-navy-900" aria-label={`${course.progressPercent}% complete`}>{course.progressPercent}%</span>
+            <div aria-hidden="true" className="h-24 w-1.5 overflow-hidden rounded-full bg-mist-100">
+              <div className="w-full rounded-full bg-teal-500" style={{ height: `${course.progressPercent}%` }} />
             </div>
           </div>
-        </div>
-      </header>
+        </aside>
 
-      {course.accessExpired ? (
-        <section aria-label="Access ended" className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm max-md:mt-4 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-amber-950">
-                Your access ended{course.accessExpiresAt ? ` on ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(course.accessExpiresAt))}` : ''}
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-amber-900">The course is read-only: your progress, results and certificate are kept. Renew to open the materials again.</p>
-            </div>
-            <Link href={`/learn/courses/${course.slug}#renew`} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-              Renew access
-            </Link>
-          </div>
-        </section>
-      ) : null}
-
-      {course.enrollmentStatus === 'completed' ? (
-        <section aria-label="Course completed" className="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm max-md:order-last max-md:mt-4 max-md:p-5 sm:p-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-800">
-                <CheckCircle2 className="h-5 w-5" aria-hidden="true" /> Learning milestone reached
+        <div className="min-w-0">
+          {course.accessExpired ? (
+            <section aria-label="Access ended" className="mb-4 rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm max-md:m-4 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-card-title font-bold text-amber-950">
+                    Your access ended{course.accessExpiresAt ? ` on ${new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(course.accessExpiresAt))}` : ''}
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-amber-900">The course is read-only: your progress, results and certificate are kept. Renew to open the materials again.</p>
+                </div>
+                <Link href={`/learn/courses/${course.slug}#renew`} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-800">
+                  Renew access
+                </Link>
               </div>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Course completed</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-700">All {course.totalLessons} published materials are complete. You can continue reviewing the curriculum below.</p>
-              {course.certificateEnabled ? <p className="mt-2 text-sm text-slate-600">Your eligible Sea N Shore certificate is issued from the completed enrollment.</p> : null}
-              {course.certificateEnabled && attendanceRule && attendanceRule.attended * 100 < attendanceRule.required * attendanceRule.total ? (
-                <p className="mt-2 text-sm font-semibold text-amber-900">
-                  Attend at least {attendanceRule.required}% of live sessions for your certificate (now {attendanceRule.percent}%: {attendanceRule.attended} of {attendanceRule.total}).
-                </p>
-              ) : null}
-            </div>
-            <Link href="/learn/my-learning" className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
-              Back to My Learning
-            </Link>
-          </div>
-        </section>
-      ) : null}
+            </section>
+          ) : null}
 
-      <div className="mt-6 grid gap-6 max-md:mt-0 lg:grid-cols-[320px_minmax(0,1fr)] group-data-[focus=on]/player:mt-0 lg:group-data-[focus=on]/player:grid-cols-[minmax(0,1fr)]">
-        {/* Phones open the curriculum from the "Curriculum n/N" button beside the lesson actions. */}
-        <nav aria-label="Course curriculum" className="h-fit rounded-3xl border border-slate-200 bg-white p-4 shadow-sm max-md:hidden lg:sticky lg:top-6 group-data-[focus=on]/player:hidden">
-          <div className="px-2 pb-3">
-            <h2 className="text-sm font-semibold text-slate-950">Course curriculum</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {course.navigationMode === 'sequential' ? 'Sequential learning is enabled.' : 'Open navigation is enabled.'}
-            </p>
-          </div>
+          {course.enrollmentStatus === 'completed' ? (
+            <section aria-label="Course completed" className="mb-4 rounded-3xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm max-md:order-last max-md:m-4 max-md:p-5">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                    <CheckCircle2 className="h-5 w-5" aria-hidden="true" /> Learning milestone reached
+                  </div>
+                  <h2 className="mt-2 text-section-title font-bold text-navy-950">Course completed</h2>
+                  <p className="mt-2 text-sm leading-6 text-navy-800">All {course.totalLessons} published materials are complete. You can continue reviewing the curriculum.</p>
+                  {course.certificateEnabled ? <p className="mt-2 text-sm text-navy-700">Your eligible Sea N Shore certificate is issued from the completed enrollment.</p> : null}
+                  {course.certificateEnabled && attendanceRule && attendanceRule.attended * 100 < attendanceRule.required * attendanceRule.total ? (
+                    <p className="mt-2 text-sm font-semibold text-amber-900">
+                      Attend at least {attendanceRule.required}% of live sessions for your certificate (now {attendanceRule.percent}%: {attendanceRule.attended} of {attendanceRule.total}).
+                    </p>
+                  ) : null}
+                </div>
+                <Link href="/learn/my-learning" className="inline-flex shrink-0 items-center justify-center rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-navy-800">
+                  Back to My Learning
+                </Link>
+              </div>
+            </section>
+          ) : null}
 
-          {curriculumList}
-        </nav>
-
-        <main>
           {batchSessions ? <DeviceTimeZoneSync /> : null}
           <PlayerTabs
             initialTab={query.tab === 'announcements' ? 'announcements' : query.tab === 'sessions' ? 'sessions' : 'lesson'}
             announcementCount={courseAnnouncements.length}
             sessions={batchSessions ? <LearnerSessionsPanel data={batchSessions} joinNotice={query.join ?? null} /> : undefined}
+            leading={breadcrumb}
+            trailing={(
+              <div className="flex items-center gap-1 max-md:hidden">
+                <FocusSidebarToggle />
+                <FocusModeToggle />
+              </div>
+            )}
             lesson={(
               <>
                 {selectedLesson ? (
-                  <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 max-md:text-amber-800">
-                      <span className="md:hidden">Lesson {lessonPosition} of {lessons.length} ·</span>
-                      <span>{activityLabel(selectedLesson)}</span>
-                      {selectedLesson.durationSeconds ? <span>· {Math.ceil(selectedLesson.durationSeconds / 60)} min</span> : null}
-                      {selectedLesson.completed ? <span>· Completed</span> : !selectedLesson.isAvailable ? <span>· Locked</span> : null}
-                    </div>
-                    <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 max-md:mt-2 max-md:text-xl max-md:font-bold max-md:text-navy-950 sm:text-3xl">{selectedLesson.title}</h2>
+                  <section aria-label="Current lesson" className="rounded-3xl border border-mist-200 bg-white p-6 pb-0 shadow-sm max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8 sm:pb-0">
+                    <p className="text-meta text-muted">
+                      <span className="md:hidden">Lesson {lessonPosition} of {lessons.length} · </span>
+                      {lessonMeta(selectedLesson)}
+                      {selectedLesson.completed ? ' · Completed' : !selectedLesson.isAvailable ? ' · Locked' : ''}
+                    </p>
+                    <h1 className="mt-1 text-page-title font-bold text-navy-950 max-md:text-[1.5rem] max-md:leading-8">{selectedLesson.title}</h1>
                     <PhoneCourseProgress percent={course.progressPercent} completed={course.completedLessons} total={course.totalLessons} />
-                    {selectedLesson.summary ? <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLesson.summary}</p> : null}
+                    {selectedLesson.summary ? <p className="mt-3 text-body text-navy-800">{selectedLesson.summary}</p> : null}
 
-                    <div className="mt-7 max-md:mt-5">
+                    <div className="mt-6 max-md:mt-5">
                       <MaterialPlayer
                         lesson={selectedLesson}
                         mediaUrl={selectedMediaUrl}
                         slug={course.slug}
                         quiz={selectedQuiz}
                         articleHtml={selectedArticleHtml}
-                        nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
-                        phoneActions={curriculumSheet}
                       />
                     </div>
 
-                    {previousLesson || nextLesson ? (
-                      // Phones: one full-width "Next material" pill; the previous lesson is in the Curriculum sheet.
-                      <nav aria-label="Lesson navigation" className={`mt-7 flex items-center justify-between gap-3 border-t border-slate-200 pt-6 max-md:mt-5 max-md:border-t-0 max-md:pt-0 ${nextLesson ? '' : 'max-md:hidden'}`}>
-                        <div className="max-md:hidden">
-                          {previousLesson ? (
-                            <Link href={lessonHref(course.slug, previousLesson.id)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50">
-                              <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Previous material
-                            </Link>
-                          ) : null}
-                        </div>
-                        <div className="max-md:w-full">
-                          {nextLesson ? (
-                            <Link href={lessonHref(course.slug, nextLesson.id)} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 max-md:min-h-11 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:py-0 max-md:text-[15px] max-md:hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500">
-                              Next material <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                            </Link>
-                          ) : null}
-                        </div>
-                      </nav>
-                    ) : null}
+                    <LessonActionBar
+                      slug={course.slug}
+                      lessonId={selectedLesson.id}
+                      completionRule={selectedLesson.completionRule}
+                      completionThreshold={selectedLesson.completionThreshold}
+                      completed={selectedLesson.completed}
+                      available={selectedLesson.isAvailable}
+                      previousHref={previousLesson ? lessonHref(course.slug, previousLesson.id) : null}
+                      nextHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
+                      finishHref="/learn/my-learning"
+                      phoneStart={curriculumSheet}
+                    />
                   </section>
                 ) : (
-                  <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-                    <h2 className="text-xl font-semibold text-slate-950">No materials published yet</h2>
-                    <p className="mt-2 text-sm text-slate-500">This enrolled course does not currently contain published learning material.</p>
-                    {lessons.length ? <div className="mt-4 flex md:hidden">{curriculumSheet}</div> : null}
+                  <section aria-label="Current lesson" className="rounded-3xl border border-mist-200 bg-white p-8 shadow-sm">
+                    <h1 className="text-section-title font-bold text-navy-950">No materials published yet</h1>
+                    <p className="mt-2 text-sm text-muted">This enrolled course does not currently contain published learning material.</p>
+                    {lessons.length ? <div className="mt-4 flex lg:hidden">{curriculumSheet}</div> : null}
                   </section>
                 )}
                 {ratingEligibility ? <CourseRatingWidget courseId={course.courseId} eligibility={ratingEligibility} /> : null}
-                {discussButton ? <div className="mt-2 border-t border-slate-200 py-4 md:hidden">{discussButton}</div> : null}
+                {discussButton ? <div className="mt-2 border-t border-mist-200 px-4 py-4 lg:hidden">{discussButton}</div> : null}
               </>
             )}
             announcements={(
-              <section aria-label="Course announcements" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
+              <section aria-label="Course announcements" className="rounded-3xl border border-mist-200 bg-white p-6 shadow-sm max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <h2 className="text-xl font-semibold tracking-tight text-slate-950 max-md:font-bold max-md:text-navy-950">Announcements</h2>
-                    <p className="mt-1 text-sm text-slate-500">News from {course.mentorName} for everyone in this course, newest first.</p>
+                    <h2 className="text-section-title font-bold text-navy-950">Announcements</h2>
+                    <p className="mt-1 text-sm text-muted">News from {course.mentorName} for everyone in this course, newest first.</p>
                   </div>
                   {discussButton}
                 </div>
@@ -351,9 +368,8 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
               </section>
             )}
           />
-        </main>
-      </div>
-      </PlayerFocusShell>
+        </div>
+      </PlayerShell>
     </div>
   )
 }

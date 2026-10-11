@@ -368,6 +368,7 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
         enrollmentId: accessible.enrollment_id,
         lessonId: accessible.lesson_id,
         lastPositionSeconds: Number(position.last_position_seconds),
+        completed: position.completed === true,
         // Only media with a known length tracks how far the learner reached.
         ...(duration > 0 ? { furthestPositionSeconds: next.furthestPositionSeconds, watchedSeconds: next.watchedSeconds } : {}),
       }

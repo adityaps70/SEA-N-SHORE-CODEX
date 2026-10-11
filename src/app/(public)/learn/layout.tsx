@@ -3,5 +3,5 @@
  * read them). They keep the same page width and spacing as the signed-in app shell.
  */
 export default function PublicLearnLayout({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto w-full max-w-7xl px-4 py-4 md:py-6">{children}</div>
+  return <div className="lms mx-auto w-full max-w-7xl px-4 py-4 md:py-6">{children}</div>
 }

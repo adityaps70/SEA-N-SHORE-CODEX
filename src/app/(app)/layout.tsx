@@ -23,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
-      <div className="group/shell min-h-screen bg-mist-50 pb-[calc(4.5rem+env(safe-area-inset-bottom))] has-[[data-phone-tabbar=off]]:pb-0 md:pb-0 md:pt-18">
+      <div data-app-shell="" className="group/shell min-h-screen bg-mist-50 pb-[calc(4.5rem+env(safe-area-inset-bottom))] has-[[data-phone-tabbar=off]]:pb-0 md:pb-0 md:pt-18">
         {legacyConversion?.status === 'pending' ? <LegacyOrganizationConversionBanner /> : null}
         <AppHeader {...appHeaderProps(chrome)} />
         <MobileAppHeader {...mobileAppHeaderProps(chrome)} />
