@@ -137,3 +137,19 @@ in plaintext as `sea-n-shore/resend-admin`.
 | Webhook rearm | `3e48f335` (guard back to `plan`) |
 | Backfill | runs by itself in the outbox worker since the deploy; progress shows on the First invitation tab |
 | Second reminder | the owner prepares, reviews and starts it |
+
+## Branded reminder design (11 October)
+
+The owner replaced the reminder's HTML with a branded design before any reminder was sent. Subject, preheader, From,
+both unsubscribe headers and the claim and unsubscribe links are unchanged.
+
+- The logo is the only image: `public/brand/email/sea-n-shore-logo.png`, 360×107 on white (shown at 180px), made from
+  `sea-n-shore-lockup.webp` because WebP does not show in Outlook. It loads from
+  `https://seanshore.in/brand/email/sea-n-shore-logo.png`. The proxy skips `.png`, `next.config.ts` sends
+  `public, max-age=86400` for `/brand/*`, CloudFront caches `/brand/*`, and Remote Verify now checks the PNG.
+- Email-safe HTML: tables, inline styles, 600px max width, a bulletproof button, no external CSS, web fonts, scripts
+  or tracking pixels. All four variables are escaped.
+- The plain text adds the WhatsApp help line (+91 85914 63321, https://wa.me/918591463321), the "What's on Sea N
+  Shore now" line, and the footer with the social links and info@beaufortmarine.in.
+- The admin preview (Second reminder tab) shows the new HTML in a taller frame.
+- Release: code PR, then a deploy arm. No migration.

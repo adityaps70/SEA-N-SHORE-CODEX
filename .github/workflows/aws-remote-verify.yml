@@ -159,7 +159,36 @@ jobs:
             }
           }
 
+          # The second-reminder email loads this PNG from seanshore.in (WebP does not show in Outlook).
+          verify_email_logo() {
+            local url="${SITE_URL%/}/brand/email/sea-n-shore-logo.png"
+            local headers="/tmp/email-logo.headers"
+            local status
+            status=$(curl --show-error --silent --max-time 45 -D "$headers" -o /tmp/email-logo.png --write-out '%{http_code}' "$url")
+            local bytes
+            bytes=$(wc -c < /tmp/email-logo.png | tr -d ' ')
+            local content_type
+            content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub("\r",""); print $2}' "$headers" | tail -n 1)
+            local cache_control
+            cache_control=$(awk 'BEGIN{IGNORECASE=1} /^cache-control:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$headers" | tail -n 1)
+
+            echo "=== EMAIL LOGO ASSET ==="
+            echo "status=$status"
+            echo "content_type=${content_type:-unknown}"
+            echo "bytes=$bytes"
+            echo "cache_control=${cache_control:-missing}"
+
+            test "$status" = "200" || { echo "Email logo returned HTTP $status." >&2; exit 1; }
+            test "$content_type" = "image/png" || { echo "Email logo returned unexpected content type ${content_type:-unknown}." >&2; exit 1; }
+            test "$bytes" -gt 1000 || { echo "Email logo body is unexpectedly small ($bytes bytes)." >&2; exit 1; }
+            case "$cache_control" in
+              *public*max-age=*) ;;
+              *) echo "Email logo is not publicly cacheable (cache-control: ${cache_control:-missing})." >&2; exit 1 ;;
+            esac
+          }
+
           verify_asset site "$SITE_URL"
+          verify_email_logo
           verify_page site "$SITE_URL"
           verify_cloudfront_redirect "$ASSET_PATH"
           verify_cloudfront_redirect "/"
