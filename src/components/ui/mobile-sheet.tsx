@@ -4,6 +4,8 @@ import { X } from 'lucide-react'
 import { useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
+const FOCUSABLE = 'a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])'
+
 /**
  * Phone bottom sheets (round 8 mobile redesign).
  *
@@ -97,6 +99,27 @@ export function BottomSheet({
     panelRef.current?.focus()
     function onKey(event: KeyboardEvent) {
       if (event.key === 'Escape') onClose()
+      // Keep Tab and Shift+Tab inside the open sheet (it is modal).
+      if (event.key === 'Tab' && panelRef.current) {
+        const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+          .filter((element) => !element.hasAttribute('disabled') && !element.closest('[hidden]')
+            && (typeof element.checkVisibility !== 'function' || element.checkVisibility()))
+        if (!focusable.length) {
+          event.preventDefault()
+          panelRef.current.focus()
+          return
+        }
+        const first = focusable[0]!
+        const last = focusable[focusable.length - 1]!
+        const active = document.activeElement
+        if (event.shiftKey && (active === first || active === panelRef.current || !panelRef.current.contains(active))) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && (active === last || !panelRef.current.contains(active))) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => {

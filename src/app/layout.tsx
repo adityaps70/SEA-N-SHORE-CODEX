@@ -1,6 +1,16 @@
 import type { Metadata, Viewport } from 'next'
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import './globals.css'
+
+/*
+ * Self-hosted by next/font (downloaded at build time, served from our own origin: no request to
+ * Google at runtime). Inter is the body and UI face; Plus Jakarta Sans is the heading face. Both are
+ * exposed as CSS variables and mapped to Tailwind's `font-sans` and `font-heading` in globals.css.
+ * To try another heading face, change only `headingFont` below.
+ */
+const bodyFont = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
+const headingFont = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['600', '700'], variable: '--font-heading-face', display: 'swap' })
 
 function siteUrl() {
   try {
@@ -44,7 +54,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${bodyFont.variable} ${headingFont.variable}`}>
       <body>{children}</body>
     </html>
   )

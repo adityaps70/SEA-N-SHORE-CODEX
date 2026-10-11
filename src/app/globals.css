@@ -27,7 +27,8 @@
   --mist-50: #f7fafb;
   --verification-gold: #c99332;
   --ink: #102532;
-  --muted: #607481;
+  /* 4.5:1 or better on white, mist-50, mist-100 and mist-200 (WCAG AA for small text). */
+  --muted: #566a77;
   --surface: #ffffff;
   --radius-card: 1.25rem;
   --shadow-card: 0 18px 48px rgb(7 27 45 / 0.08);
@@ -63,11 +64,41 @@
   --color-verification-gold: var(--verification-gold);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
+
+  /* Fonts (learning round E). Swap the heading face in one place: --font-heading. */
+  --font-sans: var(--font-body), Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-heading-face), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+
+  /* One LMS type scale: size / line height. */
+  --text-page-title: 2rem;
+  --text-page-title--line-height: 2.5rem;
+  --text-section-title: 1.375rem;
+  --text-section-title--line-height: 1.875rem;
+  --text-card-title: 1.0625rem;
+  --text-card-title--line-height: 1.625rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.625rem;
+  --text-article: 1.0625rem;
+  --text-article--line-height: 1.875rem;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.25rem;
+  --text-eyebrow: 0.75rem;
+  --text-eyebrow--line-height: 1rem;
 }
 
 * { box-sizing: border-box; }
 html { background: var(--mist-50); color: var(--ink); }
-body { min-height: 100vh; margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+body { min-height: 100vh; margin: 0; font-family: var(--font-body), Inter, ui-sans-serif, system-ui, sans-serif; }
+
+/* Learning pages (round E): headings use the heading face and balanced line breaks. */
+/* Course player (round E): no site footer inside the player; focus mode also hides the top navigation. */
+html[data-learn-player] [data-app-footer] { display: none; }
+@media (min-width: 48rem) {
+  html[data-learn-focus] [data-app-header] { display: none; }
+  html[data-learn-focus] [data-app-shell] { padding-top: 0; }
+}
+
+.lms :is(h1, h2, h3) { font-family: var(--font-heading-face), var(--font-body), ui-sans-serif, system-ui, sans-serif; text-wrap: balance; }
 
 /* Tailwind v4's preflight gives buttons the default arrow cursor. Every clickable control
    shows the pointer, and disabled ones show not-allowed. Kept in the base layer so utilities
@@ -143,22 +174,32 @@ input[type="file"]:focus-visible {
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
 
 /* Rich-text lesson articles (learner player, admin review and the lesson editor). The HTML is
-   sanitized on the server; these styles only give its allowed elements the design system's look. */
-.lesson-article > * + * { margin-top: 0.85em; }
-.lesson-article h2 { font-size: 1.25rem; line-height: 1.4; font-weight: 700; color: var(--navy-950); margin-top: 1.4em; }
-.lesson-article h3 { font-size: 1.075rem; line-height: 1.45; font-weight: 700; color: var(--navy-950); margin-top: 1.2em; }
+   sanitized on the server; these styles only give its allowed elements the design system's look.
+   Round E (E5): article type 17/30, real heading spacing in the heading face, lists, tables, quotes,
+   and images with captions. The learner view also limits the measure to 68 characters. */
+.lesson-article { font-size: 1.0625rem; line-height: 1.875rem; color: var(--navy-900); }
+.lesson-article > * + * { margin-top: 1em; }
+.lesson-article h2, .lesson-article h3, .lesson-article h4 { font-family: var(--font-heading-face), var(--font-body), ui-sans-serif, system-ui, sans-serif; color: var(--navy-950); text-wrap: balance; }
+.lesson-article h2 { font-size: 1.375rem; line-height: 1.875rem; font-weight: 700; margin-top: 2em; }
+.lesson-article h3 { font-size: 1.0625rem; line-height: 1.625rem; font-weight: 700; margin-top: 1.6em; }
+.lesson-article h4 { font-size: 1rem; line-height: 1.5rem; font-weight: 600; margin-top: 1.4em; }
+.lesson-article :is(h2, h3, h4) + * { margin-top: 0.6em; }
 .lesson-article h2:first-child, .lesson-article h3:first-child { margin-top: 0; }
+.lesson-article strong, .lesson-article b { font-weight: 700; color: var(--navy-950); }
 .lesson-article a { color: var(--ocean-700); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 .lesson-article ul { list-style: disc; padding-left: 1.4em; }
 .lesson-article ol { list-style: decimal; padding-left: 1.4em; }
-.lesson-article li + li { margin-top: 0.3em; }
+.lesson-article li::marker { color: var(--navy-500); }
+.lesson-article li + li { margin-top: 0.35em; }
 .lesson-article li > p { margin: 0; }
-.lesson-article blockquote { border-left: 3px solid var(--teal-500); background: var(--mist-50); padding: 0.6em 1em; border-radius: 0 0.75rem 0.75rem 0; color: var(--navy-800); }
+.lesson-article blockquote { border-left: 3px solid var(--teal-500); background: var(--mist-50); padding: 0.75em 1.1em; border-radius: 0 0.75rem 0.75rem 0; color: var(--navy-800); }
 .lesson-article code { background: var(--mist-100); border-radius: 0.35rem; padding: 0.1em 0.35em; font-size: 0.9em; }
-.lesson-article hr { border: 0; border-top: 1px solid var(--mist-200); }
+.lesson-article hr { border: 0; border-top: 1px solid var(--mist-200); margin-block: 2em; }
 .lesson-article img { max-width: 100%; height: auto; border-radius: 0.9rem; border: 1px solid var(--mist-200); }
-.lesson-article table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.925em; }
-.lesson-article th, .lesson-article td { border: 1px solid var(--mist-200); padding: 0.45em 0.7em; text-align: left; vertical-align: top; min-width: 6rem; }
+.lesson-article figure { margin-inline: 0; }
+.lesson-article figcaption { margin-top: 0.5em; font-size: 0.8125rem; line-height: 1.25rem; color: var(--muted); }
+.lesson-article table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.9375rem; line-height: 1.5rem; }
+.lesson-article th, .lesson-article td { border: 1px solid var(--mist-200); padding: 0.5em 0.75em; text-align: left; vertical-align: top; min-width: 6rem; }
 .lesson-article th { background: var(--mist-50); font-weight: 700; color: var(--navy-950); }
 .lesson-article .selectedCell { background: var(--ocean-50); }
 .lesson-article.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted); float: left; height: 0; pointer-events: none; }

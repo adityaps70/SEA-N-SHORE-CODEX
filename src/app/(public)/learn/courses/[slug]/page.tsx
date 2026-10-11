@@ -14,7 +14,6 @@ import {
   GraduationCap,
   LockKeyhole,
   LogIn,
-  PlayCircle,
   ShieldCheck,
   Star,
   Users,
@@ -38,6 +37,7 @@ import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse, type PublishedCourseOverview } from '@/features/learning/marketplace-repository'
 import { splitDescription } from '@/features/learning/description'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
+import { CurriculumAccordion, type CurriculumModuleView } from '@/features/learning/components/curriculum-accordion'
 import { courseRatingRepository, type PublicCourseReviews } from '@/features/learning/course-rating-repository'
 import { CourseReviewsSection, formatAverageRating } from '@/features/learning/components/course-reviews-section'
 
@@ -213,7 +213,7 @@ function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIE
             </span>
           ) : null}
         </div>
-        <h1 className="mt-3 text-[22px] font-bold leading-7 tracking-tight text-navy-950">{course.title}</h1>
+        <h1 className="mt-3 text-[1.5rem] font-bold leading-8 text-navy-950">{course.title}</h1>
         <p className="mt-1.5 text-[15px] text-navy-900">
           By{' '}
           {publisherHref ? (
@@ -249,55 +249,42 @@ function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIE
 }
 
 /**
- * The curriculum outline: every section and material title (no content). Free previews open for
- * anyone; everything else shows a lock until the visitor enrols.
+ * The curriculum outline: every section and material title (no content), as the same accordion as the
+ * course player (round E): Module 1 open, the rest collapsed, each with its item count and total time.
+ * Free previews open for anyone; everything else shows a lock until the visitor enrols.
  */
 function CourseCurriculum({ slug, sections, enrolled }: { slug: string; sections: PublicCurriculumSection[]; enrolled: boolean }) {
   const lessonCount = sections.reduce((total, section) => total + section.lessons.length, 0)
   if (!lessonCount) return null
   const previews = sections.reduce((total, section) => total + section.lessons.filter((lesson) => lesson.preview).length, 0)
+  const modules: CurriculumModuleView[] = sections.map((section, sectionIndex) => {
+    const seconds = section.lessons.reduce((total, lesson) => total + (lesson.durationSeconds ?? 0), 0)
+    const count = `${section.lessons.length} ${section.lessons.length === 1 ? 'item' : 'items'}`
+    return {
+      id: `${sectionIndex}-${section.title}`,
+      title: section.title,
+      summary: seconds ? `${count} · ${durationLabel(seconds)}` : count,
+      items: section.lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        href: lesson.preview ? `/learn/courses/${slug}/preview/${lesson.id}` : null,
+        meta: [lessonTypeLabel(lesson.lessonType), lesson.durationSeconds ? durationLabel(lesson.durationSeconds) : null].filter(Boolean).join(' · '),
+        status: lesson.preview ? 'preview' as const : enrolled ? 'outline' as const : 'locked' as const,
+        statusLabel: lesson.preview ? 'Free preview' : null,
+      })),
+    }
+  })
   return (
     <section aria-label="Curriculum" className={`${PHONE_FLAT_SECTION} lg:order-3 lg:col-span-2`}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Curriculum</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">What’s inside</h2>
-        </div>
+        <h2 className="text-section-title font-bold text-navy-950">What’s inside</h2>
         <p className="text-sm font-semibold text-ocean-700">
           {lessonCount} {lessonCount === 1 ? 'material' : 'materials'}{previews ? ` · ${previews} free ${previews === 1 ? 'preview' : 'previews'}` : ''}
         </p>
       </div>
-      <ol className="mt-4 space-y-4">
-        {sections.map((section, sectionIndex) => (
-          <li key={`${sectionIndex}-${section.title}`}>
-            <p className="text-sm font-bold text-navy-950">{sectionIndex + 1}. {section.title}</p>
-            <ul className="mt-2 divide-y divide-mist-100 rounded-xl border border-mist-100">
-              {section.lessons.map((lesson) => {
-                const duration = lesson.durationSeconds ? durationLabel(lesson.durationSeconds) : null
-                const meta = [lessonTypeLabel(lesson.lessonType), duration].filter(Boolean).join(' · ')
-                return (
-                  <li key={lesson.id} className="flex min-h-12 items-center gap-3 px-3 py-2 text-[15px]">
-                    {lesson.preview ? (
-                      <PlayCircle aria-hidden="true" className="size-4 shrink-0 text-teal-700" />
-                    ) : (
-                      <LockKeyhole aria-label={enrolled ? undefined : 'Locked'} aria-hidden={enrolled ? 'true' : undefined} className="size-4 shrink-0 text-muted" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-navy-950">{lesson.title}</span>
-                      <span className="block text-xs text-muted">{meta}</span>
-                    </span>
-                    {lesson.preview ? (
-                      <Link href={`/learn/courses/${slug}/preview/${lesson.id}`} className="shrink-0 rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-teal-800 transition hover:bg-teal-100">
-                        Free preview
-                      </Link>
-                    ) : null}
-                  </li>
-                )
-              })}
-            </ul>
-          </li>
-        ))}
-      </ol>
+      <div className="mt-4">
+        <CurriculumAccordion modules={modules} label="What’s inside" />
+      </div>
       {!enrolled ? (
         <p className="mt-4 flex items-center gap-2 text-sm text-muted">
           <LockKeyhole aria-hidden="true" className="size-4 shrink-0" /> Enrol to continue with every material, quiz and assignment.
@@ -398,10 +385,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
               </span>
             </div>
 
-            <p className="mt-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.17em] text-teal-200">
-              Sea N Shore Learning
-            </p>
-            <h1 className="mt-3 max-w-4xl text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
+            <h1 className="mt-5 max-w-4xl text-page-title font-bold">
               {course.title}
             </h1>
             {course.subtitle ? (
@@ -433,7 +417,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           </div>
 
           <aside className="border-t border-white/10 bg-white/[0.055] p-6 max-md:border-t-0 max-md:p-5 sm:p-8 lg:border-l lg:border-t-0 lg:p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-200">Course access</p>
+            <h2 className="sr-only">Course access</h2>
             <PriceBlock course={course} />
             <p className="mt-2 text-sm leading-6 text-white/65">
               {isFree
@@ -486,8 +470,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           aria-label="What you will learn"
           className={`${PHONE_FLAT_SECTION} lg:order-1`}
         >
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Learning outcomes</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">What you will learn</h2>
+          <h2 className="text-section-title font-bold text-navy-950">What you will learn</h2>
           <div className="mt-5 max-md:mt-3">
             <EvidenceList items={course.learningOutcomes} />
           </div>
@@ -499,8 +482,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           aria-label="Who this course is for"
           className={`${PHONE_FLAT_SECTION} lg:order-2`}
         >
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Intended learners</p>
-          <h2 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">
+          <h2 className="flex items-center gap-2 text-section-title font-bold text-navy-950">
             <Users aria-hidden="true" className="size-5 text-teal-700" /> Who this course is for
           </h2>
           <div className="mt-5">
@@ -512,8 +494,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           aria-label="Requirements"
           className={`${PHONE_FLAT_SECTION} lg:order-4`}
         >
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Before you begin</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">Requirements</h2>
+          <h2 className="text-section-title font-bold text-navy-950">Requirements</h2>
           <div className="mt-5">
             <EvidenceList items={course.requirements} />
           </div>
@@ -529,8 +510,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           <span className="grid size-11 place-items-center rounded-2xl bg-navy-950 text-white">
             <GraduationCap aria-hidden="true" className="size-5" />
           </span>
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Quality standard</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">Built for professional maritime development</h2>
+          <h2 className="mt-4 text-card-title font-bold text-navy-950">Built for professional maritime development</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             Published courses pass through Sea N Shore review so the marketplace stays focused on credible, role-relevant maritime learning.
           </p>

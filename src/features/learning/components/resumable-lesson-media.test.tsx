@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   saveLearningPlaybackPosition: vi.fn(),
+  refresh: vi.fn(),
 }))
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: mocks.refresh }) }))
 
 vi.mock('../learner-progress-actions', () => ({
   saveLearningPlaybackPosition: mocks.saveLearningPlaybackPosition,
@@ -73,6 +76,21 @@ describe('ResumableLessonMedia', () => {
       expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledTimes(1)
       expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 140)
     })
+  })
+
+  it('tells the player once when the server completes the lesson, so "Complete & next" unlocks (round E)', async () => {
+    mocks.saveLearningPlaybackPosition.mockResolvedValue({ ok: true, lessonId, lastPositionSeconds: 140, completed: true })
+    const heard: string[] = []
+    const listener = (event: Event) => heard.push((event as CustomEvent<{ lessonId: string }>).detail.lessonId)
+    window.addEventListener('sea-n-shore:lesson-completed', listener)
+    const { container } = render(<ResumableLessonMedia kind="video" src={src} slug={slug} lessonId={lessonId} initialPositionSeconds={125} />)
+    const media = container.querySelector('video')!
+    media.currentTime = 140
+    fireEvent.timeUpdate(media)
+    fireEvent.pause(media)
+    await waitFor(() => expect(heard).toEqual([lessonId]))
+    expect(mocks.refresh).toHaveBeenCalledTimes(1)
+    window.removeEventListener('sea-n-shore:lesson-completed', listener)
   })
 
   it('saves the latest whole-second position when playback is paused', async () => {

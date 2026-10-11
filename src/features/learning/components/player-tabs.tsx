@@ -23,6 +23,8 @@ export function PlayerTabs({
   lesson,
   announcements,
   sessions,
+  leading,
+  trailing,
 }: {
   initialTab?: PlayerTab
   announcementCount: number
@@ -30,6 +32,9 @@ export function PlayerTabs({
   announcements: ReactNode
   /** Round D: the learner's live sessions (only on a batch course). */
   sessions?: ReactNode
+  /** Round E: the slim toolbar around the tabs (breadcrumb before, focus mode after). */
+  leading?: ReactNode
+  trailing?: ReactNode
 }) {
   const TABS = ALL_TABS.filter((tab) => tab.id !== 'sessions' || Boolean(sessions))
   const [active, setActive] = useState<PlayerTab>(initialTab === 'sessions' && !sessions ? 'lesson' : initialTab)
@@ -68,10 +73,12 @@ export function PlayerTabs({
 
   return (
     <div>
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 max-md:-mx-4 max-md:mb-0 max-md:border-b max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:py-2">
+      {leading}
       <div
         role="tablist"
         aria-label="Course player"
-        className="mb-4 flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm max-md:-mx-4 max-md:mb-0 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:px-4 max-md:py-2 max-md:shadow-none"
+        className="flex gap-1 rounded-xl bg-mist-100 p-1 max-md:flex-1"
       >
         {TABS.map((tab) => {
           const selected = tab.id === active
@@ -88,7 +95,7 @@ export function PlayerTabs({
               tabIndex={selected ? 0 : -1}
               onClick={() => select(tab.id)}
               onKeyDown={onKeyDown}
-              className={`inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 sm:flex-none ${selected ? 'bg-slate-950 text-white' : 'text-slate-700 hover:bg-slate-50'}`}
+              className={`inline-flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-600 sm:flex-none ${selected ? 'bg-white text-navy-950 shadow-sm' : 'text-navy-700 hover:bg-white/60'}`}
             >
               <Icon aria-hidden="true" className="size-4" />
               {tab.label}
@@ -100,6 +107,8 @@ export function PlayerTabs({
             </button>
           )
         })}
+      </div>
+      {trailing}
       </div>
       <div
         ref={lessonPanelRef}

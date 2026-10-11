@@ -416,16 +416,22 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
           <h2 className="mt-1 text-xl font-bold text-navy-950">Make the course easy to recognise and preview</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">Upload directly from your device. Media stays private in Sea N Shore storage and is verified before its path can be saved.</p>
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
-            <LearningMediaUploadField
-              courseId={courseId}
-              kind="course_thumbnail"
-              label="Course thumbnail"
-              inputAriaLabel="Course thumbnail file"
-              value={form.thumbnailPath}
-              onChange={(value) => update('thumbnailPath', value)}
-              accept="image/jpeg,image/png,image/webp"
-              previewType="image"
-            />
+            <div>
+              <LearningMediaUploadField
+                courseId={courseId}
+                kind="course_thumbnail"
+                label="Course thumbnail"
+                inputAriaLabel="Course thumbnail file"
+                value={form.thumbnailPath}
+                onChange={(value) => update('thumbnailPath', value)}
+                accept="image/jpeg,image/png,image/webp"
+                previewType="image"
+              />
+              {/* Round E (E8): the catalogue shows the thumbnail at 16:9 with nothing over it. */}
+              <p className="mt-2 text-meta text-muted">
+                Thumbnail guide: 16:9, at least 1280 × 720. Keep the top 20% and the edges free of text so it reads well on every card.
+              </p>
+            </div>
             <LearningMediaUploadField
               courseId={courseId}
               kind="course_trailer"

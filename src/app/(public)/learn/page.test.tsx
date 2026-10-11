@@ -111,6 +111,13 @@ describe('/learn marketplace', () => {
     expect(screen.getByText('Certificate')).toBeInTheDocument()
     expect(screen.getByText('Prepare evidence for SIRE 2.0 interviews')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Trainer verification' })).toHaveAttribute('href', '/learn/teach')
+
+    // Round E (E8): nothing is laid over the thumbnail; the price and category are in the card body.
+    const cover = screen.getByRole('img', { name: 'SIRE 2.0 Readiness for Tanker Officers course cover' }).parentElement!
+    expect(cover).toHaveClass('aspect-video')
+    expect(cover).not.toHaveTextContent('₹20,000')
+    expect(cover).not.toHaveTextContent('SIRE 2.0')
+    expect(screen.getByText('₹20,000').closest('article')).toContainElement(screen.getByRole('link', { name: 'SIRE 2.0 Readiness for Tanker Officers' }))
   })
 
   it('replaces the teaching application CTA with Learning Studio for an approved active trainer', async () => {

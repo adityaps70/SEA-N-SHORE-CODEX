@@ -67,7 +67,7 @@ export function AppHeader({
   const accountItems = accountMenuItems({ canAccessAdmin, organizations, organizationCount })
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
+    <header data-app-header="" className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
       <div className="mx-auto grid min-h-18 w-full max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:gap-5">
         <Wordmark compact />
         <nav aria-label="Primary" className="flex min-w-0 items-center justify-self-center gap-0.5">

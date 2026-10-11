@@ -1,12 +1,11 @@
 /* eslint-disable @next/next/no-img-element -- Learner material images use short-lived signed S3 URLs. */
 
-import Link from 'next/link'
-import type { ReactNode } from 'react'
 import { ExternalLink, FileDown, LockKeyhole } from 'lucide-react'
 import type { LearnerLesson } from '../learner-course-repository'
 import type { LearnerQuiz } from '../learner-quiz-repository'
+import { readingMinutes } from '../reading-time'
+import { ArticleReader } from './article-reader'
 import { AssignmentActivity } from './assignment-activity'
-import { LessonCompletionControl } from './lesson-completion-control'
 import { QuizLessonActivity } from './quiz-lesson-activity'
 import { ResumableLessonMedia } from './resumable-lesson-media'
 import { ScormPlayer } from './scorm-player'
@@ -18,8 +17,6 @@ type Props = {
   mediaUrl: string | null
   quiz: LearnerQuiz | null
   nextLessonHref?: string | null
-  /** Phone-only controls shown beside Mark complete (the course player's "Curriculum n/N" button). */
-  phoneActions?: ReactNode
   /** A rich-text article, already sanitized on the server with its images signed (renderArticleHtml). */
   articleHtml?: string | null
   /** Free preview for a visitor: read or watch only; nothing is recorded. */
@@ -83,16 +80,18 @@ function LockedMaterial({ lesson }: { lesson: LearnerLesson }) {
 /** The material itself (no completion controls). Also used on its own for free previews. */
 export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false }: Props) {
   switch (lesson.lessonType) {
-    case 'article':
+    case 'article': {
+      // Round E (E5): a readable measure (68ch) at the article size (17/30), with the reading time.
       if (lesson.articleFormat === 'html') {
-        return articleHtml ? (
-          // Sanitized with an allow-list on the server (article-html.ts) immediately before rendering.
-          <div className="lesson-article text-[15px] leading-8 text-navy-900" dangerouslySetInnerHTML={{ __html: articleHtml }} />
-        ) : null
+        if (!articleHtml) return null
+        // Sanitized with an allow-list on the server (article-html.ts) immediately before rendering.
+        const article = <div className="lesson-article max-w-[68ch]" dangerouslySetInnerHTML={{ __html: articleHtml }} />
+        return preview ? article : <ArticleReader minutes={readingMinutes(articleHtml, 'html')}>{article}</ArticleReader>
       }
-      return lesson.articleBody ? (
-        <div className="whitespace-pre-wrap text-[15px] leading-8 text-navy-900">{lesson.articleBody}</div>
-      ) : null
+      if (!lesson.articleBody) return null
+      const plain = <div className="lesson-article max-w-[68ch] whitespace-pre-wrap">{lesson.articleBody}</div>
+      return preview ? plain : <ArticleReader minutes={readingMinutes(lesson.articleBody, 'plain')}>{plain}</ArticleReader>
+    }
 
     case 'image':
       return mediaUrl ? (
@@ -240,55 +239,24 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
   }
 }
 
+/**
+ * A lesson in the course player: the material, plus the automatic completion for "view" lessons.
+ * Completing and moving on live in the player's one bottom bar (LessonActionBar, round E).
+ */
 export function MaterialPlayer(props: Props) {
-  const { lesson, slug, nextLessonHref = null, phoneActions = null } = props
-  if (!lesson.isAvailable) {
-    return (
-      <>
-        <LockedMaterial lesson={lesson} />
-        {phoneActions ? <div className="mt-6 flex md:hidden">{phoneActions}</div> : null}
-      </>
-    )
-  }
-
-  const showManualCompletion = lesson.completionRule === 'manual'
-  const markViewed = lesson.completionRule === 'view'
-  const completion = showManualCompletion ? (
-    <LessonCompletionControl
-      slug={slug}
-      lessonId={lesson.id}
-      initiallyCompleted={lesson.completed}
-      nextLessonHref={nextLessonHref}
-    />
-  ) : lesson.completed && lesson.lessonType !== 'quiz' && lesson.lessonType !== 'assignment' && lesson.lessonType !== 'scorm' ? (
-    <p className="text-sm font-bold text-emerald-700 max-md:self-center">Completed</p>
-  ) : null
+  const { lesson, slug } = props
+  if (!lesson.isAvailable) return <LockedMaterial lesson={lesson} />
 
   return (
-    <>
     <div className="space-y-6">
-      {markViewed ? <ViewCompletionBeacon slug={slug} lessonId={lesson.id} alreadyCompleted={lesson.completed} /> : null}
+      {lesson.completionRule === 'view' ? <ViewCompletionBeacon slug={slug} lessonId={lesson.id} alreadyCompleted={lesson.completed} /> : null}
       <MaterialBody {...props} />
       {lesson.completionRule === 'media_percentage' && !lesson.completed ? (
-        <p className="text-xs font-medium text-muted">
+        <p className="text-meta text-muted">
           Completion is recorded automatically after {lesson.completionThreshold ?? 90}% of this media is played.
           {lesson.mediaPercent > 0 ? ` Current progress: ${lesson.mediaPercent}%.` : ''}
         </p>
       ) : null}
-      {completion ? (
-        // Desktop keeps the completion control on its own line; phones put the curriculum button beside it.
-        <div className="max-md:flex max-md:flex-wrap max-md:items-start max-md:gap-3 max-md:[&>*]:flex-1">
-          {phoneActions}
-          {completion}
-        </div>
-      ) : null}
-      {nextLessonHref && lesson.completed && lesson.lessonType !== 'quiz' ? (
-        // Phones have one "Next material" pill in the lesson navigation below instead.
-        <Link href={nextLessonHref} className="inline-flex text-sm font-bold text-teal-700 hover:text-teal-800 max-md:hidden">Continue to next material →</Link>
-      ) : null}
     </div>
-    {/* Outside the space-y column so a phone-only last child never adds desktop spacing. */}
-    {!completion && phoneActions ? <div className="mt-6 flex md:hidden">{phoneActions}</div> : null}
-    </>
   )
 }

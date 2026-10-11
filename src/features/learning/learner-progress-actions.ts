@@ -28,6 +28,8 @@ type SavePlaybackPositionActionResult =
       lastPositionSeconds: number
       /** How far the learner has reached (the player lets them seek a few seconds past it). */
       furthestPositionSeconds?: number
+      /** The lesson is complete (its completion rule is met), e.g. after enough of a video was played. */
+      completed?: boolean
     }
   | { ok: false; error: string }
 
@@ -133,6 +135,7 @@ export async function saveLearningPlaybackPosition(
       ok: true,
       lessonId: result.lessonId,
       lastPositionSeconds: result.lastPositionSeconds,
+      ...('completed' in result && result.completed ? { completed: true } : {}),
       ...('furthestPositionSeconds' in result && typeof result.furthestPositionSeconds === 'number'
         ? { furthestPositionSeconds: result.furthestPositionSeconds }
         : {}),
