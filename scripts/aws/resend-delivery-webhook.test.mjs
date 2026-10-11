@@ -22,7 +22,11 @@ const EVENTS = ['email.delivered', 'email.bounced', 'email.complained', 'email.d
 const API_KEY = 're_test_admin_' + randomBytes(8).toString('hex')
 const SENDING_KEY = 're_test_sending_' + randomBytes(8).toString('hex')
 
-function fakeWorld(order, { endpointLive = true, keyCanManage = true, tracking = { open: true, click: true } } = {}) {
+function fakeWorld(order, { endpointLive = true, keyCanManage = true, tracking = { open: true, click: true }, staleTaskRequests = 0 } = {}) {
+  // Two web tasks behind the load balancer take turns; with staleTaskRequests the second one keeps answering 503
+  // (its cached "no secret") for that many of its requests after the secret is stored, like run 38123704521.
+  let endpointRequests = 0
+  let staleAnswered = 0
   const state = { webhooks: [], requests: [], domain: { id: 'dom-1', name: 'mail.seanshore.in', open_tracking: tracking.open, click_tracking: tracking.click }, storedSecret: null }
   const server = http.createServer((req, res) => {
     let body = ''
@@ -35,7 +39,12 @@ function fakeWorld(order, { endpointLive = true, keyCanManage = true, tracking =
       if (url.pathname === '/api/email/resend/webhook') {
         if (!endpointLive) return send(404, {})
         const secret = state.storedSecret
+        endpointRequests += 1
         if (!secret) return send(503, { error: 'webhook_not_configured' })
+        if (endpointRequests % 2 === 0 && staleAnswered < staleTaskRequests) {
+          staleAnswered += 1
+          return send(503, { error: 'webhook_not_configured' })
+        }
         const id = req.headers['svix-id']; const ts = req.headers['svix-timestamp']; const sig = req.headers['svix-signature']
         const expected = 'v1,' + createHmac('sha256', Buffer.from(secret.slice(6), 'base64')).update(`${id}.${ts}.${body}`).digest('base64')
         return sig === expected ? send(200, { ok: true, status: 'ignored' }) : send(400, { error: 'invalid_signature' })
@@ -222,6 +231,16 @@ test('both actions read the admin key first, and never read or use the sending k
     assert.ok(resendCalls.length > 0)
     assert.ok(resendCalls.every((request) => request.auth === `Bearer ${API_KEY}`), 'every Resend call uses the admin key')
     assert.ok(state.requests.every((request) => request.auth !== `Bearer ${SENDING_KEY}`), 'the sending key is never sent anywhere')
+  })
+})
+
+test('apply waits until every web task has the new secret before it calls the endpoint verified', async () => {
+  await withWorld({ staleTaskRequests: 4 }, async ({ exec, state }) => {
+    const result = await exec('apply-once')
+    assert.equal(result.code, 0, result.stderr)
+    assert.equal(result.stdout.trim().split('\n').at(-1), 'RESEND_DELIVERY_WEBHOOK_APPLY_VERIFIED=true')
+    // Probes went on past the stale task's 503s instead of stopping at the first good answer.
+    assert.ok(state.requests.filter((request) => request.path === '/api/email/resend/webhook').length >= 12)
   })
 })
 
