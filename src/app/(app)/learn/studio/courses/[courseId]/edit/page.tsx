@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cache } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, Archive, BadgeCheck, Clock3, FilePenLine } from 'lucide-react'
@@ -29,8 +30,47 @@ import { courseAnnouncementRepository } from '@/features/learning/course-announc
 import { courseCommunityRepository } from '@/features/learning/course-community-repository'
 import { CourseAnnouncementsPanel } from '@/features/learning/components/course-announcements-panel'
 import { CourseCommunityPanel } from '@/features/learning/components/course-community-panel'
+import { CourseEditorSteps, type CourseEditorStep } from '@/features/learning/components/course-editor-steps'
+import type { MentorMaterialCurriculum } from '@/features/learning/mentor-material-repository'
 
-export const metadata: Metadata = { title: 'Edit course' }
+/** One load per request, shared by the page and its tab title. */
+const loadOwnedCourse = cache(async (courseId: string) => {
+  const user = await requireAwsUser()
+  return { user, course: await courseRepository.getOwnedCourse(user.id, courseId) }
+})
+
+function pageHeading(course: MentorOwnedCourseDetail) {
+  if (course.revisionOf) return 'Edit published course'
+  return canMentorEditCourse(course.status) && !course.revisionClosed ? 'Edit course' : 'View course'
+}
+
+/** Round E (E9): the tab title matches the heading ("View course" for a read-only course). */
+export async function generateMetadata({ params }: { params: Promise<{ courseId: string }> }): Promise<Metadata> {
+  const { courseId } = await params
+  const { course } = await loadOwnedCourse(courseId)
+  if (!course) return { title: 'Course' }
+  return { title: `${pageHeading(course)} · ${course.title}` }
+}
+
+/** Round E (E9): the editor's sections, each with ✓ or "needs attention". */
+function editorSteps(course: MentorOwnedCourseDetail, curriculum: MentorMaterialCurriculum, extras: { announcements: boolean; community: boolean }): CourseEditorStep[] {
+  const detailsDone = Boolean(course.title.trim() && course.description?.trim() && course.learningOutcomes?.some((outcome) => outcome.trim()))
+  const pricingDone = course.accessType === 'free' || (course.priceMinor ?? 0) > 0
+  const sections = curriculum.sections
+  const curriculumDone = sections.length > 0
+    && sections.every((section) => section.materials.length > 0)
+    && sections.every((section) => section.materials.every((material) => material.materialType !== 'quiz' || (material.quiz?.questions.length ?? 0) > 0))
+  const steps: CourseEditorStep[] = [
+    { id: 'course-details', label: 'Details', state: detailsDone ? 'done' : 'attention', hint: detailsDone ? undefined : 'Add a title, description and learning outcomes.' },
+    { id: 'course-media', label: 'Media', state: course.thumbnailPath ? 'done' : 'attention', hint: course.thumbnailPath ? undefined : 'Add a course thumbnail.' },
+    { id: 'course-pricing', label: 'Pricing', state: pricingDone ? 'done' : 'attention', hint: pricingDone ? undefined : 'Set a price for a paid course.' },
+    { id: 'course-certificate', label: 'Certificate', state: course.certificateEnabled ? 'done' : 'none', hint: course.certificateEnabled ? undefined : 'Optional: no certificate is issued.' },
+    { id: 'course-curriculum', label: 'Curriculum', state: curriculumDone ? 'done' : 'attention', hint: curriculumDone ? undefined : 'Every section needs a material, and every quiz needs questions.' },
+  ]
+  if (extras.announcements) steps.push({ id: 'course-announcements', label: 'Learners & announcements', state: 'none' })
+  if (extras.community) steps.push({ id: 'course-community', label: 'Community', state: 'none' })
+  return steps
+}
 
 function formatDate(value: string | null | undefined) {
   if (!value) return null
@@ -52,7 +92,7 @@ function ReviewerNote({ course, label = 'Reviewer note' }: { course: MentorOwned
   const reviewedOn = formatDate(review.reviewedAt)
   return (
     <div className="mt-3 rounded-xl border border-navy-950/10 bg-white/70 p-3">
-      <p className="text-xs font-bold uppercase tracking-[0.12em]">
+      <p className="text-meta font-semibold">
         {label}{reviewedOn ? ` · ${reviewedOn}` : ''}
       </p>
       <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{review.note}</p>
@@ -86,6 +126,7 @@ function RevisionBanner({ course }: { course: MentorOwnedCourseDetail }) {
           Learners keep the live version while Sea N Shore reviews your changes. When they’re approved, they replace it and every learner’s progress carries over. To change something, withdraw them from review first.
         </p>
         {course.lastReview?.decision === 'changes_requested' ? <ReviewerNote course={course} label="Feedback from the last review" /> : null}
+        <Link href={`/learn/studio/courses/${course.id}/changes`} className="mt-3 inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:underline">See what changed, side by side</Link>
         <CourseWithdrawControl courseId={course.id} />
       </section>
     )
@@ -102,6 +143,7 @@ function RevisionBanner({ course }: { course: MentorOwnedCourseDetail }) {
         Learners keep seeing the live version until Sea N Shore approves these changes. Save as you go, then submit them for review.
       </p>
       {requested ? <ReviewerNote course={course} /> : null}
+      <Link href={`/learn/studio/courses/${course.id}/changes`} className="mt-3 inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:underline">See what changed, side by side</Link>
       <CourseRevisionDiscardControl revisionCourseId={course.id} liveCourseId={live.courseId} />
     </section>
   )
@@ -131,7 +173,7 @@ function StatusBanner({ course }: { course: MentorOwnedCourseDetail }) {
         <p className="mt-1 text-sm leading-6">Edit the course below and save, then resubmit it. The reviewer will see what you changed since their review.</p>
         {course.lastReview?.note ? <ReviewerNote course={course} /> : course.adminReviewNote ? (
           <div className="mt-3 rounded-xl border border-navy-950/10 bg-white/70 p-3">
-            <p className="text-xs font-bold uppercase tracking-[0.12em]">Reviewer note</p>
+            <p className="text-meta font-semibold">Reviewer note</p>
             <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{course.adminReviewNote}</p>
           </div>
         ) : null}
@@ -190,8 +232,7 @@ export default async function EditMentorCoursePage({
   params: Promise<{ courseId: string }>
 }) {
   const { courseId } = await params
-  const user = await requireAwsUser()
-  const course = await courseRepository.getOwnedCourse(user.id, courseId)
+  const { user, course } = await loadOwnedCourse(courseId)
   if (!course) return notFound()
 
   const [curriculum, sellerFee, plans] = await Promise.all([
@@ -228,6 +269,9 @@ export default async function EditMentorCoursePage({
       courseCommunityRepository.getLinkForManager(user.id, liveCourseId).catch(() => null),
     ])
 
+  const heading = pageHeading(course)
+  const steps = editorSteps(course, curriculum, { announcements: Boolean(announcementData), community: Boolean(communityLink) })
+
   const initialValue: CourseDraftInput = {
     // A draft copy shows (and keeps) the live course's address.
     slug: course.revisionOf?.slug ?? course.slug,
@@ -252,18 +296,18 @@ export default async function EditMentorCoursePage({
 
   return (
     <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
-      <MobilePageBar backHref="/learn/studio" title={isRevision ? 'Edit published course' : editable ? 'Edit course' : 'View course'} />
+      <MobilePageBar backHref="/learn/studio" title={heading} />
       <WorksBestOnComputer>The course editor and SCORM upload work best on a computer. Everything still works here.</WorksBestOnComputer>
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
       </Link>
 
-      <CourseEditSession initialDetailsRevision={course.detailsRevision}>
+      <CourseEditSession initialDetailsRevision={course.detailsRevision} saveBar={editable}>
         <section className="mt-5 rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
-          <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">
-            <FilePenLine aria-hidden="true" className="size-4" /> {isRevision ? 'Changes to a published course' : editable ? 'Private course draft' : 'Course (read-only)'}
+          <h1 className="text-page-title font-bold text-navy-950">{heading}</h1>
+          <p className="mt-1 inline-flex items-center gap-2 text-meta font-semibold text-teal-800">
+            <FilePenLine aria-hidden="true" className="size-4" /> {isRevision ? 'Changes to a published course' : editable ? 'Private course draft' : 'Read-only'}
           </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-navy-950 sm:text-4xl">{isRevision ? 'Edit published course' : editable ? 'Edit course' : 'View course'}</h1>
           <p className="mt-2 break-words text-lg font-semibold text-navy-900">{course.title}</p>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
             {isRevision
@@ -276,7 +320,10 @@ export default async function EditMentorCoursePage({
 
         <StatusBanner course={course} />
 
-        <div className="mt-5">
+        <div className="mt-5 grid gap-5 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start">
+        <CourseEditorSteps steps={steps} />
+        <div className="min-w-0">
+        <div>
           <CourseForm
             key={course.id}
             initialValue={initialValue}
@@ -292,7 +339,7 @@ export default async function EditMentorCoursePage({
           <CoursePricingPlansPanel courseId={course.id} paid={course.accessType === 'paid'} plans={plans} readOnly={!editable} />
         </div>
 
-        <div className="mt-5">
+        <div id="course-certificate" className="mt-5 scroll-mt-24">
           <CertificateSettingsPanel
             courseId={course.id}
             initial={course.certificate ?? DEFAULT_CERTIFICATE_SETTINGS}
@@ -302,7 +349,7 @@ export default async function EditMentorCoursePage({
           />
         </div>
 
-        <div className="mt-5">
+        <div id="course-curriculum" className="mt-5 scroll-mt-24">
           <MentorCurriculumEditor courseId={course.id} curriculum={editableCurriculum} readOnly={!editable} />
         </div>
 
@@ -315,14 +362,16 @@ export default async function EditMentorCoursePage({
             />
           </div>
         ) : null}
-      </CourseEditSession>
 
-      {announcementData || communityLink ? (
-        <div className="mt-5 space-y-5">
-          {announcementData ? <CourseAnnouncementsPanel data={announcementData} /> : null}
-          {communityLink ? <CourseCommunityPanel link={communityLink} /> : null}
+        {announcementData || communityLink ? (
+          <div className="mt-5 space-y-5">
+            {announcementData ? <div id="course-announcements" className="scroll-mt-24"><CourseAnnouncementsPanel data={announcementData} /></div> : null}
+            {communityLink ? <div id="course-community" className="scroll-mt-24"><CourseCommunityPanel link={communityLink} /></div> : null}
+          </div>
+        ) : null}
         </div>
-      ) : null}
+        </div>
+      </CourseEditSession>
     </div>
   )
 }

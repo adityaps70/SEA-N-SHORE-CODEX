@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   updateMaterial: vi.fn(),
   updateNavigation: vi.fn(),
   processScorm: vi.fn(),
+  reorderSection: vi.fn(),
+  reorderMaterial: vi.fn(),
 }))
 
 // The rich-text editor has its own test; here a plain stand-in keeps these material-policy tests simple.
@@ -32,6 +34,8 @@ vi.mock('../mentor-curriculum-actions', () => ({
   deleteCurriculumLesson: mocks.deleteMaterial,
   moveCurriculumLesson: mocks.moveMaterial,
   saveCurriculumQuiz: mocks.saveQuiz,
+  reorderCurriculumSection: mocks.reorderSection,
+  reorderCurriculumLesson: mocks.reorderMaterial,
 }))
 vi.mock('../mentor-material-actions', () => ({
   createCurriculumMaterial: mocks.createMaterial,
@@ -332,7 +336,69 @@ describe('MentorCurriculumEditor native materials', () => {
     expect(screen.getByText('Evidence and crew preparation')).toBeInTheDocument()
     expect(screen.queryByLabelText('New section title')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add material to Module 1 · Inspection readiness' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Edit Evidence and crew preparation' })).toBeDisabled()
-    expect(screen.getByLabelText('Course navigation mode')).toBeDisabled()
+    // Round E (E9): a read-only view shows no edit controls at all, and names the navigation mode in words.
+    expect(screen.queryByRole('button', { name: 'Edit Evidence and crew preparation' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Move / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Course navigation mode')).not.toBeInTheDocument()
+    expect(screen.getByText(/Free navigation/)).toBeInTheDocument()
+  })
+
+  describe('learning round E (E9): collapsible sections and drag and drop', () => {
+    const secondSectionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const twoSections: MentorMaterialCurriculum = {
+      ...curriculum,
+      sections: [
+        curriculum.sections[0]!,
+        { ...curriculum.sections[0]!, id: secondSectionId, title: 'Module 2 · Inspection day', materials: [] },
+      ],
+    }
+
+    it('opens the first section, collapses the rest, and toggles them', () => {
+      render(<MentorCurriculumEditor courseId={courseId} curriculum={twoSections} />)
+      const first = screen.getByRole('button', { name: 'Collapse section 1: Module 1 · Inspection readiness' })
+      const second = screen.getByRole('button', { name: 'Expand section 2: Module 2 · Inspection day' })
+      expect(first).toHaveAttribute('aria-expanded', 'true')
+      expect(second).toHaveAttribute('aria-expanded', 'false')
+      expect(document.getElementById(second.getAttribute('aria-controls')!)).not.toBeVisible()
+
+      fireEvent.click(second)
+      expect(screen.getByRole('button', { name: 'Collapse section 2: Module 2 · Inspection day' })).toHaveAttribute('aria-expanded', 'true')
+      fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+      expect(screen.getByRole('button', { name: 'Expand section 1: Module 1 · Inspection readiness' })).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    it('drops a dragged material at the new place in its section, and a dragged section among sections', async () => {
+      mocks.reorderMaterial.mockResolvedValue({ ok: true })
+      mocks.reorderSection.mockResolvedValue({ ok: true })
+      const { container } = render(<MentorCurriculumEditor courseId={courseId} curriculum={twoSections} />)
+      const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+
+      const handles = container.querySelectorAll('[draggable="true"]')
+      // Two section handles and the first section's materials.
+      const quizCard = screen.getByText('SIRE knowledge check').closest('article')!
+      const articleCard = screen.getByText('Evidence and crew preparation').closest('article')!
+      fireEvent.dragStart(quizCard.querySelector('[draggable="true"]')!, { dataTransfer })
+      fireEvent.dragOver(articleCard, { dataTransfer })
+      fireEvent.drop(articleCard, { dataTransfer })
+      await waitFor(() => expect(mocks.reorderMaterial).toHaveBeenCalledWith(courseId, quizMaterialId, 0))
+
+      fireEvent.dragStart(handles[0]!, { dataTransfer })
+      const secondSection = screen.getByText('Module 2 · Inspection day').closest('section')!
+      fireEvent.dragOver(secondSection, { dataTransfer })
+      fireEvent.drop(secondSection, { dataTransfer })
+      await waitFor(() => expect(mocks.reorderSection).toHaveBeenCalledWith(courseId, sectionId, 1))
+    })
+
+    it('ignores a material dropped on a section header (materials stay in their section)', () => {
+      render(<MentorCurriculumEditor courseId={courseId} curriculum={twoSections} />)
+      const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' }
+      const quizCard = screen.getByText('SIRE knowledge check').closest('article')!
+      fireEvent.dragStart(quizCard.querySelector('[draggable="true"]')!, { dataTransfer })
+      const secondSection = screen.getByText('Module 2 · Inspection day').closest('section')!
+      fireEvent.drop(secondSection, { dataTransfer })
+      expect(mocks.reorderSection).not.toHaveBeenCalled()
+      expect(mocks.reorderMaterial).not.toHaveBeenCalled()
+    })
   })
 })

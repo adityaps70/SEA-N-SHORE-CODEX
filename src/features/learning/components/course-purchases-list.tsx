@@ -54,8 +54,7 @@ export function CoursePurchasesList({ purchases, className = 'mt-10' }: { purcha
     <section id="purchases" aria-labelledby="purchases-title" className={`${className} scroll-mt-24`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Receipts</p>
-          <h2 id="purchases-title" className="mt-1 text-2xl font-bold tracking-tight text-navy-950">Purchases</h2>
+          <h2 id="purchases-title" className="text-section-title font-bold text-navy-950">Purchases</h2>
         </div>
         <p className="max-w-lg text-sm leading-6 text-muted">Paid courses you bought on Sea N Shore. Quote the order ID if you contact us about a payment.</p>
       </div>

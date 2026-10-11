@@ -282,8 +282,7 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
       <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-6 border-0 p-0">
       {!isEditing && publisherOptions.length > 0 ? (
         <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Publishing identity</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">Publish as</h2>
+          <h2 className="text-section-title font-bold text-navy-950">Publish as</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
             Build personally as a verified trainer or on behalf of an organization where you manage LMS content.
           </p>
@@ -312,7 +311,7 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-navy-950">{option.name}</span>
-                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-semibold text-muted">
                           {option.kind === 'personal' ? 'Personal' : 'Organization'}
                         </span>
                       </div>
@@ -354,15 +353,14 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
 
       {isEditing && publisherName ? (
         <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50 p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Publishing identity</p>
+          <p className="text-meta font-semibold text-muted">Publishing identity</p>
           <p className="mt-1 text-sm font-bold text-navy-950">{publisherName}</p>
           <p className="mt-1 text-xs text-muted">The publishing identity is locked after course creation.</p>
         </section>
       ) : null}
 
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Course identity</p>
-        <h2 className="mt-1 text-xl font-bold text-navy-950">Build a practical maritime learning experience</h2>
+      <section id="course-details" className="scroll-mt-24 rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+        <h2 className="text-section-title font-bold text-navy-950">Details</h2>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">Start with the promise, audience and skill level. Sea N Shore reviews every course before publication.</p>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -411,9 +409,8 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
       </section>
 
       {courseId ? (
-        <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Course media</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">Make the course easy to recognise and preview</h2>
+        <section id="course-media" className="scroll-mt-24 rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <h2 className="text-section-title font-bold text-navy-950">Media</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">Upload directly from your device. Media stays private in Sea N Shore storage and is verified before its path can be saved.</p>
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div>
@@ -426,6 +423,7 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
                 onChange={(value) => update('thumbnailPath', value)}
                 accept="image/jpeg,image/png,image/webp"
                 previewType="image"
+                readOnly={readOnly}
               />
               {/* Round E (E8): the catalogue shows the thumbnail at 16:9 with nothing over it. */}
               <p className="mt-2 text-meta text-muted">
@@ -441,13 +439,14 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
               onChange={(value) => update('trailerPath', value)}
               accept="video/mp4,video/webm"
               previewType="video"
+              readOnly={readOnly}
             />
           </div>
         </section>
       ) : null}
 
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Learning design</p>
+        <h2 className="text-card-title font-semibold text-navy-950">Learning design</h2>
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <label className="text-sm font-semibold text-navy-950">Learning outcomes
             <textarea aria-label="Learning outcomes" className={`${inputClassName()} min-h-28 resize-y`} value={form.learningOutcomes} onChange={(event) => update('learningOutcomes', event.target.value)} />
@@ -464,8 +463,8 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
         </div>
       </section>
 
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Access & recognition</p>
+      <section id="course-pricing" className="scroll-mt-24 rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+        <h2 className="text-section-title font-bold text-navy-950">Pricing</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-semibold text-navy-950">Access type
             <select aria-label="Access type" className={inputClassName()} value={form.accessType} onChange={(event) => update('accessType', event.target.value as FormState['accessType'])}>
@@ -518,7 +517,15 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
         </div>
       ) : null}
 
-      {readOnly ? null : isEditing ? (
+      {readOnly ? null : isEditing && session.hasSaveBar ? (
+        // Round E (E9): the page's one save bar saves these details along with everything else.
+        saveState.kind === 'error' ? (
+          <p role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
+            <AlertCircle aria-hidden="true" className="mt-1 size-4 shrink-0 text-rose-700" />
+            <span>Course details not saved: {saveState.message}</span>
+          </p>
+        ) : null
+      ) : isEditing ? (
         <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur md:bottom-4">
           <button type="submit" disabled={saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60">
             {saving ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}

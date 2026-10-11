@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition, type DragEvent } from 'react'
 import {
   AlertCircle,
+  GripVertical,
   ArrowDown,
   ArrowUp,
   CheckCircle2,
@@ -22,6 +23,8 @@ import {
   deleteCurriculumSection,
   moveCurriculumLesson,
   moveCurriculumSection,
+  reorderCurriculumLesson,
+  reorderCurriculumSection,
   saveCurriculumQuiz,
   updateCurriculumSection,
 } from '../mentor-curriculum-actions'
@@ -545,6 +548,47 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
   const [quizDraft, setQuizDraft] = useState<QuizDraftState>(() => quizStateFromPersisted(null))
 
   const allMaterials = useMemo(() => curriculum.sections.flatMap((section) => section.materials), [curriculum.sections])
+  // Round E (E9): sections collapse (the first starts open), and sections and materials can be dragged into place.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set(curriculum.sections.slice(1).map((section) => section.id)))
+  const [dragging, setDragging] = useState<{ kind: 'section' | 'material'; id: string; sectionId?: string } | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  function toggleSection(sectionId: string) {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(sectionId)) next.delete(sectionId)
+      else next.add(sectionId)
+      return next
+    })
+  }
+
+  function dragStart(event: DragEvent, item: { kind: 'section' | 'material'; id: string; sectionId?: string }) {
+    event.dataTransfer.effectAllowed = 'move'
+    // Firefox starts a drag only when some data is set.
+    event.dataTransfer.setData('text/plain', item.id)
+    setDragging(item)
+  }
+
+  function dragOver(event: DragEvent, targetId: string, kind: 'section' | 'material', sectionId?: string) {
+    if (!dragging || dragging.kind !== kind || (kind === 'material' && dragging.sectionId !== sectionId)) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (dropTarget !== targetId) setDropTarget(targetId)
+  }
+
+  function drop(event: DragEvent, targetIndex: number, kind: 'section' | 'material', sectionId?: string) {
+    event.preventDefault()
+    const item = dragging
+    setDragging(null)
+    setDropTarget(null)
+    if (!item || item.kind !== kind || (kind === 'material' && item.sectionId !== sectionId)) return
+    runAction(
+      () => kind === 'section'
+        ? reorderCurriculumSection(courseId, item.id, targetIndex)
+        : reorderCurriculumLesson(courseId, item.id, targetIndex),
+      kind === 'section' ? 'Section moved.' : 'Material moved.',
+    )
+  }
 
   // Open drafts that have not been saved yet. Each is registered with the page so
   // "Submit for review" saves it first and leaving the page warns about it.
@@ -708,10 +752,14 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Learning experience</p>
-          <h2 className="mt-1 text-2xl font-bold text-navy-950">Curriculum</h2>
+          <h2 className="text-section-title font-bold text-navy-950">Curriculum</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">Organise the course into sections and add its materials. Uploaded photos, videos, audio, PDFs and SCORM packages stay inside the Sea N Shore learner experience.</p>
         </div>
+        {readOnly ? (
+          <p className="rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-sm text-teal-950">
+            <span className="font-bold">Course navigation:</span> {curriculum.navigationMode === 'sequential' ? 'Lessons unlock in order' : 'Free navigation'}
+          </p>
+        ) : (
         <div className="min-w-64 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-xs leading-5 text-teal-950">
           <p className="font-bold">Course navigation</p>
           <select
@@ -725,7 +773,20 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
             <option value="sequential">Sequential navigation</option>
           </select>
         </div>
+        )}
       </div>
+
+      {curriculum.sections.length > 1 ? (
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setCollapsed(collapsed.size === 0 ? new Set(curriculum.sections.map((section) => section.id)) : new Set())}
+            className="min-h-9 cursor-pointer rounded-lg px-2 text-meta font-semibold text-ocean-700 hover:bg-ocean-50"
+          >
+            {collapsed.size === 0 ? 'Collapse all' : 'Expand all'}
+          </button>
+        </div>
+      ) : null}
 
       {message ? (
         <div role={message.tone === 'error' ? 'alert' : 'status'} className={`mt-4 flex items-start gap-2 rounded-xl px-4 py-3 text-sm ${message.tone === 'error' ? 'border border-rose-200 bg-rose-50 text-rose-900' : 'border border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
@@ -760,19 +821,54 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
           </div>
         ) : null}
 
-        {curriculum.sections.map((section, sectionIndex) => (
-          <section key={section.id} className="overflow-hidden rounded-2xl border border-mist-200 bg-mist-50/30">
-            <header className="flex flex-col gap-3 border-b border-mist-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        {curriculum.sections.map((section, sectionIndex) => {
+          // A section being worked in stays open.
+          const open = !collapsed.has(section.id)
+            || section.materials.some((material) => material.id === editingMaterialId || material.id === quizEditingMaterialId)
+            || addingMaterialSectionId === section.id
+          const panelId = `curriculum-section-panel-${section.id}`
+          return (
+          <section
+            key={section.id}
+            onDragOver={(event) => dragOver(event, section.id, 'section')}
+            onDrop={(event) => drop(event, sectionIndex, 'section')}
+            className={`overflow-hidden rounded-2xl border bg-mist-50/30 ${dropTarget === section.id && dragging?.kind === 'section' ? 'border-ocean-600 ring-2 ring-ocean-600/30' : 'border-mist-200'} ${dragging?.id === section.id ? 'opacity-60' : ''}`}
+          >
+            <header className={`flex flex-col gap-3 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between ${open ? 'border-b border-mist-200' : ''}`}>
+              <div className="flex min-w-0 items-start gap-2">
+                {readOnly ? null : (
+                  <span
+                    draggable
+                    onDragStart={(event) => dragStart(event, { kind: 'section', id: section.id })}
+                    onDragEnd={() => { setDragging(null); setDropTarget(null) }}
+                    title="Drag to reorder (or use the arrow buttons)"
+                    className="mt-1 hidden cursor-grab rounded p-1 text-navy-500 hover:bg-mist-100 active:cursor-grabbing md:block"
+                  >
+                    <GripVertical aria-hidden="true" className="size-4" />
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  aria-label={`${open ? 'Collapse' : 'Expand'} section ${sectionIndex + 1}: ${section.title}`}
+                  onClick={() => toggleSection(section.id)}
+                  className="mt-0.5 grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-navy-500 hover:bg-mist-100"
+                >
+                  <ChevronDown aria-hidden="true" className={`size-4 transition-transform ${open ? '' : '-rotate-90'}`} />
+                </button>
               <div className="min-w-0">
-                <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Section {sectionIndex + 1}</p>
+                <p className="text-meta font-medium text-muted">Section {sectionIndex + 1} · {section.materials.length} material{section.materials.length === 1 ? '' : 's'}</p>
                 {editingSectionId === section.id ? (
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <input aria-label={`Section title for ${section.title}`} className="min-h-10 min-w-64 flex-1 rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm font-semibold text-navy-950 outline-none focus:border-teal-500" value={editingSectionTitle} onChange={(event) => setEditingSectionTitle(event.target.value)} />
                     <button type="button" disabled={pending} onClick={() => runSave(saveSectionTitle)} className="rounded-lg bg-navy-950 px-3 py-2 text-xs font-bold text-white enabled:hover:bg-navy-800 transition-colors">Save title</button>
                     <button type="button" onClick={() => setEditingSectionId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
                   </div>
-                ) : <h3 className="mt-1 truncate text-lg font-bold text-navy-950">{section.title}</h3>}
+                ) : <h3 className="mt-0.5 truncate text-card-title font-semibold text-navy-950">{section.title}</h3>}
               </div>
+              </div>
+              {readOnly ? null : (
               <div className="flex flex-wrap items-center gap-1">
                 <button type="button" aria-label={`Move ${section.title} up`} disabled={pending || sectionIndex === 0} onClick={() => runAction(() => moveCurriculumSection(courseId, section.id, 'up'))} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowUp className="size-4" /></button>
                 <button type="button" aria-label={`Move ${section.title} down`} disabled={pending || sectionIndex === curriculum.sections.length - 1} onClick={() => runAction(() => moveCurriculumSection(courseId, section.id, 'down'))} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowDown className="size-4" /></button>
@@ -792,17 +888,35 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                   </>
                 ) : <button type="button" aria-label={`Delete ${section.title}`} disabled={pending} onClick={() => setConfirmDeleteSectionId(section.id)} className="rounded-lg p-2 text-rose-700 hover:bg-rose-50"><Trash2 className="size-4" /></button>}
               </div>
+              )}
             </header>
 
-            <div className="space-y-3 p-4">
+            <div id={panelId} hidden={!open} className="space-y-3 p-4">
               {section.materials.length === 0 ? <p className="rounded-xl border border-dashed border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">This section needs at least one material before the course can be submitted.</p> : null}
 
               {section.materials.map((material, materialIndex) => (
-                <article key={material.id} className="rounded-2xl border border-mist-200 bg-white p-4">
+                <article
+                  key={material.id}
+                  onDragOver={(event) => { event.stopPropagation(); dragOver(event, material.id, 'material', section.id) }}
+                  onDrop={(event) => { event.stopPropagation(); drop(event, materialIndex, 'material', section.id) }}
+                  className={`rounded-2xl border bg-white p-4 ${dropTarget === material.id && dragging?.kind === 'material' ? 'border-ocean-600 ring-2 ring-ocean-600/30' : 'border-mist-200'} ${dragging?.id === material.id ? 'opacity-60' : ''}`}
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
+                    <div className="flex min-w-0 items-start gap-2">
+                    {readOnly ? null : (
+                      <span
+                        draggable
+                        onDragStart={(event) => { event.stopPropagation(); dragStart(event, { kind: 'material', id: material.id, sectionId: section.id }) }}
+                        onDragEnd={() => { setDragging(null); setDropTarget(null) }}
+                        title="Drag to reorder within this section (or use the arrow buttons)"
+                        className="mt-0.5 hidden cursor-grab rounded p-1 text-navy-500 hover:bg-mist-100 active:cursor-grabbing md:block"
+                      >
+                        <GripVertical aria-hidden="true" className="size-4" />
+                      </span>
+                    )}
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-mist-100 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">{material.materialType.replaceAll('_', ' ')}</span>
+                        <span className="rounded-full bg-mist-100 px-2.5 py-1 text-xs font-semibold capitalize text-navy-800">{material.materialType.replaceAll('_', ' ')}</span>
                         <span className="text-xs font-semibold text-muted">Material {materialIndex + 1}</span>
                         {!material.isPublished ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">Unpublished</span> : null}
                         {material.releaseMode !== 'immediate' ? <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold capitalize text-sky-700">{material.releaseMode}</span> : null}
@@ -812,6 +926,8 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                       {material.summary ? <p className="mt-1 text-sm leading-6 text-muted">{material.summary}</p> : null}
                       {material.scorm?.processingError ? <p className="mt-2 text-xs font-semibold text-rose-700">{material.scorm.processingError}</p> : null}
                     </div>
+                    </div>
+                    {readOnly ? null : (
                     <div className="flex flex-wrap items-center gap-1">
                       <button type="button" aria-label={`Move ${material.title} up`} disabled={pending || materialIndex === 0} onClick={() => runAction(() => moveCurriculumLesson(courseId, material.id, 'up'))} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowUp className="size-4" /></button>
                       <button type="button" aria-label={`Move ${material.title} down`} disabled={pending || materialIndex === section.materials.length - 1} onClick={() => runAction(() => moveCurriculumLesson(courseId, material.id, 'down'))} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowDown className="size-4" /></button>
@@ -824,6 +940,7 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                         </>
                       ) : <button type="button" aria-label={`Delete ${material.title}`} disabled={pending} onClick={() => setConfirmDeleteMaterialId(material.id)} className="rounded-lg p-2 text-rose-700 hover:bg-rose-50"><Trash2 className="size-4" /></button>}
                     </div>
+                    )}
                   </div>
 
                   {editingMaterialId === material.id ? (
@@ -878,13 +995,16 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
               )}
             </div>
           </section>
-        ))}
+          )
+        })}
       </div>
 
-      <div className="mt-5 flex items-start gap-2 rounded-xl border border-mist-200 bg-mist-50 px-4 py-3 text-xs leading-5 text-muted">
-        <ChevronDown className="mt-0.5 size-4 shrink-0" />
-        <p>Use the arrow controls to set the persisted learning order. Availability, prerequisites, release rules and completion behavior are saved with each material.</p>
-      </div>
+      {readOnly ? null : (
+        <div className="mt-5 flex items-start gap-2 rounded-xl border border-mist-200 bg-mist-50 px-4 py-3 text-xs leading-5 text-muted">
+          <GripVertical aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <p>Drag a section or material by its handle, or use the arrow buttons, to set the learning order. Materials move within their own section. Availability, prerequisites, release rules and completion behavior are saved with each material.</p>
+        </div>
+      )}
       </fieldset>
     </section>
   )

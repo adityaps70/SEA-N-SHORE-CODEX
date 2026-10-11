@@ -39,8 +39,7 @@ export function CourseReviewsSection({
   const average = formatAverageRating(data.averageRating)
   return (
     <section id="course-reviews" aria-labelledby="course-reviews-heading" className={className}>
-      <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Learner reviews</p>
-      <h2 id="course-reviews-heading" className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">Ratings and reviews</h2>
+      <h2 id="course-reviews-heading" className="text-section-title font-bold text-navy-950 max-md:text-lg">Ratings and reviews</h2>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="text-4xl font-extrabold tracking-tight text-navy-950">{average}</span>
         <div>

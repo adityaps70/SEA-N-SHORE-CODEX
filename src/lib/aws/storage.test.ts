@@ -35,6 +35,7 @@ vi.mock('@aws-sdk/client-s3', () => {
 vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl }))
 
 import {
+  createLessonMediaUrl,
   createMediaDownloadUrl,
   createMediaReadUrl,
   createMediaUploadUrl,
@@ -223,6 +224,17 @@ describe('AWS media storage boundary', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('signs lesson video and audio for twenty minutes, inline, with the expiry the player refreshes before (round E)', async () => {
+    const now = Date.parse('2026-10-11T10:00:00.000Z')
+    await expect(createLessonMediaUrl('learning/lessons/a.mp4', now)).resolves.toEqual({
+      url: 'https://signed.example/media',
+      expiresAt: '2026-10-11T10:20:00.000Z',
+    })
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 1200 })
+    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({ Key: 'learning/lessons/a.mp4', ResponseContentDisposition: 'inline' })
   })
 
   it('reads only the requested leading bytes of an object', async () => {

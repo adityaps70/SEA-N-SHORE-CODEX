@@ -290,6 +290,73 @@ describe('mentor curriculum repository', () => {
     ])
   })
 
+  it('drags a section to any place, renumbering with the positions already in use (round E)', async () => {
+    const sectionC = '99999999-9999-4999-8999-999999999990'
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query: TestQuery = async (text, values) => {
+      seen.push({ text, values })
+      if (text.includes('for update') && text.includes('learning_courses')) {
+        return [{ id: courseId, mentor_id: mentorId, status: 'draft' }]
+      }
+      if (text.includes('from public.learning_course_sections') && text.includes('order by position')) {
+        return [
+          { id: sectionA, position: 0 },
+          { id: sectionB, position: 1 },
+          { id: sectionC, position: 3 },
+        ]
+      }
+      // A removed section still holds position 7 (the unique index covers removed rows).
+      if (text.includes('max(position)')) return [{ max_position: 7 }]
+      if (text.includes('update public.learning_course_sections')) return [{ id: 'x' }]
+      return []
+    }
+    const repository = createMentorCurriculumRepository({ query, transaction: passThroughTransaction(query) })
+
+    await expect(repository.reorderSection(mentorUserId, courseId, sectionC, 0)).resolves.toBe(true)
+
+    const updates = seen.filter((entry) => entry.text.includes('update public.learning_course_sections'))
+    // Park every moved row above position 7, then give each its final place: C, A, B at 0, 1, 3.
+    expect(updates.map((entry) => entry.values)).toEqual([
+      [sectionC, 8],
+      [sectionA, 9],
+      [sectionB, 10],
+      [sectionC, 0],
+      [sectionA, 1],
+      [sectionB, 3],
+    ])
+    await expect(repository.reorderSection(mentorUserId, courseId, sectionA, 0)).resolves.toBe(false)
+  })
+
+  it('drags a material within its own section only (round E)', async () => {
+    const lessonB = '88888888-8888-4888-8888-888888888880'
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query: TestQuery = async (text, values) => {
+      seen.push({ text, values })
+      if (text.includes('for update') && text.includes('learning_courses')) {
+        return [{ id: courseId, mentor_id: mentorId, status: 'draft' }]
+      }
+      if (text.includes('lesson.section_id') && text.includes('section.course_id = $2')) {
+        return [{ id: lessonId, section_id: sectionA, lesson_type: 'article' }]
+      }
+      if (text.includes('from public.learning_lessons') && text.includes('order by position')) {
+        return [{ id: lessonId, position: 0 }, { id: lessonB, position: 1 }]
+      }
+      if (text.includes('max(position)')) return [{ max_position: 1 }]
+      return [{ id: 'x' }]
+    }
+    const repository = createMentorCurriculumRepository({ query, transaction: passThroughTransaction(query) })
+
+    await expect(repository.reorderLesson(mentorUserId, courseId, lessonId, 5)).resolves.toBe(true)
+    const listed = seen.find((entry) => entry.text.includes('from public.learning_lessons') && entry.text.includes('order by position'))
+    expect(listed?.values).toEqual([sectionA])
+    expect(seen.filter((entry) => entry.text.includes('update public.learning_lessons')).map((entry) => entry.values)).toEqual([
+      [lessonB, 2],
+      [lessonId, 3],
+      [lessonB, 0],
+      [lessonId, 1],
+    ])
+  })
+
   it('saves a quiz definition in place, in one transaction, for an owned editable quiz lesson', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query: TestQuery = async (text, values) => {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   capturedFormReadOnly: null as boolean | null,
   capturedCurriculumReadOnly: null as boolean | null,
   capturedRevision: null as number | null,
+  capturedSaveBar: null as boolean | null,
   capturedResubmission: null as boolean | null,
   capturedSlugLocked: null as boolean | null,
   capturedSubmitRevision: null as boolean | null,
@@ -32,10 +33,12 @@ vi.mock('@/features/learning/mentor-material-repository', () => ({
   mentorMaterialRepository: { getCurriculum: mocks.getCurriculum },
 }))
 vi.mock('@/features/learning/components/course-edit-session', () => ({
-  CourseEditSession: ({ children, initialDetailsRevision }: { children: React.ReactNode; initialDetailsRevision?: number }) => {
+  CourseEditSession: ({ children, initialDetailsRevision, saveBar }: { children: React.ReactNode; initialDetailsRevision?: number; saveBar?: boolean }) => {
     mocks.capturedRevision = initialDetailsRevision ?? null
+    mocks.capturedSaveBar = Boolean(saveBar)
     return <div data-testid="course-edit-session">{children}</div>
   },
+  useUnsavedChanges: () => undefined,
 }))
 vi.mock('@/features/learning/components/course-form', () => ({
   CourseForm: ({ initialValue, courseId, readOnly, slugLocked }: { initialValue: unknown; courseId?: string; readOnly?: boolean; slugLocked?: boolean }) => {
@@ -80,7 +83,7 @@ vi.mock('@/features/learning/components/course-withdraw-control', () => ({
   CourseWithdrawControl: ({ courseId }: { courseId: string }) => <div data-testid="course-withdraw-control">withdraw:{courseId}</div>,
 }))
 
-import EditMentorCoursePage from './page'
+import EditMentorCoursePage, { generateMetadata } from './page'
 
 afterEach(() => cleanup())
 
@@ -337,5 +340,38 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(mocks.listForManager).not.toHaveBeenCalled()
     expect(screen.queryByTestId('course-announcements-panel')).not.toBeInTheDocument()
     expect(screen.getByTestId('course-community-panel')).toHaveTextContent(`community:${courseId}`)
+  })
+
+  describe('learning round E (E9)', () => {
+    it('gives the tab the same title as the heading', async () => {
+      await expect(generateMetadata({ params: Promise.resolve({ courseId }) })).resolves.toEqual({ title: `Edit course · ${draftCourse.title}` })
+      mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status: 'submitted' })
+      await expect(generateMetadata({ params: Promise.resolve({ courseId }) })).resolves.toEqual({ title: `View course · ${draftCourse.title}` })
+    })
+
+    it('lists the editor sections with ✓ or "needs attention", and one save bar for an editable course', async () => {
+      render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+      const steps = screen.getByRole('navigation', { name: 'Course editor sections' })
+      const step = (name: string) => within(steps).getByRole('link', { name: new RegExp(name) })
+      expect(step('Details')).toHaveAttribute('href', '#course-details')
+      expect(within(step('Details')).getByRole('img', { name: 'Done' })).toBeInTheDocument()
+      // No thumbnail yet, and the only section has no materials.
+      expect(within(step('Media')).getByRole('img', { name: 'Needs attention' })).toBeInTheDocument()
+      expect(within(step('Curriculum')).getByRole('img', { name: 'Needs attention' })).toBeInTheDocument()
+      expect(within(step('Pricing')).getByRole('img', { name: 'Done' })).toBeInTheDocument()
+      // A draft never published has no learners to announce to, but can link its community.
+      expect(within(steps).queryByRole('link', { name: /Learners & announcements/ })).not.toBeInTheDocument()
+      expect(step('Community')).toHaveAttribute('href', '#course-community')
+      for (const id of ['course-certificate', 'course-curriculum', 'course-community']) {
+        expect(document.getElementById(id)).not.toBeNull()
+      }
+      expect(mocks.capturedSaveBar).toBe(true)
+    })
+
+    it('has no save bar when the course is read-only', async () => {
+      mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status: 'submitted' })
+      render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+      expect(mocks.capturedSaveBar).toBe(false)
+    })
   })
 })

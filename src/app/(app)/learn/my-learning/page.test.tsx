@@ -490,4 +490,54 @@ describe('/learn/my-learning', () => {
     expect(within(active).queryByText(/Access ended/)).not.toBeInTheDocument()
     expect(within(active).getByRole('link', { name: 'Continue learning' })).toHaveAttribute('href', '/learn/courses/mooring-safety/learn')
   })
+
+  describe('learning round E (E7): filters and last activity', () => {
+    const completed: LearnerCourseEnrollment = {
+      ...enrollment,
+      enrollmentId: '33333333-3333-4333-8333-333333333334',
+      courseId: '11111111-1111-4111-8111-111111111112',
+      slug: 'bridge-resource-management',
+      title: 'Bridge Resource Management',
+      enrollmentStatus: 'completed',
+      completedAt: '2026-09-20T12:00:00.000Z',
+      completedLessons: 5,
+      progressPercent: 100,
+    }
+    const archived: LearnerCourseEnrollment = {
+      ...enrollment,
+      enrollmentId: '33333333-3333-4333-8333-333333333335',
+      courseId: '11111111-1111-4111-8111-111111111113',
+      slug: 'old-course',
+      title: 'Old Mooring Course',
+      courseArchived: true,
+    }
+
+    it('filters by In progress, Completed and Archived, keeping archived courses collapsed under All', async () => {
+      mocks.listLearnerEnrollments.mockResolvedValue([completed, enrollment, archived])
+      render(await MyLearningPage())
+
+      const chips = screen.getByRole('group', { name: 'Show courses' })
+      expect(within(chips).getByRole('button', { name: /All\s*3/ })).toHaveAttribute('aria-pressed', 'true')
+      const courses = screen.getByRole('region', { name: 'Your courses' })
+      // Newest activity first, as the repository returns them; the archived course is not mixed in.
+      expect(within(courses).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([completed.title, enrollment.title])
+      const archivedGroup = screen.getByText('Archived courses').closest('details')!
+      expect(archivedGroup).not.toHaveAttribute('open')
+      expect(within(archivedGroup).getByRole('article', { hidden: true, name: archived.title })).toHaveTextContent('Archived')
+
+      fireEvent.click(within(chips).getByRole('button', { name: /In progress\s*1/ }))
+      expect(within(screen.getByRole('region', { name: 'Your courses' })).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([enrollment.title])
+
+      fireEvent.click(within(chips).getByRole('button', { name: /Completed\s*1/ }))
+      expect(within(screen.getByRole('region', { name: 'Your courses' })).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([completed.title])
+
+      fireEvent.click(within(chips).getByRole('button', { name: /Archived\s*1/ }))
+      expect(within(screen.getByRole('region', { name: 'Your courses' })).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([archived.title])
+    })
+
+    it('shows no Archived chip when nothing is archived', async () => {
+      render(await MyLearningPage())
+      expect(within(screen.getByRole('group', { name: 'Show courses' })).queryByRole('button', { name: /Archived/ })).not.toBeInTheDocument()
+    })
+  })
 })

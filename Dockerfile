@@ -24,7 +24,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build \
     && npm run build:workers \
     && test -f dist/workers/publish-outbox.mjs \
-    && test -f dist/workers/consume-notifications.mjs
+    && test -f dist/workers/consume-notifications.mjs \
+    && test -f dist/workers/learning-round-e-content.mjs
 
 FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS runner
 WORKDIR /app

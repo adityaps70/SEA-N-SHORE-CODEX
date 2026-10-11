@@ -54,8 +54,7 @@ export function EnrollFreeControl({ courseId, initiallyEnrolled, batchId = null,
 
   return (
     <div className="rounded-[1.5rem] border border-teal-100 bg-teal-50/60 p-5 sm:p-6">
-      <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Phase 1 access</p>
-      <h2 className="mt-1 text-lg font-bold text-navy-950">Enroll free</h2>
+      <h2 className="text-card-title font-semibold text-navy-950">Enroll free</h2>
       <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
         Join this published course with your existing Sea N Shore account. No separate learning login is required.
       </p>

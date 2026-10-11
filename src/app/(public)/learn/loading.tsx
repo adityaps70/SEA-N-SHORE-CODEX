@@ -1,0 +1,5 @@
+import { CatalogueSkeleton } from '@/features/learning/components/lms-skeletons'
+
+export default function Loading() {
+  return <CatalogueSkeleton />
+}

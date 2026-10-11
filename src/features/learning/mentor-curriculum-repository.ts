@@ -219,6 +219,58 @@ async function compactPositions(
   }
 }
 
+/**
+ * Round E (E9): drag and drop. Moves one row to `targetIndex` in its list and renumbers the list with the positions it
+ * already used, so other rows keep their relative order. Rows first park above every position in use (removed rows
+ * included: the unique index covers them), then take their final positions. Returns false when nothing moves.
+ */
+async function moveToIndex(
+  query: CurriculumQuery,
+  table: 'learning_course_sections' | 'learning_lessons',
+  parentColumn: 'course_id' | 'section_id',
+  parentId: string,
+  rows: PositionRow[],
+  itemId: string,
+  targetIndex: number,
+  notFoundError: string,
+) {
+  const currentIndex = rows.findIndex((row) => row.id === itemId)
+  if (currentIndex < 0) throw new Error(notFoundError)
+  const target = Math.max(0, Math.min(rows.length - 1, Math.trunc(targetIndex)))
+  if (target === currentIndex) return false
+
+  const order = [...rows]
+  const [moved] = order.splice(currentIndex, 1)
+  order.splice(target, 0, moved!)
+  const positions = rows.map((row) => Number(row.position)).sort((a, b) => a - b)
+  const changed = order.flatMap((row, index) => (Number(row.position) === positions[index] ? [] : [{ id: row.id, position: positions[index]! }]))
+
+  const maxRows = await query(
+    `select coalesce(max(position), 0) as max_position from public.${table} where ${parentColumn} = $1`,
+    [parentId],
+  ) as Array<{ max_position: number | string }>
+  const parking = Math.max(Number(maxRows[0]?.max_position ?? 0), ...positions) + 1
+  for (const [index, row] of changed.entries()) {
+    await query(
+      `update public.${table}
+       set position = $2, updated_at = now()
+       where id = $1
+       returning id`,
+      [row.id, parking + index],
+    )
+  }
+  for (const row of changed) {
+    await query(
+      `update public.${table}
+       set position = $2, updated_at = now()
+       where id = $1
+       returning id`,
+      [row.id, row.position],
+    )
+  }
+  return true
+}
+
 async function swapAdjacentPositions(
   query: CurriculumQuery,
   table: 'learning_course_sections' | 'learning_lessons',
@@ -706,6 +758,53 @@ export function createMentorCurriculumRepository(input: {
     })
   }
 
+  /** Round E (E9): drag a section to a new place in the course. */
+  async function reorderSection(actorId: string, courseId: string, sectionId: string, targetIndex: number) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const sections = await query(
+        `select id, position
+         from public.learning_course_sections
+         where course_id = $1
+           and removed_at is null
+         order by position asc, id asc
+         for update`,
+        [courseId],
+      ) as PositionRow[]
+      return moveToIndex(query, 'learning_course_sections', 'course_id', courseId, sections, sectionId, targetIndex, 'section_not_found')
+    })
+  }
+
+  /** Round E (E9): drag a material to a new place within its section. */
+  async function reorderLesson(actorId: string, courseId: string, lessonId: string, targetIndex: number) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const ownedRows = await query(
+        `select lesson.id, lesson.section_id, lesson.lesson_type
+         from public.learning_lessons lesson
+         inner join public.learning_course_sections section
+           on section.id = lesson.section_id
+         where lesson.id = $1
+           and section.course_id = $2
+           and lesson.removed_at is null
+         for update`,
+        [lessonId, courseId],
+      ) as LessonOwnershipRow[]
+      const lesson = ownedRows[0]
+      if (!lesson?.section_id) throw new Error('lesson_not_found')
+      const lessons = await query(
+        `select id, position
+         from public.learning_lessons
+         where section_id = $1
+           and removed_at is null
+         order by position asc, id asc
+         for update`,
+        [lesson.section_id],
+      ) as PositionRow[]
+      return moveToIndex(query, 'learning_lessons', 'section_id', lesson.section_id, lessons, lessonId, targetIndex, 'lesson_not_found')
+    })
+  }
+
   async function saveQuizDefinition(
     actorId: string,
     courseId: string,
@@ -766,6 +865,8 @@ export function createMentorCurriculumRepository(input: {
     deleteLesson,
     moveSection,
     moveLesson,
+    reorderSection,
+    reorderLesson,
     saveQuizDefinition,
   }
 }

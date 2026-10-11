@@ -23,6 +23,8 @@ type Props = {
   onChange: (storagePath: string | null) => void
   accept: string
   previewType: 'image' | 'video' | 'file'
+  /** Round E (E9): view only: the preview (or "None"), with no upload, replace or remove controls. */
+  readOnly?: boolean
 }
 
 function formatBytes(value: number) {
@@ -40,6 +42,7 @@ export function LearningMediaUploadField({
   onChange,
   accept,
   previewType,
+  readOnly = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const localPreviewRef = useRef<string | null>(null)
@@ -156,6 +159,27 @@ export function LearningMediaUploadField({
     setFileSize(null)
     setProgress(null)
     onChange(null)
+  }
+
+  if (readOnly) {
+    const preview = value && previewType !== 'file' ? previewUrl : null
+    return (
+      <div className="rounded-2xl border border-mist-200 bg-mist-50/40 p-4">
+        <p className="text-sm font-bold text-navy-950">{label}</p>
+        {preview ? (
+          <div className="mt-3 overflow-hidden rounded-xl border border-mist-200 bg-white">
+            {previewType === 'image' ? (
+              <img src={preview} alt={`${label} preview`} className="aspect-video w-full object-cover" />
+            ) : (
+              <video src={preview} controls controlsList="nodownload" preload="metadata" className="aspect-video w-full bg-black object-contain" />
+            )}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-muted">{value ? 'Attached.' : 'None.'}</p>
+        )}
+        {error ? <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{error}</p> : null}
+      </div>
+    )
   }
 
   const UploadIcon = previewType === 'image' ? ImageIcon : previewType === 'video' ? PlayCircle : FileUp

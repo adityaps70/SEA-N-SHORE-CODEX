@@ -1,18 +1,22 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   CircleAlert,
   Clock3,
+  Flag,
   Hourglass,
   Loader2,
   Play,
   RotateCcw,
   XCircle,
 } from 'lucide-react'
+import { announceLessonCompleted } from '../lesson-completion-events'
+import { useDeviceTimeZone } from '../sessions/components/local-session-time'
+import { formatZonedTime } from '../sessions/session-time'
 import { saveLearningQuizAnswers, startLearningQuiz, submitLearningQuiz } from '../learner-quiz-actions'
 import type {
   LearnerQuiz,
@@ -30,36 +34,13 @@ type QuizLessonActivityProps = {
   slug: string
   lessonId: string
   initiallyCompleted: boolean
+  /** Kept for callers; moving on now lives in the player's bottom bar (round E). */
   nextLessonHref?: string | null
 }
 
 type AnswerState = Record<string, LearnerSavedAnswer>
 
 const AUTOSAVE_DELAY_MS = 1200
-
-function ContinueLink({ nextLessonHref }: { nextLessonHref?: string | null }) {
-  if (nextLessonHref) {
-    return (
-      <Link
-        href={nextLessonHref}
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-      >
-        Continue to next lesson
-        <ArrowRight className="h-4 w-4" aria-hidden="true" />
-      </Link>
-    )
-  }
-
-  return (
-    <Link
-      href="/learn/my-learning"
-      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-    >
-      Back to My Learning
-      <ArrowRight className="h-4 w-4" aria-hidden="true" />
-    </Link>
-  )
-}
 
 /** "Attempts left: 2", or "Unlimited attempts" when the trainer set no limit (stored as blank). */
 export function attemptsLeftLabel(maxAttempts: number | null, attemptsUsed: number) {
@@ -98,33 +79,25 @@ function AwaitingGradingNotice() {
   )
 }
 
-function formatAttemptDate(value: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'UTC',
-  }).format(new Date(value))
+/** Round E (E6): "Tue 15 Sep 2026, 00:34 IST (Asia/Kolkata)" in the learner's own zone (UTC until the page hydrates). */
+export function formatAttemptDate(value: string, timeZone: string | null) {
+  return formatZonedTime(value, timeZone ?? 'UTC', { withYear: true })
 }
 
 function AttemptHistory({ history }: { history: LearnerQuizAttemptSummary[] }) {
+  const zone = useDeviceTimeZone()
   if (history.length === 0) return null
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5" aria-label="Quiz attempt history">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Your results</p>
-          <h3 className="mt-1 text-base font-semibold text-slate-950">Attempt history</h3>
-        </div>
-        <p className="text-xs text-slate-500">Times shown in UTC</p>
-      </div>
+      <h3 className="text-card-title font-semibold text-slate-950">Attempt history</h3>
       <div className="mt-4 divide-y divide-slate-100">
         {history.map((attempt) => (
           <div key={attempt.attemptId} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
             <div>
               <p className="text-sm font-semibold text-slate-950">Attempt {attempt.attemptNumber}</p>
               <p className="mt-0.5 text-xs text-slate-500">
-                {formatAttemptDate(attempt.submittedAt)}
+                <time dateTime={attempt.submittedAt}>{formatAttemptDate(attempt.submittedAt, zone)}</time>
                 {attempt.autoSubmitted ? ' · Submitted when time ran out' : ''}
               </p>
             </div>
@@ -182,29 +155,44 @@ const TYPE_HINTS: Partial<Record<QuestionType, string>> = {
 function QuestionField({
   question,
   index,
+  total,
   answer,
   disabled,
+  flagged,
+  onToggleFlag,
   onChange,
 }: {
   question: LearnerQuizQuestion
   index: number
+  total: number
   answer: LearnerSavedAnswer | undefined
   disabled: boolean
+  flagged: boolean
+  onToggleFlag: () => void
   onChange: (next: LearnerSavedAnswer) => void
 }) {
   const type = question.type ?? 'single_choice'
   const marks = question.marks ?? 1
   return (
     <fieldset className="rounded-2xl border border-slate-200 bg-white p-5">
-      <legend className="sr-only">Question {index + 1}</legend>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-base font-semibold leading-7 text-slate-950">
-          <span className="mr-2 text-slate-400">{index + 1}.</span>
-          {question.prompt}
-        </p>
-        {marks !== 1 ? <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{marksLabel(marks)} marks</span> : null}
+      <legend className="sr-only">Question {index + 1} of {total}</legend>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-meta font-semibold text-muted" aria-hidden="true">Question {index + 1} of {total}</p>
+        <div className="flex items-center gap-2">
+          {marks !== 1 ? <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{marksLabel(marks)} marks</span> : null}
+          <button
+            type="button"
+            aria-pressed={flagged}
+            onClick={onToggleFlag}
+            className={`inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition ${flagged ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            <Flag aria-hidden="true" className={`size-4 ${flagged ? 'fill-amber-500 text-amber-700' : ''}`} />
+            {flagged ? 'Flagged' : 'Flag for review'}
+          </button>
+        </div>
       </div>
-      {TYPE_HINTS[type] ? <p className="mt-1 text-xs font-medium text-slate-500">{TYPE_HINTS[type]}</p> : null}
+      <p className="mt-2 text-card-title font-semibold text-slate-950">{question.prompt}</p>
+      {TYPE_HINTS[type] ? <p className="mt-1 text-meta font-medium text-muted">{TYPE_HINTS[type]}</p> : null}
       {type === 'fill_blank' ? (
         <input
           aria-label={`Answer to question ${index + 1}`}
@@ -289,7 +277,6 @@ export function QuizLessonActivity({
   slug,
   lessonId,
   initiallyCompleted,
-  nextLessonHref = null,
 }: QuizLessonActivityProps) {
   const usesSessions = quiz.usesSessions ?? false
   const [answers, setAnswers] = useState<AnswerState>(quiz.session?.answers ?? {})
@@ -302,6 +289,12 @@ export function QuizLessonActivity({
   const [attemptsUsed, setAttemptsUsed] = useState(quiz.attemptsUsed)
   const [awaitingGrading, setAwaitingGrading] = useState(quiz.awaitingGrading ?? false)
   const [now, setNow] = useState(() => Date.now())
+  // Round E (E6): one question at a time, with a navigator, flags and a check before submitting.
+  const [current, setCurrent] = useState(0)
+  const [flagged, setFlagged] = useState<ReadonlySet<string>>(() => new Set())
+  const [reviewing, setReviewing] = useState(false)
+  const resultRef = useRef<HTMLElement | null>(null)
+  const questionTopRef = useRef<HTMLDivElement | null>(null)
   const submissionKeyRef = useRef<string | null>(null)
   const dirtyRef = useRef(false)
   const autoSubmittedRef = useRef(false)
@@ -315,6 +308,36 @@ export function QuizLessonActivity({
 
   const allAnswered = questions.length > 0 && questions.every((question) => answered(question, answers[question.id]))
   const answeredCount = questions.filter((question) => answered(question, answers[question.id])).length
+  const unansweredNumbers = questions.flatMap((question, index) => (answered(question, answers[question.id]) ? [] : [index + 1]))
+  const flaggedNumbers = questions.flatMap((question, index) => (flagged.has(question.id) ? [index + 1] : []))
+  const currentIndex = Math.min(current, Math.max(0, questions.length - 1))
+
+  function goTo(index: number) {
+    setCurrent(Math.max(0, Math.min(questions.length - 1, index)))
+    setReviewing(false)
+    // Keep the new question in view on a phone, and move focus to it for keyboard and screen-reader users.
+    requestAnimationFrame(() => {
+      questionTopRef.current?.scrollIntoView?.({ block: 'nearest' })
+      questionTopRef.current?.querySelector<HTMLElement>('fieldset:not([hidden]) input, fieldset:not([hidden]) textarea')?.focus({ preventScroll: true })
+    })
+  }
+
+  function toggleFlag(questionId: string) {
+    setFlagged((existing) => {
+      const next = new Set(existing)
+      if (next.has(questionId)) next.delete(questionId)
+      else next.add(questionId)
+      return next
+    })
+  }
+
+  // Round E: bring the result into view (and announce the pass so the player's "Next lesson" unlocks at once).
+  useEffect(() => {
+    if (!result) return
+    resultRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    resultRef.current?.focus({ preventScroll: true })
+    if (result.passed && !result.awaitingGrading) announceLessonCompleted(lessonId)
+  }, [result, lessonId])
 
   function questionOf(questionId: string) {
     return questions.find((item) => item.id === questionId)
@@ -440,6 +463,9 @@ export function QuizLessonActivity({
   function onRetry() {
     submissionKeyRef.current = null
     dirtyRef.current = false
+    setCurrent(0)
+    setFlagged(new Set())
+    setReviewing(false)
     setAnswers({})
     setResult(null)
     setError(null)
@@ -458,9 +484,6 @@ export function QuizLessonActivity({
               <p className="mt-1 text-sm text-emerald-900">This quiz lesson is already complete.</p>
             </div>
           </div>
-          <div className="mt-5">
-            <ContinueLink nextLessonHref={nextLessonHref} />
-          </div>
         </section>
         <AttemptHistory history={attemptHistory} />
       </div>
@@ -470,7 +493,7 @@ export function QuizLessonActivity({
   if (result) {
     if (result.awaitingGrading) {
       return (
-        <section className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50/50 p-6" aria-label="Quiz result">
+        <section ref={resultRef} tabIndex={-1} className="scroll-mt-24 space-y-4 rounded-2xl border border-sky-200 bg-sky-50/50 p-6 focus:outline-none" aria-label="Quiz result">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-semibold text-sky-950">Submitted</h3>
             <span className="rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-xs font-semibold text-sky-900">Attempt {result.attemptNumber}</span>
@@ -484,7 +507,9 @@ export function QuizLessonActivity({
     const marksShown = result.scorePoints !== undefined && result.maxPoints !== undefined && result.maxPoints !== result.totalQuestions
     return (
       <section
-        className={`rounded-2xl border p-6 ${result.passed ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'}`}
+        ref={resultRef}
+        tabIndex={-1}
+        className={`scroll-mt-24 rounded-2xl border p-6 focus:outline-none ${result.passed ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70'}`}
         aria-label="Quiz result"
       >
         <div className="flex items-start gap-3">
@@ -552,7 +577,7 @@ export function QuizLessonActivity({
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {result.passed ? (
-            <ContinueLink nextLessonHref={nextLessonHref} />
+            <p className="text-sm font-medium text-emerald-900">Lesson complete. Use “Next lesson” below to carry on.</p>
           ) : limitReached ? (
             <div className="w-full"><AttemptLimitNotice maxAttempts={quiz.maxAttempts!} /></div>
           ) : (
@@ -585,10 +610,7 @@ export function QuizLessonActivity({
   const header = (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Assessment</p>
-          <p className="mt-1 text-sm font-medium text-slate-900">Pass mark {quiz.passPercentage}%</p>
-        </div>
+        <p className="text-sm font-semibold text-slate-900">Pass mark {quiz.passPercentage}%</p>
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
             {usesSessions ? quiz.questionCount ?? questions.length : questions.length} {(usesSessions ? quiz.questionCount ?? questions.length : questions.length) === 1 ? 'question' : 'questions'}
@@ -671,18 +693,117 @@ export function QuizLessonActivity({
 
       {!session ? <AttemptHistory history={attemptHistory} /> : null}
 
-      <div className="space-y-5">
+      {questions.length > 1 ? (
+        <nav aria-label="Questions" className="rounded-2xl border border-slate-200 bg-white p-4">
+          <ol className="flex flex-wrap gap-2">
+            {questions.map((question, index) => {
+              const isAnswered = answered(question, answers[question.id])
+              const isFlagged = flagged.has(question.id)
+              const isCurrent = index === currentIndex
+              const state = [isAnswered ? 'answered' : 'unanswered', isFlagged ? 'flagged' : null].filter(Boolean).join(', ')
+              return (
+                <li key={question.id}>
+                  <button
+                    type="button"
+                    onClick={() => goTo(index)}
+                    aria-current={isCurrent ? 'step' : undefined}
+                    aria-label={`Question ${index + 1}, ${state}`}
+                    className={`relative grid size-11 cursor-pointer place-items-center rounded-xl border text-sm font-bold transition ${isAnswered ? 'border-navy-950 bg-navy-950 text-white' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'} ${isCurrent ? 'ring-2 ring-ocean-600 ring-offset-2' : ''}`}
+                  >
+                    {index + 1}
+                    {isFlagged ? <Flag aria-hidden="true" className="absolute -right-1.5 -top-1.5 size-4 rounded-full bg-white fill-amber-500 p-0.5 text-amber-700 shadow" /> : null}
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+          <p className="mt-3 text-meta text-muted">
+            {answeredCount} of {questions.length} answered{flaggedNumbers.length ? ` · ${flaggedNumbers.length} flagged` : ''}
+          </p>
+        </nav>
+      ) : null}
+
+      <div ref={questionTopRef} className="scroll-mt-24">
         {questions.map((question, index) => (
-          <QuestionField
-            key={question.id}
-            question={question}
-            index={index}
-            answer={answers[question.id]}
-            disabled={pending}
-            onChange={(next) => setAnswer(question.id, next)}
-          />
+          <div key={question.id} hidden={index !== currentIndex}>
+            <QuestionField
+              question={question}
+              index={index}
+              total={questions.length}
+              answer={answers[question.id]}
+              disabled={pending}
+              flagged={flagged.has(question.id)}
+              onToggleFlag={() => toggleFlag(question.id)}
+              onChange={(next) => setAnswer(question.id, next)}
+            />
+          </div>
         ))}
       </div>
+
+      {questions.length > 1 ? (
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            disabled={currentIndex === 0}
+            onClick={() => goTo(currentIndex - 1)}
+            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ArrowLeft aria-hidden="true" className="size-4" /> Previous question
+          </button>
+          {currentIndex < questions.length - 1 ? (
+            <button
+              type="button"
+              onClick={() => goTo(currentIndex + 1)}
+              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              Next question <ArrowRight aria-hidden="true" className="size-4" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {reviewing ? (
+        <section aria-label="Before you submit" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+          <h3 className="text-card-title font-semibold">Before you submit</h3>
+          {unansweredNumbers.length ? (
+            <p className="mt-2">
+              {unansweredNumbers.length === 1 ? '1 question is' : `${unansweredNumbers.length} questions are`} unanswered:{' '}
+              {unansweredNumbers.map((number, position) => (
+                <span key={number}>
+                  {position ? ', ' : ''}
+                  <button type="button" onClick={() => goTo(number - 1)} className="cursor-pointer font-semibold underline underline-offset-2">Question {number}</button>
+                </span>
+              ))}
+              . Unanswered questions score nothing.
+            </p>
+          ) : null}
+          {flaggedNumbers.length ? (
+            <p className="mt-2">
+              You flagged{' '}
+              {flaggedNumbers.map((number, position) => (
+                <span key={number}>
+                  {position ? ', ' : ''}
+                  <button type="button" onClick={() => goTo(number - 1)} className="cursor-pointer font-semibold underline underline-offset-2">Question {number}</button>
+                </span>
+              ))}{' '}
+              for review.
+            </p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => { setReviewing(false); void onSubmit() }}
+              className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              Submit now
+            </button>
+            <button type="button" onClick={() => setReviewing(false)} className="inline-flex min-h-11 cursor-pointer items-center rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-950 hover:bg-amber-100">
+              Keep working
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {errorBox}
 
@@ -690,12 +811,24 @@ export function QuizLessonActivity({
         <button
           type="button"
           disabled={pending || (!usesSessions && !allAnswered)}
-          onClick={() => void onSubmit()}
+          onClick={() => {
+            // Unanswered (where allowed) or flagged questions: show the check first.
+            if (!reviewing && (flaggedNumbers.length > 0 || (usesSessions && unansweredNumbers.length > 0))) {
+              setReviewing(true)
+              return
+            }
+            void onSubmit()
+          }}
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
           {pending ? 'Submitting…' : 'Submit quiz'}
         </button>
+        {!usesSessions && !allAnswered && questions.length > 1 ? (
+          <span className="text-meta text-muted">
+            Answer every question to submit. Still to answer: {unansweredNumbers.join(', ')}.
+          </span>
+        ) : null}
         {session ? (
           <span className="text-xs text-slate-500" aria-live="polite">
             {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Answers saved' : saveState === 'error' ? 'Not saved yet; retrying with your next answer' : null}

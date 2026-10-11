@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Library, Plus, Receipt, Tag, Users, Wallet } from 'lucide-react'
+import { ArrowRight, BadgeCheck, BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Library, Plus, Receipt, Tag, Users, Wallet } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
+import { StudioToolsMenu } from '@/features/learning/components/studio-tools-menu'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
@@ -33,6 +34,32 @@ function statusClasses(status: MentorCourseSummary['status']) {
   return 'border-mist-200 bg-white text-navy-950'
 }
 
+/** Round E (E9): "Recorded", "Live cohort", "Hybrid"; "All levels", "Advanced". */
+function formatLabel(format: MentorCourseSummary['courseFormat']) {
+  if (format === 'live_cohort') return 'Live cohort'
+  if (format === 'hybrid') return 'Hybrid'
+  return 'Recorded'
+}
+
+function levelLabel(level: MentorCourseSummary['level']) {
+  const words = level.replace('_', ' ')
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`
+}
+
+/** Round E (E9): Studio's status tabs. Approved courses wait to be published, so they sit with "In review". */
+type StatusTab = 'live' | 'drafts' | 'review' | 'archived'
+const STATUS_TABS: Array<{ id: StatusTab; label: string; statuses: ReadonlyArray<MentorCourseSummary['status']> }> = [
+  { id: 'live', label: 'Live', statuses: ['published'] },
+  { id: 'drafts', label: 'Drafts', statuses: ['draft', 'changes_requested'] },
+  { id: 'review', label: 'In review', statuses: ['submitted', 'approved'] },
+  { id: 'archived', label: 'Archived', statuses: ['archived'] },
+]
+
+function statusTabFrom(value: string | string[] | undefined): StatusTab | null {
+  const raw = Array.isArray(value) ? value[0] : value
+  return STATUS_TABS.some((tab) => tab.id === raw) ? raw as StatusTab : null
+}
+
 function revisionLabel(revision: NonNullable<MentorCourseSummary['openRevision']>) {
   if (revision.status === 'submitted') return 'Changes in review'
   if (revision.status === 'changes_requested') return 'Changes requested on your edits'
@@ -47,12 +74,10 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
     <article className="rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.12em] text-muted">
-            <span>{course.category}</span>
-            <span aria-hidden="true">•</span>
-            <span>{course.level.replace('_', ' ')}</span>
-          </div>
-          <h2 className="mt-2 text-lg font-bold text-navy-950">{course.title}</h2>
+          <p className="text-meta text-muted">
+            {course.category} <span aria-hidden="true">·</span> {levelLabel(course.level)}
+          </p>
+          <h3 className="mt-1 text-card-title font-semibold text-navy-950">{course.title}</h3>
           {course.subtitle ? <p className="mt-1 text-sm leading-6 text-muted">{course.subtitle}</p> : null}
         </div>
         <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${statusClasses(course.status)}`}>
@@ -76,7 +101,7 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-mist-100 pt-4">
         <div className="flex items-center gap-3 text-xs font-semibold text-muted">
-          <span>{course.courseFormat.replace('_', ' ')}</span>
+          <span>{formatLabel(course.courseFormat)}</span>
           <span>{course.accessType === 'free' ? 'Free' : 'Paid'}</span>
         </div>
         {editable || livePublished ? (
@@ -129,7 +154,7 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
 function TeachingBatches({ teaching }: { teaching: readonly TeachingBatch[] }) {
   return (
     <section aria-labelledby="teaching-batches-heading" className="mt-6">
-      <h2 id="teaching-batches-heading" className="text-xl font-bold text-navy-950">Batches you teach</h2>
+      <h2 id="teaching-batches-heading" className="text-section-title font-bold text-navy-950">Batches you teach</h2>
       <ul className="mt-3 grid gap-3 md:grid-cols-2">
         {teaching.map(({ batch, courseTitle, role }) => (
           <li key={batch.id}>
@@ -137,7 +162,7 @@ function TeachingBatches({ teaching }: { teaching: readonly TeachingBatch[] }) {
               href={`/learn/studio/courses/${batch.courseId}/batches/${batch.id}`}
               className="block rounded-[1.2rem] border border-mist-200 bg-white p-4 shadow-[var(--shadow-card)] hover:border-teal-300"
             >
-              <span className="block text-xs font-bold uppercase tracking-[0.12em] text-muted">{courseTitle}</span>
+              <span className="block text-meta font-semibold text-muted">{courseTitle}</span>
               <span className="mt-1 block break-words font-bold text-navy-950">{batch.title}</span>
               <span className="mt-1 block text-sm text-muted">{batchStartLabel(batch)} · {batchStatusLabel(batch.status)} · {role === 'manager' ? 'Batch manager' : 'Instructor'}</span>
             </Link>
@@ -148,8 +173,8 @@ function TeachingBatches({ teaching }: { teaching: readonly TeachingBatch[] }) {
   )
 }
 
-export default async function MentorStudioPage() {
-  const user = await requireAwsUser()
+export default async function MentorStudioPage({ searchParams }: { searchParams?: Promise<{ status?: string | string[] }> } = {}) {
+  const [user, query] = await Promise.all([requireAwsUser(), searchParams ?? Promise.resolve<{ status?: string | string[] }>({})])
   const [mentorState, organizations] = await Promise.all([
     learningRepository.getMentorApplicationState(user.id),
     organizationRepository.listUserOrganizations(user.id),
@@ -182,6 +207,19 @@ export default async function MentorStudioPage() {
   const reviewCount = courses.filter((course) => course.status === 'submitted').length
   const liveCount = courses.filter((course) => course.status === 'published').length
   const pendingLearnerReviews = assignmentAttempts.filter((attempt) => attempt.status === 'submitted').length
+  const tabCounts = Object.fromEntries(STATUS_TABS.map((tab) => [tab.id, courses.filter((course) => tab.statuses.includes(course.status)).length])) as Record<StatusTab, number>
+  // Opens on Live when something is live, otherwise on the first tab with courses.
+  const activeTab = statusTabFrom(query.status) ?? STATUS_TABS.find((tab) => tabCounts[tab.id] > 0)?.id ?? 'live'
+  const shownCourses = courses.filter((course) => STATUS_TABS.find((tab) => tab.id === activeTab)!.statuses.includes(course.status))
+  const tools = [
+    { href: '/learn/studio/analytics', label: 'Analytics', icon: <BarChart3 aria-hidden="true" /> },
+    { href: '/learn/studio/sales', label: 'Course sales', icon: <Receipt aria-hidden="true" /> },
+    { href: '/learn/studio/promo-codes', label: 'Promo codes', icon: <Tag aria-hidden="true" /> },
+    { href: '/settings/earnings', label: 'Earnings & payouts', icon: <Wallet aria-hidden="true" /> },
+    { href: '/learn/studio/assignments', label: 'Review assignments', icon: <ClipboardCheck aria-hidden="true" /> },
+    { href: '/learn/studio/question-bank', label: 'Question bank', icon: <Library aria-hidden="true" /> },
+    { href: '/learn/teach', label: 'Trainer verification', icon: <BadgeCheck aria-hidden="true" /> },
+  ]
 
   return (
     <div className="mx-auto w-full max-w-7xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
@@ -192,77 +230,29 @@ export default async function MentorStudioPage() {
           <PageActionsSheet
             label="More studio actions"
             title="Learning Studio"
-            actions={[
-              { kind: 'link', href: '/learn/studio/analytics', label: 'Analytics', icon: <BarChart3 aria-hidden="true" /> },
-              { kind: 'link', href: '/learn/studio/sales', label: 'Course sales', icon: <Receipt aria-hidden="true" /> },
-              { kind: 'link', href: '/learn/studio/promo-codes', label: 'Promo codes', icon: <Tag aria-hidden="true" /> },
-              { kind: 'link', href: '/settings/earnings', label: 'Earnings & payouts', icon: <Wallet aria-hidden="true" /> },
-              { kind: 'link', href: '/learn/studio/assignments', label: 'Review assignments', icon: <ClipboardCheck aria-hidden="true" /> },
-              { kind: 'link', href: '/learn/studio/question-bank', label: 'Question bank', icon: <Library aria-hidden="true" /> },
-              { kind: 'link', href: '/learn/teach', label: 'Trainer verification', icon: <BadgeCheck aria-hidden="true" /> },
-            ]}
+            actions={tools.map((tool) => ({ kind: 'link' as const, ...tool }))}
           />
         )}
       />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
-          <ArrowLeft aria-hidden="true" className="size-4" /> Trainer verification
-        </Link>
-        {/* Phones keep "Create course" here; the other four live in the page bar's "…" sheet. */}
-        <div className="flex flex-wrap items-center gap-2 max-md:w-full">
-          <Link
-            href="/learn/studio/analytics"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
-          >
-            <BarChart3 aria-hidden="true" className="size-4" /> Analytics
-          </Link>
-          <Link
-            href="/learn/studio/sales"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
-          >
-            <Receipt aria-hidden="true" className="size-4" /> Course sales
-          </Link>
-          <Link
-            href="/learn/studio/promo-codes"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
-          >
-            <Tag aria-hidden="true" className="size-4" /> Promo codes
-          </Link>
-          <Link
-            href="/settings/earnings"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
-          >
-            <Wallet aria-hidden="true" className="size-4" /> Earnings &amp; payouts
-          </Link>
-          <Link
-            href="/learn/studio/question-bank"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
-          >
-            <Library aria-hidden="true" className="size-4" /> Question bank
-          </Link>
-          <Link
-            href="/learn/studio/assignments"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
-          >
-            Review assignments <ArrowRight aria-hidden="true" className="size-4" />
-          </Link>
-          <Link
-            href="/learn/studio/courses/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 max-md:min-h-11 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px]"
-          >
-            <Plus aria-hidden="true" className="size-4" /> Create course
-          </Link>
+      {/* Round E (E9): one "Tools" menu and the primary "Create course" on the right. Phones use the page bar's "…" sheet. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="max-md:hidden">
+          <StudioToolsMenu tools={tools} />
         </div>
+        <Link
+          href="/learn/studio/courses/new"
+          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px]"
+        >
+          <Plus aria-hidden="true" className="size-4" /> Create course
+        </Link>
       </div>
 
       <section className="mt-5 overflow-hidden rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:mt-3 max-md:rounded-2xl max-md:p-3 sm:p-8">
         <div className="grid gap-7 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           {/* Phones: the page bar carries the title, so only the metrics show here. */}
           <div className="max-md:hidden">
-            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              {hasActiveMentor ? 'Verified trainer workspace' : 'Organization LMS workspace'}
-            </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Learning Studio</h1>
+            <h1 className="text-page-title font-bold">Learning Studio</h1>
+            <p className="mt-1 text-meta font-semibold text-teal-200">{hasActiveMentor ? 'Verified trainer workspace' : 'Organization LMS workspace'}</p>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
               Build practical maritime courses, respond to quality feedback and manage learner work from one workspace—personally or for an organization you are authorized to represent.
             </p>
@@ -291,8 +281,7 @@ export default async function MentorStudioPage() {
       {pendingLearnerReviews > 0 ? (
         <section className="mt-5 rounded-[1.4rem] border border-teal-200 bg-teal-50 p-5 shadow-[var(--shadow-card)] sm:flex sm:items-center sm:justify-between sm:gap-5">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-800">Assignments awaiting review</p>
-            <h2 className="mt-1 text-lg font-bold text-navy-950">
+            <h2 className="text-card-title font-semibold text-navy-950">
               {pendingLearnerReviews} learner submission{pendingLearnerReviews === 1 ? '' : 's'} need{pendingLearnerReviews === 1 ? 's' : ''} your review
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted">Learner progression remains locked until an assignment receives a passing trainer grade.</p>
@@ -307,17 +296,37 @@ export default async function MentorStudioPage() {
       ) : null}
 
       <section className="mt-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 max-md:hidden">Your learning portfolio</p>
-            <h2 className="mt-1 text-2xl font-bold text-navy-950 max-md:mt-0 max-md:text-[17px]">Courses</h2>
-          </div>
-        </div>
+        <h2 className="text-section-title font-bold text-navy-950 max-md:text-[17px]">Courses</h2>
 
         {courses.length ? (
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            {courses.map((course) => <CourseCard key={course.id} course={course} />)}
-          </div>
+          <>
+            <nav aria-label="Course status" className="mt-3 flex gap-1 overflow-x-auto rounded-xl bg-mist-100 p-1 sm:inline-flex">
+              {STATUS_TABS.map((tab) => {
+                const current = tab.id === activeTab
+                return (
+                  <Link
+                    key={tab.id}
+                    href={`/learn/studio?status=${tab.id}`}
+                    scroll={false}
+                    aria-current={current ? 'page' : undefined}
+                    className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition ${current ? 'bg-white text-navy-950 shadow-sm' : 'text-navy-700 hover:bg-white/60'}`}
+                  >
+                    {tab.label}
+                    <span className={`rounded-full px-2 text-xs font-bold ${current ? 'bg-mist-100 text-navy-900' : 'bg-white/70 text-navy-800'}`}>{tabCounts[tab.id]}</span>
+                  </Link>
+                )
+              })}
+            </nav>
+            {shownCourses.length ? (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                {shownCourses.map((course) => <CourseCard key={course.id} course={course} />)}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-dashed border-mist-200 bg-white p-6 text-center text-sm text-muted">
+                {activeTab === 'live' ? 'No live courses yet.' : activeTab === 'drafts' ? 'No drafts.' : activeTab === 'review' ? 'Nothing in review.' : 'No archived courses.'}
+              </p>
+            )}
+          </>
         ) : (
           <div className="mt-4 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-7 text-center shadow-[var(--shadow-card)] sm:p-10">
             <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800">

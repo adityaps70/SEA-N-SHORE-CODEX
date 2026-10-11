@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LearnerQuiz } from '../learner-quiz-repository'
 
@@ -85,6 +85,8 @@ describe('QuizLessonActivity', () => {
       ],
     })
 
+    const heard: string[] = []
+    window.addEventListener('sea-n-shore:lesson-completed', (event) => heard.push((event as CustomEvent<{ lessonId: string }>).detail.lessonId), { once: true })
     render(
       <QuizLessonActivity
         quiz={quiz}
@@ -117,7 +119,9 @@ describe('QuizLessonActivity', () => {
     expect(await screen.findByText('Assessment passed')).toBeInTheDocument()
     expect(screen.getByText('100%')).toBeInTheDocument()
     expect(screen.getByText('Attempt 1')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Continue to next lesson' })).toHaveAttribute('href', nextLessonHref)
+    // Round E: moving on lives in the player's one bottom bar, which this pass unlocks at once.
+    expect(heard).toEqual([lessonId])
+    expect(screen.queryByRole('link', { name: 'Continue to next lesson' })).not.toBeInTheDocument()
     // Round 14 (3.9): the action revalidates, which already re-renders the route.
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
@@ -212,7 +216,6 @@ describe('QuizLessonActivity', () => {
 
     expect(screen.getByText('Assessment passed')).toBeInTheDocument()
     expect(screen.getByText('This quiz lesson is already complete.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Continue to next lesson' })).toHaveAttribute('href', nextLessonHref)
     expect(screen.queryByRole('button', { name: 'Submit quiz' })).not.toBeInTheDocument()
     expect(mocks.submitLearningQuiz).not.toHaveBeenCalled()
   })
@@ -297,6 +300,72 @@ describe('QuizLessonActivity', () => {
 
       expect(await screen.findByText('You’ve used all 2 attempts for this quiz.')).toBeInTheDocument()
       expect(screen.queryByText(/Please try again/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('learning round E (E6): navigator, flags and the check before submitting', () => {
+    it('shows one question at a time with "Question N of M" and a navigator that jumps between them', () => {
+      render(<QuizLessonActivity quiz={quiz} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      const navigator = screen.getByRole('navigation', { name: 'Questions' })
+      expect(within(navigator).getByRole('button', { name: 'Question 1, unanswered' })).toHaveAttribute('aria-current', 'step')
+      expect(screen.getByRole('group', { name: 'Question 1 of 2' })).toBeVisible()
+      expect(screen.queryByRole('group', { name: 'Question 2 of 2' })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByLabelText('Verify evidence and actual practice'))
+      expect(within(navigator).getByRole('button', { name: 'Question 1, answered' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Next question/ }))
+      expect(screen.getByRole('group', { name: 'Question 2 of 2' })).toBeInTheDocument()
+      expect(within(navigator).getByRole('button', { name: 'Question 2, unanswered' })).toHaveAttribute('aria-current', 'step')
+      expect(screen.getByText('Answer every question to submit. Still to answer: 2.')).toBeInTheDocument()
+
+      fireEvent.click(within(navigator).getByRole('button', { name: 'Question 1, answered' }))
+      expect(screen.getByRole('group', { name: 'Question 1 of 2' })).toBeInTheDocument()
+    })
+
+    it('flags a question for review and checks flagged questions before submitting', async () => {
+      mocks.submitLearningQuiz.mockResolvedValueOnce({
+        ok: true, attemptId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', attemptNumber: 1, submittedAt: '2026-09-15T10:00:00.000Z',
+        score: 2, totalQuestions: 2, percentage: 100, passPercentage: 70, passed: true, enrollmentCompleted: false,
+        completedLessons: null, totalLessons: null, progressPercent: null, answers: [],
+      })
+      render(<QuizLessonActivity quiz={quiz} slug={slug} lessonId={lessonId} initiallyCompleted={false} />)
+
+      fireEvent.click(screen.getByLabelText('Verify evidence and actual practice'))
+      fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
+      expect(screen.getByRole('button', { name: 'Flagged' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'Question 1, answered, flagged' })).toBeInTheDocument()
+      fireEvent.click(screen.getByLabelText('The whole shipboard team'))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Submit quiz' }))
+      const check = screen.getByRole('region', { name: 'Before you submit' })
+      expect(check).toHaveTextContent('You flagged Question 1 for review.')
+      expect(mocks.submitLearningQuiz).not.toHaveBeenCalled()
+
+      fireEvent.click(within(check).getByRole('button', { name: 'Submit now' }))
+      await waitFor(() => expect(mocks.submitLearningQuiz).toHaveBeenCalledOnce())
+      expect(await screen.findByRole('region', { name: 'Quiz result' })).toHaveFocus()
+    })
+
+    it('shows attempt times in the learner’s own time zone, with the zone named', () => {
+      const original = Intl.DateTimeFormat.prototype.resolvedOptions
+      vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(function (this: Intl.DateTimeFormat) {
+        return { ...original.call(this), timeZone: 'Asia/Kolkata' }
+      })
+      try {
+        render(
+          <QuizLessonActivity
+            quiz={{ ...quiz, attemptsUsed: 1, attemptHistory: [{ attemptId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', attemptNumber: 1, submittedAt: '2026-09-14T19:04:00.000Z', score: 1, totalQuestions: 2, percentage: 50, passPercentage: 70, passed: false }] }}
+            slug={slug}
+            lessonId={lessonId}
+            initiallyCompleted={false}
+          />,
+        )
+        expect(screen.getByText(/Tue 15 Sept? 2026, 00:34 IST \(Asia\/Kolkata\)/)).toBeInTheDocument()
+        expect(screen.queryByText('Times shown in UTC')).not.toBeInTheDocument()
+      } finally {
+        vi.restoreAllMocks()
+      }
     })
   })
 })

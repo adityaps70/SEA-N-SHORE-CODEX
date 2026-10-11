@@ -156,3 +156,50 @@ describe('SaveStatus', () => {
     expect(screen.getByRole('status')).toHaveTextContent(`Saved at ${expected}`)
   })
 })
+
+describe('CourseEditSession save bar (round E)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.save.mockResolvedValue({ ok: true })
+  })
+
+  afterEach(() => cleanup())
+
+  function renderWithBar(withSave = true) {
+    return render(
+      <CourseEditSession saveBar>
+        <DraftField withSave={withSave} />
+      </CourseEditSession>,
+    )
+  }
+
+  it('says "Unsaved changes", names them, and saves every editor with "Save draft"', async () => {
+    renderWithBar()
+    const bar = screen.getByRole('region', { name: 'Save changes' })
+    expect(bar).toHaveTextContent('All changes saved')
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Draft field'), { target: { value: 'New text' } })
+    expect(bar).toHaveTextContent('Unsaved changes')
+    expect(bar).toHaveTextContent('Material “Inspection evidence”')
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('New text'))
+    await waitFor(() => expect(bar).toHaveTextContent(/Saved at/))
+  })
+
+  it('shows what could not be saved', async () => {
+    mocks.save.mockResolvedValue({ ok: false, error: 'Title is required.' })
+    renderWithBar()
+    fireEvent.change(screen.getByLabelText('Draft field'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Material “Inspection evidence”: Title is required.')
+  })
+
+  it('asks to finish an open change that cannot be saved from the bar', () => {
+    renderWithBar(false)
+    fireEvent.change(screen.getByLabelText('Draft field'), { target: { value: 'x' } })
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled()
+    expect(screen.getByText(/Finish or cancel the open change/)).toBeInTheDocument()
+  })
+})

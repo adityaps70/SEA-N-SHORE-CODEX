@@ -19,7 +19,7 @@ import {
 } from '@/features/learning/learner-course-repository'
 import { curriculumLessons, defaultPlayerLesson } from '@/features/learning/next-lesson'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
-import { createMediaReadUrl } from '@/lib/aws/storage'
+import { createLessonMediaUrl, createMediaReadUrl } from '@/lib/aws/storage'
 import { renderArticleHtml } from '@/features/learning/article-html'
 import { FocusModeToggle, FocusSidebarToggle, PlayerShell, SidebarRailToggle } from '@/features/learning/components/player-shell'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
@@ -57,6 +57,16 @@ function shouldSignLessonAsset(lesson: LearnerLesson) {
   return lesson.isAvailable
     && Boolean(lesson.assetPath)
     && !['article', 'quiz', 'assignment', 'external_embed', 'scorm', 'live_session'].includes(lesson.lessonType)
+}
+
+/**
+ * Round E: the video watermark. There is no member number, so it is a short code from the profile id plus
+ * today's date. It never shows a name, email or username.
+ */
+function videoWatermark(profileId: string, now = new Date()) {
+  const code = `SNS-${profileId.replace(/-/g, '').slice(0, 8).toUpperCase()}`
+  const date = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(now)
+  return `${code} · ${date}`
 }
 
 /** One load per request, shared by the page and its metadata (the tab title). */
@@ -141,8 +151,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   const selectedQuiz = selectedLesson?.isAvailable && selectedLesson.lessonType === 'quiz'
     ? await learnerQuizRepository.getQuizForLearner(user.id, course.slug, selectedLesson.id)
     : null
-  const selectedMediaUrl = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
-    ? await createMediaReadUrl(selectedLesson.assetPath)
+  // Round E: video and audio get a short-lived (20 minute) inline URL that the player refreshes on its own.
+  const selectedMedia = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
+    ? selectedLesson.lessonType === 'video' || selectedLesson.lessonType === 'audio'
+      ? await createLessonMediaUrl(selectedLesson.assetPath)
+      : { url: await createMediaReadUrl(selectedLesson.assetPath), expiresAt: null }
     : null
   const selectedArticleHtml = selectedLesson?.isAvailable && selectedLesson.articleFormat === 'html' && selectedLesson.articleBody
     ? await renderArticleHtml(selectedLesson.articleBody, (path) => createMediaReadUrl(path))
@@ -322,7 +335,9 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                     <div className="mt-6 max-md:mt-5">
                       <MaterialPlayer
                         lesson={selectedLesson}
-                        mediaUrl={selectedMediaUrl}
+                        mediaUrl={selectedMedia?.url ?? null}
+                        mediaExpiresAt={selectedMedia?.expiresAt ?? null}
+                        watermark={selectedLesson.lessonType === 'video' ? videoWatermark(user.id) : null}
                         slug={course.slug}
                         quiz={selectedQuiz}
                         articleHtml={selectedArticleHtml}

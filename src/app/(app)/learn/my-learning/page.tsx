@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
-import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Clock, Download, ExternalLink, GraduationCap, RefreshCw } from 'lucide-react'
+import { Archive, ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Clock, Download, ExternalLink, GraduationCap, RefreshCw } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { certificateRepository } from '@/features/learning/certificate-repository'
 import { CoursePurchasesList } from '@/features/learning/components/course-purchases-list'
 import { formatLearningDate, LearnerCertificatesList, ResumeCourseCard } from '@/features/learning/components/my-learning-home'
 import { myLearningTabFrom } from '@/features/learning/components/my-learning-tab-names'
 import { MyLearningTabs } from '@/features/learning/components/my-learning-tabs'
+import { MyLearningCourseFilter, type MyLearningCourseGroup } from '@/features/learning/components/my-learning-course-filter'
 import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
 import { courseInvitationClaims } from '@/features/learning/course-roster-repository'
 import {
@@ -52,6 +53,12 @@ function formatLabel(format: LearnerCourseEnrollment['courseFormat']) {
   return 'Recorded'
 }
 
+/** Round E (E7): which filter a course belongs to. Archived (or removed) courses always go to "Archived". */
+function enrollmentGroup(enrollment: LearnerCourseEnrollment): MyLearningCourseGroup {
+  if (enrollment.courseArchived) return 'archived'
+  return enrollment.enrollmentStatus === 'completed' ? 'completed' : 'in_progress'
+}
+
 function EnrollmentCard({ enrollment, now }: { enrollment: LearnerCourseEnrollment; now: Date }) {
   const completed = enrollment.enrollmentStatus === 'completed'
   const accessEnded = accessEndedAt(enrollment, now)
@@ -65,16 +72,23 @@ function EnrollmentCard({ enrollment, now }: { enrollment: LearnerCourseEnrollme
     >
       <div className="bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800 p-5 text-white sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white/85">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-semibold text-white/90">
             <BookOpen aria-hidden="true" className="size-3.5" /> {enrollment.category}
           </span>
-          {completed ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.1em] text-navy-950">
-              <CheckCircle2 aria-hidden="true" className="size-3.5" /> Completed
-            </span>
-          ) : null}
+          <span className="flex flex-wrap gap-1.5">
+            {enrollment.courseArchived ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-950">
+                <Archive aria-hidden="true" className="size-3.5" /> Archived
+              </span>
+            ) : null}
+            {completed ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-navy-950">
+                <CheckCircle2 aria-hidden="true" className="size-3.5" /> Completed
+              </span>
+            ) : null}
+          </span>
         </div>
-        <h2 className="mt-5 text-2xl font-bold tracking-tight">{enrollment.title}</h2>
+        <h2 className="mt-5 text-section-title font-bold">{enrollment.title}</h2>
         {enrollment.subtitle ? <p className="mt-2 text-sm leading-6 text-white/72">{enrollment.subtitle}</p> : null}
       </div>
 
@@ -187,12 +201,15 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
   ])
   const now = new Date()
 
+  // Round E (E7): filter chips, newest activity first (the repository's order), archived courses kept apart.
   const coursesPanel = enrollments.length ? (
-    <section aria-label="Your courses" className="mt-6 grid gap-5 max-md:mt-0 max-md:gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {enrollments.map((enrollment) => (
-        <EnrollmentCard key={enrollment.enrollmentId} enrollment={enrollment} now={now} />
-      ))}
-    </section>
+    <MyLearningCourseFilter
+      items={enrollments.map((enrollment) => ({
+        id: enrollment.enrollmentId,
+        group: enrollmentGroup(enrollment),
+        card: <EnrollmentCard enrollment={enrollment} now={now} />,
+      }))}
+    />
   ) : (
     <section className="mt-6 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] max-md:mt-0 sm:p-10">
       <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800">
@@ -228,8 +245,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
       <MobilePageBar backHref="/learn" title="My learning" />
       {/* Phones: the page bar is the title, so the intro card is desktop-only. */}
       <section className="overflow-hidden rounded-[1.9rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:hidden sm:p-8 lg:p-10">
-        <p className="text-xs font-bold uppercase tracking-[0.17em] text-teal-200">Sea N Shore Learning</p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">My Learning</h1>
+        <h1 className="text-page-title font-bold">My Learning</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
           Your enrolled maritime courses and real learning progress, in one place.
         </p>

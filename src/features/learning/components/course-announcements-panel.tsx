@@ -11,10 +11,10 @@ export function CourseAnnouncementsPanel({ data }: { data: ManagedCourseAnnounce
   const { remainingToday } = data
   return (
     <section aria-labelledby="course-announcements-heading" className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-x-0 max-md:p-4 max-md:shadow-none sm:p-8">
-      <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">
-        <Megaphone aria-hidden="true" className="size-4" /> Announcements
-      </p>
-      <h2 id="course-announcements-heading" className="mt-2 text-2xl font-bold text-navy-950 max-md:text-xl">Message everyone enrolled</h2>
+      <h2 id="course-announcements-heading" className="flex items-center gap-2 text-section-title font-bold text-navy-950 max-md:text-xl">
+        <Megaphone aria-hidden="true" className="size-5 text-teal-700" /> Announcements
+      </h2>
+      <p className="mt-1 text-meta font-semibold text-navy-800">Message everyone enrolled</p>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
         Share news, live session times or reminders. Learners see announcements in the course player and get a notification and an email.
         You can send up to 3 per course in 24 hours{remainingToday < 3 ? `; ${remainingToday} left right now` : ''}.
@@ -30,7 +30,7 @@ export function CourseAnnouncementsPanel({ data }: { data: ManagedCourseAnnounce
         )}
       </div>
 
-      <h3 className="mt-7 text-sm font-bold uppercase tracking-[0.12em] text-muted">Sent announcements</h3>
+      <h3 className="mt-7 text-card-title font-semibold text-navy-950">Sent announcements</h3>
       <div className="mt-3">
         <CourseAnnouncementsList announcements={data.announcements} showRecipients emptyText="Nothing sent yet. Your announcements will be listed here." />
       </div>

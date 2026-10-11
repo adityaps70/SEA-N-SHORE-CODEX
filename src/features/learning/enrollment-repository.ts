@@ -42,6 +42,8 @@ type LearnerCourseRow = QueryResultRow & {
   certificate_verification_code: string | null
   total_lessons: string | number
   completed_lessons: string | number
+  course_archived?: boolean | null
+  last_activity_at?: string | Date | null
 }
 
 export type LearnerEnrollment = {
@@ -78,6 +80,10 @@ export type LearnerCourseEnrollment = {
   totalLessons: number
   completedLessons: number
   progressPercent: number
+  /** Round E (E7): the trainer archived or removed the course; the learner keeps access to what they had. */
+  courseArchived?: boolean
+  /** Round E (E7): the latest of the enrollment change and any lesson progress, for sorting by last activity. */
+  lastActivityAt?: string | null
 }
 
 function isoDateTime(value: string | Date) {
@@ -316,7 +322,9 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery; tra
          certificate.id as certificate_id,
          certificate.verification_code as certificate_verification_code,
          count(distinct lesson.id)::bigint as total_lessons,
-         count(distinct progress.lesson_id) filter (where progress.completed = true)::bigint as completed_lessons
+         count(distinct progress.lesson_id) filter (where progress.completed = true)::bigint as completed_lessons,
+         (course.status = 'archived' or course.removed_at is not null) as course_archived,
+         greatest(enrollment.updated_at, max(progress.updated_at)) as last_activity_at
        from public.learning_enrollments enrollment
        inner join public.learning_courses course
          on course.id = enrollment.course_id
@@ -348,7 +356,10 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery; tra
          enrollment.enrolled_at,
          enrollment.completed_at,
          enrollment.access_expires_at,
+         enrollment.updated_at,
          course.id,
+         course.status,
+         course.removed_at,
          course.slug,
          course.title,
          course.subtitle,
@@ -363,7 +374,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery; tra
          company.name,
          certificate.id,
          certificate.verification_code
-       order by enrollment.updated_at desc, enrollment.id desc`,
+       order by last_activity_at desc nulls last, enrollment.id desc`,
       [learnerId],
     ) as LearnerCourseRow[]
 
@@ -399,6 +410,8 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery; tra
         totalLessons,
         completedLessons,
         progressPercent,
+        courseArchived: row.course_archived === true,
+        lastActivityAt: row.last_activity_at ? isoDateTime(row.last_activity_at) : null,
       }
     })
   }

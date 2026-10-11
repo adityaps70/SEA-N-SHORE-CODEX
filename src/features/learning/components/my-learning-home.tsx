@@ -54,7 +54,7 @@ export function ResumeCourseCard({ resume }: { resume: ResumeCourse }) {
             <Icon aria-hidden="true" className="size-5" />
           </span>
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Pick up where you left off</p>
+            <p className="text-meta font-semibold text-teal-800">Pick up where you left off</p>
             <h2 id="resume-course-title" className="mt-1 break-words text-lg font-bold tracking-tight text-navy-950 sm:text-xl">
               {heading}
             </h2>

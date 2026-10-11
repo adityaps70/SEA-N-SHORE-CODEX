@@ -84,12 +84,12 @@ done by the round's read-only runner (below), and the output shows titles and sl
 - [x] PR 1: E4 player layout, footer hidden, one Previous / Complete & next bar, tab title, wording
 - [x] PR 1: E5 article typography, reading time and progress
 - [x] PR 1: E8 card chips and thumbnail guide
-- [ ] PR 2: E3 custom video controls, no download, 20-minute URLs with refresh, watermark, resume prompt, keys, one trailer
-- [ ] PR 2: E6 quiz navigator, local times, scroll to result
-- [ ] PR 2: E7 My Learning filters, `/learn/my` redirect
-- [ ] PR 2: E9 editor section nav, read-only view, Studio home tidy-up, status tabs
-- [ ] PR 2: E10 skeletons, focus rings, 390 px pass
-- [ ] PR 2: revision diff page and the `learning-round-e-content` runner (plan / apply-once)
+- [x] PR 2: E3 custom video controls, no download, 20-minute URLs with refresh, watermark, resume prompt, keys, one trailer
+- [x] PR 2: E6 quiz navigator, local times, scroll to result
+- [x] PR 2: E7 My Learning filters, `/learn/my` redirect
+- [x] PR 2: E9 editor section nav, read-only view, Studio home tidy-up, status tabs
+- [x] PR 2: E10 skeletons, focus rings, 390 px pass
+- [x] PR 2: revision diff page and the `learning-round-e-content` runner (plan / apply-once)
 - [ ] Deploy (one), rearm, Remote Verify
 - [ ] Runner plan, then arm, then the draft revision for the SIRE articles; send the diff link
 - [ ] Report
@@ -111,3 +111,49 @@ done by the round's read-only runner (below), and the output shows titles and sl
 - **Local checks**: a local Postgres 16 with every migration, a fixture course shaped like the live SIRE course
   (9 modules, 37 items, fixture names only), and a Cognito GetUser stub outside the repository. Screenshots are in
   `docs/superpowers/plans/round-e/`.
+
+## PR 2 notes
+
+- **E3 video**: our own control bar (play, seek, time, volume and mute, speed 0.75-2×, captions, picture in picture,
+  full screen) over a `<video>` with no `controls`, `controlsList="nodownload noremoteplayback"`,
+  `disableRemotePlayback` and no context menu. Audio, previews and the trailer get `nodownload` too.
+  - Lesson video and audio are signed for 20 minutes with `ResponseContentDisposition=inline`
+    (`createLessonMediaUrl`). The player asks `refreshLessonMediaUrl` for a fresh URL 3 minutes before expiry, or
+    after a playback error, and continues from the same second (playing if it was playing). The refresh runs the
+    same access checks as the player.
+  - Watermark: `SNS-` + 8 hex of the profile id and today's date, faint (25% white), drifting across the frame over
+    90 seconds; static with reduced motion. Never a name, email or username.
+  - Resume: a saved position of 5 s or more (and not the last 5 s) offers "Resume from m:ss" or "Start over".
+  - Keys on the focused player: Space/K, J/L (±10 s), M, F, C, and ? for the list. The Round A seek cap is kept.
+  - One trailer `<video>`: the course page renders it only in the slot that matches the screen.
+  - Honest limit: hiding the button stops casual downloads only. Anyone can still save the file with developer tools
+    while the URL is valid, or record the screen. The 20-minute URL and the watermark make that slower and traceable,
+    not impossible.
+- **E6 quiz**: one question at a time with a navigator (answered, unanswered, flagged), "Question N of M", Flag for
+  review, and a "Before you submit" check listing unanswered and flagged questions. Grading, autosave and timers stay
+  on the server as before. Attempt times show in the learner's zone with the zone named. The result is scrolled to
+  and focused, and a pass unlocks the bottom bar at once.
+- **E7 My Learning**: chips All / In progress / Completed / Archived (archived only when there is one). Under All,
+  archived courses sit in a collapsed group with an "Archived" badge. Sorted by last activity (latest lesson progress
+  or enrolment change). `/learn/my` is a 301 to `/learn/my-learning` (`next.config.ts`).
+- **E9 Studio and editor**: Studio home loses the stray back link; the seven buttons become one "Tools" menu next
+  to the primary "Create course"; "Recorded" and levels are capitalised; status tabs Live / Drafts / In review
+  (submitted and approved) / Archived. The editor gets a sticky step nav (Details, Media, Pricing, Certificate,
+  Curriculum, Learners & announcements, Community) with ✓ or "needs attention", and one sticky "Unsaved changes ·
+  Save draft" bar that saves every editor (details, curriculum edits, pricing plans and certificate settings, which
+  are now tracked too). Curriculum sections collapse (the first starts open) and sections and materials can be
+  dragged into place within their section (a new reorder action; arrow buttons stay for keyboards and phones). The
+  read-only view shows no edit, move, delete or upload controls, and the tab title matches the heading.
+- **E10**: LMS loading skeletons (catalogue, course page, player, My Learning, Studio, editor) that pulse only when
+  motion is welcome; a 2px ocean-600 focus outline everywhere (5.3:1, was 1px teal-500 at 2.9:1) and a visible ring
+  on LMS text fields; the remaining redundant eyebrows on these screens are gone.
+- **Draft changes page** (`/learn/studio/courses/<draft id>/changes`): for the course team and platform
+  administrators. Each changed material shows a word-by-word diff, a "Same words. Only the layout and heading
+  capitals change." check, and the live and draft versions side by side.
+- **`learning-round-e-content` runner**: the task is bundled into the image (`dist/workers/learning-round-e-content.mjs`)
+  and started once as an ECS task with the web task definition, overriding only its command and two variables.
+  `plan` reads only; `apply-once` opens the SIRE draft revision as its trainer through the Round A1 code and
+  converts the plain-text articles in that draft only (refusing any article whose words would change). Nothing is
+  submitted, published or deleted, and an already open draft is left alone. A push-triggered plan waits for a
+  deployed image that contains the worker.
+
