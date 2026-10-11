@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { legacyReminderRepository } from './reminder-repository'
 import { legacyInviteRepository } from './repository'
+import { legacyReminderTestSender, type LegacyReminderTestResult } from './reminder-test'
 
 const batchSchema = z.coerce.number().int().refine((value) => value === 10 || value === 50 || value === 100)
 
@@ -64,4 +65,13 @@ export async function stopUnsentLegacyReminders() {
   await requirePlatformAdministratorUser()
   await legacyReminderRepository.stopUnsent()
   refresh()
+}
+
+/**
+ * "Send test to me": the exact second reminder to the signed-in admin's own verified email, with sample details. There
+ * is no recipient field. It does not create a reminder or change the queue. Returns an outcome for the page to show.
+ */
+export async function sendLegacyReminderTest(): Promise<LegacyReminderTestResult> {
+  const admin = await requirePlatformAdministratorUser()
+  return legacyReminderTestSender.send({ id: admin.id, email: admin.email })
 }

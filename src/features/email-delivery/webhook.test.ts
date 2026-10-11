@@ -125,5 +125,10 @@ describe('delivery event parsing', () => {
     expect(suppressionReasonFor({ type: 'delivered', bounceType: null })).toBeNull()
     expect(suppressionReasonFor({ type: 'failed', bounceType: null })).toBeNull()
     expect(suppressionReasonFor({ type: 'delivery_delayed', bounceType: null })).toBeNull()
+    // An admin's test send never puts anyone on the do-not-email list.
+    for (const type of ['bounced', 'complained', 'suppressed'] as const) {
+      expect(suppressionReasonFor({ type, bounceType: 'Permanent', category: 'legacy_profile_reminder_test' })).toBeNull()
+      expect(suppressionReasonFor({ type, bounceType: 'Permanent', category: 'legacy_profile_reminder' })).not.toBeNull()
+    }
   })
 })

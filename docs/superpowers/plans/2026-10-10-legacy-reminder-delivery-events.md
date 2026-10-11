@@ -153,3 +153,28 @@ both unsubscribe headers and the claim and unsubscribe links are unchanged.
   Shore now" line, and the footer with the social links and info@beaufortmarine.in.
 - The admin preview (Second reminder tab) shows the new HTML in a taller frame.
 - Release: code PR, then a deploy arm. No migration.
+- Release: #208, deploy arm #209 (run 38137161111). Remote Verify 38138032989 saw the PNG with a public cache header.
+  Rearm `0cb51f12`.
+
+## Send test to me (11 October)
+
+A button on the Second reminder tab. It sends the exact reminder to the signed-in admin and nobody else.
+
+- **Recipient.** Only the admin's own sign-in email, and only when the admin's own identity has it verified. There is
+  no recipient field, and the server action takes no input.
+- **Content.** The same HTML, text and headers as the real reminder, with "[TEST] " before the subject and a sample
+  person ("Test Admin", test.admin@example.com). The claim and unsubscribe links open `/email/legacy/test-link`
+  ("This is a test link"). The List-Unsubscribe header points at `/api/email/legacy/test-unsubscribe`, which answers
+  200 and changes nothing. A test carries no claim or unsubscribe token.
+- **Not a reminder.** A test never touches the invitation or reminder tables, so eligibility, the queue and "one
+  reminder per person" are unchanged. It is sent on the sending-only key with the Resend tag
+  `legacy_profile_reminder_test`. A bounce, complaint or suppression on a test is logged but never adds anyone to
+  the do-not-email list.
+- **Audit and limit.** Every request is in `audit_events`:
+  - `legacy_reminder.test_requested`, then `_sent` (with the Resend id) or `_failed`;
+  - `_refused` (with the reason) when no test was sent.
+
+  At most 5 requests an hour per admin. The limit counts the requested rows, so failed sends count and refusals do
+  not. A per-admin advisory lock makes simultaneous clicks wait their turn.
+- **Release.** A code PR, then a deploy arm. No migration.
+

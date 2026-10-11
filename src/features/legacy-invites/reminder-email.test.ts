@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LEGACY_REMINDER_LOGO_URL, legacyFirstName, legacyReminderEmail } from './reminder-email'
+import { LEGACY_REMINDER_LOGO_URL, legacyFirstName, legacyReminderEmail, legacyReminderTestEmail } from './reminder-email'
 
 const INPUT = {
   fullName: 'Asha Rao',
@@ -141,5 +141,32 @@ describe('legacy second reminder email', () => {
     expect(legacyFirstName("D'Souza")).toBe("D'Souza")
     expect(legacyFirstName('  ')).toBe('there')
     expect(legacyFirstName('Capt.')).toBe('there')
+  })
+})
+
+describe('legacy second reminder test email', () => {
+  const real = legacyReminderEmail({ ...INPUT, fullName: 'Test Admin', email: 'test.admin@example.com' })
+  const test = legacyReminderTestEmail({ siteUrl: 'https://seanshore.in' })
+  const swap = (value: string) => value
+    .replaceAll(CLAIM, 'https://seanshore.in/email/legacy/test-link')
+    .replaceAll(UNSUBSCRIBE, 'https://seanshore.in/email/legacy/test-link?link=unsubscribe')
+
+  it('is the exact reminder with sample details and "[TEST] " before the subject', () => {
+    expect(test.subject).toBe('[TEST] Reminder: your Sea N Shore profile is waiting')
+    expect(test.preheader).toBe(real.preheader)
+    expect(test.html).toBe(swap(real.html))
+    expect(test.text).toBe(swap(real.text))
+    expect(test.html).toContain('Hi Test,')
+    expect(test.html).toContain('<strong>test.admin@example.com</strong>')
+  })
+
+  it('has links that cannot claim a profile or unsubscribe anyone, and keeps both unsubscribe headers', () => {
+    expect(`${test.html}\n${test.text}`).not.toMatch(/claim-profile|invite=|token=|\/api\/email\/legacy\/unsubscribe/)
+    expect(test.claimUrl).toBe('https://seanshore.in/email/legacy/test-link')
+    expect(test.unsubscribeUrl).toBe('https://seanshore.in/email/legacy/test-link?link=unsubscribe')
+    expect(test.headers).toEqual([
+      { Name: 'List-Unsubscribe', Value: '<https://seanshore.in/api/email/legacy/test-unsubscribe>' },
+      { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+    ])
   })
 })
