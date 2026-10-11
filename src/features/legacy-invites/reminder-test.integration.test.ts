@@ -231,9 +231,9 @@ describe('second reminder: send test to me', () => {
     expect(response.status).toBe(200)
     await expect(response.text()).resolves.toBe('This was a test email. Nothing was changed.')
 
-    const opened = await testUnsubscribeRoute.GET(new Request(target))
+    const opened = await testUnsubscribeRoute.GET()
     expect(opened.status).toBe(303)
-    expect(opened.headers.get('location')).toBe('https://seanshore.in/email/legacy/test-link?link=unsubscribe')
+    expect(opened.headers.get('location')).toBe(`${process.env.NEXT_PUBLIC_SITE_URL}/email/legacy/test-link?link=unsubscribe`)
     expect(await db.query(`select 1 from public.email_suppressions`)).toHaveLength(0)
   })
 

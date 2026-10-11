@@ -27,9 +27,10 @@ describe('/api/email/learning/unsubscribe', () => {
   })
 
   it('never unsubscribes on GET (link scanners prefetch): it shows the confirmation page', async () => {
-    const response = await GET(new Request(`https://seanshore.in/api/email/learning/unsubscribe?token=${token}`))
+    // Behind the load balancer the request carries the container's address; the redirect uses the public site URL.
+    const response = await GET(new Request(`http://10.0.1.23:3000/api/email/learning/unsubscribe?token=${token}`))
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe(`https://seanshore.in/email/learning/unsubscribe?token=${token}`)
+    expect(response.headers.get('location')).toBe(`${process.env.NEXT_PUBLIC_SITE_URL}/email/learning/unsubscribe?token=${token}`)
     expect(mocks.unsubscribeWithToken).not.toHaveBeenCalled()
   })
 })

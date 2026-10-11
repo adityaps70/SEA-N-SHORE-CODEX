@@ -64,9 +64,10 @@ describe('RFC 8058 one-click unsubscribe', () => {
   })
 
   it('never unsubscribes on GET; it redirects to the confirmation page', async () => {
-    const response = await GET(new Request('https://seanshore.example/api/newsletter/unsubscribe?token=abc'))
+    // Behind the load balancer the request carries the container's address; the redirect uses the public site URL.
+    const response = await GET(new Request('http://10.0.1.23:3000/api/newsletter/unsubscribe?token=abc'))
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe('https://seanshore.example/newsletter/unsubscribe?token=abc')
+    expect(response.headers.get('location')).toBe(`${process.env.NEXT_PUBLIC_SITE_URL}/newsletter/unsubscribe?token=abc`)
     expect(mocks.unsubscribe).not.toHaveBeenCalled()
   })
 })

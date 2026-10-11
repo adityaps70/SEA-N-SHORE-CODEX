@@ -1,3 +1,5 @@
+import { siteUrlFor } from '@/lib/site-url'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +14,6 @@ export async function POST() {
 }
 
 /** Opening it in a browser shows the test-link page. */
-export async function GET(request: Request) {
-  return Response.redirect(new URL('/email/legacy/test-link?link=unsubscribe', new URL(request.url).origin), 303)
+export async function GET() {
+  return Response.redirect(siteUrlFor('/email/legacy/test-link?link=unsubscribe'), 303)
 }
