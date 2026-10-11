@@ -7,6 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { promisify } from 'node:util'
+import { guardAction } from './guard-value.mjs'
 
 // Contract test for the Resend delivery webhook runner (scripts/aws/resend-delivery-webhook.py). It runs the real
 // script against a local fake of the Resend API, a fake of the deployed webhook endpoint (which checks Svix
@@ -259,5 +260,6 @@ test('the workflow is guarded like every other AWS-changing runner', () => {
   assert.match(workflow, /^ {4}environment: staging-apply$/m)
   assert.match(workflow, /bash scripts\/aws\/resend-delivery-webhook\.sh/)
   assert.match(workflow, /grep -qx 'RESEND_DELIVERY_WEBHOOK_APPLY_VERIFIED=true'/)
-  assert.equal(readFileSync(new URL('./resend-delivery-webhook-action.txt', import.meta.url), 'utf8'), 'plan\n')
+  // The guard reads plan, or apply-once <sha> while an owner-merged arm is in place (a rearm puts it back to plan).
+  assert.ok(['plan', 'apply-once'].includes(guardAction(readFileSync(new URL('./resend-delivery-webhook-action.txt', import.meta.url), 'utf8'))))
 })
