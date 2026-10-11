@@ -6,14 +6,14 @@ const revisionId = '22222222-2222-4222-8222-222222222222'
 const articleId = '33333333-3333-4333-8333-333333333333'
 const legacy = 'WHY THIS MATTERS\nInspectors look at evidence.\n- Review the VIQ'
 
-function deps(options: { openRevision?: string | null; revisionPlainLeft?: number; status?: string } = {}) {
+function deps(options: { openRevision?: string | null; revisionPlainLeft?: number; status?: string; title?: string } = {}) {
   const lines: string[] = []
   const calls: Array<{ text: string; values?: readonly unknown[] }> = []
   let converted = false
   const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
     calls.push({ text, values })
     if (text.includes('from public.learning_courses course') && text.includes('left join public.learning_mentors')) {
-      return [{ id: liveId, status: options.status ?? 'published', user_id: 'trainer-1', mentor_status: 'active' }]
+      return [{ id: liveId, title: options.title ?? 'SIRE 2.0 Inspection Readiness: The Complete Practitioner Course', status: options.status ?? 'published', user_id: 'trainer-1', mentor_status: 'active' }]
     }
     if (text.includes('revision_closed_at is null')) return options.openRevision ? [{ id: options.openRevision }] : []
     if (text.includes('from public.learning_quizzes')) return [{ module: 0, module_title: 'Module one', title: 'Quiz 1', shuffle_questions: false, shuffle_options: false }]
@@ -104,5 +104,12 @@ describe('round E content task: apply-once', () => {
   it('fails when plain-text articles remain in the draft', async () => {
     const { value } = deps({ revisionPlainLeft: 1 })
     await expect(runRoundEContentApply(value, ROUND_E_APPLY_CONFIRMATION)).rejects.toThrow('remain in the draft')
+  })
+
+  it('targets the live SIRE slug and refuses a course at that slug that is not the SIRE course', async () => {
+    const { value, calls } = deps({ title: 'Bridge basics' })
+    await expect(runRoundEContentApply(value, ROUND_E_APPLY_CONFIRMATION)).rejects.toThrow('not the SIRE 2.0 course')
+    expect(calls[0]!.values).toEqual(['sire-2-0-inspection-readiness'])
+    expect(value.startRevision).not.toHaveBeenCalled()
   })
 })

@@ -18,7 +18,8 @@ import { articleText, sameWordsIgnoringCase } from './text-diff'
  * No learner names, emails or answers are read or printed; enrolment numbers are counts.
  */
 
-export const SIRE_COURSE_SLUG = 'sire-2-0-practical-vessel-inspection-readiness'
+// The live SIRE course on seanshore.in (the seed script's older slug is not the published course).
+export const SIRE_COURSE_SLUG = 'sire-2-0-inspection-readiness'
 export const ROUND_E_APPLY_CONFIRMATION = 'I_APPROVE_ROUND_E_SIRE_DRAFT_REVISION'
 const TEST_COURSE_PATTERN = /\b(test|tests|testing|e2e|demo|sample|fixture|dummy|untitled|asdf|qwerty|lorem|tmp|temp|trial course)\b/i
 
@@ -72,13 +73,14 @@ export function planConversion(row: ArticleRow): PlannedConversion {
 
 async function liveSireCourse(query: Query) {
   const rows = await query(
-    `select course.id, course.status, mentor.user_id, mentor.status as mentor_status
+    `select course.id, course.title, course.status, mentor.user_id, mentor.status as mentor_status
      from public.learning_courses course
      left join public.learning_mentors mentor on mentor.id = course.mentor_id
      where course.slug = $1 and course.revision_of_course_id is null`,
     [SIRE_COURSE_SLUG],
-  ) as Array<QueryResultRow & { id: string; status: string; user_id: string | null; mentor_status: string | null }>
+  ) as Array<QueryResultRow & { id: string; title: string; status: string; user_id: string | null; mentor_status: string | null }>
   if (rows.length !== 1) throw new Error(`Expected one live SIRE course; found ${rows.length}.`)
+  if (!/^SIRE 2\.0/i.test(String(rows[0]!.title ?? ''))) throw new Error('The course at the SIRE slug is not the SIRE 2.0 course; refusing.')
   return rows[0]!
 }
 
