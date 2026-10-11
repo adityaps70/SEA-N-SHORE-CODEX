@@ -60,6 +60,21 @@ describe('ResumableLessonMedia', () => {
     expect(media).toHaveAttribute('preload', 'metadata')
   })
 
+  it('catches up when the metadata loaded before hydration (the event was missed)', () => {
+    const readyState = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'readyState')
+    const duration = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration')
+    Object.defineProperty(HTMLMediaElement.prototype, 'readyState', { configurable: true, get: () => 1 })
+    Object.defineProperty(HTMLMediaElement.prototype, 'duration', { configurable: true, get: () => 780 })
+    try {
+      render(<ResumableLessonMedia kind="video" src={src} slug={slug} lessonId={lessonId} initialPositionSeconds={125} />)
+      expect(screen.getByRole('button', { name: 'Resume from 2:05' })).toBeInTheDocument()
+      expect(screen.getByText('0:00 / 13:00')).toBeInTheDocument()
+    } finally {
+      if (readyState) Object.defineProperty(HTMLMediaElement.prototype, 'readyState', readyState)
+      if (duration) Object.defineProperty(HTMLMediaElement.prototype, 'duration', duration)
+    }
+  })
+
   it('can start over instead of resuming', () => {
     const { container } = render(<ResumableLessonMedia kind="video" src={src} slug={slug} lessonId={lessonId} initialPositionSeconds={125} />)
     const media = container.querySelector('video')!

@@ -104,6 +104,8 @@ export function ResumableLessonMedia({
   const restoreRef = useRef<{ time: number; play: boolean } | null>(null)
   const refreshingRef = useRef(false)
   const startedRef = useRef(false)
+  // The source whose metadata was handled (see the catch-up effect below).
+  const metadataSeenRef = useRef<string | null>(null)
   const [src, setSrc] = useState(initialSrc)
   const [expiresAt, setExpiresAt] = useState(initialExpiresAt)
   const [rate, setRate] = useState(1)
@@ -239,6 +241,7 @@ export function ResumableLessonMedia({
   const handleLoadedMetadata = useCallback(() => {
     const media = mediaRef.current
     if (!media) return
+    metadataSeenRef.current = media.getAttribute('src')
     media.playbackRate = rate
     const mediaDuration = Number.isFinite(media.duration) ? media.duration : 0
     setDuration(mediaDuration)
@@ -264,6 +267,15 @@ export function ResumableLessonMedia({
     media.currentTime = position
     lastTimeRef.current = media.currentTime
   }, [initialPositionSeconds, kind, rate])
+
+  // The server-rendered element can load its metadata before React attaches onLoadedMetadata (the event is then
+  // missed): catch up once after hydration, and after each source change, when the metadata is already there.
+  useEffect(() => {
+    const media = mediaRef.current
+    if (!media || metadataSeenRef.current === src || media.readyState < 1) return
+    metadataSeenRef.current = src
+    handleLoadedMetadata()
+  }, [handleLoadedMetadata, src])
 
   const handleTimeUpdate = useCallback(() => {
     const media = mediaRef.current
@@ -519,12 +531,13 @@ export function ResumableLessonMedia({
         ) : null}
 
         {resumeOffer !== null ? (
-          <div className="absolute inset-0 grid place-items-center bg-navy-950/55 p-4">
+          // Above the control bar, so the two never overlap on a phone.
+          <div className="absolute inset-x-0 bottom-[4.5rem] top-0 grid place-items-center bg-navy-950/55 p-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <button type="button" onClick={() => resume(false)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+              <button type="button" onClick={() => resume(false)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50 max-sm:px-3">
                 <Play aria-hidden="true" className="size-4" /> Resume from {formatTimestamp(resumeOffer)}
               </button>
-              <button type="button" onClick={() => resume(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-white/40 px-4 text-sm font-semibold text-white hover:bg-white/10">
+              <button type="button" onClick={() => resume(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-white/60 bg-navy-950/40 px-4 text-sm font-semibold text-white hover:bg-white/10 max-sm:px-3">
                 <RotateCcw aria-hidden="true" className="size-4" /> Start over
               </button>
             </div>
@@ -561,7 +574,7 @@ export function ResumableLessonMedia({
               onChange={(event) => changeVolume(Number(event.target.value))}
               className="w-20 cursor-pointer accent-white max-sm:hidden"
             />
-            <span className="ml-1 font-mono text-xs tabular-nums text-white/90">
+            <span className="ml-1 whitespace-nowrap font-mono text-xs tabular-nums text-white/90">
               {formatTimestamp(currentTime)} / {formatTimestamp(duration)}
             </span>
             <span className="flex-1" />
@@ -571,7 +584,7 @@ export function ResumableLessonMedia({
               </button>
             ) : null}
             {pipSupported ? (
-              <button type="button" onClick={() => void togglePictureInPicture()} aria-label="Picture in picture" className={controlButton}>
+              <button type="button" onClick={() => void togglePictureInPicture()} aria-label="Picture in picture" className={`${controlButton} max-sm:hidden`}>
                 <PictureInPicture2 aria-hidden="true" className="size-5" />
               </button>
             ) : null}
