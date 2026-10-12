@@ -19,6 +19,19 @@ type ListAdministeredGroupIds = (viewerId: string) => Promise<string[]>
 
 export type CommentActivity = { post: FeedPost; viewerComments: FeedComment[] }
 
+/** Round F: what the post page shows. */
+export type PostPage =
+  | { kind: 'member'; post: FeedPost }
+  | { kind: 'public'; post: FeedPost }
+  | { kind: 'members_only' }
+  | { kind: 'missing' }
+
+const POST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isPostId(value: string) {
+  return POST_ID_PATTERN.test(value)
+}
+
 /** Round 14 (3.7): My Activities lists (posts, comments) load 20 at a time. */
 export const ACTIVITY_PAGE_SIZE = 20
 
@@ -138,37 +151,32 @@ export function createFeedQueries(input: {
     return applyGroupModeration(await applyOrganizationPermissions(rows, posts, viewerId), viewerId)
   }
 
-  async function hydratePublicPosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
+  /**
+   * Posts for a signed-out page (round F): no viewer state, no comments (they stay behind sign-in; the
+   * counts still show), and reposted originals only when they are readable signed out too.
+   */
+  async function hydratePublicPosts(rows: FeedPostRow[]): Promise<FeedPost[]> {
     if (!rows.length) return []
-    const postIds = rows.map((row) => row.id)
     const sourceIds = repostSourceIds(rows)
-    const [comments, repostSources] = await Promise.all([
-      input.repository.getComments(postIds),
-      sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
-    ])
+    const repostSources = sourceIds.length ? await input.repository.listPublicRepostSourceRows(sourceIds) : []
     const paths = [...new Set([
       ...rows.flatMap(feedPostMediaPaths),
       ...rows.flatMap(feedPhotoTagAvatarPaths),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...repostSources.flatMap(feedPostMediaPaths),
       ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
-      ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
     ].filter((path): path is string => Boolean(path)))]
     const signedUrls = await input.resolveMediaUrls(paths)
-    const commentsByPost = new Map<string, FeedCommentRow[]>()
-    for (const comment of comments) {
-      if (!comment.post_id) continue
-      const existing = commentsByPost.get(comment.post_id) ?? []
-      existing.push(comment)
-      commentsByPost.set(comment.post_id, existing)
-    }
     const sourceById = new Map(repostSources.map((row) => [row.id, row] as const))
     const emptyViewer = { postReactions: new Map(), likedPostIds: new Set<string>(), savedPostIds: new Set<string>(), pollVotes: new Map<string, string>() }
-    return rows.map((row) => mapFeedPost({
-      ...row,
-      post_comments: commentsByPost.get(row.id) ?? [],
-      repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
-    }, emptyViewer, signedUrls))
+    return rows.map((row) => ({
+      ...mapFeedPost({
+        ...row,
+        post_comments: [],
+        repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
+      }, emptyViewer, signedUrls),
+      comments: [],
+    }))
   }
 
   async function getFeedPage(request: FeedRequest = {}): Promise<FeedPage> {
@@ -225,9 +233,12 @@ export function createFeedQueries(input: {
     return hydratePosts(rows, user.id)
   }
 
+  /**
+   * An author's posts for their profile page seen signed out: only posts they chose to show to anyone
+   * (round F). It used to list them as the author saw them, which included private-community posts.
+   */
   async function getPublicPostsByAuthor(authorProfileId: string): Promise<FeedPost[]> {
-    const rows = await input.repository.listAuthorRows({ viewerProfileId: authorProfileId, authorProfileId, limit: 30, personalOnly: true })
-    return hydratePublicPosts(rows, authorProfileId)
+    return hydratePublicPosts(await input.repository.listPublicAuthorRows(authorProfileId, 30))
   }
 
   /** The signed-in member's own posts, newest first, 20 per page (keyset cursor: created_at, id). */
@@ -284,6 +295,8 @@ export function createFeedQueries(input: {
   }
 
   async function getPostById(id: string): Promise<FeedPost | null> {
+    // Round F: a malformed id is a missing post (404), not a database error (500).
+    if (!isPostId(id)) return null
     const user = await input.requireUser()
     const row = await input.repository.getPostRow(user.id, id)
     if (!row) return null
@@ -291,7 +304,30 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyHiddenPosts, getMyCommentActivity, getPostById }
+  /**
+   * The post page for anyone (round F). Signed in: the member rule (plus the tagged-member exception).
+   * Signed out: an "Anyone" post read-only, a teaser for any other live post (no content), or missing.
+   */
+  async function getPostPage(id: string, viewer: { id: string } | null): Promise<PostPage> {
+    if (!isPostId(id)) return { kind: 'missing' }
+    if (viewer) {
+      const row = await input.repository.getPostRow(viewer.id, id)
+      if (row) {
+        const [post] = await hydratePosts([row], viewer.id)
+        if (post) return { kind: 'member', post }
+      }
+      // Signed in, the member rule decides alone: a block or a private community hides the post.
+      return { kind: 'missing' }
+    }
+    const row = await input.repository.getPublicPostRow(id)
+    if (row) {
+      const [post] = await hydratePublicPosts([row])
+      if (post) return { kind: 'public', post }
+    }
+    return await input.repository.postExists(id) ? { kind: 'members_only' } : { kind: 'missing' }
+  }
+
+  return { getFeedPage, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyHiddenPosts, getMyCommentActivity, getPostById, getPostPage }
 }
 
 const productionQueries = createFeedQueries({
@@ -311,3 +347,4 @@ export const getMyRecentlyDeletedPosts = productionQueries.getMyRecentlyDeletedP
 export const getMyHiddenPosts = productionQueries.getMyHiddenPosts
 export const getMyCommentActivity = productionQueries.getMyCommentActivity
 export const getPostById = productionQueries.getPostById
+export const getPostPage = productionQueries.getPostPage

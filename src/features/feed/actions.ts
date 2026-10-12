@@ -52,13 +52,13 @@ import {
   updateCommentWithAurora,
   updatePostWithAurora,
 } from './service'
-import { POST_CATEGORIES, type FeedComment, type FeedCursor, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
+import { POST_CATEGORIES, type FeedComment, type FeedCursor, type FeedPost, type FeedRequest, type PostAudience, type PostCategory, type PostReactionType } from './types'
 import { plainFieldErrors } from '@/lib/validation/plain-messages'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 export type RepostActionResult = { ok: true; postId: string } | { ok: false; error: string }
 export type UpdatePostActionResult =
-  | { ok: true; post: Pick<FeedPost, 'id' | 'body' | 'mentions'> }
+  | { ok: true; post: Pick<FeedPost, 'id' | 'body' | 'mentions' | 'audience'> }
   | { ok: false; error: string }
 
 const ORGANIZATION_POST_FORBIDDEN_MESSAGE = 'You can no longer post for this organization. Choose "Yourself" under "Post as", or ask an organization admin for a content role.'
@@ -153,6 +153,7 @@ function postInputFromFormData(formData: FormData) {
     organizationMentionIds: organizationMentionIds(formData),
     companyId: formData.get('companyId'),
     groupId: formData.get('groupId'),
+    audience: formData.get('audience'),
   }
 }
 
@@ -325,6 +326,7 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         organizationMentionIds: data.organizationMentionIds,
         ...(data.companyId ? { companyId: data.companyId } : {}),
         ...(data.groupId ? { groupId: data.groupId } : {}),
+        audience: data.audience,
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
@@ -373,6 +375,7 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
           : []),
         ...(data.companyId ? { companyId: data.companyId } : {}),
         ...(data.groupId ? { groupId: data.groupId } : {}),
+        audience: data.audience,
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: true, mediaCount: data.media.length })
@@ -397,6 +400,7 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         organizationMentionIds: data.organizationMentionIds,
         ...(data.companyId ? { companyId: data.companyId } : {}),
         ...(data.groupId ? { groupId: data.groupId } : {}),
+        audience: data.audience,
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
@@ -466,7 +470,7 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
  * Edits a post's text. Authors can edit their own posts; for organization posts the author
  * must still post for that organization, and its owners and administrators can edit too.
  */
-export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[]; organizationMentionIds?: string[] }): Promise<UpdatePostActionResult> {
+export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[]; organizationMentionIds?: string[]; audience?: PostAudience }): Promise<UpdatePostActionResult> {
   const parsed = updatePostInputSchema.safeParse(input)
   if (!parsed.success) {
     const fieldErrors = plainFieldErrors(parsed.error)
@@ -480,6 +484,7 @@ export async function updatePost(input: { postId: string; body: string; mentionP
       body: parsed.data.body,
       mentionProfileIds: parsed.data.mentionProfileIds,
       organizationMentionIds: parsed.data.organizationMentionIds,
+      ...(parsed.data.audience ? { audience: parsed.data.audience } : {}),
     })
   } catch (error) {
     const code = safeErrorCode(error)
@@ -496,7 +501,7 @@ export async function updatePost(input: { postId: string; body: string; mentionP
   return {
     ok: true,
     post: refreshed
-      ? { id: refreshed.id, body: refreshed.body, mentions: refreshed.mentions ?? [] }
+      ? { id: refreshed.id, body: refreshed.body, mentions: refreshed.mentions ?? [], ...(refreshed.audience ? { audience: refreshed.audience } : {}) }
       : { id: parsed.data.postId, body: parsed.data.body, mentions: [] },
   }
 }

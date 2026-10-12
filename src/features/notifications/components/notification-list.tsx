@@ -19,7 +19,7 @@ import { NotificationActorAvatar, NotificationPostThumb } from './notification-v
 const EMPTY_FILTER_COPY: Record<Exclude<NotificationFilter, 'all'>, { icon: typeof Bell; text: string }> = {
   jobs: { icon: BriefcaseBusiness, text: 'Job updates will show up here.' },
   my_posts: { icon: MessageSquareText, text: 'Reactions, comments and replies on your posts will show up here.' },
-  mentions: { icon: AtSign, text: 'Posts and comments that mention you will show up here.' },
+  mentions: { icon: AtSign, text: 'Mentions and photo tags will show up here.' },
   learning: { icon: GraduationCap, text: 'Course enrolments, new materials, grades and certificates will show up here.' },
 }
 
@@ -31,7 +31,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
   const [filter, setFilter] = useState<NotificationFilter>('all')
   const [menuFor, setMenuFor] = useState<NetworkNotification | null>(null)
   const unreadCount = items.filter((notification) => !notification.readAt).length
-  const phoneVisibleCount = items.filter((notification) => notificationMatchesFilter(notification, filter)).length
+  const visibleCount = items.filter((notification) => notificationMatchesFilter(notification, filter)).length
 
   useEffect(() => {
     let active = true
@@ -125,7 +125,8 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
           </button>
         ) : null}
       </div>
-      <div role="group" aria-label="Filter notifications" className="-mx-4 flex gap-2 overflow-x-auto bg-white px-4 py-3 md:hidden">
+      {/* Round F: the chips filter on every screen (they were phone-only); a scrollable row on phones. */}
+      <div role="group" aria-label="Filter notifications" className="-mx-4 flex gap-2 overflow-x-auto bg-white px-4 py-3 md:mx-0 md:mb-4 md:flex-wrap md:overflow-visible md:rounded-2xl md:border md:border-mist-100 md:px-4 md:shadow-[var(--shadow-card)]">
         {NOTIFICATION_FILTERS.map((value) => (
           <button
             key={value}
@@ -147,19 +148,19 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
         {phoneHeader}
         <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-14 text-center max-md:-mx-4 max-md:rounded-none max-md:border-x-0">
           <p className="font-semibold text-navy-950">No notifications yet.</p>
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Reactions, comments, connection requests and new followers will show up here.</p>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Reactions, comments, mentions, photo tags, connection requests and new followers will show up here.</p>
         </div>
       </>
     )
   }
 
-  const emptyFilter = filter !== 'all' && phoneVisibleCount === 0 ? EMPTY_FILTER_COPY[filter] : null
+  const emptyFilter = filter !== 'all' && visibleCount === 0 ? EMPTY_FILTER_COPY[filter] : null
 
   return (
     <>
     {phoneHeader}
     {emptyFilter ? (
-      <div role="status" className="-mx-4 border-y border-mist-100 bg-white px-6 py-12 text-center md:hidden">
+      <div role="status" className="-mx-4 border-y border-mist-100 bg-white px-6 py-12 text-center md:mx-0 md:rounded-[1.5rem] md:border">
         <emptyFilter.icon aria-hidden="true" className="mx-auto size-7 text-muted" />
         <p className="mt-3 text-[15px] font-medium text-navy-950">{emptyFilter.text}</p>
         {filter === 'jobs' ? (
@@ -173,7 +174,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
         )}
       </div>
     ) : null}
-    <div className={`overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:shadow-none ${emptyFilter ? 'max-md:hidden' : ''}`}>
+    <div className={`overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:shadow-none ${emptyFilter ? 'hidden' : ''}`}>
       <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-5 py-4 max-md:hidden">
         <p className="text-sm font-medium text-muted">{unreadCount ? `${unreadCount} unread` : 'All caught up'}</p>
         {unreadCount ? (
@@ -192,27 +193,42 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
             <div
               key={notification.id}
               data-notification-state={unread ? 'unread' : 'read'}
-              className={`group flex w-full items-center gap-3 px-5 py-3.5 transition max-md:items-start max-md:px-4 max-md:pr-1 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4 hover:bg-ocean-100 max-md:border-l-0' : 'hover:bg-mist-50'} ${inFilter ? '' : 'max-md:hidden'}`}
+              className={`group flex w-full items-center gap-3 px-5 py-3.5 transition max-md:items-start max-md:px-4 max-md:pr-1 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4 hover:bg-ocean-100 max-md:border-l-0' : 'hover:bg-mist-50'} ${inFilter ? '' : 'hidden'}`}
             >
               <NotificationActorAvatar notification={notification} />
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => openNotification(notification)}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-wait disabled:opacity-60"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
-                  <span className="mt-0.5 flex items-center gap-2">
-                    {unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-700" aria-hidden="true" /> : null}
-                    <time dateTime={notification.createdAt} title={notification.createdAt} className="block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
+              {notification.postUnavailable ? (
+                // Round F: the post was deleted or can't be opened any more; nothing to tap, no error page.
+                <div className="flex min-w-0 flex-1 items-center gap-3 py-0.5" data-testid="notification-unavailable">
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                    <span className="mt-0.5 flex items-center gap-2">
+                      {unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-700" aria-hidden="true" /> : null}
+                      <span className="text-xs font-medium text-muted">This post is no longer available</span>
+                      <span aria-hidden="true" className="text-xs text-muted">·</span>
+                      <time dateTime={notification.createdAt} title={notification.createdAt} className="block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
+                    </span>
                   </span>
-                </span>
-                {notification.postPreview ? null : (
-                  <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700 max-md:hidden" />
-                )}
-              </button>
-              <NotificationPostThumb notification={notification} onOpen={() => markReadInBackground(notification)} />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => openNotification(notification)}
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                    <span className="mt-0.5 flex items-center gap-2">
+                      {unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-700" aria-hidden="true" /> : null}
+                      <time dateTime={notification.createdAt} title={notification.createdAt} className="block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
+                    </span>
+                  </span>
+                  {notification.postPreview ? null : (
+                    <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700 max-md:hidden" />
+                  )}
+                </button>
+              )}
+              {notification.postUnavailable ? null : <NotificationPostThumb notification={notification} onOpen={() => markReadInBackground(notification)} />}
               <button
                 type="button"
                 aria-label="Notification options"
@@ -228,7 +244,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       </div>
       {error ? <p role="alert" className="border-t border-mist-100 bg-red-50 px-5 py-3 text-sm font-medium text-red-700">{error}</p> : null}
     </div>
-    {error && emptyFilter ? <p role="alert" className="-mx-4 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 md:hidden">{error}</p> : null}
+    {error && emptyFilter ? <p role="alert" className="-mx-4 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</p> : null}
     <BottomSheet open={menuFor !== null} onClose={() => setMenuFor(null)} title="Notification" desktop="hidden">
       {menuFor ? (
         <div role="menu" aria-label="Notification options">

@@ -371,7 +371,7 @@ describe('/learn/courses/[slug]', () => {
       render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
 
       expect(mocks.getLearnerEnrollment).not.toHaveBeenCalled()
-      expect(within(desktopHero()).getByRole('link', { name: /Sign in to enrol/ })).toHaveAttribute('href', '/auth/sign-in')
+      expect(within(desktopHero()).getByRole('link', { name: /Sign in to enrol/ })).toHaveAttribute('href', expect.stringMatching(/^\/auth\/sign-in\?next=%2Flearn%2Fcourses%2F/))
       expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
       const curriculum = screen.getByRole('region', { name: 'Curriculum' })
       expect(within(curriculum).getByText('Why SIRE 2.0 changed')).toBeInTheDocument()

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getPeopleYouMayKnow: vi.fn(),
   getRelationshipState: vi.fn(),
   getPublicPostsByAuthor: vi.fn(),
+  getPostsByAuthor: vi.fn(),
   getProfileNetworkSummary: vi.fn(),
   getViewableDgProfileDocument: vi.fn(),
   getProfileOrganizations: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock('@/features/auth/queries', () => ({
 
 vi.mock('@/features/feed/queries', () => ({
   getPublicPostsByAuthor: mocks.getPublicPostsByAuthor,
+  getPostsByAuthor: mocks.getPostsByAuthor,
 }))
 
 vi.mock('@/features/feed/components/post-card', () => ({
@@ -152,6 +154,10 @@ beforeEach(() => {
     id: 'post-1',
     body: 'Public maritime update',
   }])
+  mocks.getPostsByAuthor.mockResolvedValue([{
+    id: 'post-1',
+    body: 'Public maritime update',
+  }])
   mocks.getProfileNetworkSummary.mockResolvedValue({
     counts: { connections: 42, followers: 1, following: 5 },
     isOwner: false,
@@ -180,7 +186,9 @@ describe('Public Profile page', () => {
     expect(screen.getByRole('heading', { name: 'Licences & Credentials' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'People you may know' })).toBeInTheDocument()
     expect(screen.getByText('Member Three')).toBeInTheDocument()
-    expect(mocks.getPublicPostsByAuthor).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    // Round F: a signed-in member sees the author's posts by the member rules (not as the author would).
+    expect(mocks.getPostsByAuthor).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    expect(mocks.getPublicPostsByAuthor).not.toHaveBeenCalled()
     expect(screen.queryByRole('heading', { name: 'My Maritime Passport' })).not.toBeInTheDocument()
   })
 
@@ -360,8 +368,12 @@ describe('Public Profile page', () => {
 
     const bar = screen.getByTestId('public-profile-join-bar')
     expect(bar).toHaveClass('fixed', 'md:hidden')
-    expect(screen.getByRole('link', { name: 'Join Sea N Shore' })).toHaveAttribute('href', '/auth/sign-up')
+    // Round F: signing up from here comes back to this profile.
+    expect(screen.getByRole('link', { name: 'Join Sea N Shore' })).toHaveAttribute('href', '/auth/sign-up?next=%2Fpeople%2Fcaptain-public')
     expect(screen.queryByRole('link', { name: 'Back' })).not.toBeInTheDocument()
+    // Signed out, only the posts the author shows to anyone.
+    expect(mocks.getPublicPostsByAuthor).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    expect(mocks.getPostsByAuthor).not.toHaveBeenCalled()
   })
 
   it('shows no DG profile section to other members', async () => {

@@ -209,19 +209,30 @@ export function NotificationBell({
                     className={`relative flex w-full items-center gap-2.5 px-4 py-2.5 transition hover:bg-mist-50 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-3' : ''}`}
                   >
                     <NotificationActorAvatar notification={notification} size="size-10" />
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => openNotification(notification)}
-                      className="block min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:opacity-60"
-                    >
-                      <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
-                      <span className="mt-1 flex items-center gap-2">
-                        {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
-                        <time dateTime={notification.createdAt} className="text-xs text-muted">{notificationDate(notification.createdAt)}</time>
-                      </span>
-                    </button>
-                    <NotificationPostThumb notification={notification} size="size-11" onOpen={() => openPreview(notification)} />
+                    {notification.postUnavailable ? (
+                      // Round F: deleted or out of reach; the row says so and opens nothing.
+                      <div className="block min-w-0 flex-1 py-0.5">
+                        <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                        <span className="mt-1 flex items-center gap-2">
+                          {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
+                          <span className="text-xs font-medium text-muted">This post is no longer available</span>
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => openNotification(notification)}
+                        className="block min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:opacity-60"
+                      >
+                        <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                        <span className="mt-1 flex items-center gap-2">
+                          {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
+                          <time dateTime={notification.createdAt} className="text-xs text-muted">{notificationDate(notification.createdAt)}</time>
+                        </span>
+                      </button>
+                    )}
+                    {notification.postUnavailable ? null : <NotificationPostThumb notification={notification} size="size-11" onOpen={() => openPreview(notification)} />}
                   </div>
                 )
               })}

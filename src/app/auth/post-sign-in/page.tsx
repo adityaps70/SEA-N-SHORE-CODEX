@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { resolvePostSignInDestination, type PostSignInDestination } from '@/features/auth/post-sign-in'
 import { getOnboardingProfileFromAurora } from '@/features/profiles/onboarding-repository'
@@ -21,7 +23,7 @@ export default async function PostSignInPage() {
       console.error('Post-sign-in profile routing failed', { name: 'ProfileNotFound' })
       destination = '/auth/sign-in?error=post-sign-in-profile'
     } else {
-      destination = resolvePostSignInDestination(profile)
+      destination = resolvePostSignInDestination(profile, (await cookies()).get(RETURN_PATH_COOKIE)?.value)
     }
   } catch (error) {
     console.error('Post-sign-in session routing failed', {

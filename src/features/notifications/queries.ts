@@ -69,17 +69,45 @@ export function previewText(body: string | null | undefined, maxChars = 60) {
   return `${(boundary > maxChars * 0.5 ? cut.slice(0, boundary) : cut).trimEnd()}…`
 }
 
-function mapPostPreviews(rows: readonly NotificationPostPreviewRow[], signedUrls: Map<string, string>) {
-  return new Map(rows.map((row): [string, NotificationPostPreview] => {
+type PostPreviews = {
+  /** Previews by post id; tag rows prefer the photo the recipient is tagged in. */
+  byPost: Map<string, NotificationPostPreview>
+  tagged: Map<string, NotificationPostPreview & { mediaId: string | null }>
+  /** False when the preview lookup failed: then nothing is marked unavailable. */
+  loaded: boolean
+}
+
+function mapPostPreviews(rows: readonly NotificationPostPreviewRow[], signedUrls: Map<string, string>, loaded = true): PostPreviews {
+  const byPost = new Map<string, NotificationPostPreview>()
+  const tagged = new Map<string, NotificationPostPreview & { mediaId: string | null }>()
+  for (const row of rows) {
     const mediaType = previewMediaType(row.media_mime_type)
     const mediaUrl = mediaType && row.media_path ? signedUrls.get(row.media_path) ?? null : null
-    return [row.post_id, {
+    const preview: NotificationPostPreview = {
       postId: row.post_id,
       mediaUrl,
       mediaType: mediaUrl ? mediaType : null,
       text: previewText(row.snippet),
-    }]
-  }))
+    }
+    byPost.set(row.post_id, preview)
+    const tagType = previewMediaType(row.tag_media_mime_type ?? null)
+    const tagUrl = tagType && row.tag_media_path ? signedUrls.get(row.tag_media_path) ?? null : null
+    tagged.set(row.post_id, tagUrl
+      ? { ...preview, mediaUrl: tagUrl, mediaType: tagType, mediaId: row.tag_media_id ?? null }
+      : { ...preview, mediaId: row.tag_media_id ?? null })
+  }
+  return { byPost, tagged, loaded }
+}
+
+const EMPTY_PREVIEWS: PostPreviews = { byPost: new Map(), tagged: new Map(), loaded: false }
+
+function previewFor(row: NotificationRow, previews: PostPreviews): NotificationPostPreview | null {
+  if (!row.post_id) return null
+  if (row.notification_type === 'photo_tag') {
+    const tagged = previews.tagged.get(row.post_id)
+    if (tagged) return { postId: tagged.postId, mediaUrl: tagged.mediaUrl, mediaType: tagged.mediaType, text: tagged.text }
+  }
+  return previews.byPost.get(row.post_id) ?? null
 }
 
 function socialCopy(row: NotificationRow) {
@@ -98,7 +126,7 @@ function socialCopy(row: NotificationRow) {
   return copyByType[row.notification_type]
 }
 
-function destinationFor(row: NotificationRow, actor: ProfileSummary | null) {
+function destinationFor(row: NotificationRow, actor: ProfileSummary | null, taggedMediaId: string | null = null) {
   const learning = learningCopy(row)
   if (learning) return learning.path
   if (learningKindOf(row.notification_type)) return '/learn/my-learning'
@@ -109,6 +137,8 @@ function destinationFor(row: NotificationRow, actor: ProfileSummary | null) {
   if (row.notification_type === 'group_join_approved') return row.group_slug ? `/community/${row.group_slug}` : '/community'
   if (row.post_id) {
     const base = `/posts/${row.post_id}`
+    // Round F: a photo tag opens the post at the tagged photo.
+    if (row.notification_type === 'photo_tag' && taggedMediaId) return `${base}?photo=${taggedMediaId}`
     return row.comment_id ? `${base}#comment-${row.comment_id}` : base
   }
   return actor ? `/people/${actor.slug}` : '/network'
@@ -117,7 +147,7 @@ function destinationFor(row: NotificationRow, actor: ProfileSummary | null) {
 function mapNotifications(
   rows: readonly NotificationRow[],
   profiles: readonly ProfileSummary[],
-  previews: Map<string, NotificationPostPreview> = new Map(),
+  previews: PostPreviews = EMPTY_PREVIEWS,
 ) {
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]))
 
@@ -140,11 +170,13 @@ function mapNotifications(
           : learningKindOf(row.notification_type)
             ? learningCopy(row)?.message ?? 'There is news about one of your courses.'
             : `${actorName} ${socialCopy(row)}.`,
-      destination: destinationFor(row, actor),
+      destination: destinationFor(row, actor, row.post_id ? previews.tagged.get(row.post_id)?.mediaId ?? null : null),
       postId: row.post_id,
       commentId: row.comment_id,
       reactionType: row.reaction_type,
-      postPreview: row.post_id ? previews.get(row.post_id) ?? null : null,
+      postPreview: row.post_id ? previewFor(row, previews) : null,
+      // Round F: the post was deleted or is out of the recipient's reach; the row says so and opens nothing.
+      postUnavailable: Boolean(row.post_id && previews.loaded && !previews.byPost.has(row.post_id)),
     }
   })
 }
@@ -161,17 +193,21 @@ export function createNotificationQueries(input: {
   async function hydrate(recipientId: string, rows: readonly NotificationRow[]) {
     const actorIds = [...new Set(rows.flatMap((row) => row.actor_id ? [row.actor_id] : []))]
     const postIds = [...new Set(rows.flatMap((row) => row.post_id ? [row.post_id] : []))]
-    const [profiles, previewRows] = await Promise.all([
+    const [profiles, previewResult] = await Promise.all([
       actorIds.length ? input.getProfiles(actorIds) : Promise.resolve([]),
       postIds.length && input.repository.listPostPreviews
-        ? input.repository.listPostPreviews(recipientId, postIds).catch(() => [])
-        : Promise.resolve([]),
+        ? input.repository.listPostPreviews(recipientId, postIds).then((found) => ({ rows: found, loaded: true }), () => ({ rows: [], loaded: false }))
+        : Promise.resolve({ rows: [], loaded: Boolean(input.repository.listPostPreviews) }),
     ])
-    const mediaPaths = previewRows.flatMap((row) => row.media_path && previewMediaType(row.media_mime_type) ? [row.media_path] : [])
+    const previewRows: NotificationPostPreviewRow[] = previewResult.rows
+    const mediaPaths = previewRows.flatMap((row) => [
+      ...(row.media_path && previewMediaType(row.media_mime_type) ? [row.media_path] : []),
+      ...(row.tag_media_path && previewMediaType(row.tag_media_mime_type ?? null) ? [row.tag_media_path] : []),
+    ])
     const signedUrls = mediaPaths.length
-      ? await resolveMediaUrls(mediaPaths).catch(() => new Map<string, string>())
+      ? await resolveMediaUrls([...new Set(mediaPaths)]).catch(() => new Map<string, string>())
       : new Map<string, string>()
-    return mapNotifications(rows, profiles, mapPostPreviews(previewRows, signedUrls))
+    return mapNotifications(rows, profiles, mapPostPreviews(previewRows, signedUrls, previewResult.loaded))
   }
 
   async function getNotifications(limit = 50): Promise<NetworkNotification[]> {

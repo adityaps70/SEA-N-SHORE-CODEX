@@ -22,6 +22,21 @@ export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
   industry_opinion: 'Industry Opinion',
 }
 
+/**
+ * Who can see a post (round F). 'anyone': the post opens from a shared link without an account, read-only.
+ * 'members': signed-in members only. Community posts are always 'members'.
+ */
+export const POST_AUDIENCES = ['anyone', 'members'] as const
+export type PostAudience = (typeof POST_AUDIENCES)[number]
+export const POST_AUDIENCE_LABELS: Record<PostAudience, string> = {
+  anyone: 'Anyone',
+  members: 'Members only',
+}
+export const POST_AUDIENCE_HINTS: Record<PostAudience, string> = {
+  anyone: 'Anyone with the link can read it, even without an account.',
+  members: 'Only people signed in to Sea N Shore can see it.',
+}
+
 export const POST_REACTIONS = ['like', 'support', 'respect', 'on_point'] as const
 export type PostReactionType = (typeof POST_REACTIONS)[number]
 export type ReactionSummary = Record<PostReactionType, number>
@@ -202,6 +217,8 @@ export type FeedPost = {
   category: PostCategory
   body: string
   postType: FeedPostType
+  /** Who can see the post (round F); absent on older fixtures, which count as members only. */
+  audience?: PostAudience
   createdAt: string
   updatedAt: string
   author: FeedAuthor

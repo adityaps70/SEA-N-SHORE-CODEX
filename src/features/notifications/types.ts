@@ -70,6 +70,8 @@ export type NetworkNotification = {
   commentId?: string | null
   reactionType?: PostReactionType | null
   postPreview?: NotificationPostPreview | null
+  /** Round F: the post was deleted or the recipient can no longer open it. */
+  postUnavailable?: boolean
 }
 
 export type NotificationChrome = {

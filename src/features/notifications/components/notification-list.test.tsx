@@ -164,28 +164,47 @@ describe('NotificationList on phones', () => {
     return screen.getByRole('button', { name: message }).closest('[data-notification-state]')
   }
 
-  it('has a compact title row with Mark all read and filter chips (phones only)', () => {
+  it('has a compact phone title row with Mark all read, and filter chips on every screen (round F)', () => {
     render(<NotificationList notifications={[notification, mention, follower]} />)
     expect(screen.getByRole('heading', { level: 1, name: 'Notifications' }).parentElement).toHaveClass('md:hidden')
     const markAll = screen.getAllByRole('button', { name: /Mark all read/ })
     expect(markAll).toHaveLength(2)
     const chips = screen.getByRole('group', { name: 'Filter notifications' })
-    expect(chips).toHaveClass('md:hidden')
+    expect(chips).not.toHaveClass('md:hidden')
+    expect(chips).toHaveClass('overflow-x-auto')
     expect(Array.from(chips.querySelectorAll('button')).map((chip) => chip.textContent)).toEqual(['All', 'Jobs', 'My posts', 'Mentions', 'Learning'])
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('filters rows by chip on phones without hiding anything on desktop', () => {
+  it('filters rows by chip on every screen (round F)', () => {
     render(<NotificationList notifications={[notification, mention, follower]} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Mentions' }))
-    expect(rowOf(/mentioned you/)).not.toHaveClass('max-md:hidden')
-    expect(rowOf(/commented on your post/)).toHaveClass('max-md:hidden')
-    expect(rowOf(/started following you/)).toHaveClass('max-md:hidden')
+    expect(rowOf(/mentioned you/)).not.toHaveClass('hidden')
+    expect(rowOf(/commented on your post/)).toHaveClass('hidden')
+    expect(rowOf(/started following you/)).toHaveClass('hidden')
 
     fireEvent.click(screen.getByRole('button', { name: 'My posts' }))
-    expect(rowOf(/commented on your post/)).not.toHaveClass('max-md:hidden')
-    expect(rowOf(/mentioned you/)).toHaveClass('max-md:hidden')
+    expect(rowOf(/commented on your post/)).not.toHaveClass('hidden')
+    expect(rowOf(/mentioned you/)).toHaveClass('hidden')
+  })
+
+  it('lists photo tags under Mentions (round F)', () => {
+    const tag = { ...mention, id: 'tag-1', type: 'photo_tag' as const, message: 'Fixture Author tagged you in a photo.' }
+    render(<NotificationList notifications={[notification, tag]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Mentions' }))
+    expect(rowOf(/tagged you in a photo/)).not.toHaveClass('hidden')
+    expect(rowOf(/commented on your post/)).toHaveClass('hidden')
+  })
+
+  it('says a deleted post is no longer available and opens nothing (round F)', () => {
+    const gone = { ...mention, id: 'tag-2', type: 'photo_tag' as const, message: 'Fixture Author tagged you in a photo.', postPreview: null, postUnavailable: true }
+    render(<NotificationList notifications={[gone]} />)
+    const row = screen.getByTestId('notification-unavailable')
+    expect(row).toHaveTextContent('Fixture Author tagged you in a photo.')
+    expect(row).toHaveTextContent('This post is no longer available')
+    expect(screen.queryByRole('button', { name: /tagged you in a photo/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Open post/ })).not.toBeInTheDocument()
   })
 
   it('keeps the Jobs chip with an empty state (no job notification types exist yet)', () => {

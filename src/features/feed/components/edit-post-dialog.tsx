@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, useTransition, type RefObject } from 'react'
 import { updatePost, type UpdatePostActionResult } from '../actions'
-import type { FeedMention, FeedOrganizationMention, FeedPostType } from '../types'
+import { POST_AUDIENCE_HINTS, POST_AUDIENCE_LABELS, POST_AUDIENCES, type FeedMention, type FeedOrganizationMention, type FeedPostType, type PostAudience } from '../types'
 import { EmojiPicker, insertEmojiAt } from './emoji-picker'
 import { FeedDialog } from './feed-dialog'
 import { MentionInput, mentionKind, type SelectedMention } from './mention-input'
@@ -34,6 +34,7 @@ export function EditPostDialog({
   mentions: initialMentions,
   organizationMentions: initialOrganizationMentions = [],
   publishedAs,
+  audience: initialAudience,
   onClose,
   onSaved,
   returnFocusRef,
@@ -46,6 +47,8 @@ export function EditPostDialog({
   organizationMentions?: FeedOrganizationMention[]
   /** Name shown as the post's author, e.g. the organization's name. */
   publishedAs: string
+  /** Who can see the post (round F); left out for reposts and community posts, which can't change it. */
+  audience?: PostAudience
   onClose(): void
   /** The saved text and member mentions, plus the organization mentions still in the text. */
   onSaved(post: SavedPost, organizationMentions: FeedOrganizationMention[]): void
@@ -61,7 +64,9 @@ export function EditPostDialog({
   const isRepost = postType === 'repost'
   const max = isRepost ? REPOST_MAX : POST_MAX
   const remaining = max - body.length
-  const unchanged = body.trim() === initialBody.trim()
+  const audienceId = useId()
+  const [audience, setAudience] = useState<PostAudience | undefined>(initialAudience)
+  const unchanged = body.trim() === initialBody.trim() && audience === initialAudience
 
   function insertEmoji(emoji: string) {
     const textarea = textareaRef.current
@@ -93,6 +98,7 @@ export function EditPostDialog({
         body: text,
         mentionProfileIds: present.filter((mention) => mentionKind(mention) === 'member').map((mention) => mention.profileId),
         organizationMentionIds: organizationMentions.map((mention) => mention.profileId),
+        ...(audience && audience !== initialAudience ? { audience } : {}),
       })
       if (!result.ok) {
         setError(result.error)
@@ -141,6 +147,23 @@ export function EditPostDialog({
           <EmojiPicker onSelect={insertEmoji} label="Add emoji to post" size="sm" />
           <p id={counterId} aria-live="polite" className={`text-xs ${remaining < 100 ? 'text-amber-700' : 'text-muted'}`}>{remaining.toLocaleString('en')} characters left</p>
         </div>
+        {audience ? (
+          <div className="mt-4">
+            <label htmlFor={audienceId} className="block text-sm font-semibold text-navy-950">Who can see this</label>
+            <select
+              id={audienceId}
+              name="audience"
+              value={audience}
+              aria-describedby={`${audienceId}-hint`}
+              onChange={(event) => setAudience(event.target.value === 'anyone' ? 'anyone' : 'members')}
+              disabled={pending}
+              className="mt-1.5 min-h-10 w-full cursor-pointer rounded-xl border border-mist-200 bg-white px-3 text-sm text-navy-950 focus:border-ocean-500"
+            >
+              {POST_AUDIENCES.map((value) => <option key={value} value={value}>{POST_AUDIENCE_LABELS[value]}</option>)}
+            </select>
+            <p id={`${audienceId}-hint`} className="mt-1 text-xs text-muted">{POST_AUDIENCE_HINTS[audience]}</p>
+          </div>
+        ) : null}
         {error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="button" onClick={onClose} disabled={pending} className="min-h-10 cursor-pointer rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-60">

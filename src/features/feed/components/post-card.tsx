@@ -3,7 +3,7 @@
 import type { PostLoadingPriority } from '../post-loading-priority'
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
-import { Globe, MessageCircle, Plus, X } from 'lucide-react'
+import { Globe, MessageCircle, Plus, UsersRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { removeGroupPost } from '@/features/community/actions'
@@ -22,6 +22,7 @@ import {
   type FeedOrganizationMention,
   type FeedPost,
   type FeedRepostSource,
+  type PostAudience,
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
@@ -34,7 +35,7 @@ import { PollCard } from './poll-card'
 import { PostActionsMenu } from './post-actions-menu'
 import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
 import { PhotoTagsLine } from './photo-tags-line'
-import { PostMedia } from './post-media'
+import { PostMedia, type FocusPhoto } from './post-media'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
 import { ReactionSummaryTrigger } from './reaction-summary'
@@ -204,10 +205,19 @@ export function PostCard({
   flushOnPhones = false,
   loadingPriority,
   roleBadge,
+  signedOut = false,
+  focusPhoto = null,
 }: {
   post: FeedPost
   detail?: boolean
   readOnly?: boolean
+  /**
+   * Round F: a visitor without an account (shared post link, public profile). Implies read-only:
+   * reaction and comment counts only, no comments, no list of who reacted.
+   */
+  signedOut?: boolean
+  /** Round F: the photo a tag notification points at, highlighted and scrolled into view. */
+  focusPhoto?: FocusPhoto | null
   /**
    * Phone layout of the Home feed and the post page: a square edge-to-edge card without side
    * borders, and "+ Follow" in the header. Profile and organization post lists keep cards.
@@ -235,7 +245,7 @@ export function PostCard({
   const [deleted, setDeleted] = useState(false)
   const [hidden, setHidden] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[]; organizationMentions: FeedOrganizationMention[] } | null>(null)
+  const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[]; organizationMentions: FeedOrganizationMention[]; audience?: PostAudience } | null>(null)
   const [notice, setNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
   const [visibilityPending, startVisibilityTransition] = useTransition()
@@ -428,6 +438,7 @@ export function PostCard({
   const body = edited?.body ?? post.body
   const mentions = edited?.mentions ?? post.mentions
   const organizationMentions = edited?.organizationMentions ?? post.organizationMentions
+  const audience = edited?.audience ?? post.audience ?? 'members'
   const postMedia = post.mediaItems?.length ? post.mediaItems : post.media ? [post.media] : []
   const repostCommentary = isRepost ? body.trim() : ''
   const shareSource = isRepost && post.repostOf
@@ -470,8 +481,15 @@ export function PostCard({
               <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()}>
                 {relativeTime(post.createdAt)}
               </time>
-              <span aria-hidden="true" className="md:hidden">·</span>
-              <Globe role="img" aria-label="Visible to the Sea N Shore community" className="size-3.5 md:hidden" />
+              {post.group ? null : (
+                // Round F: who can see the post.
+                <>
+                  <span aria-hidden="true">·</span>
+                  {audience === 'anyone'
+                    ? <Globe role="img" aria-label="Anyone can see this post" className="size-3.5" />
+                    : <UsersRound role="img" aria-label="Only Sea N Shore members can see this post" className="size-3.5" />}
+                </>
+              )}
               {post.group ? (
                 // Round 9B: the community group the post was published in.
                 <>
@@ -557,17 +575,28 @@ export function PostCard({
                   flush={flushOnPhones}
                   loading={loadingPriority ? 'eager' : 'lazy'}
                   fetchPriority={loadingPriority === 'lead' ? 'high' : undefined}
-                  postId={post.id}
+                  {...(readOnly || signedOut ? {} : { postId: post.id })}
                   photoTags={post.photoTags}
+                  focus={focusPhoto}
                 />
               ) : null}
-              {post.photoTags?.length ? <PhotoTagsLine tags={post.photoTags} /> : null}
+              {post.photoTags?.length ? <PhotoTagsLine tags={post.photoTags} highlightProfileId={focusPhoto?.profileId ?? null} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
           )}
         </div>
 
-        {readOnly ? (
+        {signedOut ? (
+          // Round F: counts only. Who reacted, and the comments, stay behind sign-in.
+          <div className="flex items-center justify-between gap-2 border-t border-mist-100 px-4 py-2 sm:px-5">
+            <SharePostButton postId={post.id} authorName={displayName} allowRepost={false} allowSend={false} menuAlign="start" />
+            <p data-testid="post-public-counts" className="text-[13px] text-muted">
+              <span className="tabular-nums">{totalReactions}</span> {totalReactions === 1 ? 'reaction' : 'reactions'}
+              <span aria-hidden="true"> · </span>
+              <span className="tabular-nums">{post.commentCount}</span> {post.commentCount === 1 ? 'comment' : 'comments'}
+            </p>
+          </div>
+        ) : readOnly ? (
           <div className="flex items-center justify-between gap-2 border-t border-mist-100 px-4 py-2 sm:px-5">
             <SharePostButton postId={post.id} authorName={displayName} allowRepost={false} allowSend={false} menuAlign="start" />
             <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
@@ -642,7 +671,7 @@ export function PostCard({
 
         {notice ? <PostNotice notice={notice} onDismiss={() => setNotice(null)} /> : null}
         {previewComment && !composerOpen ? <TopCommentPreview postId={post.id} comment={previewComment} /> : null}
-        {(post.commentCount > 0 || composerOpen) ? (
+        {!signedOut && (post.commentCount > 0 || composerOpen) ? (
           // Phones: the feed shows the one-comment preview above until Comment is tapped.
           <div className={previewComment && !composerOpen ? 'max-md:hidden' : undefined}>
             <CommentThread
@@ -683,9 +712,10 @@ export function PostCard({
             mentions={mentions ?? []}
             organizationMentions={organizationMentions ?? []}
             publishedAs={displayName}
+            {...(post.postType !== 'repost' && !post.group ? { audience } : {})}
             onClose={() => setEditOpen(false)}
             onSaved={(savedPost, savedOrganizationMentions) => {
-              setEdited({ body: savedPost.body, mentions: savedPost.mentions ?? [], organizationMentions: savedOrganizationMentions })
+              setEdited({ body: savedPost.body, mentions: savedPost.mentions ?? [], organizationMentions: savedOrganizationMentions, ...(savedPost.audience ? { audience: savedPost.audience } : {}) })
               setNotice({ text: 'Your changes are saved.', tone: 'success' })
             }}
             returnFocusRef={menuTriggerRef}

@@ -3,6 +3,9 @@ import { CognitoApiError, createCognitoApi } from './cognito-api'
 import { createCognitoSessionManager } from './cognito-session'
 import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
+import { trustedClientIp } from '@/lib/http/client-ip'
+import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
+import { RETURN_PATH_COOKIE, returnPathCookieOptions, returnPathForRequest, safeReturnPath } from './return-path'
 
 // About, Help, Accessibility, Privacy, Terms and Copyright are public so signed-out visitors (and
 // newsletter consent links) can read them. Contact, Pricing, Refunds and Shipping must stay public
@@ -21,7 +24,6 @@ const PROTECTED_PREFIXES = [
   '/network',
   '/notifications',
   '/onboarding',
-  '/posts',
   '/profile',
   '/saved',
   '/search',
@@ -42,6 +44,37 @@ export function isPublicLearnRoute(pathname: string) {
   return PUBLIC_LEARN_PATHS.some((pattern) => pattern.test(pathname))
 }
 
+/**
+ * Round F: a post page opens for anyone. Signed-in members still get their session refreshed here, so
+ * an expired access token never makes them look signed out; signed-out visitors are never redirected.
+ */
+const SOFT_AUTH_PATHS = [/^\/posts\/[^/]+$/]
+
+export function isSoftAuthRoute(pathname: string) {
+  return SOFT_AUTH_PATHS.some((pattern) => pattern.test(pathname))
+}
+
+/** Sign-in and sign-up remember a safe `?next=` so the member lands back where the wall stopped them. */
+const AUTH_ENTRY_PATHS = new Set(['/auth/sign-in', '/auth/sign-up'])
+
+export function rememberReturnPath(request: NextRequest) {
+  const response = NextResponse.next({ request })
+  if (!AUTH_ENTRY_PATHS.has(request.nextUrl.pathname)) return response
+  const next = safeReturnPath(request.nextUrl.searchParams.get('next'))
+  if (next) response.cookies.set(RETURN_PATH_COOKIE, next, returnPathCookieOptions())
+  return response
+}
+
+/** The sign-in page for a protected request, carrying the page to come back to. */
+export function signInRedirectUrl(request: NextRequest) {
+  const url = new URL('/auth/sign-in', request.url)
+  const next = returnPathForRequest(request)
+  if (next) url.searchParams.set('next', next)
+  return url
+}
+
+const allowPublicPostView = createPublicPageRateLimiter()
+
 export function isCognitoProtectedRoute(pathname: string) {
   if (isPublicLearnRoute(pathname)) return false
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
@@ -52,9 +85,11 @@ type RouteSession = {
   refreshSession(): Promise<boolean>
 }
 
-export function createCognitoProxyHandler(session: RouteSession) {
+export function createCognitoProxyHandler(session: RouteSession, options: { allowSignedOutView?: (key: string) => boolean } = {}) {
+  const allowSignedOutView = options.allowSignedOutView ?? allowPublicPostView
   return async function handle(request: NextRequest) {
-    if (!isCognitoProtectedRoute(request.nextUrl.pathname)) {
+    const soft = isSoftAuthRoute(request.nextUrl.pathname)
+    if (!soft && !isCognitoProtectedRoute(request.nextUrl.pathname)) {
       return NextResponse.next({ request })
     }
 
@@ -65,7 +100,19 @@ export function createCognitoProxyHandler(session: RouteSession) {
       return NextResponse.next({ request })
     }
 
-    return NextResponse.redirect(new URL('/auth/sign-in', request.url))
+    if (soft) {
+      // Signed out: the page renders read-only, at most 60 views a minute per visitor address.
+      const key = trustedClientIp(request.headers) ?? 'unknown'
+      if (!allowSignedOutView(key)) {
+        return new NextResponse('Too many requests. Please wait a minute and try again.', {
+          status: 429,
+          headers: { 'Retry-After': '60', 'Content-Type': 'text/plain; charset=utf-8' },
+        })
+      }
+      return NextResponse.next({ request })
+    }
+
+    return NextResponse.redirect(signInRedirectUrl(request))
   }
 }
 
@@ -85,7 +132,8 @@ type CookieMutation =
   | { kind: 'delete'; name: string }
 
 export async function updateCognitoRouteSession(request: NextRequest) {
-  if (!isCognitoProtectedRoute(request.nextUrl.pathname)) {
+  if (AUTH_ENTRY_PATHS.has(request.nextUrl.pathname)) return rememberReturnPath(request)
+  if (!isCognitoProtectedRoute(request.nextUrl.pathname) && !isSoftAuthRoute(request.nextUrl.pathname)) {
     return NextResponse.next({ request })
   }
 

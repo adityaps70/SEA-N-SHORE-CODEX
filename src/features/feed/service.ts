@@ -15,7 +15,7 @@ import {
 import { createFeedSocialWriterForClient, type FeedSocialWriter } from './social-writer'
 import { roleDisplayLabel } from '@/features/roles/taxonomy'
 import { createSocialActionQuotasForClient, type SocialActionQuotas } from '@/features/social/quotas'
-import type { PostCategory, PostReactionType, ReactionDetailsPage, ReactionTargetType } from './types'
+import type { PostAudience, PostCategory, PostReactionType, ReactionDetailsPage, ReactionTargetType } from './types'
 
 /** `quotas` (Round 14, 2.8) counts the member's posts, comments and reactions in the same transaction. */
 type FeedTransaction = <T>(
@@ -36,12 +36,21 @@ type StandardPostInput = {
   companyId?: string
   /** Publish inside this community group; the actor must be an active member. */
   groupId?: string
+  /** Who can see the post (round F). Group posts are always members only; missing means members only. */
+  audience?: PostAudience
 }
 
 type UpdatePostInput = {
   body: string
   mentionProfileIds?: string[]
   organizationMentionIds?: string[]
+  /** A new audience; left out keeps the current one. Ignored for group posts and reposts. */
+  audience?: PostAudience
+}
+
+/** Group posts never leave their community; everything else keeps the author's choice (members only if unset). */
+function audienceFor(post: { groupId?: string; audience?: PostAudience }): PostAudience {
+  return post.groupId ? 'members' : post.audience ?? 'members'
 }
 
 type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
@@ -333,6 +342,7 @@ export function createFeedService(input: {
         authorId: actorId,
         category: post.category,
         body,
+        audience: audienceFor(post),
         ...(post.companyId ? { companyId: post.companyId } : {}),
         ...(post.groupId ? { groupId: post.groupId } : {}),
       })
@@ -391,6 +401,7 @@ export function createFeedService(input: {
         authorId: actorId,
         category: post.category,
         body,
+        audience: audienceFor(post),
         ...(post.companyId ? { companyId: post.companyId } : {}),
         ...(post.groupId ? { groupId: post.groupId } : {}),
       })
@@ -479,6 +490,8 @@ export function createFeedService(input: {
       if (!body && post.postType !== 'repost') serviceError('feed_post_body_required')
       if (post.postType === 'repost' && body.length > REPOST_COMMENTARY_MAX) serviceError('feed_post_body_too_long')
       if (!await repository.updatePostBody(postId, body)) serviceError('feed_interaction_unavailable')
+      // Reposts follow their original's audience and group posts stay in their community.
+      if (update.audience && post.postType !== 'repost' && !post.groupId) await repository.updatePostAudience(postId, update.audience)
       const mentions = await repository.replacePostMentions(actorId, postId, body ? update.mentionProfileIds ?? [] : [])
       await notifyPostMentions(social, actorId, postId, mentions.newlyIntroducedProfileIds)
       const organizations = await repository.replaceOrganizationMentions(actorId, { postId }, body ? update.organizationMentionIds ?? [] : [])

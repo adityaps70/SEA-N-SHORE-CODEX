@@ -6,7 +6,7 @@ import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { RailFooter } from '@/components/navigation/rail-footer'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { PostCard } from '@/features/feed/components/post-card'
-import { getPublicPostsByAuthor } from '@/features/feed/queries'
+import { getPostsByAuthor, getPublicPostsByAuthor } from '@/features/feed/queries'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { RelationshipControls } from '@/features/network/components/relationship-controls'
@@ -26,6 +26,7 @@ import { getProfileNetworkSummary } from '@/features/profiles/profile-network-st
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getProfileOrganizations, getPublicProfileBySlug } from '@/features/profiles/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
+import { authHrefWithReturn } from '@/lib/auth/return-path'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
@@ -50,7 +51,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     viewer && viewingSomeoneElse ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
     viewer ? getPeopleYouMayKnow(3) : Promise.resolve([]),
-    getPublicPostsByAuthor(profile.id),
+    // Round F: members see the author's posts by the member rules; signed-out visitors only "Anyone" posts.
+    viewer ? getPostsByAuthor(profile.id) : getPublicPostsByAuthor(profile.id),
     // Counts are for signed-in members only; signed-out visitors see none.
     viewer ? getProfileNetworkSummary(viewer.id, profile.id).catch(() => null) : null,
     viewer && viewingSomeoneElse ? getViewableDgProfileDocument(viewer.id, profile.id).catch(() => null) : null,
@@ -147,7 +149,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             See {profile.fullName}&apos;s full network on Sea N Shore
           </p>
           <Link
-            href="/auth/sign-up"
+            href={authHrefWithReturn('/auth/sign-up', `/people/${profile.slug}`)}
             className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
           >
             Join Sea N Shore
