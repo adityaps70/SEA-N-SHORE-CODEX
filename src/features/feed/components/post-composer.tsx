@@ -739,14 +739,14 @@ export function PostComposer({
                     <span className="max-md:sr-only">Audience</span>
                     <Globe aria-hidden="true" className="pointer-events-none absolute left-3 size-4 text-navy-700 md:hidden" />
                     {group ? (
-                      <select aria-label="Who can see this" value="community" disabled className="ml-2 min-h-9 rounded-full border border-mist-100 bg-mist-50 px-3 text-xs font-semibold text-navy-950 disabled:opacity-100 max-md:ml-0 max-md:border-mist-300 max-md:bg-white max-md:pl-8 max-md:text-[13px]">
+                      <select aria-label="Audience (who can see this)" value="community" disabled className="ml-2 min-h-9 rounded-full border border-mist-100 bg-mist-50 px-3 text-xs font-semibold text-navy-950 disabled:opacity-100 max-md:ml-0 max-md:border-mist-300 max-md:bg-white max-md:pl-8 max-md:text-[13px]">
                         <option value="community">Members of {group.name}</option>
                       </select>
                     ) : (
                       // Round F: who can see the post. "Anyone" posts open from a shared link without an account.
                       <select
                         name="audience"
-                        aria-label="Who can see this"
+                        aria-label="Audience (who can see this)"
                         aria-describedby="composer-audience-hint"
                         value={audience}
                         onChange={(event) => setAudience(event.target.value === 'members' ? 'members' : 'anyone')}

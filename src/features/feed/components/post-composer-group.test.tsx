@@ -38,7 +38,7 @@ describe('PostComposer scoped to a community group (round 9B)', () => {
     const dialog = screen.getByRole('dialog', { name: /create a post/i })
     const hidden = dialog.querySelector<HTMLInputElement>('input[type="hidden"][name="groupId"]')
     expect(hidden?.value).toBe(group.id)
-    const audience = screen.getByRole('combobox', { name: 'Who can see this' })
+    const audience = screen.getByRole('combobox', { name: 'Audience (who can see this)' })
     expect(audience).toHaveTextContent('Members of Tanker Professionals')
     // Round F: a community post stays in its community; there is no audience to send.
     expect(audience).toBeDisabled()
@@ -54,7 +54,7 @@ describe('PostComposer scoped to a community group (round 9B)', () => {
     const dialog = screen.getByRole('dialog', { name: /create a post/i })
     expect(dialog.querySelector('input[name="groupId"]')).toBeNull()
     // Round F: who can see the post; new posts start as Anyone and the author can make them members-only.
-    const audience = screen.getByRole('combobox', { name: 'Who can see this' })
+    const audience = screen.getByRole('combobox', { name: 'Audience (who can see this)' })
     expect(audience).toHaveAttribute('name', 'audience')
     expect(audience).toHaveValue('anyone')
     expect(audience).toHaveAccessibleDescription('Anyone with the link can read it, even without an account.')
