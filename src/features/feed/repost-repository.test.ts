@@ -38,8 +38,9 @@ describe('repost repository invariants', () => {
     await repository.insertRepost({ id: repostId, authorId: viewerId, sourcePostId })
 
     const [sql, values] = callsOf(query)[0]
-    expect(sql).toMatch(/insert into public\.posts\s*\(id, author_id, category, body, post_type, repost_of_post_id\)/i)
-    expect(sql).toMatch(/select\s+\$1,\s*\$2,\s*source\.category,\s*'',\s*'repost',\s*source\.id/i)
+    expect(sql).toMatch(/insert into public\.posts\s*\(id, author_id, category, body, post_type, repost_of_post_id, audience\)/i)
+    // Round F: a repost has its original's audience.
+    expect(sql).toMatch(/select\s+\$1,\s*\$2,\s*source\.category,\s*'',\s*'repost',\s*source\.id,\s*source\.audience/i)
     expect(sql).toMatch(/from public\.posts source/i)
     expect(sql).toMatch(/source\.id = \$3/i)
     expect(sql).toMatch(/source\.deleted_at is null/i)

@@ -35,7 +35,8 @@ export function NotificationPostThumb({ notification, size = 'size-12', onOpen }
   const actorName = notification.actor?.fullName
   return (
     <Link
-      href={`/posts/${preview.postId}`}
+      // Round F: a photo tag opens the post at the tagged photo, like the row itself.
+      href={notification.destination.startsWith(`/posts/${preview.postId}`) ? notification.destination : `/posts/${preview.postId}`}
       onClick={onOpen}
       aria-label={preview.text ? `Open post: ${preview.text}` : 'Open post'}
       title={actorName ? `Open the post ${actorName} interacted with` : 'Open post'}

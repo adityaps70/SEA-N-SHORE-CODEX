@@ -24,7 +24,7 @@ import {
   type PostMediaMime,
 } from '../media-policy'
 import { readPdfPageCount } from '../pdf-page-count'
-import type { ComposerProfile, PostCategory, PostingOrganization } from '../types'
+import { POST_AUDIENCE_HINTS, POST_AUDIENCE_LABELS, POST_AUDIENCES, type ComposerProfile, type PostAudience, type PostCategory, type PostingOrganization } from '../types'
 import { EmojiPicker } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
 import { PHOTO_TAG_LIMIT, TagPeopleDialog, type TaggedPerson } from './tag-people-dialog'
@@ -275,6 +275,7 @@ export function PostComposer({
   const organizationsRequestedRef = useRef(false)
   const organizations = postingOrganizations ?? loadedOrganizations ?? []
   const [postAs, setPostAs] = useState<string | null>(defaultOrganizationId ?? null)
+  const [audience, setAudience] = useState<PostAudience>('anyone')
   const postAsOrganization = organizations.find((organization) => organization.id === postAs) ?? null
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
@@ -737,9 +738,25 @@ export function PostComposer({
                   <label className="text-xs font-semibold text-navy-950 max-md:relative max-md:col-start-2 max-md:flex max-md:items-center max-md:justify-self-start">
                     <span className="max-md:sr-only">Audience</span>
                     <Globe aria-hidden="true" className="pointer-events-none absolute left-3 size-4 text-navy-700 md:hidden" />
-                    <select aria-label="Audience" value="community" disabled className="ml-2 min-h-9 rounded-full border border-mist-100 bg-mist-50 px-3 text-xs font-semibold text-navy-950 disabled:opacity-100 max-md:ml-0 max-md:border-mist-300 max-md:bg-white max-md:pl-8 max-md:text-[13px]">
-                      <option value="community">{group ? `Members of ${group.name}` : 'Sea N Shore community'}</option>
-                    </select>
+                    {group ? (
+                      <select aria-label="Who can see this" value="community" disabled className="ml-2 min-h-9 rounded-full border border-mist-100 bg-mist-50 px-3 text-xs font-semibold text-navy-950 disabled:opacity-100 max-md:ml-0 max-md:border-mist-300 max-md:bg-white max-md:pl-8 max-md:text-[13px]">
+                        <option value="community">Members of {group.name}</option>
+                      </select>
+                    ) : (
+                      // Round F: who can see the post. "Anyone" posts open from a shared link without an account.
+                      <select
+                        name="audience"
+                        aria-label="Who can see this"
+                        aria-describedby="composer-audience-hint"
+                        value={audience}
+                        onChange={(event) => setAudience(event.target.value === 'members' ? 'members' : 'anyone')}
+                        disabled={pending}
+                        className="ml-2 min-h-9 cursor-pointer rounded-full border border-mist-300 bg-white px-3 text-xs font-semibold text-navy-950 hover:border-ocean-300 max-md:ml-0 max-md:pl-8 max-md:text-[13px]"
+                      >
+                        {POST_AUDIENCES.map((value) => <option key={value} value={value}>{POST_AUDIENCE_LABELS[value]}</option>)}
+                      </select>
+                    )}
+                    {group ? null : <span id="composer-audience-hint" className="sr-only">{POST_AUDIENCE_HINTS[audience]}</span>}
                   </label>
                 </div>
 
@@ -972,7 +989,7 @@ export function PostComposer({
                   <Hash aria-hidden="true" className="size-6" />
                 </button>
 
-                <span className="ml-auto text-xs text-muted max-md:hidden">Audience: {group ? `Members of ${group.name}` : 'Sea N Shore community'}</span>
+                <span className="ml-auto text-xs text-muted max-md:hidden">Audience: {group ? `Members of ${group.name}` : POST_AUDIENCE_LABELS[audience]}</span>
                 <p className={`order-6 ml-auto pr-2 text-[13px] tabular-nums md:hidden ${characterCount > POST_CHARACTER_LIMIT ? 'font-semibold text-red-700' : 'text-muted'}`}>
                   {characterCount}/{POST_CHARACTER_LIMIT}
                 </p>

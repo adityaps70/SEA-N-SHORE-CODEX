@@ -69,8 +69,9 @@ describe('PostCard in a community group (round 9B)', () => {
     const link = screen.getByRole('link', { name: 'Posted in Marine Engineers' })
     expect(link).toHaveAttribute('href', '/community/marine-engineers')
     expect(link).toHaveTextContent('in Marine Engineers')
-    // The label sits in the time / audience line, next to the globe.
-    expect(link.parentElement).toContainElement(screen.getByRole('img', { name: 'Visible to the Sea N Shore community' }))
+    // The label sits in the time / audience line; a community post shows its community instead of an audience icon.
+    expect(link.parentElement?.querySelector('time')).not.toBeNull()
+    expect(screen.queryByRole('img', { name: /can see this post/ })).not.toBeInTheDocument()
   })
 
   it('shows the community photo at 16px before "in <Group>" when the group has one (round 9C)', () => {

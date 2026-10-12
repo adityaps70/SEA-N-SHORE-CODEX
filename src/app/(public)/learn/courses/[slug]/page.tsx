@@ -22,6 +22,7 @@ import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { courseJsonLd, courseMetadata } from '@/features/learning/course-seo'
+import { authHrefWithReturn } from '@/lib/auth/return-path'
 import { publicCourseRepository, type PublicCurriculumSection } from '@/features/learning/public-course-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import { CourseTrailer } from '@/features/learning/components/course-trailer'
@@ -305,14 +306,14 @@ function CourseCurriculum({ slug, sections, enrolled }: { slug: string; sections
 }
 
 /** For visitors who are not signed in: enrolling and buying need a Sea N Shore account. */
-function SignInToEnrol({ isFree }: { isFree: boolean }) {
+function SignInToEnrol({ isFree, returnPath }: { isFree: boolean; returnPath: string }) {
   return (
     <div className="mt-6 space-y-2">
-      <Link href="/auth/sign-in" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
+      <Link href={authHrefWithReturn('/auth/sign-in', returnPath)} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
         <LogIn aria-hidden="true" className="size-4" /> {isFree ? 'Sign in to enrol' : 'Sign in to buy'}
       </Link>
       <p className="text-center text-xs text-white/65">
-        New to Sea N Shore? <Link href="/auth/sign-up" className="font-bold text-teal-200 underline-offset-2 hover:underline">Create a free account</Link>
+        New to Sea N Shore? <Link href={authHrefWithReturn('/auth/sign-up', returnPath)} className="font-bold text-teal-200 underline-offset-2 hover:underline">Create a free account</Link>
       </p>
     </div>
   )
@@ -440,7 +441,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
             ) : null}
 
             {!user ? (
-              <SignInToEnrol isFree={isFree} />
+              <SignInToEnrol isFree={isFree} returnPath={coursePath} />
             ) : isFree ? (
               <div className="mt-6">
                 {/* Remounts after the phone bar enrolls and the page refreshes. */}

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-import { createCognitoProxyHandler } from './cognito-proxy'
+import { createCognitoProxyHandler, rememberReturnPath } from './cognito-proxy'
+import { RETURN_PATH_COOKIE } from './return-path'
 
 function request(path: string) {
   return new NextRequest(`https://staging.seaandshore.in${path}`)
@@ -60,7 +61,65 @@ describe('Cognito protected route proxy', () => {
     const response = await handler(request('/notifications'))
 
     expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('https://staging.seaandshore.in/auth/sign-in')
+    // Round F: the sign-in page knows where to send the member back.
+    expect(response.headers.get('location')).toBe('https://staging.seaandshore.in/auth/sign-in?next=%2Fnotifications')
+  })
+
+  it('keeps the page and its query in the return path, without Next\'s _rsc parameter, for page loads only', async () => {
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal: vi.fn(async () => null), refreshSession: vi.fn(async () => false) })
+    const page = await handler(request('/jobs?type=deck&_rsc=abc12'))
+    expect(new URL(page.headers.get('location')!).searchParams.get('next')).toBe('/jobs?type=deck')
+    const action = await handler(new NextRequest('https://staging.seaandshore.in/jobs', { method: 'POST' }))
+    expect(action.headers.get('location')).toBe('https://staging.seaandshore.in/auth/sign-in')
+  })
+
+  it('opens a post page signed out, after trying to refresh a member session (round F)', async () => {
+    const getVerifiedPrincipal = vi.fn(async () => null)
+    const refreshSession = vi.fn(async () => false)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal, refreshSession }, { allowSignedOutView: () => true })
+
+    const response = await handler(request('/posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('location')).toBeNull()
+    expect(getVerifiedPrincipal).toHaveBeenCalledTimes(1)
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('limits signed-out post views per visitor address (round F)', async () => {
+    const seen: string[] = []
+    let allowed = 2
+    const handler = createCognitoProxyHandler(
+      { getVerifiedPrincipal: vi.fn(async () => null), refreshSession: vi.fn(async () => false) },
+      { allowSignedOutView: (key) => { seen.push(key); return allowed-- > 0 } },
+    )
+    const visit = () => handler(new NextRequest('https://staging.seaandshore.in/posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', {
+      headers: { 'x-forwarded-for': '203.0.113.9, 198.51.100.1' },
+    }))
+    expect((await visit()).status).toBe(200)
+    expect((await visit()).status).toBe(200)
+    const limited = await visit()
+    expect(limited.status).toBe(429)
+    expect(limited.headers.get('retry-after')).toBe('60')
+    expect(seen).toEqual(['203.0.113.9', '203.0.113.9', '203.0.113.9'])
+  })
+
+  it('never rate-limits a signed-in member on a post page', async () => {
+    const allowSignedOutView = vi.fn(() => false)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal: vi.fn(async () => ({ sub: 'member' })), refreshSession: vi.fn(async () => false) }, { allowSignedOutView })
+    expect((await handler(request('/posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'))).status).toBe(200)
+    expect(allowSignedOutView).not.toHaveBeenCalled()
+  })
+
+  it('remembers a safe ?next= on the sign-in and sign-up pages and ignores anything else (round F)', () => {
+    const remembered = rememberReturnPath(request('/auth/sign-in?next=%2Fposts%2Faaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'))
+    expect(remembered.cookies.get(RETURN_PATH_COOKIE)?.value).toBe('/posts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+    expect(remembered.cookies.get(RETURN_PATH_COOKIE)?.httpOnly).toBe(true)
+    expect(rememberReturnPath(request('/auth/sign-up?next=%2Fpeople%2Fcaptain')).cookies.get(RETURN_PATH_COOKIE)?.value).toBe('/people/captain')
+    for (const next of ['//evil.com', 'https://other-site.example/x', '/\\evil.com', '/auth/sign-in', '%2F%2Fevil.com']) {
+      const response = rememberReturnPath(request(`/auth/sign-in?next=${encodeURIComponent(next)}`))
+      expect(response.cookies.get(RETURN_PATH_COOKIE)).toBeUndefined()
+    }
   })
 
   it.each([
@@ -82,7 +141,6 @@ describe('Cognito protected route proxy', () => {
     '/messages',
     '/network',
     '/notifications',
-    '/posts/abc',
     '/profile',
     '/saved',
     '/search',

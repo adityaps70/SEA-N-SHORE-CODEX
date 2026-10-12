@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { ADMIN_RETURN_PATH_HEADER, adminReturnPathForRequest } from '@/lib/auth/admin-mfa-paths'
 import { afterSignOutRedirect } from '@/lib/auth/after-sign-out'
 import { updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
+import { arrivedAtReturnPath, RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
 import { createCspNonce, reportOnlyContentSecurityPolicy, wantsContentSecurityPolicy } from '@/lib/security/content-security-policy'
 
 export async function proxy(incoming: NextRequest) {
@@ -21,6 +22,8 @@ export async function proxy(incoming: NextRequest) {
     request = new NextRequest(incoming, { headers })
   }
   const response = afterSignOutRedirect(request) ?? await updateCognitoRouteSession(request)
+  // Round F: the member is back on the page they signed in for; forget it.
+  if (arrivedAtReturnPath(request)) response.cookies.delete(RETURN_PATH_COOKIE)
   if (policy) response.headers.set('Content-Security-Policy-Report-Only', policy)
   return response
 }

@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getVerifiedUser, getMediaObject, createMediaDownloadUrl, isPostVisibleTo } = vi.hoisted(() => ({
+const { getVerifiedUser, getMediaObject, createMediaDownloadUrl, isPostVisibleTo, isPostPublic } = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
   getMediaObject: vi.fn(),
   createMediaDownloadUrl: vi.fn(),
   isPostVisibleTo: vi.fn(),
+  isPostPublic: vi.fn(),
 }))
 
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser }))
 vi.mock('@/lib/aws/storage', () => ({ getMediaObject, createMediaDownloadUrl }))
-vi.mock('@/features/feed/repository', () => ({ feedRepository: { isPostVisibleTo } }))
+vi.mock('@/features/feed/repository', () => ({ feedRepository: { isPostVisibleTo, isPostPublic } }))
 
 const viewerId = '44444444-4444-4444-8444-444444444444'
 const profileId = '11111111-1111-4111-8111-111111111111'
@@ -28,16 +29,27 @@ describe('GET /api/feed-media/[...path]', () => {
     vi.clearAllMocks()
     getVerifiedUser.mockResolvedValue({ id: viewerId, email: 'captain@example.com' })
     isPostVisibleTo.mockResolvedValue(true)
+    isPostPublic.mockResolvedValue(false)
     createMediaDownloadUrl.mockResolvedValue('https://media.s3.example/signed-video')
     getMediaObject.mockResolvedValue({ body: new TextEncoder().encode('%PDF-test'), contentType: 'application/pdf', contentLength: 9 })
   })
 
-  it('requires an authenticated member before reading private media', async () => {
+  it('requires an authenticated member before reading media of a members-only post', async () => {
     getVerifiedUser.mockResolvedValueOnce(null)
     const response = await get(path)
     expect(response.status).toBe(401)
     expect(isPostVisibleTo).not.toHaveBeenCalled()
+    expect(isPostPublic).toHaveBeenCalledWith(postId, profileId)
     expect(createMediaDownloadUrl).not.toHaveBeenCalled()
+  })
+
+  it('serves a signed-out visitor the media of a post its author shows to anyone (round F)', async () => {
+    getVerifiedUser.mockResolvedValueOnce(null)
+    isPostPublic.mockResolvedValueOnce(true)
+    const response = await get(path)
+    expect(response.status).toBe(302)
+    expect(isPostVisibleTo).not.toHaveBeenCalled()
+    expect(createMediaDownloadUrl).toHaveBeenCalledTimes(1)
   })
 
   it('rejects non-canonical media keys without touching the database or S3', async () => {

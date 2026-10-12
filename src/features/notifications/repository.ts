@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
+import { postPageVisibilitySql } from '@/features/feed/repository'
 import type { PostReactionType } from '@/features/feed/types'
 import type { NetworkNotificationType } from './types'
 
@@ -30,6 +31,10 @@ export type NotificationPostPreviewRow = QueryResultRow & {
   snippet: string | null
   media_path: string | null
   media_mime_type: string | null
+  /** Round F: the first photo of this post the recipient is tagged in, for photo-tag rows. */
+  tag_media_id?: string | null
+  tag_media_path?: string | null
+  tag_media_mime_type?: string | null
 }
 
 export type NotificationEventMode = 'shadow' | 'active'
@@ -72,8 +77,9 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
 
     /**
      * One batched lookup for the posts a page of notifications points at. Plain reposts fall back
-     * to the original post's text and media. Deleted posts, and posts by members the recipient
-     * blocked (or who blocked them), return nothing.
+     * to the original post's text and media. Round F: only posts the recipient may open (the post page
+     * rule, tagged-member exception included); a post that is deleted, blocked or otherwise out of reach
+     * returns nothing, so its notification reads "no longer available".
      */
     async listPostPreviews(recipientId: string, postIds: readonly string[]): Promise<NotificationPostPreviewRow[]> {
       const ids = [...new Set(postIds)]
@@ -83,8 +89,12 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
            p.id as post_id,
            left(coalesce(nullif(btrim(p.body), ''), source.body, ''), 160) as snippet,
            first_media.storage_path as media_path,
-           first_media.mime_type as media_mime_type
+           first_media.mime_type as media_mime_type,
+           tag_media.id as tag_media_id,
+           tag_media.storage_path as tag_media_path,
+           tag_media.mime_type as tag_media_mime_type
          from public.posts p
+         join public.profiles author on author.id = p.author_id
          left join public.posts source on source.id = p.repost_of_post_id and source.deleted_at is null
          left join lateral (
            select media.storage_path, media.mime_type
@@ -93,13 +103,17 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
            order by media.position asc, media.created_at asc, media.id asc
            limit 1
          ) first_media on true
+         left join lateral (
+           select media.id, media.storage_path, media.mime_type
+           from public.post_photo_tags tag
+           join public.post_media media on media.id = tag.media_id
+           where tag.post_id = p.id and tag.tagged_profile_id = $1
+           order by media.position asc, media.created_at asc, media.id asc
+           limit 1
+         ) tag_media on true
          where p.id = any($2::uuid[])
            and p.deleted_at is null
-           and not exists (
-             select 1 from public.user_blocks b
-             where (b.blocker_id = $1 and b.blocked_id = p.author_id)
-                or (b.blocker_id = p.author_id and b.blocked_id = $1)
-           )`,
+           and ${postPageVisibilitySql()}`,
         [recipientId, ids],
       )
       return rows as NotificationPostPreviewRow[]

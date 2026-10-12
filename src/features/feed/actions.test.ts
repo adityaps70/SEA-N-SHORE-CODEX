@@ -355,6 +355,7 @@ describe('feed actions', () => {
       body: 'A useful maritime technical lesson.',
       mentionProfileIds: [],
       organizationMentionIds: [],
+      audience: 'members',
     })
     expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', expect.objectContaining({ postId: expect.any(String), hasMedia: false }))
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain('A useful maritime technical lesson.')
@@ -381,6 +382,7 @@ describe('feed actions', () => {
       }],
       mentionProfileIds: [],
       organizationMentionIds: [],
+      audience: 'members',
       photoTags: [],
     })
     expect(mockedUploadFeedImage).not.toHaveBeenCalled()
@@ -433,6 +435,7 @@ describe('feed actions', () => {
       pollOptions: ['Mooring', 'Bridge'],
       mentionProfileIds: [],
       organizationMentionIds: [],
+      audience: 'members',
     })
   })
 

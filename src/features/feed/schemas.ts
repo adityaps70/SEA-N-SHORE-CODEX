@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { POST_DOCUMENT_MAX_PAGES, POST_IMAGE_MAX_COUNT } from './media-policy'
-import { POST_CATEGORIES, POST_REACTIONS } from './types'
+import { POST_AUDIENCES, POST_CATEGORIES, POST_REACTIONS } from './types'
 
 const normalizePollOptions = (value: unknown) => {
   const source = Array.isArray(value) ? value : []
@@ -34,6 +34,11 @@ const groupIdSchema = z.preprocess(
 /** Members tagged in one photo; the composer sends them inside the media manifest. */
 const photoTagIdsSchema = z.preprocess(normalizeMentionIds, z.array(z.string().uuid()).max(20, 'Tag no more than 20 people in a photo.')).default([])
 /** Empty form values mean "post as yourself". */
+/** Who can see the post (round F). A missing value keeps the post members-only. */
+export const postAudienceSchema = z.preprocess(
+  (value) => value === '' || value == null ? 'members' : value,
+  z.enum(POST_AUDIENCES, { error: 'Choose who can see this post.' }),
+)
 const postAsCompanySchema = z.preprocess(
   (value) => value === '' || value == null ? undefined : value,
   z.string().uuid('Choose who this post is from again.').optional(),
@@ -123,6 +128,7 @@ const standardPostSchema = z.object({
   organizationMentionIds: organizationMentionIdsSchema,
   companyId: postAsCompanySchema,
   groupId: groupIdSchema,
+  audience: postAudienceSchema,
 })
 
 const pollPostSchema = z.object({
@@ -135,6 +141,7 @@ const pollPostSchema = z.object({
   organizationMentionIds: organizationMentionIdsSchema,
   companyId: postAsCompanySchema,
   groupId: groupIdSchema,
+  audience: postAudienceSchema,
 })
 
 export const createPostInputSchema = z.discriminatedUnion('mode', [standardPostSchema, pollPostSchema])
@@ -169,6 +176,8 @@ export const updatePostInputSchema = z.object({
   ),
   mentionProfileIds: mentionIdsSchema,
   organizationMentionIds: organizationMentionIdsSchema,
+  /** Left out by older clients: the audience then stays as it is. */
+  audience: z.enum(POST_AUDIENCES).optional(),
 })
 
 export const repostInputSchema = z.object({

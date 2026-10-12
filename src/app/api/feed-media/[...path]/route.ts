@@ -52,15 +52,18 @@ export async function GET(
   context: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
   const user = await getVerifiedUser()
-  if (!user) return new Response(null, { status: 401, headers: NOT_FOUND_HEADERS })
 
   const { path } = await context.params
   const media = canonicalFeedMediaKey(path)
-  if (!media) return new Response(null, { status: 404, headers: NOT_FOUND_HEADERS })
+  if (!media) return new Response(null, { status: user ? 404 : 401, headers: NOT_FOUND_HEADERS })
 
   try {
-    if (!await feedRepository.isPostVisibleTo(user.id, media.postId, media.profileId)) {
-      return new Response(null, { status: 404, headers: NOT_FOUND_HEADERS })
+    // Round F: signed out, only the media of a post its author shows to anyone (shared links, public profiles).
+    const visible = user
+      ? await feedRepository.isPostVisibleTo(user.id, media.postId, media.profileId)
+      : await feedRepository.isPostPublic(media.postId, media.profileId)
+    if (!visible) {
+      return new Response(null, { status: user ? 404 : 401, headers: NOT_FOUND_HEADERS })
     }
     if (media.contentType === 'application/pdf') {
       const object = await getMediaObject({ key: media.key, maxBytes: POST_DOCUMENT_MAX_BYTES })

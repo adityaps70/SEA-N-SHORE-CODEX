@@ -124,6 +124,8 @@ export type FeedPostRow = {
   category: PostCategory
   body: string
   post_type: FeedPostType
+  /** Who can see the post (round F, migration 0082). */
+  audience?: string | null
   repost_of_post_id?: string | null
   repost_source?: FeedPostRow | FeedPostRow[] | null
   /** Organization the post was published as (migration 0044). */
@@ -385,6 +387,7 @@ export function mapFeedPost(
     category: row.category,
     body: row.body,
     postType: row.post_type,
+    audience: row.audience === 'anyone' ? 'anyone' : 'members',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     author,

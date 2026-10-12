@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { homeOrReturnPath } from '@/features/auth/return-path-cookie'
 import { Wordmark } from '@/components/brand/wordmark'
 import { LogOut } from 'lucide-react'
 import { Card } from '@/components/ui/card'
@@ -18,7 +19,7 @@ export default async function OnboardingPage({
 } = {}) {
   const profile = await getOwnOnboardingSetup()
 
-  if (profile.onboardingCompletedAt) redirect('/home')
+  if (profile.onboardingCompletedAt) redirect(await homeOrReturnPath())
   const registeredOrganization = await getOwnRegisteredOrganization((await searchParams)?.registered)
   // Cached per request: the same verified user getOwnOnboardingSetup already loaded.
   const { email } = await requireAwsUser()

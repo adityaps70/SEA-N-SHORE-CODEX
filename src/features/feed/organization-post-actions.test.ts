@@ -64,6 +64,7 @@ describe('createPost as an organization', () => {
       mentionProfileIds: [],
       organizationMentionIds: [],
       companyId,
+      audience: 'members',
     })
 
     await createPost({}, postForm({ mode: 'standard', category: 'maritime_news', body: 'Personal update.', companyId: '' }))
@@ -72,6 +73,7 @@ describe('createPost as an organization', () => {
       body: 'Personal update.',
       mentionProfileIds: [],
       organizationMentionIds: [],
+      audience: 'members',
     })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations/[slug]', 'page')
   })

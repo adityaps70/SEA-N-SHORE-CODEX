@@ -340,14 +340,38 @@ function PhotoLightbox({ media, activeIndex, authorName, postId, photoTags, onCl
   )
 }
 
-function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetchPriority, postId, photoTags = [] }: {
+/** Round F: the photo a tag notification points at, and the tagged member, highlighted on the post page. */
+export type FocusPhoto = { mediaId: string; profileId?: string | null }
+
+const FOCUS_RING = 'ring-4 ring-amber-400 ring-offset-2'
+
+function FocusChip({ show }: { show: boolean }) {
+  return show ? (
+    <span className="pointer-events-none absolute left-2 top-2 z-[1] rounded-full bg-navy-950/85 px-2.5 py-1 text-xs font-semibold text-white">
+      You&apos;re tagged in this photo
+    </span>
+  ) : null
+}
+
+function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetchPriority, postId, photoTags = [], focus }: {
   media: FeedMedia[]
   authorName: string
   flush?: boolean
   postId?: string
   photoTags?: FeedPhotoTag[]
+  focus?: FocusPhoto | null
 } & PhotoLoading) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const galleryRef = useRef<HTMLDivElement | null>(null)
+  const focusedIndex = focus ? media.findIndex((item) => item.id === focus.mediaId) : -1
+  const viewerTagged = (item: FeedMedia | undefined) => Boolean(focus?.profileId && item?.id && photoTags.some((tag) => tag.mediaId === item.id && tag.profileId === focus.profileId))
+
+  // Round F: opened from a tag notification, the post page scrolls the tagged photo into view.
+  useEffect(() => {
+    if (focusedIndex < 0) return
+    const target = galleryRef.current?.querySelector<HTMLElement>(`[data-media-index="${Math.min(focusedIndex, 3)}"]`)
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [focusedIndex])
   const visible = media.slice(0, 4)
   const overflow = Math.max(0, media.length - visible.length)
   const gridClass = media.length === 1
@@ -392,8 +416,9 @@ function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetc
     const item = media[0]
     if (!item?.signedUrl) return null
     return (
-      <>
-        <button type="button" onClick={() => open(0)} className={`mt-4 block w-full overflow-hidden rounded-2xl border border-mist-200 bg-mist-50 text-left hover:border-ocean-300 hover:bg-mist-50 transition-colors ${flush ? `${FLUSH_CLASS} ${FLUSH_WIDTH_CLASS}` : ''}`}>
+      <div ref={galleryRef}>
+        <button type="button" data-media-index="0" onClick={() => open(0)} className={`relative mt-4 block w-full overflow-hidden rounded-2xl border border-mist-200 bg-mist-50 text-left hover:border-ocean-300 hover:bg-mist-50 transition-colors ${flush ? `${FLUSH_CLASS} ${FLUSH_WIDTH_CLASS}` : ''} ${focusedIndex === 0 ? FOCUS_RING : ''}`}>
+          <FocusChip show={focusedIndex === 0 && viewerTagged(item)} />
           {/* The intrinsic size is only a placeholder ratio: `h-auto w-full` follows the photo once loaded. */}
           <MediaImage
             src={item.signedUrl}
@@ -409,21 +434,23 @@ function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetc
         </button>
         {/* The single photo opens in the same lightbox as galleries (it used to set the index and render nothing). */}
         {lightbox}
-      </>
+      </div>
     )
   }
 
   return (
     <>
-      <div className={`mt-4 grid ${gridClass} gap-0.5 overflow-hidden rounded-2xl border border-mist-100 bg-mist-100 ${media.length === 3 ? 'grid-rows-2' : ''} ${flush ? FLUSH_CLASS : ''}`}>
+      <div ref={galleryRef} className={`mt-4 grid ${gridClass} gap-0.5 overflow-hidden rounded-2xl border border-mist-100 bg-mist-100 ${media.length === 3 ? 'grid-rows-2' : ''} ${flush ? FLUSH_CLASS : ''}`}>
         {visible.map((item, index) => (
           <button
             key={item.storagePath}
             type="button"
+            data-media-index={index}
             onClick={() => open(index)}
             aria-label={index === 3 && overflow > 0 ? `View all ${media.length} photos` : `Open photo ${index + 1} of ${media.length}`}
-            className={`relative min-w-0 overflow-hidden bg-white transition hover:brightness-95 ${imageGridClass(media.length, index)}`}
+            className={`relative min-w-0 overflow-hidden bg-white transition hover:brightness-95 ${imageGridClass(media.length, index)} ${Math.min(focusedIndex, 3) === index && focusedIndex >= 0 ? `${FOCUS_RING} ring-inset ring-offset-0` : ''}`}
           >
+            <FocusChip show={focusedIndex === index && viewerTagged(item)} />
             <MediaImage
               src={item.signedUrl ?? ''}
               alt={item.altText ?? `Photo ${index + 1} attached to ${authorName}'s post`}
@@ -454,6 +481,7 @@ export function PostMedia({
   fetchPriority,
   postId,
   photoTags,
+  focus,
 }: {
   media: FeedMedia | FeedMedia[]
   authorName: string
@@ -463,6 +491,8 @@ export function PostMedia({
   postId?: string
   /** Members tagged in the post's photos, matched to each photo by `media.id` (round 9B). */
   photoTags?: FeedPhotoTag[]
+  /** Round F: scroll to and highlight this photo (post page opened from a tag notification). */
+  focus?: FocusPhoto | null
 } & PhotoLoading) {
   const items = useMemo(() => orderedMedia(media), [media])
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -517,6 +547,6 @@ export function PostMedia({
 
   const images = items.filter((item) => item.mimeType.startsWith('image/'))
   return images.length
-    ? <PhotoGallery media={images} authorName={authorName} flush={flush} loading={loading} fetchPriority={fetchPriority} postId={postId} photoTags={photoTags} />
+    ? <PhotoGallery media={images} authorName={authorName} flush={flush} loading={loading} fetchPriority={fetchPriority} postId={postId} photoTags={photoTags} focus={focus} />
     : null
 }

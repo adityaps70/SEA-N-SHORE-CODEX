@@ -102,6 +102,8 @@ describe('feed service authorization', () => {
       authorId: viewerId,
       category: 'learning',
       body: 'Mooring station setup.',
+      // Round F: no audience in the request keeps the post members-only.
+      audience: 'members',
     })
     expect(repo.insertPostMedia).toHaveBeenCalledWith(mediaPostId, {
       storagePath: `${viewerId}/${mediaPostId}/image.webp`,
@@ -147,6 +149,7 @@ describe('feed service authorization', () => {
       authorId: viewerId,
       category: 'technical_discussion',
       body: 'Which inspection should be prioritized?',
+      audience: 'members',
     })
     expect(repo.insertPollOption).toHaveBeenNthCalledWith(1, postId, 'Mooring', 0)
     expect(repo.insertPollOption).toHaveBeenNthCalledWith(2, postId, 'Cargo', 1)

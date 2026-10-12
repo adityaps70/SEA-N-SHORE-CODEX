@@ -22,10 +22,18 @@ export function uniquePhotoTagPeople(tags: FeedPhotoTag[]) {
  * "with Priya Nair and 2 others" under a post's photos (round 9B). The first name opens
  * that profile; "and N others" opens the full list. One truncated line on phones.
  */
-export function PhotoTagsLine({ tags, className = '' }: { tags: FeedPhotoTag[]; className?: string }) {
+export function PhotoTagsLine({ tags, className = '', highlightProfileId }: {
+  tags: FeedPhotoTag[]
+  className?: string
+  /** Round F: the member who opened the post from their tag notification; named first and highlighted. */
+  highlightProfileId?: string | null
+}) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const people = uniquePhotoTagPeople(tags)
+  const unique = uniquePhotoTagPeople(tags)
+  const people = highlightProfileId
+    ? [...unique.filter((tag) => tag.profileId === highlightProfileId), ...unique.filter((tag) => tag.profileId !== highlightProfileId)]
+    : unique
   const first = people[0]
   if (!first) return null
   const others = people.length - 1
@@ -36,7 +44,7 @@ export function PhotoTagsLine({ tags, className = '' }: { tags: FeedPhotoTag[]; 
         <UsersRound aria-hidden="true" className="size-4 shrink-0 text-ocean-700" />
         <span className="min-w-0 truncate">
           with{' '}
-          <Link href={profileHref(first.slug)} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
+          <Link href={profileHref(first.slug)} className={`font-semibold text-navy-950 hover:text-ocean-700 hover:underline ${first.profileId === highlightProfileId ? 'rounded bg-amber-100 px-1' : ''}`}>
             {first.fullName}
           </Link>
           {others > 0 ? (

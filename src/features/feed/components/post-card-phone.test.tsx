@@ -129,9 +129,11 @@ describe('PostCard phone header', () => {
     expect(screen.queryByRole('button', { name: /^Follow / })).not.toBeInTheDocument()
   })
 
-  it('shows the time with a community globe on phones', () => {
-    render(<PostCard post={post()} />)
-    expect(screen.getByRole('img', { name: 'Visible to the Sea N Shore community' })).toHaveClass('md:hidden')
+  it('shows who can see the post next to the time (round F)', () => {
+    const { rerender } = render(<PostCard post={post()} />)
+    expect(screen.getByRole('img', { name: 'Only Sea N Shore members can see this post' })).toBeInTheDocument()
+    rerender(<PostCard post={post({ audience: 'anyone' })} />)
+    expect(screen.getByRole('img', { name: 'Anyone can see this post' })).toBeInTheDocument()
   })
 
   it('goes edge to edge on phones only when asked', () => {

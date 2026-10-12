@@ -3,7 +3,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import { hashtagBodySearchPattern } from '@/features/hashtags/parse'
 import type { FeedCommentRow, FeedPostRow, FeedViewerState, HiddenPostSourceRow } from './mappers'
-import type { FeedCursor, FeedPostType, PostCategory, PostReactionType, ReactionTargetType, RecentlyDeletedPost } from './types'
+import type { FeedCursor, FeedPostType, PostAudience, PostCategory, PostReactionType, ReactionTargetType, RecentlyDeletedPost } from './types'
 
 type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -14,6 +14,7 @@ type PostManagementRow = QueryResultRow & {
   id: string
   author_id: string
   company_id: string | null
+  group_id?: string | null
   post_type: FeedPostType
   body: string
 }
@@ -113,6 +114,7 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
     p.category::text as category,
     p.body,
     p.post_type::text as post_type,
+    p.audience,
     p.repost_of_post_id,
     p.company_id,
     p.group_id,
@@ -329,6 +331,53 @@ function visibilitySql() {
     )
     and ${groupVisibilitySql()}
     ${repostSourceVisibilitySql()}
+  `
+}
+
+/**
+ * Round F: a member tagged in one of the post's photos, or @mentioned in its text, may open that post
+ * even when it sits in a private community. It covers the post page only, never the feed or the community.
+ */
+function viewerTaggedInPostSql(postRef = 'p') {
+  return `
+    (
+      exists (select 1 from public.post_photo_tags viewer_tag where viewer_tag.post_id = ${postRef}.id and viewer_tag.tagged_profile_id = $1)
+      or exists (select 1 from public.content_mentions viewer_mention where viewer_mention.post_id = ${postRef}.id and viewer_mention.mentioned_profile_id = $1)
+    )
+  `
+}
+
+/** The feed rule for one post, with the tagged-member exception for its community (post page and notifications). */
+export function postPageVisibilitySql() {
+  return visibilitySql().replace(groupVisibilitySql(), `(${groupVisibilitySql()} or ${viewerTaggedInPostSql()})`)
+}
+
+/**
+ * Round F: what a signed-out visitor may read. The author chose "Anyone", the post is not in a community,
+ * its author is active, and a reposted original is itself an "Anyone" post outside any community.
+ */
+export function publicPostSql(postRef = 'p', authorRef = 'author') {
+  return `
+    ${postRef}.deleted_at is null
+    and ${postRef}.audience = 'anyone'
+    and ${postRef}.group_id is null
+    and ${authorRef}.account_status = 'active'
+    and ${authorRef}.onboarding_completed_at is not null
+    and (
+      ${postRef}.post_type <> 'repost'
+      or exists (
+        select 1
+        from public.posts public_source
+        join public.profiles public_source_author on public_source_author.id = public_source.author_id
+        where public_source.id = ${postRef}.repost_of_post_id
+          and public_source.deleted_at is null
+          and public_source.post_type <> 'repost'
+          and public_source.audience = 'anyone'
+          and public_source.group_id is null
+          and public_source_author.account_status = 'active'
+          and public_source_author.onboarding_completed_at is not null
+      )
+    )
   `
 }
 
@@ -555,25 +604,104 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     ) as FeedRow[]
   }
 
+  /** The post page: the feed rule, plus the tagged-member exception for private communities (round F). */
   async function getPostRow(viewerProfileId: string, postId: string): Promise<FeedPostRow | null> {
     const rows = await queryRows(
       `${FEED_ROW_SELECT}
-       where p.id = $2 and p.deleted_at is null and ${visibilitySql()}
+       where p.id = $2 and p.deleted_at is null and ${postPageVisibilitySql()}
        limit 1`,
       [viewerProfileId, postId],
     ) as FeedRow[]
     return rows[0] ?? null
   }
 
-  /** Round 14 (2.2): whether a post by this author is visible to the viewer (same rules as the feed). */
+  /** Round F: a post a signed-out visitor may read ($1 is null: no viewer state, no blocks). */
+  async function getPublicPostRow(postId: string): Promise<FeedPostRow | null> {
+    const rows = await queryRows(
+      `${FEED_ROW_SELECT}
+       where p.id = $2 and ${publicPostSql()}
+       limit 1`,
+      [null, postId],
+    ) as FeedRow[]
+    return rows[0] ?? null
+  }
+
+  /** Round F: whether a live, undeleted post exists at all (to tell "members only" from "gone"). */
+  async function postExists(postId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `select 1 from public.posts where id = $1 and deleted_at is null limit 1`,
+      [postId],
+    )
+    return rows.length > 0
+  }
+
+  /** Round F: the first photo of a post readable signed out, for its share card (og:image). */
+  async function getPublicPostImagePath(postId: string): Promise<string | null> {
+    const rows = await queryRows(
+      `select media.storage_path
+       from public.posts p
+       join public.profiles author on author.id = p.author_id
+       join public.post_media media on media.post_id = coalesce(p.repost_of_post_id, p.id)
+       where p.id = $1
+         and ${publicPostSql()}
+         and media.mime_type in ('image/jpeg', 'image/png', 'image/webp')
+       order by media.position asc, media.created_at asc, media.id asc
+       limit 1`,
+      [postId],
+    ) as Array<QueryResultRow & { storage_path: string }>
+    return rows[0]?.storage_path ?? null
+  }
+
+  /** Round F: an author's own "Anyone" posts, for their profile page seen signed out. */
+  async function listPublicAuthorRows(authorProfileId: string, limit = 30): Promise<FeedPostRow[]> {
+    return await queryRows(
+      `${FEED_ROW_SELECT}
+       where p.author_id = $2
+         and p.company_id is null
+         and ${publicPostSql()}
+       order by p.created_at desc, p.id desc
+       limit $3`,
+      [null, authorProfileId, limit],
+    ) as FeedRow[]
+  }
+
+  /** Round F: original posts readable signed out, for reposts shown on a public page. */
+  async function listPublicRepostSourceRows(postIds: string[]): Promise<FeedPostRow[]> {
+    if (!postIds.length) return []
+    return await queryRows(
+      `${FEED_ROW_SELECT}
+       where p.id = any($2::uuid[])
+         and p.post_type <> 'repost'
+         and ${publicPostSql()}`,
+      [null, postIds],
+    ) as FeedRow[]
+  }
+
+  /**
+   * Round 14 (2.2): whether a post by this author is visible to the viewer, for its media. Round F: the
+   * post page's rule, so a member tagged in a private-community post sees its photos too.
+   */
   async function isPostVisibleTo(viewerProfileId: string, postId: string, authorProfileId: string): Promise<boolean> {
     const rows = await queryRows(
       `select 1
        from public.posts p
        join public.profiles author on author.id = p.author_id
-       where p.id = $2 and p.author_id = $3 and p.deleted_at is null and ${visibilitySql()}
+       where p.id = $2 and p.author_id = $3 and p.deleted_at is null and ${postPageVisibilitySql()}
        limit 1`,
       [viewerProfileId, postId, authorProfileId],
+    )
+    return rows.length > 0
+  }
+
+  /** Round F: whether a signed-out visitor may load this post's media (an "Anyone" post outside communities). */
+  async function isPostPublic(postId: string, authorProfileId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `select 1
+       from public.posts p
+       join public.profiles author on author.id = p.author_id
+       where p.id = $1 and p.author_id = $2 and ${publicPostSql()}
+       limit 1`,
+      [postId, authorProfileId],
     )
     return rows.length > 0
   }
@@ -863,7 +991,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   /** The stored author and organization of a live post, for edit and delete checks. */
   async function getPostForManagement(postId: string) {
     const rows = await queryRows(
-      `select p.id, p.author_id, p.company_id, p.post_type::text as post_type, p.body
+      `select p.id, p.author_id, p.company_id, p.group_id, p.post_type::text as post_type, p.body
        from public.posts p
        where p.id = $1 and p.deleted_at is null
        limit 1`,
@@ -874,6 +1002,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       id: row.id,
       authorId: row.author_id,
       companyId: row.company_id ?? null,
+      groupId: row.group_id ?? null,
       postType: row.post_type,
       body: row.body,
     } : null
@@ -939,6 +1068,16 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     const previousIds = new Set(previousRows.map((row) => row.id))
     await queryRows(`delete from public.content_mentions where post_id = $1`, [postId])
     const mentionProfileIds = await insertPostMentions(actorId, postId, mentionedProfileIds)
+    // Round F: members the edit no longer mentions lose their "mentioned you in a post" notification.
+    const kept = new Set(mentionProfileIds)
+    const dropped = [...previousIds].filter((profileId) => !kept.has(profileId))
+    if (dropped.length) {
+      await queryRows(
+        `delete from public.notifications
+         where post_id = $1 and notification_type = 'post_mention' and recipient_id = any($2::uuid[])`,
+        [postId, dropped],
+      )
+    }
     return {
       mentionProfileIds,
       newlyIntroducedProfileIds: mentionProfileIds.filter((profileId) => !previousIds.has(profileId)),
@@ -998,22 +1137,24 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return mapCommentMutation(rows[0])
   }
 
-  async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string; groupId?: string }) {
-    if (input.groupId) {
-      await queryRows(
-        `insert into public.posts (id, author_id, category, body, post_type, company_id, group_id) values ($1, $2, $3, $4, 'standard', $5, $6)`,
-        [input.id, input.authorId, input.category, input.body, input.companyId ?? null, input.groupId],
-      )
-      return
-    }
-    if (input.companyId) {
-      await queryRows(
-        `insert into public.posts (id, author_id, category, body, post_type, company_id) values ($1, $2, $3, $4, 'standard', $5)`,
-        [input.id, input.authorId, input.category, input.body, input.companyId],
-      )
-      return
-    }
-    await queryRows(`insert into public.posts (id, author_id, category, body, post_type) values ($1, $2, $3, $4, 'standard')`, [input.id, input.authorId, input.category, input.body])
+  async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string; audience: PostAudience; companyId?: string; groupId?: string }) {
+    await queryRows(
+      `insert into public.posts (id, author_id, category, body, post_type, company_id, group_id, audience) values ($1, $2, $3, $4, 'standard', $5, $6, $7)`,
+      [input.id, input.authorId, input.category, input.body, input.companyId ?? null, input.groupId ?? null, input.groupId ? 'members' : input.audience],
+    )
+  }
+
+  /** Round F: who can see the post. Group posts never change (they stay in their community). */
+  async function updatePostAudience(postId: string, audience: PostAudience) {
+    const rows = await queryRows(
+      `update public.posts
+       set audience = $2,
+           updated_at = now()
+       where id = $1 and deleted_at is null and group_id is null and post_type <> 'repost'
+       returning id`,
+      [postId, audience],
+    ) as IdRow[]
+    return rows.length === 1
   }
 
   /** Active membership (any role) in a live group; group admins/owners count as members. */
@@ -1142,14 +1283,32 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   }
 
   /** A tagged member removes their own tag, or the post author removes any tag. */
+  /**
+   * Removes one photo tag. Round F: when it was the member's last tag in the post, their "tagged you in
+   * a photo" notification goes too, so it can't lead to a post they are no longer part of.
+   */
   async function deletePhotoTag(actorId: string, postId: string, mediaId: string, profileId: string) {
     const rows = await queryRows(
-      `delete from public.post_photo_tags tag
-       using public.posts p
-       where tag.post_id = $2 and tag.media_id = $3 and tag.tagged_profile_id = $4
-         and p.id = tag.post_id
-         and ($1 = tag.tagged_profile_id or $1 = p.author_id)
-       returning tag.tagged_profile_id as id`,
+      `with removed as (
+         delete from public.post_photo_tags tag
+         using public.posts p
+         where tag.post_id = $2 and tag.media_id = $3 and tag.tagged_profile_id = $4
+           and p.id = tag.post_id
+           and ($1 = tag.tagged_profile_id or $1 = p.author_id)
+         returning tag.tagged_profile_id as id
+       ), cleared as (
+         delete from public.notifications n
+         where n.recipient_id = $4
+           and n.post_id = $2
+           and n.notification_type = 'photo_tag'
+           and exists (select 1 from removed)
+           and not exists (
+             select 1 from public.post_photo_tags other
+             where other.post_id = $2 and other.tagged_profile_id = $4 and other.media_id <> $3
+           )
+         returning n.id
+       )
+       select id from removed`,
       [actorId, postId, mediaId, profileId],
     ) as IdRow[]
     return rows.length > 0
@@ -1168,20 +1327,11 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return Boolean(rows[0]?.attached)
   }
 
-  async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string; groupId?: string }) {
-    if (input.groupId) {
-      await queryRows(
-        `insert into public.posts (id, author_id, category, body, post_type, company_id, group_id) values ($1, $2, $3, $4, 'poll', $5, $6)`,
-        [input.id, input.authorId, input.category, input.body, input.companyId ?? null, input.groupId],
-      )
-    } else if (input.companyId) {
-      await queryRows(
-        `insert into public.posts (id, author_id, category, body, post_type, company_id) values ($1, $2, $3, $4, 'poll', $5)`,
-        [input.id, input.authorId, input.category, input.body, input.companyId],
-      )
-    } else {
-      await queryRows(`insert into public.posts (id, author_id, category, body, post_type) values ($1, $2, $3, $4, 'poll')`, [input.id, input.authorId, input.category, input.body])
-    }
+  async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string; audience: PostAudience; companyId?: string; groupId?: string }) {
+    await queryRows(
+      `insert into public.posts (id, author_id, category, body, post_type, company_id, group_id, audience) values ($1, $2, $3, $4, 'poll', $5, $6, $7)`,
+      [input.id, input.authorId, input.category, input.body, input.companyId ?? null, input.groupId ?? null, input.groupId ? 'members' : input.audience],
+    )
     await queryRows(`insert into public.post_polls (post_id) values ($1)`, [input.id])
   }
 
@@ -1193,8 +1343,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     const commentary = input.body?.trim() ?? ''
     const rows = commentary
       ? await queryRows(
-        `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id)
-         select $1, $2, source.category, $4, 'repost', source.id
+        `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id, audience)
+         select $1, $2, source.category, $4, 'repost', source.id, source.audience
          from public.posts source
          where source.id = $3
            and source.deleted_at is null
@@ -1204,8 +1354,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
         [input.id, input.authorId, input.sourcePostId, commentary],
       ) as IdRow[]
       : await queryRows(
-        `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id)
-         select $1, $2, source.category, '', 'repost', source.id
+        `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id, audience)
+         select $1, $2, source.category, '', 'repost', source.id, source.audience
          from public.posts source
          where source.id = $3
            and source.deleted_at is null
@@ -1432,6 +1582,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     listCommentedRows,
     getPostRow,
     isPostVisibleTo,
+    isPostPublic,
     listRepostSourceRows,
     getViewerState,
     listReactionDetails,
@@ -1446,6 +1597,12 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     getRestorablePostCompanyId,
     deleteOrganizationPost,
     updatePostBody,
+    updatePostAudience,
+    getPublicPostRow,
+    getPublicPostImagePath,
+    postExists,
+    listPublicAuthorRows,
+    listPublicRepostSourceRows,
     replacePostMentions,
     listCompanyIdentities,
     deleteOwnPost,

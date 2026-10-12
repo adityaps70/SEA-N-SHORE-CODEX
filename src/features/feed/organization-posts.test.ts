@@ -106,19 +106,23 @@ describe('feed repository: organization posts', () => {
     expect(callsOf(query)[1][0]).not.toMatch(/p\.company_id is null/i)
   })
 
-  it('stores the organization on new standard and poll posts only when one is chosen', async () => {
+  it('stores the organization on new standard and poll posts only when one is chosen, with the audience', async () => {
     const query = vi.fn(async () => [])
     const { createFeedRepository } = await import('./repository')
     const repository = createFeedRepository({ query })
-    await repository.insertStandardPost({ id: postId, authorId, category: 'maritime_news', body: 'Hello', companyId })
-    await repository.insertStandardPost({ id: postId, authorId, category: 'maritime_news', body: 'Hello' })
-    await repository.insertPollPost({ id: postId, authorId, category: 'maritime_news', body: 'Vote', companyId })
+    await repository.insertStandardPost({ id: postId, authorId, category: 'maritime_news', body: 'Hello', audience: 'anyone', companyId })
+    await repository.insertStandardPost({ id: postId, authorId, category: 'maritime_news', body: 'Hello', audience: 'members' })
+    await repository.insertPollPost({ id: postId, authorId, category: 'maritime_news', body: 'Vote', audience: 'anyone', companyId })
+    await repository.insertStandardPost({ id: postId, authorId, category: 'maritime_news', body: 'Group', audience: 'anyone', groupId: postId })
     const calls = callsOf(query)
-    expect(calls[0][0]).toMatch(/insert into public\.posts \(id, author_id, category, body, post_type, company_id\)/i)
-    expect(calls[0][1]).toEqual([postId, authorId, 'maritime_news', 'Hello', companyId])
-    expect(calls[1][0]).not.toMatch(/company_id/i)
-    expect(calls[2][0]).toMatch(/'poll', \$5/i)
+    expect(calls[0][0]).toMatch(/insert into public\.posts \(id, author_id, category, body, post_type, company_id, group_id, audience\)/i)
+    expect(calls[0][1]).toEqual([postId, authorId, 'maritime_news', 'Hello', companyId, null, 'anyone'])
+    expect(calls[1][1]).toEqual([postId, authorId, 'maritime_news', 'Hello', null, null, 'members'])
+    expect(calls[2][0]).toMatch(/'poll', \$5, \$6, \$7/i)
+    expect(calls[2][1]).toEqual([postId, authorId, 'maritime_news', 'Vote', companyId, null, 'anyone'])
     expect(calls[3][0]).toMatch(/insert into public\.post_polls/i)
+    // Round F: a community post never leaves its community, whatever the request said.
+    expect(calls[4][1]).toEqual([postId, authorId, 'maritime_news', 'Group', null, postId, 'members'])
   })
 
   it('lets organization admins delete only posts published as their organization, with an audit record', async () => {
@@ -198,7 +202,7 @@ describe('feed service: posting as an organization', () => {
     const { service } = await serviceFor(repository, { [authorId]: access('content_manager'), [strangerId]: access('recruiter') })
 
     await expect(service.createStandardPost(authorId, { category: 'maritime_news', body: ' Hiring ', companyId })).resolves.toBe(postId)
-    expect(repository.insertStandardPost).toHaveBeenCalledWith({ id: postId, authorId, category: 'maritime_news', body: 'Hiring', companyId })
+    expect(repository.insertStandardPost).toHaveBeenCalledWith({ id: postId, authorId, category: 'maritime_news', body: 'Hiring', audience: 'members', companyId })
 
     await expect(service.createStandardPost(strangerId, { category: 'maritime_news', body: 'Hiring', companyId })).rejects.toThrow('feed_organization_post_forbidden')
     await expect(service.createPollPost(strangerId, { category: 'maritime_news', body: 'Vote', pollOptions: ['A', 'B'], companyId })).rejects.toThrow('feed_organization_post_forbidden')
@@ -211,7 +215,7 @@ describe('feed service: posting as an organization', () => {
     const { service, loadAccessContext } = await serviceFor(repository, {})
     await service.createStandardPost(authorId, { category: 'maritime_news', body: 'Personal update' })
     expect(loadAccessContext).not.toHaveBeenCalled()
-    expect(repository.insertStandardPost).toHaveBeenCalledWith({ id: postId, authorId, category: 'maritime_news', body: 'Personal update' })
+    expect(repository.insertStandardPost).toHaveBeenCalledWith({ id: postId, authorId, category: 'maritime_news', body: 'Personal update', audience: 'members' })
   })
 
   it('lets the author (while still posting for the organization) and organization admins edit', async () => {
