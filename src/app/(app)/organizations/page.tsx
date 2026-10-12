@@ -11,6 +11,7 @@ import { OrganizationAccessPanel, StatusChip } from '@/features/organizations/co
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { OrganizationCard, VerifiedMark } from '@/features/organizations/components/organization-card'
 import { OrganizationStatusBadge } from '@/features/profiles/components/organization-status-badge'
+import { OrganizationCardMenu } from '@/features/organizations/components/leave-organization'
 import { OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { NewOrganizationPanel } from '@/features/organizations/components/new-organization-panel'
 import { PhoneShowMoreList } from '@/features/organizations/components/phone-show-more-list'
@@ -141,6 +142,8 @@ export default async function OrganizationsPage({
                         <div className="flex gap-2">
                           <Link href={'/organizations/' + organization.slug} className={secondaryButton} aria-label={`View ${organization.name} page`}>View page</Link>
                           <Link href={organizationManageHref(organization.slug)} className={primaryButton} aria-label={`Manage ${organization.name}`}>Manage</Link>
+                          {/* Round F: Leave organization, for every member whatever their role. */}
+                          <OrganizationCardMenu companyId={organization.id} organizationName={organization.name} />
                         </div>
                         {canUpgradeOrganization(access, organization.id) ? (
                           <Link

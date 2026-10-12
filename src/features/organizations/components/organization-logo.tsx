@@ -1,4 +1,7 @@
+'use client'
+
 import Image from 'next/image'
+import { useState } from 'react'
 import { organizationInitials, organizationLogoUrl } from '../organization-page-profile'
 
 const sizes = {
@@ -21,15 +24,24 @@ export function OrganizationLogo({
 }) {
   const config = sizes[size]
   const src = organizationLogoUrl(company)
+  // Round F: a logo that fails to load shows the initials, never an empty white box.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
   return (
     <span className={`grid shrink-0 place-items-center overflow-hidden bg-navy-950 font-bold text-white ${config.box} ${className}`}>
-      {src ? (
+      {src && failedSrc !== src ? (
         <Image
           src={src}
           alt={`${company.name} logo`}
           width={config.pixels}
           height={config.pixels}
           unoptimized
+          // Eager: the card logo sits over the cover and is always on screen with it.
+          loading="eager"
+          onError={() => setFailedSrc(src)}
+          // A logo that already failed before hydration never fires onError; catch it on mount.
+          ref={(img) => {
+            if (img?.complete && img.naturalWidth === 0 && img.getAttribute('src')) setFailedSrc(src)
+          }}
           className="size-full bg-white object-contain"
         />
       ) : (

@@ -95,6 +95,11 @@ describe('/organizations hub', () => {
     expect(within(organizations).getByRole('link', { name: '2 requests waiting' })).toHaveAttribute('href', '/organizations/oceanic/manage?section=requests')
     expect(within(organizations).getByRole('link', { name: 'View Oceanic Shipping page' })).toHaveAttribute('href', '/organizations/oceanic')
     expect(within(organizations).getByRole('link', { name: 'Manage Oceanic Shipping' })).toHaveAttribute('href', '/organizations/oceanic/manage')
+    // Round F: every card has a ⋯ menu with Leave organization.
+    const more = within(organizations).getByRole('button', { name: 'More actions for Oceanic Shipping' })
+    expect(more).toHaveAttribute('aria-haspopup', 'menu')
+    fireEvent.click(more)
+    expect(screen.getByRole('menuitem', { name: 'Leave organization' })).toBeInTheDocument()
     // The long registration form stays collapsed until asked for.
     expect(screen.getByRole('button', { name: 'Register a new organization' })).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Register a new organization' })).not.toBeInTheDocument()

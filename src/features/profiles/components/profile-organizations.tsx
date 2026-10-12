@@ -57,7 +57,7 @@ const radioRowClass = 'flex min-h-11 min-w-0 cursor-pointer items-center gap-3 r
 /**
  * Organizations' edit form: which organization is the current one shown in the header (one the
  * member belongs to, the one already saved, or none). Roles stay on each organization's own page;
- * owners and administrators get a link there. Leaving is done by the organization's administrators.
+ * owners and administrators get a link there. Leaving is done from the organization's page (round F: Leave organization).
  */
 function ProfileOrganizationsEditor({
   organizations,
@@ -130,7 +130,7 @@ function ProfileOrganizationsEditor({
         <ProfileCardFieldError fieldErrors={state.fieldErrors} name="currentOrganization" />
       </fieldset>
       <p className="mt-3 text-xs text-muted">
-        Roles are changed on each organization’s own page. To leave an organization, ask one of its administrators to remove you from its team.
+        Roles are changed on each organization’s own page. To leave an organization, use Leave organization on its page or under Organizations › Your pages.
       </p>
     </ProfileCardForm>
   )

@@ -24,6 +24,7 @@ const copyByType: Record<NetworkNotificationType, string> = {
   group_post: 'posted in a group you manage',
   organization_mention: 'mentioned an organization you manage',
   photo_tag: 'tagged you in a photo',
+  organization_member_left: 'left an organization you manage',
   // Learning notifications have no actor; their words come from learningNotificationCopy.
   learning_enrolled: 'enrolled you in a course',
   learning_lessons_released: 'released new course materials',
@@ -120,6 +121,7 @@ function socialCopy(row: NotificationRow) {
   if (row.notification_type === 'group_join_request' && row.group_name) return `asked to join ${row.group_name}`
   if (row.notification_type === 'group_join_approved' && row.group_name) return `approved your request to join ${row.group_name}`
   if (row.notification_type === 'group_post' && row.group_name) return `posted in ${row.group_name}`
+  if (row.notification_type === 'organization_member_left' && row.company_name) return `left ${row.company_name}`
   if (row.notification_type === 'organization_mention' && row.company_name) {
     return row.comment_id ? `mentioned ${row.company_name} in a comment` : `mentioned ${row.company_name} in a post`
   }
@@ -135,6 +137,7 @@ function destinationFor(row: NotificationRow, actor: ProfileSummary | null, tagg
   if (row.notification_type === 'plan_trial_ending') return '/settings/billing'
   if (row.notification_type === 'group_join_request') return row.group_slug ? `/community/${row.group_slug}?tab=members&requests=1` : '/community'
   if (row.notification_type === 'group_join_approved') return row.group_slug ? `/community/${row.group_slug}` : '/community'
+  if (row.notification_type === 'organization_member_left') return row.company_slug ? `/organizations/${row.company_slug}/manage` : '/organizations'
   if (row.post_id) {
     const base = `/posts/${row.post_id}`
     // Round F: a photo tag opens the post at the tagged photo.

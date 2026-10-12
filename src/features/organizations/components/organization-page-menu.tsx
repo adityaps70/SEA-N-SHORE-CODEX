@@ -1,10 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { Check, Crown, ExternalLink, Link2, MoreHorizontal, Share2, UserPlus } from 'lucide-react'
+import { Check, Crown, ExternalLink, Link2, LogOut, MoreHorizontal, Share2, UserPlus } from 'lucide-react'
 import { ActionMenu, ActionMenuItem, visibleMenuItems } from '@/components/ui/action-menu'
 import { cn } from '@/lib/cn'
 import { ORGANIZATION_ANCHOR_EVENT } from './phone-disclosure'
+import { ORGANIZATION_LEAVE_OPEN_EVENT } from './leave-organization'
 
 export type OrganizationMenuLink = { href: string; label: string }
 
@@ -40,6 +41,7 @@ export function OrganizationPageMenu({
   joinLink,
   websiteHref,
   upgradeHref,
+  leaveCompanyId,
 }: {
   organizationName: string
   /** Path of the public page, e.g. /organizations/oceanic. */
@@ -50,6 +52,8 @@ export function OrganizationPageMenu({
   websiteHref?: string | null
   /** Phone sheet only: Plan & billing, for owners and administrators who can upgrade. */
   upgradeHref?: string | null
+  /** Round F: an approved member of this organization sees "Leave organization". */
+  leaveCompanyId?: string | null
 }) {
   const [open, setOpen] = useState(false)
   // Open towards whichever side has room, so the menu never runs off a phone screen.
@@ -186,6 +190,18 @@ export function OrganizationPageMenu({
           <a href={upgradeHref} role="menuitem" onClick={close} className={phoneItemClass}>
             <Crown aria-hidden="true" className="size-4 text-muted" /> Upgrade to Organization Pro
           </a>
+        ) : null}
+        {leaveCompanyId ? (
+          <ActionMenuItem
+            onClick={() => {
+              close()
+              window.dispatchEvent(new CustomEvent(ORGANIZATION_LEAVE_OPEN_EVENT, { detail: leaveCompanyId }))
+            }}
+            className={`${itemClass} text-red-700`}
+            icon={<LogOut aria-hidden="true" className="size-4" />}
+          >
+            Leave organization
+          </ActionMenuItem>
         ) : null}
       </ActionMenu>
       <p role="status" aria-live="polite" className={status ? `absolute top-full z-40 mt-1.5 ${alignRight ? 'right-0' : 'left-0'} w-max max-w-[16rem] rounded-lg px-3 py-2 text-xs font-semibold shadow-sm max-md:fixed max-md:inset-x-4 max-md:bottom-24 max-md:top-auto max-md:z-[60] max-md:w-auto max-md:max-w-none max-md:text-sm ${status.tone === 'success' ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'}` : 'sr-only'}>

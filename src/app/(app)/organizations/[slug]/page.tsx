@@ -20,6 +20,7 @@ import { LegacyRequestsHashRedirect } from '@/features/organizations/components/
 import { StatusChip } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationSuggestionRow, VerifiedMark } from '@/features/organizations/components/organization-card'
 import { OrganizationFollowButton } from '@/features/organizations/components/organization-follow-button'
+import { LeaveOrganizationButton, LeaveOrganizationMenuHost } from '@/features/organizations/components/leave-organization'
 import { OrganizationCover, OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { OrganizationPageMenu, OrganizationPageMenuBarButton } from '@/features/organizations/components/organization-page-menu'
 import { PhoneDisclosure } from '@/features/organizations/components/phone-disclosure'
@@ -375,6 +376,7 @@ export default async function OrganizationPage({
                   joinLink={joinLink}
                   websiteHref={workspace.website}
                   upgradeHref={upgradeHref}
+                  leaveCompanyId={membership ? workspace.id : null}
                 />
               </div>
 
@@ -487,6 +489,8 @@ export default async function OrganizationPage({
         </div>
 
         <aside aria-label="Related" className="min-w-0 space-y-4 max-md:space-y-2">
+          {/* Round F: the "…" menu's "Leave organization" opens this (the card above may be hidden on phones). */}
+          {membership ? <LeaveOrganizationMenuHost companyId={workspace.id} organizationName={workspace.name} /> : null}
           {membership ? (
             // Phones: hidden for people who manage the page (it repeats Manage page in the header).
             <section aria-labelledby="member-heading" className={`rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] ${canManagePage ? 'max-md:hidden' : 'max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:shadow-none'}`}>
@@ -497,6 +501,7 @@ export default async function OrganizationPage({
               <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} mt-3 w-full justify-center`}>
                 Open workspace tools
               </Link>
+              <LeaveOrganizationButton companyId={workspace.id} organizationName={workspace.name} className="mt-2 w-full" />
             </section>
           ) : ownApplication ? (
             <section aria-labelledby="verification-heading" className="rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sky-950 max-md:-mx-4 max-md:rounded-none max-md:border-x-0">
