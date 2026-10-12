@@ -119,7 +119,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </article>
 
-        <aside className="min-w-0 space-y-4 self-start max-md:pb-4 lg:sticky lg:top-20">
+        <aside className="min-w-0 space-y-4 self-start max-md:pb-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
           <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2">{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} gate={gate} /> : closedNotice}<SaveJobButton jobId={job.id} initialSaved={isSaved} /></div><div className="mt-4 border-t border-mist-100 pt-3"><JobShareActions jobId={job.id} jobTitle={job.title} companyName={job.companyName} /></div></div>
           <section aria-labelledby="job-company-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
             <h2 id="job-company-heading" className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">{job.companyId ? 'Posted by' : 'Posted by a recruiter'}</h2>

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppFooter, FOOTER_LINK_GROUPS, FooterSocialIcons, footerBottomLine, footerLinks } from './app-footer'
 import { RailFooter, railKeyLinks } from './rail-footer'
@@ -92,31 +92,58 @@ describe('AppFooter (compact end-of-content footer)', () => {
 })
 
 describe('RailFooter (compact right-rail footer)', () => {
-  it('shows a few key links, then every link behind a native "More" disclosure, social icons and the bottom line', () => {
+  it('shows a few key links, then every link behind a "More" disclosure, social icons and the bottom line', () => {
     const { container } = render(<RailFooter visibleFrom="lg" />)
     const footer = container.querySelector('footer') as HTMLElement
     expect(footer).toHaveAttribute('data-rail-footer', 'lg')
-    expect(footer).toHaveClass('hidden', 'lg:block', 'sticky', 'bottom-0')
-    expect(footer).not.toHaveClass('bg-mist-50')
+    expect(footer).toHaveClass('hidden', 'lg:block')
 
     expect(railKeyLinks().map((link) => link.label)).toEqual(['Help', 'Terms', 'Privacy Policy', 'Contact us', 'Pricing'])
     const nav = within(footer).getByRole('navigation', { name: 'Footer' })
     const keyList = nav.querySelector('ul') as HTMLElement
     expect(within(keyList).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/help', '/terms', '/privacy', '/contact', '/pricing'])
 
-    const more = nav.querySelector('details') as HTMLElement
-    expect(more).not.toHaveAttribute('open')
-    const summary = more.querySelector('summary') as HTMLElement
-    expect(summary).toHaveTextContent('More')
-    expect(summary.querySelector('svg')).toHaveClass('group-open/more:rotate-180')
-    expect(within(more).getAllByRole('heading', { hidden: true }).map((heading) => heading.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
+    const more = within(nav).getByRole('button', { name: 'More' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    const panel = document.getElementById(more.getAttribute('aria-controls') as string) as HTMLElement
+    expect(panel).not.toBeVisible()
+    expect(within(panel).getAllByRole('heading', { hidden: true }).map((heading) => heading.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
     for (const link of ALL_LINKS) {
-      expect(within(more).getByRole('link', { name: link.label, hidden: true })).toHaveAttribute('href', link.href)
+      expect(within(panel).getByRole('link', { name: link.label, hidden: true })).toHaveAttribute('href', link.href)
     }
 
     expectSocialIcons(footer)
     expect(within(footer).getByText(BOTTOM_LINE)).toBeInTheDocument()
     expect(within(footer).queryByText(/is operated by/)).not.toBeInTheDocument()
+  })
+
+  it('is never sticky: it sits in the rail flow on the page background, with room for the Messaging dock (round F)', () => {
+    const { container } = render(<RailFooter visibleFrom="xl" />)
+    const footer = container.querySelector('footer') as HTMLElement
+    expect(footer).not.toHaveClass('sticky')
+    expect(footer).not.toHaveClass('bottom-0')
+    expect(footer).toHaveClass('bg-mist-50', 'pb-16')
+    expect(source('src/components/navigation/rail-footer.tsx')).not.toMatch(/className=.*\bsticky\b/)
+  })
+
+  it('"More" opens downward with aria-expanded, and Escape closes it and returns focus', () => {
+    render(<RailFooter visibleFrom="xl" />)
+    const more = screen.getByRole('button', { name: 'More' })
+    const panel = document.getElementById(more.getAttribute('aria-controls') as string) as HTMLElement
+    fireEvent.click(more)
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).toBeVisible()
+    expect(panel.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    expect(within(panel).getByRole('link', { name: 'About' })).toBeVisible()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    expect(panel).not.toBeVisible()
+    expect(more).toHaveFocus()
+
+    fireEvent.click(more)
+    fireEvent.click(more)
+    expect(more).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('defaults to the xl breakpoint used by the home feed rail', () => {

@@ -24,6 +24,8 @@ export type NetworkNotificationType =
   | 'organization_mention'
   /** Someone tagged the recipient in a photo. */
   | 'photo_tag'
+  /** Round F: a member left an organization the recipient owns or administers. */
+  | 'organization_member_left'
   /** Learning round A (A6): course, grade, certificate and review news. No actor; the words come from details. */
   | 'learning_enrolled'
   | 'learning_lessons_released'

@@ -22,7 +22,7 @@ the migration; PR 2 = F2 + F4 + the logo fix. One guarded migration, then one de
 | F3 | Title is "Post \| Sea N Shore" | Still true | Static `metadata`, no Open Graph. |
 | F3 | Visibility values | **None exist** | `public.posts` has no audience or visibility column. A signed-in, onboarded member sees every post except private-community posts (`community_groups.visibility` is `public` or `private`), blocked pairs and inactive authors. There is no profile privacy switch (only `contact_visibility`). **Side finding (privacy):** signed-out visitors already read a member's posts on `/people/<slug>`, and that list is built as the author, so it includes the author's private-community posts. |
 | F4 | Rail footer overlaps when "More" opens | Still true | `RailFooter` is `sticky bottom-0 z-[1]` with no background, inside the home and activities rail scroller. On profile, people and job pages it sits in a sticky aside with no height cap. The Messaging dock is fixed at the bottom (about 48 px, z-90) over the right-rail column, and nothing reserves space for it. |
-| Logo | Blank logo box on Your pages | Investigated in PR 2 | Both cards use the same `OrganizationLogo` and the same `/api/company-logo/<id>?v=` URL. The card uses size `lg` over the cover; the page uses size `xl`. |
+| Logo | Blank logo box on Your pages | Cause not confirmed in code | Both cards use the same `OrganizationLogo` and the same `/api/company-logo/<id>?v=` URL. The card uses size `lg` over the cover; the page uses size `xl`. The box is white only when the `<img>` is there but shows nothing: the logo route answered 401/404 (a session that had expired by the time the lazy image loaded, or an object it refuses), or the image failed before hydration. The component had no error fallback, so any failure left the white `bg-white` image box. |
 
 ## Decisions
 
@@ -53,6 +53,7 @@ the migration; PR 2 = F2 + F4 + the logo fix. One guarded migration, then one de
 
 - [x] Step 0
 - [x] PR 1: migration (notification type + post audience), F1, F3, privacy fix on profile posts
+- [x] PR 1 merged ([#222](https://github.com/adityaps70/SEA-N-SHORE-CODEX/pull/222))
 - [ ] PR 2: F2, F4, logo
 - [ ] Guarded migration, one deploy, rearm, Remote Verify
 - [ ] Live checks, report
@@ -94,3 +95,34 @@ the migration; PR 2 = F2 + F4 + the logo fix. One guarded migration, then one de
 - **Composer and edit dialog**: "Who can see this" is Anyone (the default) or Members only. Community posts show
   "Members of <group>" (fixed), and reposts take their original's audience. Posts show a globe (Anyone) or a
   people icon (Members only) next to the time.
+
+## PR 2 notes
+
+- **Leave organization** (`membership-repository.ts`, `membership-actions.ts`, `components/leave-organization.tsx`).
+  Any approved member, whatever their role, can leave from three places: the "You are part of" card, the
+  organization page's "…" menu and the "⋯" menu on each Organizations › Your pages card. An in-page dialog says
+  what changes (role and workspace tools go; their jobs, posts and courses stay with the organization; the badge
+  goes; they can ask to join again). One transaction, with the organization's memberships locked:
+  - deletes the membership and so the role. Every workspace tool and seat re-reads `company_members`, so access
+    ends on the next request;
+  - withdraws the member's pending access requests for that organization;
+  - clears `maritime_profiles.current_company_id` when it points at the organization (profile badge, Home card);
+  - suspends a recruiter verification that came from organization membership when no verified organization
+    still grants it;
+  - writes `audit_events` `organization.member_left` (actor id, organization id, `{ previousRole }`, nothing else);
+  - sends `organization_member_left` to the remaining owners and administrators. It opens the Manage page.
+- **Last owner**: refused on the server (`organization_last_owner`). The dialog becomes "Transfer ownership
+  first", with a picker of the organization's administrators. Transfer makes the administrator an owner and
+  the current owner an administrator, who can then leave. It is audited as `organization.ownership_transferred`.
+  With no administrator, the dialog says how to add one.
+- **Withdraw request** was already on Organizations › Your requests. Leaving withdraws pending requests, and a
+  member who left can request again (tested).
+- **Rail footer (F4)**: no longer sticky. It is in the rail's flow with the page background and 4 rem of bottom
+  padding for the Messaging dock. "More" is a button with `aria-expanded` and `aria-controls`; the list opens
+  below it, scrolls into view, and Escape closes it and returns focus. The profile, people and job rails now
+  scroll on their own (like Home and Activities), so an open list never runs off the screen.
+  `tests/e2e/rail-footer.spec.ts` opens More on /home at 1280, 1440 and 1920 px and asserts that the footer box
+  overlaps no rail card. It runs with `E2E_ACCESS_COOKIE` or E2E credentials and passed locally. A local
+  sweep of /home, /activities, /profile and /people/<slug> at those widths found no overlap.
+- **Logo**: `OrganizationLogo` loads eagerly and falls back to the initials when the image fails, including a
+  failure before hydration. It never shows an empty white box.

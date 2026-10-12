@@ -65,6 +65,11 @@ vi.mock('@/features/learning/marketplace-repository', () => ({
 }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
 vi.mock('@/features/organizations/actions', () => ({ requestOrganizationAccess: vi.fn() }))
+vi.mock('@/features/organizations/membership-actions', () => ({
+  getLeaveOrganizationState: vi.fn(async () => ({ ok: true, state: { companyId: 'c1', slug: 'harbour-minds', name: 'Harbour Minds', role: 'member', lastOwner: false, administrators: [] } })),
+  leaveOrganization: vi.fn(),
+  transferOrganizationOwnership: vi.fn(),
+}))
 vi.mock('@/features/organizations/follow-actions', () => ({ followOrganizationAction: vi.fn(), unfollowOrganizationAction: vi.fn() }))
 vi.mock('@/features/jobs/actions', () => ({ applyToJob: vi.fn(), prepareJobApplicationCvUpload: vi.fn(), saveJob: vi.fn(), unsaveJob: vi.fn() }))
 vi.mock('@/features/messaging/actions', () => ({ startDirectConversationAction: vi.fn() }))
@@ -238,14 +243,21 @@ describe('/organizations/[slug] public page', () => {
       mocks.getAccessContext.mockResolvedValue(access('owner'))
       mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
       const menu = await openMenu()
-      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Upgrade to Organization Pro'])
+      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Upgrade to Organization Pro', 'Leave organization'])
       expect(menu.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
     })
 
     it('recruiter: no upgrade and no join row', async () => {
       mocks.getAccessContext.mockResolvedValue(access('recruiter'))
       const menu = await openMenu()
-      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page'])
+      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Leave organization'])
+    })
+
+    it('member: "Leave organization" opens the in-page leave dialog (round F)', async () => {
+      mocks.getAccessContext.mockResolvedValue(access('member'))
+      const menu = await openMenu()
+      fireEvent.click(menu.getByRole('menuitem', { name: 'Leave organization' }))
+      expect(await screen.findByRole('alertdialog', { name: 'Leave Harbour Minds?' })).toBeInTheDocument()
     })
   })
 
@@ -340,6 +352,19 @@ describe('/organizations/[slug] public page', () => {
     expect(screen.queryByRole('button', { name: 'Request access' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'You are part of Harbour Minds' })).toHaveTextContent('Owner · Free plan')
     expect(screen.getByTestId('org-posts')).toHaveAttribute('data-limit', '3')
+  })
+
+  it('puts "Leave organization" on the "You are part of" card for any member (round F)', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('member'))
+    render(await OrganizationPage({ params }))
+    const card = screen.getByRole('region', { name: 'You are part of Harbour Minds' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Leave organization' }))
+    expect(await screen.findByRole('alertdialog', { name: 'Leave Harbour Minds?' })).toBeInTheDocument()
+  })
+
+  it('shows no leave control to a visitor (round F)', async () => {
+    render(await OrganizationPage({ params }))
+    expect(screen.queryByRole('button', { name: 'Leave organization' })).not.toBeInTheDocument()
   })
 
   it('offers owners and administrators "Create a community" next to Manage page, pointing at /community/new?as=<organization> (round 9C)', async () => {
