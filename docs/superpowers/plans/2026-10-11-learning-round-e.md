@@ -93,8 +93,11 @@ done by the round's read-only runner (below), and the output shows titles and sl
 - [x] Deploy, rearm, Remote Verify (run 38167020632; the second deploy, run 38170527805, carried the #217 slug fix)
 - [x] Runner plan on the live course (run 38171703705): 9/9 quizzes have shuffle off; 1 test-course candidate;
   9 plain articles, all with the same words, but 8 refused (see the converter fix below)
-- [ ] Converter fix deployed, plan re-run with 9/9 safe, then arm, then the draft revision; send the diff link
-- [ ] Report
+- [x] Converter fix (#219) deployed (run 38265865402, web :252); plan re-run 38267963937: 9/9 articles safe
+- [x] Apply-once (arm #221, run 38268921997): SIRE draft revision d0046d0b-2edd-48b7-9f94-cf5d1dc63e97 with 9
+  converted articles, for the owner to review at
+  https://seanshore.in/learn/studio/courses/d0046d0b-2edd-48b7-9f94-cf5d1dc63e97/changes (nothing submitted)
+- [x] Content guard rearmed to plan; report sent
 
 ## PR 1 notes
 
