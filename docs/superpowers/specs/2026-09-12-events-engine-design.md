@@ -93,6 +93,17 @@ Useful indexes cover published chronological discovery, host lookup and attendee
 
 The existing Events hero search becomes a real GET form. Event format/topic cards become discovery links rather than inert cards where practical.
 
+> **Algorithms round G (13 October 2026), G5:**
+>
+> - Events has a "For you" tab next to All, covering the next 60 days, behind `ranking_settings.suggestions`.
+> - Signals: a host the member follows or is connected to, connections attending (shown as a count only), a category
+>   for the member's department, and the same city or country (online events are always eligible). Soonest first.
+> - Registered, cancelled, full, dismissed and blocked-host events are left out.
+> - "Full" now shows on cards in All.
+>
+> Weights are in `src/features/ranking/suggestion-weights.ts`. See
+> `docs/superpowers/plans/2026-10-13-algorithms-round-g.md` (Release 2, PR 4).
+
 ## Event details
 `/events/[eventId]` shows:
 - banner/identity header

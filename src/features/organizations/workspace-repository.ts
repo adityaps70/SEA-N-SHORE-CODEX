@@ -5,6 +5,8 @@ import { organizationSuspendedSql } from './access-request-repository'
 import { isCompanySize, type CompanySize } from './organization-page-profile'
 import { displayOrganizationType, resolveOrganizationType, type OrganizationTypeCode } from './organization-types'
 import { organizationClaimStatusSql } from './unclaimed-organization-policy'
+import { listableOrganizationSql } from '@/features/profiles/organization-link-repository'
+import type { SUGGESTION_WEIGHTS } from '@/features/ranking/suggestion-weights'
 import { parseOrganizationDetails } from './schemas'
 import type { OrganizationDetails } from './types'
 
@@ -213,6 +215,19 @@ function mapWorkspace(row: WorkspaceRow): OrganizationWorkspace {
     specialties: Array.isArray(row.specialties) ? row.specialties : [],
     unclaimed: row.claim_status === 'unclaimed',
   }
+}
+
+/** One plain reason line for a Discover organizations card (the strongest source). */
+function organizationReason(row: Record<string, unknown>): string | null {
+  if (Number(row.s_current) > 0) return 'Your current company'
+  if (Number(row.s_past) > 0) return 'You worked here'
+  const works = Number(row.connections_work)
+  if (works > 0) return `${works} connection${works === 1 ? '' : 's'} work${works === 1 ? 's' : ''} here`
+  if (row.open_jobs === true) return 'Open jobs for your rank'
+  if (row.training === true) return 'Training for cadets'
+  const follows = Number(row.connections_follow)
+  if (follows > 0) return `${follows} connection${follows === 1 ? '' : 's'} follow${follows === 1 ? 's' : ''} this page`
+  return null
 }
 
 function mapCard(row: OrganizationCardRow): OrganizationCard {
@@ -545,6 +560,145 @@ export function createOrganizationWorkspaceRepository(input: {
     return rows.map(mapCard)
   }
 
+  /**
+   * Round G (G5): Discover organizations, personalised. Sources: the viewer's current and past
+   * companies, organizations where their connections work or that they follow, organizations with
+   * open jobs for the viewer's department or rank band, training institutes for cadets, and
+   * verified organizations as the fallback. Never one the viewer follows, belongs to (any team
+   * row) or dismissed in the last 180 days. Weights: ranking/suggestion-weights.ts.
+   */
+  async function listDiscoverOrganizationsForYou(viewerId: string, input: {
+    limit: number
+    departmentKeys: readonly string[]
+    rankBandKeys: readonly string[]
+    cadet: boolean
+    weights: typeof SUGGESTION_WEIGHTS.orgs
+  }): Promise<Array<OrganizationCard & { reason: string | null }>> {
+    const W = input.weights
+    const rows = await queryRows(
+      `with viewer_connections as (
+         select case when c.user_low_id = $1 then c.user_high_id else c.user_low_id end as id
+         from public.connections c
+         where c.status = 'accepted' and (c.user_low_id = $1 or c.user_high_id = $1)
+       ),
+       current_company as (select current_company_id as id from public.maritime_profiles where user_id = $1 and current_company_id is not null),
+       past_names as (
+         select distinct public.taxonomy_normalize(pe.organization) as name
+         from public.profile_experiences pe
+         where pe.profile_id = $1 and pe.organization is not null
+       ),
+       scored as (
+         select company.id,
+           case when company.id in (select id from current_company) then $5::real else 0 end as s_current,
+           case when company.id not in (select id from current_company) and public.taxonomy_normalize(company.name) in (select name from past_names) then $6::real else 0 end as s_past,
+           (select count(distinct worker.id) from (
+              select mp.user_id as id from public.maritime_profiles mp where mp.current_company_id = company.id
+              union select member.user_id from public.company_members member where member.company_id = company.id and member.approved_at is not null
+            ) worker where worker.id in (select id from viewer_connections))::int as connections_work,
+           (select count(*) from public.organization_follows follow
+            where follow.company_id = company.id and follow.follower_id in (select id from viewer_connections))::int as connections_follow,
+           exists (
+             select 1 from public.jobs j
+             where j.company_id = company.id and j.status = 'published' and j.deleted_at is null
+               and (j.apply_until is null or j.apply_until >= current_date)
+               and (j.accepted_role_keys && $3::text[] or j.department_key = any($2::text[]))
+           ) as open_jobs,
+           ($4::boolean and company.organization_type in ('maritime_training_institute', 'training_provider', 'university_college')) as training,
+           coalesce(company.is_verified, false) as verified,
+           (select count(*) from public.organization_follows f where f.company_id = company.id)::int as followers
+         from public.companies company
+         where not ${organizationSuspendedSql('company.id')}
+           and ${listableOrganizationSql('company')}
+           and not exists (select 1 from public.company_members m where m.company_id = company.id and m.user_id = $1)
+           and not exists (select 1 from public.organization_follows f where f.company_id = company.id and f.follower_id = $1)
+           and not exists (
+             select 1 from public.suggestion_dismissals d
+             where d.viewer_id = $1 and d.kind = 'org' and d.target_id = company.id and d.created_at > now() - interval '180 days'
+           )
+       ),
+       ranked as (
+         select s.*,
+           s.s_current + s.s_past
+             + least(s.connections_work * $7::real, $8::real)
+             + least(s.connections_follow * $9::real, $10::real)
+             + case when s.open_jobs then $11::real else 0 end
+             + case when s.training then $12::real else 0 end
+             + case when s.verified then $13::real else 0 end
+             + ln(1 + s.followers) * $14::real as score
+         from scored s
+         where s.s_current > 0 or s.s_past > 0 or s.connections_work > 0 or s.connections_follow > 0 or s.open_jobs or s.training or s.verified
+       )
+       select ${CARD_COLUMNS}, r.s_current, r.s_past, r.connections_work, r.connections_follow, r.open_jobs, r.training, r.score
+       from ranked r
+       join public.companies company on company.id = r.id
+       order by r.score desc, company.name asc, company.id asc
+       limit $15`,
+      [
+        viewerId, [...input.departmentKeys], [...input.rankBandKeys], input.cadet,
+        W.currentCompany, W.pastCompany, W.connectionWorksHere, W.connectionWorksHereCap, W.connectionFollows, W.connectionFollowsCap,
+        W.openJobsForYou, W.trainingForCadets, W.verified, W.popularity, Math.min(Math.max(Math.trunc(input.limit), 1), 24),
+      ],
+    ) as Array<OrganizationCardRow & Record<string, unknown>>
+    return rows.map((row) => ({ ...mapCard(row), reason: organizationReason(row) }))
+  }
+
+  /**
+   * Round G (G5): "People who follow this page also follow" — pages that at least
+   * coFollowMinShared of this page's followers also follow, most shared first. Falls back to
+   * "Similar pages": the same type with an overlapping vessel group. Never pages the viewer follows.
+   */
+  async function listCoFollowedOrganizations(companyId: string, viewerId: string, input: { limit: number; minShared: number }) {
+    const limit = Math.min(Math.max(Math.trunc(input.limit), 1), 12)
+    const coFollowed = await queryRows(
+      `with shared as (
+         select other.company_id, count(*)::int as shared
+         from public.organization_follows mine
+         join public.organization_follows other on other.follower_id = mine.follower_id and other.company_id <> mine.company_id
+         where mine.company_id = $2
+         group by other.company_id
+         having count(*) >= $3
+       )
+       select ${CARD_COLUMNS}, shared.shared
+       from shared
+       join public.companies company on company.id = shared.company_id
+       where not ${organizationSuspendedSql('company.id')}
+         and ${listableOrganizationSql('company')}
+         and not exists (select 1 from public.organization_follows f where f.company_id = company.id and f.follower_id = $1)
+       order by shared.shared desc, company.name asc, company.id asc
+       limit $4`,
+      [viewerId, companyId, input.minShared, limit],
+    ) as OrganizationCardRow[]
+    return coFollowed.map(mapCard)
+  }
+
+  async function listSimilarPagesByType(workspace: Pick<OrganizationWorkspace, 'id' | 'organizationType' | 'companyType'>, viewerId: string, limit = 4) {
+    const rows = await queryRows(
+      `with this_groups as (
+         select distinct vt.vessel_group
+         from public.companies this_company
+         cross join lateral unnest(public.taxonomy_codes('vessel', this_company.vessel_types)) as code
+         join public.vessel_types vt on vt.code = code
+         where this_company.id = $2
+       )
+       select ${CARD_COLUMNS},
+         exists (
+           select 1 from unnest(public.taxonomy_codes('vessel', company.vessel_types)) as other_code
+           join public.vessel_types other_vt on other_vt.code = other_code
+           where other_vt.vessel_group in (select vessel_group from this_groups)
+         ) as vessel_overlap
+       from public.companies company
+       where company.id <> $2
+         and (company.organization_type = $3 or (company.organization_type is null and $4::text is not null and lower(company.company_type) = lower($4::text)))
+         and not ${organizationSuspendedSql('company.id')}
+         and ${listableOrganizationSql('company')}
+         and not exists (select 1 from public.organization_follows f where f.company_id = company.id and f.follower_id = $1)
+       order by vessel_overlap desc, coalesce(company.is_verified, false) desc, follower_count desc, company.name asc, company.id asc
+       limit $5`,
+      [viewerId, workspace.id, workspace.organizationType, workspace.companyType, Math.min(Math.max(Math.trunc(limit), 1), 12)],
+    ) as OrganizationCardRow[]
+    return rows.map(mapCard)
+  }
+
   /** "N people work here": team members plus people who list this organization, each counted once. */
   async function countPeople(companyId: string): Promise<number> {
     const rows = await queryRows(
@@ -723,6 +877,9 @@ export function createOrganizationWorkspaceRepository(input: {
     listOrganizationCards,
     listSimilarOrganizations,
     listDiscoverOrganizations,
+    listDiscoverOrganizationsForYou,
+    listCoFollowedOrganizations,
+    listSimilarPagesByType,
     countPeople,
     listPeople,
     getContactProfileId,

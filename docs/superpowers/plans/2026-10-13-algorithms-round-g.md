@@ -402,7 +402,8 @@ cannot be used in the transaction that adds it). Additive only.
 **MEASURE**:
 
 - Admin › Ranking health shows 7 and 28 days of totals only:
-  - feed impressions, reactions and comments per 100 impressions, and the Top or Recent split;
+  - posts seen, reactions and comments per 100 posts seen (by the member shown the post, after it was shown), and the
+    Top or Recent split;
   - PYMK requests and dismissals per 100 listed;
   - applications by source (`?src=for_you|search|job_alert|digest`);
   - alert and digest emails sent, and visits from them;

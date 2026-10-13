@@ -302,6 +302,18 @@ The repository returns a safe curriculum projection containing available/locked 
 - Existing SIRE course remains in its current review status unless an admin changes it.
 - No direct database publication shortcuts are introduced.
 
+## Course recommendations (algorithms round G, 13 October 2026)
+
+Behind `ranking_settings.suggestions`, Learn shows "Recommended for you" to signed-in members:
+
+- refresher courses for the member's own certificates that expire within 6 months ("Your AFF expires on …", shown
+  only to that member);
+- courses for their department, rank band or next rank;
+- courses popular with their rank band in the last 90 days.
+
+Free courses get no boost. Course pages show "Learners also took" when at least 3 learners share both courses. Weights
+are in `src/features/ranking/suggestion-weights.ts`. See `docs/superpowers/plans/2026-10-13-algorithms-round-g.md`.
+
 ## Security
 
 - All writes require the authenticated Sea N Shore user and server-side ownership/enrollment checks.

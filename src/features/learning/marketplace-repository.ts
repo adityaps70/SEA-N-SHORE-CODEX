@@ -221,6 +221,65 @@ order by course.published_at desc, course.id desc`,
     return rows.map(mapCourse).filter(isPublicMarketplaceCourse)
   }
 
+  /**
+   * Round G (G5): candidates for "Recommended for you": discoverable courses the viewer is not
+   * enrolled in (any status but revoked) and did not dismiss, with enrolments in the last N days by
+   * members of the viewer's rank band (a count only). Scoring is in ranking/course-suggestions.ts.
+   */
+  async function listCourseCandidates(viewerId: string, input: { rankBandKeys: readonly string[]; popularityDays: number; limit?: number }) {
+    const rows = await queryRows(
+      `${marketplaceSelect.replace('select\n  course.id,', `select
+  course.id,
+  course.target_audience,
+  (select count(*) from public.learning_enrollments band_enrollment
+   join public.profiles band_learner on band_learner.id = band_enrollment.learner_id
+   where band_enrollment.course_id = course.id and band_enrollment.status <> 'revoked'
+     and band_enrollment.enrolled_at > now() - make_interval(days => $3::int)
+     and band_learner.role_key = any($2::text[]))::int as band_enrollments,`)}
+where ${marketplaceDiscoveryVisibility}
+  and not exists (
+    select 1 from public.learning_enrollments own
+    where own.course_id = course.id and own.learner_id = $1 and own.status <> 'revoked'
+  )
+  and not exists (
+    select 1 from public.suggestion_dismissals d
+    where d.viewer_id = $1 and d.kind = 'course' and d.target_id = course.id and d.created_at > now() - interval '180 days'
+  )
+order by course.published_at desc, course.id desc
+limit $4`,
+      [viewerId, [...input.rankBandKeys], input.popularityDays, Math.min(Math.max(Math.trunc(input.limit ?? 300), 1), 300)],
+    ) as Array<MarketplaceCourseRow & { target_audience?: string[] | null; band_enrollments?: number | string }>
+    return rows
+      .map((row) => ({ course: mapCourse(row), targetAudience: Array.isArray(row.target_audience) ? row.target_audience : [], bandEnrollments: Number(row.band_enrollments ?? 0) }))
+      .filter((entry) => isPublicMarketplaceCourse(entry.course))
+  }
+
+  /**
+   * Round G (G5): "Learners also took": other discoverable courses that at least `minShared`
+   * learners of this course also enrolled in, most shared first; never one the viewer is in.
+   */
+  async function listLearnersAlsoTook(courseId: string, viewerId: string | null, input: { minShared: number; limit: number }) {
+    const rows = await queryRows(
+      `with shared as (
+         select other.course_id, count(distinct other.learner_id)::int as shared
+         from public.learning_enrollments mine
+         join public.learning_enrollments other on other.learner_id = mine.learner_id and other.course_id <> mine.course_id and other.status <> 'revoked'
+         where mine.course_id = $1 and mine.status <> 'revoked'
+         group by other.course_id
+         having count(distinct other.learner_id) >= $3
+       )
+       ${marketplaceSelect}
+       join shared on shared.course_id = course.id
+       where ${marketplaceDiscoveryVisibility}
+         and ($2::uuid is null or not exists (
+           select 1 from public.learning_enrollments own where own.course_id = course.id and own.learner_id = $2::uuid and own.status <> 'revoked'))
+       order by shared.shared desc, course.published_at desc, course.id
+       limit $4`,
+      [courseId, viewerId, input.minShared, Math.min(Math.max(Math.trunc(input.limit), 1), 12)],
+    ) as MarketplaceCourseRow[]
+    return rows.map(mapCourse).filter(isPublicMarketplaceCourse)
+  }
+
   /** Catalog courses published as one organization (organization page Courses tab). */
   async function listPublishedCoursesForCompany(companyId: string, limit = 30): Promise<MarketplaceCourse[]> {
     const rows = await queryRows(
@@ -303,6 +362,8 @@ limit 1`,
   return {
     listPublishedCourses,
     listPublishedCoursesForCompany,
+    listCourseCandidates,
+    listLearnersAlsoTook,
     getPublishedCourseBySlug,
     getPublishedCourseOverview,
   }

@@ -13,6 +13,9 @@ import {
   type CalendarEventType,
 } from '@/features/events/calendar-types'
 import { EventCard } from '@/features/events/components/event-card'
+import { DismissibleSuggestion } from '@/features/ranking/components/dismissible-suggestion'
+import { getEventsForYou } from '@/features/ranking/suggestions'
+import { isRankingEnabled } from '@/features/ranking/switches'
 import { EventNav } from '@/features/events/components/event-nav'
 import { EventsPhoneSearch } from '@/features/events/components/events-phone-search'
 import { PastEventsToggle } from '@/features/events/components/past-events-toggle'
@@ -31,7 +34,7 @@ function FilterChevron() {
   return <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
 }
 
-export default async function EventsPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; eventType?: string; format?: string; location?: string }> }) {
+export default async function EventsPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; eventType?: string; format?: string; location?: string; view?: string }> }) {
   const user = await requireAwsUser()
   const params = await searchParams
   const typedSearch = params.q?.trim() ?? ''
@@ -57,10 +60,16 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     const query = next.toString()
     return query ? `/events?${query}` : '/events'
   })()
-  const [upcoming, archive] = await Promise.all([
+  // Round G (G5): "For you" next to "All" when ranking_settings.suggestions is on (filters apply to All).
+  const wantsForYou = params.view === 'for-you' && !hasFilters
+  const [upcoming, archive, suggestionsOn, forYouList] = await Promise.all([
     calendarEventRepository.listDiscoverEvents(user.id, filters),
     calendarEventRepository.listPastEvents(user.id, filters),
+    isRankingEnabled('suggestions', user.id).catch(() => false),
+    wantsForYou ? getEventsForYou().catch(() => null) : Promise.resolve(null),
   ])
+  const forYou = suggestionsOn && !hasFilters ? forYouList ?? [] : null
+  const showForYou = wantsForYou && forYouList !== null
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 py-2 sm:px-6 sm:py-6 lg:px-8 max-md:space-y-3 max-md:py-0">
@@ -113,8 +122,31 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       </form>
 
       <section className="space-y-4 max-md:space-y-2">
+        {forYou !== null ? (
+          <nav aria-label="Event lists" className="flex gap-2">
+            <Link href="/events?view=for-you" aria-current={showForYou ? 'page' : undefined} className="inline-flex min-h-10 items-center rounded-full border border-mist-300 bg-white px-4 text-sm font-semibold text-navy-700 hover:bg-mist-50 aria-[current=page]:border-navy-950 aria-[current=page]:bg-navy-950 aria-[current=page]:text-white">For you</Link>
+            <Link href="/events" aria-current={showForYou ? undefined : 'page'} className="inline-flex min-h-10 items-center rounded-full border border-mist-300 bg-white px-4 text-sm font-semibold text-navy-700 hover:bg-mist-50 aria-[current=page]:border-navy-950 aria-[current=page]:bg-navy-950 aria-[current=page]:text-white">All</Link>
+          </nav>
+        ) : null}
+        {showForYou && forYou ? (
+          <>
+            <div className="flex items-end justify-between gap-4 max-md:items-baseline"><h2 className="text-2xl font-bold text-navy-950 max-md:text-[17px]">For you</h2><span className="text-sm text-muted max-md:text-[13px]">Next 60 days</span></div>
+            {forYou.length ? (
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-2">
+                {forYou.map((event) => (
+                  <DismissibleSuggestion key={event.id} kind="event" targetId={event.id} name={event.title}>
+                    <EventCard event={event} reason={event.reason} />
+                  </DismissibleSuggestion>
+                ))}
+              </div>
+            ) : <p className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center text-sm text-muted">Nothing new for you in the next 60 days. <Link href="/events" className="font-semibold text-ocean-700 hover:underline">See all events</Link></p>}
+          </>
+        ) : (
+          <>
         <div className="flex items-end justify-between gap-4 max-md:items-baseline"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 max-md:hidden">Discover</p><h2 className="text-2xl font-bold text-navy-950 max-md:text-[17px]">Upcoming events</h2></div><span className="text-sm text-muted max-md:text-[13px]">{upcoming.length} found</span></div>
         {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-2">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">{hasFilters ? 'No matching upcoming events' : 'No upcoming events yet'}</h3><p className="mt-1 text-sm text-muted">{hasFilters ? 'Try other filters, or host the session your community needs.' : 'Be the first to host a webinar, masterclass or meetup for the community.'}</p><div className="mt-4 flex justify-center gap-2">{hasFilters ? <Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear filters</Link> : null}<Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white hover:bg-teal-700 transition-colors">Create event</Link></div></div>}
+          </>
+        )}
       </section>
 
       <PastEventsToggle>

@@ -33,8 +33,10 @@ function pageHref(params: RawParams, page: number) {
 
 /** Round G (G3): Jobs for you rows and cards carry "Not interested" (with Undo). */
 function JobItems({ items, notInterested }: { items: JobDiscoveryItem[]; notInterested: boolean }) {
-  const row = ({ job, match, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />
-  const card = ({ job, match, gateMatch, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobCard key={job.id} job={job} match={match} gateMatch={gateMatch} isSaved={isSaved} alreadyApplied={alreadyApplied} />
+  // Round G: applications from Jobs for you and from the jobs list are counted apart (Ranking health).
+  const source = notInterested ? 'for_you' : 'jobs'
+  const row = ({ job, match, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} source={source} />
+  const card = ({ job, match, gateMatch, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobCard key={job.id} job={job} match={match} gateMatch={gateMatch} isSaved={isSaved} alreadyApplied={alreadyApplied} source={source} />
   return (
     <>
       <div className="-mx-4 bg-white md:hidden">

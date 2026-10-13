@@ -105,6 +105,15 @@ function mapOwnerOrganization(row: { owner_company_id?: string | null; owner_com
     : null
 }
 
+/** One plain reason for a suggested community (the strongest source). */
+function communityReason(row: Record<string, unknown>): string | null {
+  if (row.profile_match === true) return 'For people in your role'
+  const connections = Number(row.connections_in)
+  if (connections > 0) return `${connections} connection${connections === 1 ? ' is a member' : 's are members'}`
+  if (row.followed_org === true) return 'Run by an organization you follow'
+  return null
+}
+
 function mapGroup(row: GroupRow): CommunityGroup {
   const visibility: GroupVisibility = row.visibility === 'private' ? 'private' : 'public'
   return {
@@ -313,6 +322,62 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
       const group = bySlug.get(slug)
       return group ? [group] : []
     })
+  }
+
+  /**
+   * Round G (G5): communities for this member. Persona, department or rank matches, communities
+   * their connections are in, and communities owned by organizations they follow, then size.
+   * Never a joined, requested (pending) or dismissed community. A private community is suggested
+   * by name, description and member count only (the card never shows its posts).
+   */
+  async function listSuggestedGroups(viewerId: string, input: {
+    profileSlugs: readonly string[]
+    limit: number
+    weights: { personaOrRank: number; connectionMember: number; connectionMemberCap: number; linkedToFollowedOrg: number; popularity: number }
+  }): Promise<Array<CommunityGroup & { reason: string | null }>> {
+    const W = input.weights
+    const rows = await queryRows(
+      `with viewer_connections as (
+         select case when c.user_low_id = $1 then c.user_high_id else c.user_low_id end as id
+         from public.connections c
+         where c.status = 'accepted' and (c.user_low_id = $1 or c.user_high_id = $1)
+       ),
+       candidates as (
+         select g.id,
+           g.slug = any($2::text[]) as profile_match,
+           (select count(*) from public.community_group_memberships cm
+            where cm.group_id = g.id and cm.status = 'active' and cm.profile_id in (select id from viewer_connections))::int as connections_in,
+           g.owner_company_id is not null and exists (
+             select 1 from public.organization_follows f where f.company_id = g.owner_company_id and f.follower_id = $1
+           ) as followed_org,
+           (select count(*) from public.community_group_memberships members where members.group_id = g.id and members.status = 'active')::int as members
+         from public.community_groups g
+         where g.archived_at is null
+           and not exists (
+             select 1 from public.community_group_memberships own
+             where own.group_id = g.id and own.profile_id = $1 and own.status in ('active', 'pending')
+           )
+           and not exists (
+             select 1 from public.suggestion_dismissals d
+             where d.viewer_id = $1 and d.kind = 'community' and d.target_id = g.id and d.created_at > now() - interval '180 days'
+           )
+       ),
+       ranked as (
+         select c.*,
+           case when c.profile_match then $3::real else 0 end
+             + least(c.connections_in * $4::real, $5::real)
+             + case when c.followed_org then $6::real else 0 end
+             + ln(1 + c.members) * $7::real as score
+         from candidates c
+       )
+       ${GROUP_SELECT
+         .replace('select g.id,', 'select ranked.profile_match, ranked.connections_in, ranked.followed_org, g.id,')
+         .replace('from public.community_groups g', 'from ranked join public.community_groups g on g.id = ranked.id')}
+       order by ranked.score desc, lower(g.name), g.id
+       limit $8`,
+      [viewerId, [...input.profileSlugs], W.personaOrRank, W.connectionMember, W.connectionMemberCap, W.linkedToFollowedOrg, W.popularity, Math.min(Math.max(Math.trunc(input.limit), 1), 24)],
+    ) as Array<GroupRow & Record<string, unknown>>
+    return rows.map((row) => ({ ...mapGroup(row), reason: communityReason(row) }))
   }
 
   /** Global search: live groups whose name or description matches. */
@@ -787,6 +852,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     countByCategory,
     listViewerGroups,
     listBySlugs,
+    listSuggestedGroups,
     searchGroups,
     getBySlug,
     getById,

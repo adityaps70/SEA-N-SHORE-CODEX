@@ -71,7 +71,7 @@ export function CommunityListRow({ group, showAction = false }: { group: Communi
 }
 
 /** "Suggested for you" card: banner, photo over the banner, name, category, members, description and join. */
-export function CommunityDiscoverCard({ group }: { group: CommunityGroup }) {
+export function CommunityDiscoverCard({ group, reason = null }: { group: CommunityGroup; reason?: string | null }) {
   const href = groupHref(group.slug)
   return (
     <article className="flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)] transition hover:border-teal-200 max-md:shadow-none">
@@ -89,6 +89,7 @@ export function CommunityDiscoverCard({ group }: { group: CommunityGroup }) {
         <p className="mt-0.5 text-xs font-semibold text-muted">
           {group.category ? `${COMMUNITY_CATEGORY_LABELS[group.category]} · ` : ''}{pluralize(group.memberCount, 'member')}
         </p>
+        {reason ? <p className="mt-1 text-xs font-semibold text-ocean-800">{reason}</p> : null}
         {group.description ? <p className="mt-2 line-clamp-2 text-sm leading-5 text-ink">{group.description}</p> : null}
         <div className="mt-auto pt-3">
           <GroupMembershipButton

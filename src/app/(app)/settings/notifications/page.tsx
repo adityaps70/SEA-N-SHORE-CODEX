@@ -53,6 +53,19 @@ export default async function EmailNotificationsPage() {
           />
         </div>
       </section>
+      <section aria-label="Weekly digest" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
+        <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Weekly digest</h2>
+        <div className="mt-2">
+          <RankingEmailToggle
+            topic="weekly_digest"
+            title="Weekly digest email"
+            description="On Monday morning: posts you missed, jobs and people for you, upcoming events and a course. Only sent when there are at least 3 things worth your time."
+            onText="The weekly digest is on."
+            offText="The weekly digest is off."
+            initiallyEnabled={topics.weekly_digest}
+          />
+        </div>
+      </section>
       <section aria-label="Learning" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
         <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Learning</h2>
         <div className="mt-2">

@@ -35,6 +35,7 @@ export function JobCard({
   gateMatch,
   isSaved = false,
   alreadyApplied = false,
+  source,
 }: {
   job: JobListing
   match?: JobMatchResult | null
@@ -42,6 +43,8 @@ export function JobCard({
   gateMatch?: JobMatchResult | null
   isSaved?: boolean
   alreadyApplied?: boolean
+  /** Round G: 'for_you' or 'search', carried to the job page and the Apply button. */
+  source?: string
 }) {
   const salary = formatSalary(job)
   const acceptingApplications = isApplyUntilOpen(job.applyUntil, todayIsoDate())
@@ -90,7 +93,7 @@ export function JobCard({
           </div>
 
           <Link
-            href={`/jobs/${job.id}`}
+            href={source ? `/jobs/${job.id}?src=${source}` : `/jobs/${job.id}`}
             className="mt-1.5 block line-clamp-2 text-[1.25rem] font-bold leading-tight tracking-[-.025em] text-navy-950 group-hover:text-ocean-700"
           >
             {job.title}
@@ -168,10 +171,10 @@ export function JobCard({
             Applications closed
           </span>
         ) : job.easyApply ? (
-          <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact gate={gate} />
+          <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact gate={gate} {...(source ? { source } : {})} />
         ) : (
           <Link
-            href={`/jobs/${job.id}`}
+            href={source ? `/jobs/${job.id}?src=${source}` : `/jobs/${job.id}`}
             className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900"
           >
             View opportunity <ArrowRight aria-hidden="true" className="size-4" />

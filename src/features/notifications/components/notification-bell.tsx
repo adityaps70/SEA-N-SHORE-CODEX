@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import { loadNotificationChrome, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead } from '../actions'
+import { loadNotificationChrome, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead, markNotificationsRead } from '../actions'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import type { NetworkNotification } from '../types'
 import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
@@ -124,7 +124,7 @@ export function NotificationBell({
     }
 
     startTransition(async () => {
-      const result = await markNotificationRead(notification.id)
+      const result = notification.groupIds ? await markNotificationsRead(notification.groupIds) : await markNotificationRead(notification.id)
       if (!result.ok) {
         setError(result.error)
         return
@@ -144,7 +144,7 @@ export function NotificationBell({
     const readAt = new Date().toISOString()
     setNotifications((current) => current?.map((item) => item.id === notification.id ? { ...item, readAt } : item) ?? null)
     setLocalUnreadCount((current) => Math.max(0, current - 1))
-    void markNotificationRead(notification.id).catch(() => undefined)
+    void (notification.groupIds ? markNotificationsRead(notification.groupIds) : markNotificationRead(notification.id)).catch(() => undefined)
   }
 
   function markAll() {

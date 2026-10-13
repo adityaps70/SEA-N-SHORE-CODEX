@@ -1,3 +1,5 @@
+import { DismissibleSuggestion } from '@/features/ranking/components/dismissible-suggestion'
+import { getSuggestedCommunities } from '@/features/ranking/suggestions'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
@@ -151,6 +153,8 @@ function pickSuggestions(suggested: CommunityGroup[], popular: CommunityGroup[],
 }
 
 type DiscoverData = {
+  /** Round G (G5): personalised suggestions (null while the suggestions switch is off). */
+  personal: Array<CommunityGroup & { reason: string | null }> | null
   mine: CommunityGroup[]
   suggestedBySignals: CommunityGroup[]
   active: CommunityGroup[]
@@ -158,18 +162,19 @@ type DiscoverData = {
 }
 
 async function loadDiscover(viewerId: string): Promise<DiscoverData> {
-  const [mine, suggestedBySignals, activePage, categoryCounts] = await Promise.all([
+  const [personal, mine, suggestedBySignals, activePage, categoryCounts] = await Promise.all([
+    getSuggestedCommunities(SUGGESTED_COUNT).catch(() => null),
     communityRepository.listViewerGroups(viewerId),
     communityService.suggestGroups(viewerId).catch((): CommunityGroup[] => []),
     communityRepository.browseDirectory(viewerId, { notJoined: true, sort: 'active', limit: 12 }).catch(() => ({ groups: [] as CommunityGroup[], total: 0 })),
     communityRepository.countByCategory().catch((): Partial<Record<CommunityCategory, number>> => ({})),
   ])
-  return { mine, suggestedBySignals, active: activePage.groups, categoryCounts }
+  return { personal, mine, suggestedBySignals, active: activePage.groups, categoryCounts }
 }
 
-function DiscoverView({ mine, suggestedBySignals, active, categoryCounts }: DiscoverData) {
+function DiscoverView({ personal, mine, suggestedBySignals, active, categoryCounts }: DiscoverData) {
   const popular = active.slice(0, POPULAR_COUNT)
-  const suggested = pickSuggestions(suggestedBySignals, active, popular)
+  const suggested: Array<CommunityGroup & { reason?: string | null }> = personal ?? pickSuggestions(suggestedBySignals, active, popular)
   const nothingYet = !mine.length && !suggested.length && !popular.length
 
   return (
@@ -201,7 +206,15 @@ function DiscoverView({ mine, suggestedBySignals, active, categoryCounts }: Disc
           <section aria-labelledby="suggested-communities-heading">
             <SectionHeader id="suggested-communities-heading" title="Suggested for you" description="Picked from your rank, vessel types and role, and what is active on Sea N Shore." />
             <ul aria-label="Suggested communities" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 max-md:gap-2">
-              {suggested.map((group) => <li key={group.id} className="min-w-0"><CommunityDiscoverCard group={group} /></li>)}
+              {suggested.map((group) => (
+                <li key={group.id} className="min-w-0">
+                  {personal ? (
+                    <DismissibleSuggestion kind="community" targetId={group.id} name={group.name}>
+                      <CommunityDiscoverCard group={group} reason={group.reason ?? null} />
+                    </DismissibleSuggestion>
+                  ) : <CommunityDiscoverCard group={group} />}
+                </li>
+              ))}
             </ul>
           </section>
         ) : null}

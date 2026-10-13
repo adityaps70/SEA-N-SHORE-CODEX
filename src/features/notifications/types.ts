@@ -76,6 +76,11 @@ export type NetworkNotification = {
   postPreview?: NotificationPostPreview | null
   /** Round F: the post was deleted or the recipient can no longer open it. */
   postUnavailable?: boolean
+  /** Round G (G6): every notification this row stands for when reactions or comments were merged. */
+  groupIds?: string[]
+  groupCount?: number
+  /** Round G (G6): mentions, tags, requests, job matches and event changes: marked until read. */
+  important?: boolean
 }
 
 export type NotificationChrome = {
