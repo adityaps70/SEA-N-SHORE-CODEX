@@ -43,7 +43,7 @@ export default async function OwnProfilePage({
   const [profile, portfolio, recommendations, access, organizations, networkSummary, dgProfile] = await Promise.all([
     getOwnProfile(),
     getOwnProfilePortfolio({ withCertificates: true }),
-    getPeopleYouMayKnow(3),
+    getPeopleYouMayKnow(),
     getAccessContext(user.id),
     getProfileOrganizations(user.id),
     getProfileNetworkSummary(user.id, user.id).catch(() => null),

@@ -30,6 +30,17 @@ export const CONNECTION_REQUEST_COOLDOWN_CODE = 'network_connection_request_cool
 
 /** Rows older than this are no longer needed by any window and are pruned as members act. */
 export const SOCIAL_ACTION_EVENT_RETENTION = '8 days'
+/**
+ * Round G hotfix: connection-request rows are kept longer, because People you may know hides a
+ * member whose request from the viewer is gone (declined or withdrawn) for 180 days
+ * (DECLINED_REQUEST_SUGGESTION_WINDOW). The quota windows only count recent rows, so this
+ * changes no limit.
+ */
+export const CONNECTION_REQUEST_EVENT_RETENTION = '181 days'
+
+export function socialActionEventRetention(action: SocialAction) {
+  return action === 'connection_request' ? CONNECTION_REQUEST_EVENT_RETENTION : SOCIAL_ACTION_EVENT_RETENTION
+}
 /** Upper bound on rows pruned per action, so one request never does unbounded work. */
 export const SOCIAL_ACTION_PRUNE_BATCH = 50
 
@@ -119,7 +130,7 @@ export async function consumeSocialActionQuota(
      )
      insert into public.social_action_events (profile_id, action, target_profile_id)
      values ($1, $2, $3::uuid)`,
-    [input.profileId, input.action, targetProfileId, SOCIAL_ACTION_EVENT_RETENTION, SOCIAL_ACTION_PRUNE_BATCH],
+    [input.profileId, input.action, targetProfileId, socialActionEventRetention(input.action), SOCIAL_ACTION_PRUNE_BATCH],
   )
   return { counted: true }
 }

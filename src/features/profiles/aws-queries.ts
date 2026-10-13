@@ -6,6 +6,7 @@ import {
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
 import { createProfileMediaRepository, profileMediaRepository } from './profile-media-repository'
+import { DECLINED_REQUEST_SUGGESTION_WINDOW, RECOMMENDATION_WEIGHTS } from '@/features/network/recommendations'
 import { createProfileRepository } from './repository'
 import type { PublicProfile } from './types'
 
@@ -24,7 +25,8 @@ export function createAwsProfileQueries(input: {
   const mediaRepository = input.mediaRepository ?? profileMediaRepository
   const createReadUrl = input.createReadUrl ?? createMediaImageSrc
 
-  async function hydrateProfiles<T extends PublicProfile>(profiles: T[]): Promise<T[]> {
+  /** `avatarOnly`: suggestion cards show no cover, so only the avatar is signed. */
+  async function hydrateProfiles<T extends PublicProfile>(profiles: T[], options: { avatarOnly?: boolean } = {}): Promise<T[]> {
     if (!profiles.length) return profiles
     const pathsById = await mediaRepository.getMediaPaths(profiles.map((profile) => profile.id))
 
@@ -34,7 +36,7 @@ export function createAwsProfileQueries(input: {
       const coverPath = media?.coverPath ?? null
       const [avatarUrl, coverUrl] = await Promise.all([
         avatarPath ? createReadUrl(avatarPath) : Promise.resolve(null),
-        coverPath ? createReadUrl(coverPath) : Promise.resolve(null),
+        coverPath && !options.avatarOnly ? createReadUrl(coverPath) : Promise.resolve(null),
       ])
       return { ...profile, avatarPath, avatarUrl, coverPath, coverUrl }
     }))
@@ -92,8 +94,21 @@ export function createAwsProfileQueries(input: {
     return hydrateProfiles(publicProfiles)
   }
 
+  /** People you may know: every exclusion and the limit run in SQL; only the returned cards are signed. */
+  async function getAwsPeopleSuggestions(limit: number) {
+    const user = await input.requireUser()
+    const profiles = await input.repository.getPeopleSuggestions({
+      viewerProfileId: user.id,
+      limit,
+      weights: RECOMMENDATION_WEIGHTS,
+      declinedRequestWindow: DECLINED_REQUEST_SUGGESTION_WINDOW,
+    })
+    return hydrateProfiles(profiles, { avatarOnly: true })
+  }
+
   return {
     getAwsOwnProfile,
+    getAwsPeopleSuggestions,
     getAwsPublicProfileBySlug,
     getAwsPublicProfileById,
     getAwsPublicProfilesByIds,
@@ -112,3 +127,4 @@ export const getAwsPublicProfileBySlug = productionQueries.getAwsPublicProfileBy
 export const getAwsPublicProfileById = productionQueries.getAwsPublicProfileById
 export const getAwsPublicProfilesByIds = productionQueries.getAwsPublicProfilesByIds
 export const getAwsNetworkProfiles = productionQueries.getAwsNetworkProfiles
+export const getAwsPeopleSuggestions = productionQueries.getAwsPeopleSuggestions

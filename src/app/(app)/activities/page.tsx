@@ -87,7 +87,7 @@ export default async function ActivitiesPage({
   const user = await requireAwsUser()
   const [profile, recommendations, jobs, posts, comments, applications, deletedPosts, hiddenPosts, portfolio, attendingEvents, hostedEvents, learning] = await Promise.all([
     getOwnProfile(),
-    getPeopleYouMayKnow(4),
+    getPeopleYouMayKnow(),
     getPublishedJobs(),
     tab === 'posts' ? getMyActivityPosts() : Promise.resolve(null),
     tab === 'comments' ? getMyCommentActivity() : Promise.resolve(null),

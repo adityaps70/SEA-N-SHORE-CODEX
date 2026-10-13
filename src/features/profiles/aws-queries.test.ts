@@ -17,6 +17,7 @@ function repository() {
     getPublicProfileById: vi.fn(async () => null),
     getPublicProfilesByIds: vi.fn(async () => []),
     getDiscoveryCandidates: vi.fn(async () => []),
+    getPeopleSuggestions: vi.fn(async () => []),
   }
 }
 

@@ -17,7 +17,20 @@ function initials(name: string) {
  * `actions="full"` (search results): the whole action set of a network card — Connect /
  * Pending / Accept / Message, Follow, View profile and a "…" menu — instead of one button.
  */
-export function NetworkProfileCard({ profile, actions = 'primary' }: { profile: NetworkProfile; actions?: 'primary' | 'full' }) {
+export function NetworkProfileCard({
+  profile,
+  actions = 'primary',
+  onConnect,
+  onDismiss,
+  connectError,
+}: {
+  profile: NetworkProfile
+  actions?: 'primary' | 'full'
+  /** Suggestion grids (round G hotfix): Connect and X replace the card with the next person. */
+  onConnect?: () => void
+  onDismiss?: () => void
+  connectError?: string
+}) {
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
 
@@ -36,7 +49,7 @@ export function NetworkProfileCard({ profile, actions = 'primary' }: { profile: 
       <button
         type="button"
         aria-label={`Dismiss ${profile.fullName} suggestion`}
-        onClick={() => setDismissed(true)}
+        onClick={() => (onDismiss ? onDismiss() : setDismissed(true))}
         className="absolute right-3 top-3 grid size-9 place-items-center rounded-full bg-navy-950/80 text-white shadow-sm backdrop-blur transition hover:bg-navy-950 max-md:right-0 max-md:top-0 max-md:size-11 max-md:bg-transparent max-md:shadow-none max-md:backdrop-blur-none max-md:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
       >
         <span className="grid place-items-center max-md:size-8 max-md:rounded-full max-md:bg-white max-md:text-navy-950 max-md:shadow-sm">
@@ -84,7 +97,7 @@ export function NetworkProfileCard({ profile, actions = 'primary' }: { profile: 
         <div className="mt-auto pt-5 max-md:pt-3">
           {actions === 'full'
             ? <PersonCardActions profileId={profile.id} slug={profile.slug} fullName={profile.fullName} initialRelationship={profile.relationship} />
-            : <ConnectionPrimaryAction profileId={profile.id} initialRelationship={profile.relationship} />}
+            : <ConnectionPrimaryAction profileId={profile.id} initialRelationship={profile.relationship} fullName={profile.fullName} onConnect={onConnect} externalError={connectError} />}
         </div>
       </div>
     </Card>

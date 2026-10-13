@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NetworkProfile } from '@/features/network/types'
 import type { FeedPost } from '../types'
@@ -13,8 +13,11 @@ vi.mock('./post-card', () => ({
   ),
 }))
 vi.mock('@/features/network/components/connection-primary-action', () => ({
-  ConnectionPrimaryAction: ({ profileId }: { profileId: string }) => <button type="button" data-profile={profileId}>Connect</button>,
+  ConnectionPrimaryAction: ({ profileId, onConnect }: { profileId: string; onConnect?: () => void }) => (
+    <button type="button" data-profile={profileId} onClick={onConnect}>Connect</button>
+  ),
 }))
+vi.mock('@/features/network/actions', () => ({ sendConnectionRequest: vi.fn(async () => ({ ok: true })) }))
 
 function person(id: string, overrides: Partial<NetworkProfile> = {}): NetworkProfile {
   return {
@@ -114,10 +117,30 @@ describe('FeedList people row', () => {
   })
 
   it('shows posts edge to edge on phones and the new-posts pill below the phone top bar', () => {
-    const { container } = render(<FeedList initialPage={{ posts: [post(1)], nextCursor: null }} suggestions={[]} />)
+    // A group or hashtag feed passes no suggestions and gets no people row.
+    const { container } = render(<FeedList initialPage={{ posts: [post(1)], nextCursor: null }} />)
     expect(container.firstElementChild).toHaveClass('max-md:-mx-4', 'max-md:space-y-2')
     expect(screen.getByTestId('post')).toHaveAttribute('data-flush', 'true')
     expect(screen.queryByTestId('feed-people-row')).not.toBeInTheDocument()
+  })
+
+  it('shares one deck: a person connected in one row leaves every row at once', async () => {
+    const posts = Array.from({ length: 17 }, (_, index) => post(index + 1))
+    render(<FeedList initialPage={{ posts, nextCursor: null }} suggestions={[person('a'), person('b'), person('c')]} />)
+    const [firstRow] = screen.getAllByTestId('feed-people-row')
+    await act(async () => {
+      fireEvent.click(within(firstRow!).getAllByRole('button', { name: 'Connect' })[0]!)
+    })
+    for (const row of screen.getAllByTestId('feed-people-row')) {
+      expect(within(row).queryByText('Person a')).not.toBeInTheDocument()
+      expect(within(row).getByText('Person b')).toBeInTheDocument()
+    }
+  })
+
+  it('shows the "seen everyone" state once on Home when nobody is left to suggest', () => {
+    render(<FeedList initialPage={{ posts: Array.from({ length: 17 }, (_, index) => post(index + 1)), nextCursor: null }} suggestions={[]} />)
+    expect(screen.getAllByTestId('feed-people-row')).toHaveLength(1)
+    expect(screen.getByText('You’ve seen everyone we can suggest for now')).toBeInTheDocument()
   })
 
   it('offers the full-screen composer and suggestions from an empty feed on phones', () => {
