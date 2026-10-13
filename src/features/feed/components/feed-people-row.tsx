@@ -3,6 +3,7 @@
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useId } from 'react'
+import { X } from 'lucide-react'
 import { ConnectionPrimaryAction } from '@/features/network/components/connection-primary-action'
 import type { NetworkProfile } from '@/features/network/types'
 import {
@@ -92,7 +93,15 @@ function PeopleRow({ deck, showEmptyState }: { deck: SuggestionDeck; showEmptySt
               )
               return (
                 <li key={person.id} className="w-40 shrink-0 snap-start">
-                  <article className="flex h-full flex-col items-center rounded-2xl border border-mist-200 bg-white p-3 text-center">
+                  <article className="relative flex h-full flex-col items-center rounded-2xl border border-mist-200 bg-white p-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => deck.dismiss(person)}
+                      aria-label={`Dismiss ${person.fullName} suggestion`}
+                      className="absolute right-1 top-1 grid size-9 place-items-center rounded-full text-muted hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+                    >
+                      <X aria-hidden="true" className="size-4" />
+                    </button>
                     <Link
                       href={`/people/${person.slug}`}
                       className="flex w-full flex-col items-center rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
@@ -102,6 +111,7 @@ function PeopleRow({ deck, showEmptyState }: { deck: SuggestionDeck; showEmptySt
                       ) : personInitials}
                       <span className="mt-2 block w-full truncate text-sm font-semibold text-navy-950">{person.fullName}</span>
                       <span className="mt-0.5 line-clamp-2 min-h-8 w-full text-xs leading-4 text-muted">{role}</span>
+                      {person.suggestionReason ? <span className="mt-0.5 line-clamp-1 w-full text-[11px] font-medium leading-4 text-ocean-700">{person.suggestionReason}</span> : null}
                     </Link>
                     <div className="mt-2 w-full">
                       <ConnectionPrimaryAction

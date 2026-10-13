@@ -12,7 +12,7 @@ import { ReportContentButton } from '@/features/moderation/components/report-con
 import { RelationshipControls } from '@/features/network/components/relationship-controls'
 import { relationshipMenuEventName } from '@/features/network/components/relationship-menu-event'
 import { RelationshipMenuTrigger } from '@/features/network/components/relationship-menu-trigger'
-import { getPeopleYouMayKnow, getRelationshipState } from '@/features/network/queries'
+import { getPeopleSimilarTo, getPeopleYouMayKnow, getRelationshipState } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
@@ -47,7 +47,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   if (!profile) notFound()
 
   const viewingSomeoneElse = Boolean(viewer && viewer.id !== profile.id)
-  const [relationship, portfolio, recommendations, posts, networkSummary, dgProfile, organizations] = await Promise.all([
+  const [relationship, portfolio, recommendations, posts, networkSummary, dgProfile, organizations, similarPeople] = await Promise.all([
     viewer && viewingSomeoneElse ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
     viewer ? getPeopleYouMayKnow() : Promise.resolve([]),
@@ -57,6 +57,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     viewer ? getProfileNetworkSummary(viewer.id, profile.id).catch(() => null) : null,
     viewer && viewingSomeoneElse ? getViewableDgProfileDocument(viewer.id, profile.id).catch(() => null) : null,
     getProfileOrganizations(profile.id),
+    // Round G (G2): people like this member (same rank band, vessel group or company), separate from People you may know.
+    viewer && viewingSomeoneElse ? getPeopleSimilarTo(profile.id).catch(() => []) : Promise.resolve([]),
   ])
   const relationshipKey = relationship
     ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
@@ -137,6 +139,11 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       {viewer ? (
         // Phones: People you may know lives on the Network tab.
         <aside className="min-w-0 max-md:hidden lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
+          {similarPeople.length ? (
+            <div className="mb-4">
+              <PeopleYouMayKnow profiles={similarPeople} title={`People similar to ${profile.fullName}`} emptyState={false} />
+            </div>
+          ) : null}
           <PeopleYouMayKnow profiles={recommendations} excludeProfileId={profile.id} />
           <RailFooter visibleFrom="lg" />
         </aside>

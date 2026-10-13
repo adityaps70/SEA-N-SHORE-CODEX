@@ -106,9 +106,17 @@ export function createAwsProfileQueries(input: {
     return hydrateProfiles(profiles, { avatarOnly: true })
   }
 
+  /** Cards for these members in this order (blocked or inactive members left out); only avatars are signed. */
+  async function getAwsProfileCards(ids: string[]) {
+    const user = await input.requireUser()
+    if (!ids.length) return []
+    return hydrateProfiles(await input.repository.getPublicProfilesByIds({ ids, viewerProfileId: user.id }), { avatarOnly: true })
+  }
+
   return {
     getAwsOwnProfile,
     getAwsPeopleSuggestions,
+    getAwsProfileCards,
     getAwsPublicProfileBySlug,
     getAwsPublicProfileById,
     getAwsPublicProfilesByIds,
@@ -128,3 +136,4 @@ export const getAwsPublicProfileById = productionQueries.getAwsPublicProfileById
 export const getAwsPublicProfilesByIds = productionQueries.getAwsPublicProfilesByIds
 export const getAwsNetworkProfiles = productionQueries.getAwsNetworkProfiles
 export const getAwsPeopleSuggestions = productionQueries.getAwsPeopleSuggestions
+export const getAwsProfileCards = productionQueries.getAwsProfileCards

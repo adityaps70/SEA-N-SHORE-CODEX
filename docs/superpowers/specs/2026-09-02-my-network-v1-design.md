@@ -446,6 +446,16 @@ Authenticated blocked-pair profile access returns unavailable/not-found semantic
 
 ## 10. Recommendation Engine v1
 
+> **Superseded by algorithms round G (13 October 2026).** People you may know is precomputed nightly into
+> `people_suggestions` from mutual connections, shipmates (same vessel, overlapping dates), current and past
+> companies, institute, shared communities, organizations, events and courses, and profile match on canonical rank and
+> vessel codes. Exclusions run in SQL before ranking and are re-checked when the list is read: the member, connections,
+> pending requests in either direction, requests declined in the last 180 days, people they follow, blocks in either
+> direction, dismissals (180 days), organisation and synthetic profiles, and members who turned off "Show me in People
+> you may know". Weights are in `src/features/ranking/people-weights.ts`. Each card shows one reason line. See
+> `docs/superpowers/plans/2026-10-13-algorithms-round-g.md` (hotfix and G2). The original v1 rules follow for the
+> record.
+
 Recommendations are deterministic and explainable.
 
 Candidate pool:
@@ -478,6 +488,10 @@ Tie-breakers:
 Numeric weights belong in implementation constants/tests and can be tuned without schema change.
 
 ## 11. Home Feed Integration
+
+> **Superseded by algorithms round G (13 October 2026):** Home opens on a ranked "Top for you" feed with a "Recent"
+> switch; see the home feed spec, section 7. The bounded relationship boost below is replaced by the round G scorer
+> (relationship × relevance × engagement × freshness with a floor for close relationships).
 
 Home remains broad maritime discovery. Posts from followed/connected members receive a modest boost.
 

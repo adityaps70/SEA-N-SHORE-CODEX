@@ -1,0 +1,60 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { backLinkClass } from '@/components/ui/interactive-styles'
+import { getOwnProfile } from '@/features/profiles/queries'
+import { canBeOpenToRecruiters, privacyPreferences } from '@/features/profiles/privacy-preferences'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { PrivacyToggle } from './privacy-toggle'
+
+export const metadata: Metadata = { title: 'Privacy · Settings' }
+export const dynamic = 'force-dynamic'
+
+/** Settings → Privacy (round G): who can find you in suggestions and, if you choose, recruiters. */
+export default async function PrivacySettingsPage() {
+  const user = await requireAwsUser()
+  const [preferences, profile] = await Promise.all([
+    privacyPreferences.get(user.id).catch(() => ({ showInPeopleSuggestions: true, openToRecruiters: false })),
+    getOwnProfile(),
+  ])
+  const offerOpenToWork = canBeOpenToRecruiters(profile?.persona)
+
+  return (
+    <main className="mx-auto w-full max-w-3xl space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
+      <MobilePageBar backHref="/settings" title="Privacy" />
+      <header className="max-md:hidden">
+        <Link href="/settings" className={backLinkClass}>
+          <ArrowLeft aria-hidden="true" className="size-4" /> Settings
+        </Link>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy-950">Privacy</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Choose where Sea N Shore may suggest you to other members.</p>
+      </header>
+      <section aria-label="Suggestions" className="space-y-4 rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
+        <PrivacyToggle
+          setting="showInPeopleSuggestions"
+          label="Show me in People you may know"
+          description="Members who share your connections, ships, companies or institute may see you as a suggestion. Your profile stays visible either way."
+          initiallyOn={preferences.showInPeopleSuggestions}
+          onMessage="You can appear in People you may know."
+          offMessage="You won’t be suggested to other members."
+        />
+        {offerOpenToWork ? (
+          <div className="border-t border-mist-100 pt-4">
+            <PrivacyToggle
+              setting="openToRecruiters"
+              label="Let recruiters find me as open to work"
+              description="Recruiters can see you in “Suggested candidates” for jobs that match you and contact you through Sea N Shore messages. Your contact details are never shared."
+              initiallyOn={preferences.openToRecruiters}
+              onMessage="Recruiters can find you as open to work."
+              offMessage="Recruiters won’t see you as open to work."
+            />
+          </div>
+        ) : null}
+      </section>
+      <p className="text-sm leading-6 text-muted">
+        How we use your data: <Link href="/privacy" className="font-semibold text-ocean-700 hover:underline">Privacy policy</Link>.
+      </p>
+    </main>
+  )
+}

@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import NetworkPage from './page'
+import { getPeopleSuggestions, isPeopleRankingEnabled } from '@/features/network/queries'
 
 const profile = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -34,6 +35,8 @@ vi.mock('@/features/network/queries', () => ({
     totalCount: 1,
     followView: args[1] ?? 'following',
   })),
+  isPeopleRankingEnabled: vi.fn(async () => false),
+  getPeopleSuggestions: vi.fn(async () => []),
 }))
 
 vi.mock('@/features/network/components/network-profile-card', () => ({
@@ -88,6 +91,19 @@ describe('Maritime Network page', () => {
     expect(grid).toHaveClass('max-md:grid-cols-2', 'max-md:gap-2')
     // The page intro is hidden on phones.
     expect(screen.getByRole('heading', { name: 'People worth knowing at sea and ashore.' }).closest('.max-md\\:hidden')).not.toBeNull()
+  })
+
+  it('groups Discover by why people are suggested when the new People you may know is on (round G)', async () => {
+    vi.mocked(isPeopleRankingEnabled).mockResolvedValueOnce(true)
+    vi.mocked(getPeopleSuggestions).mockImplementation(async (_limit, section) => (section === 'mutual' ? [profile] as never : []))
+    render(await NetworkPage({ searchParams: Promise.resolve({ tab: 'discover' }) }))
+
+    expect(screen.getByRole('heading', { name: 'Mutual connections' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See all: Mutual connections' })).toHaveAttribute('href', '/network?tab=discover&section=mutual')
+    expect(screen.queryByRole('heading', { name: 'Shipmates' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'More people you may know' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'People you follow' })).toHaveAttribute('href', '/network?tab=following')
+    vi.mocked(getPeopleSuggestions).mockReset()
   })
 
   it('hides the connections search hint on phones', async () => {

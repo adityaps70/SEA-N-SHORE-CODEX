@@ -3,8 +3,14 @@ import {
   getAwsNetworkProfiles,
   getAwsOwnProfile,
   getAwsPeopleSuggestions,
+  getAwsProfileCards,
   getAwsPublicProfilesByIds,
 } from '@/features/profiles/aws-queries'
+import { peopleSuggestions as peopleSuggestionService } from '@/features/ranking/people-suggestions'
+import { peopleCandidateRepository } from '@/features/ranking/people-candidates'
+import type { PeopleSection } from '@/features/ranking/people-scorer'
+import { isRankingEnabled } from '@/features/ranking/switches'
+import { incrementRankingMetric } from '@/features/signals/repository'
 import { networkRepository } from './repository'
 import { PEOPLE_SUGGESTION_LIMITS, scoreRecommendation } from './recommendations'
 import type {
@@ -248,9 +254,37 @@ const NO_RELATIONSHIP: RelationshipState = { following: false, connection: { kin
  * either way, follows, recently declined requests, blocks, organisations and synthetic profiles
  * before the limit, so every returned member has no relationship with the viewer yet.
  */
-export async function getPeopleSuggestions(limit: number = PEOPLE_SUGGESTION_LIMITS.rail): Promise<NetworkProfile[]> {
+export async function getPeopleSuggestions(limit: number = PEOPLE_SUGGESTION_LIMITS.rail, section: PeopleSection | null = null): Promise<NetworkProfile[]> {
+  const user = await requireAwsUser()
+  if (await isRankingEnabled('people', user.id)) {
+    // Round G (G2): precomputed suggestions with reasons, exclusions re-checked live.
+    const picked = await peopleSuggestionService.list(user.id, { limit, section })
+    const cards = await getAwsProfileCards(picked.map((item) => item.candidateId))
+    const byId = new Map(cards.map((profile) => [profile.id, profile]))
+    const profiles = picked.flatMap((item) => {
+      const profile = byId.get(item.candidateId)
+      return profile ? [{ ...profile, relationship: NO_RELATIONSHIP, suggestionReason: item.reason }] : []
+    })
+    void incrementRankingMetric('pymk.lists_shown')
+    return profiles
+  }
   const profiles = await getAwsPeopleSuggestions(limit)
   return profiles.map((profile) => ({ ...profile, relationship: NO_RELATIONSHIP }))
+}
+
+/** Round G (G2): "People similar to <name>" on a member's profile (people ranking on). */
+export async function getPeopleSimilarTo(profileId: string, limit = 5): Promise<NetworkProfile[]> {
+  const user = await requireAwsUser()
+  if (!await isRankingEnabled('people', user.id)) return []
+  const ids = await peopleCandidateRepository.listSimilarTo(user.id, profileId, limit)
+  const cards = await getAwsProfileCards(ids)
+  return cards.map((profile) => ({ ...profile, relationship: NO_RELATIONSHIP }))
+}
+
+/** Round G: whether the precomputed People you may know (with sections and dismiss) is on for this member. */
+export async function isPeopleRankingEnabled() {
+  const user = await requireAwsUser()
+  return isRankingEnabled('people', user.id)
 }
 
 /** The rail and feed-row suggestions: the cards shown plus spares that slide in after Connect. */

@@ -417,7 +417,7 @@ function ReplyThread({ root, replies, expanded, onToggle, children }: {
   )
 }
 
-export function CommentThread({ postId, postAuthorId, comments, readOnly = false, composerOpen = false, expandReplies = false }: {
+export function CommentThread({ postId, postAuthorId, comments, readOnly = false, composerOpen = false, expandReplies = false, commentsComplete = true, totalCount = 0 }: {
   postId: string
   postAuthorId?: string
   comments: FeedComment[]
@@ -425,9 +425,16 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
   composerOpen?: boolean
   /** Start every reply thread expanded (used on the single-post page). */
   expandReplies?: boolean
+  /** Round G: false when `comments` is a preview; "View all comments" loads the rest. */
+  commentsComplete?: boolean
+  /** Round G: the post's comment count, for "View all N comments". */
+  totalCount?: number
 }) {
   const [canonicalComments, setCanonicalComments] = useState(comments)
   const [threadComments, setThreadComments] = useState(comments)
+  const [complete, setComplete] = useState(commentsComplete)
+  const [loadingAll, startLoadingAll] = useTransition()
+  const [loadError, setLoadError] = useState('')
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [visibleRootCount, setVisibleRootCount] = useState(1)
@@ -437,6 +444,21 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
   if (canonicalComments !== comments) {
     setCanonicalComments(comments)
     setThreadComments(comments)
+    setComplete(commentsComplete)
+  }
+
+  function loadAllComments() {
+    setLoadError('')
+    startLoadingAll(async () => {
+      const result = await feedActions.loadAllPostComments(postId)
+      if (!result.ok) {
+        setLoadError(result.error)
+        return
+      }
+      setThreadComments(result.comments)
+      setComplete(true)
+      setVisibleRootCount((count) => Math.max(count, 10))
+    })
   }
 
   function upsertComment(nextComment: FeedComment) {
@@ -490,8 +512,10 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
     return expandedRoots[rootId] ?? (expandReplies || replyCount <= REPLY_PREVIEW_LIMIT)
   }
 
+  const moreOnServer = !complete && totalCount > threadComments.filter((comment) => !comment.deleted).length
+
   // Nothing to show (for example the loaded comments were all removed): no empty bordered band.
-  if (!visibleRoots.length && !(composerOpen && !readOnly) && !state.error) return null
+  if (!visibleRoots.length && !moreOnServer && !(composerOpen && !readOnly) && !state.error) return null
 
   return (
     <div id={`comments-${postId}`} className="border-t border-mist-100 px-4 py-4 sm:px-5">
@@ -517,6 +541,12 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
             )
           })}
           {remaining > 0 ? <button type="button" onClick={() => setVisibleRootCount((count) => Math.min(roots.length, count + 10))} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50">View {remaining} more comments</button> : null}
+          {remaining === 0 && moreOnServer ? (
+            <button type="button" onClick={loadAllComments} disabled={loadingAll} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50 disabled:opacity-60">
+              {loadingAll ? 'Loading comments…' : `View all ${totalCount} comments`}
+            </button>
+          ) : null}
+          {loadError ? <p role="alert" className="text-sm text-red-700">{loadError}</p> : null}
         </div>
       ) : composerOpen && !readOnly ? <p className="text-sm text-muted">Start the professional discussion.</p> : null}
 

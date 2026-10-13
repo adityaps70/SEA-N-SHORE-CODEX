@@ -17,7 +17,9 @@ import {
   isOwnedPostMediaStoragePath,
   validatePostMediaMetadata,
 } from './media-policy'
-import { getFeedPage, getMyActivityPosts, getMyCommentActivity, getPostById } from './queries'
+import { getAllPostComments, getFeedPage, getMyActivityPosts, getMyCommentActivity, getPostById, getRecentFeedPage, getTopFeedPage } from './queries'
+import { feedPreferences } from './preferences'
+import { feedCandidateRepository } from '@/features/ranking/feed-candidates'
 import {
   commentInputSchema,
   createPostInputSchema,
@@ -421,6 +423,69 @@ export async function loadFeedPage(input: FeedRequest) {
   if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
   try { return { ok: true as const, page: await getFeedPage(parsed.data) } }
   catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+const topPageSchema = z.object({
+  sessionId: z.string().uuid().optional(),
+  position: z.number().int().min(0).max(10_000).optional(),
+  debug: z.boolean().optional(),
+})
+
+/**
+ * Round G: a page of "Top for you". Without a session it starts a new visit (a refresh or the
+ * "N new posts" button): a new snapshot that leaves out everything already seen.
+ */
+export async function loadTopFeedPage(input: { sessionId?: string; position?: number; debug?: boolean }) {
+  const parsed = topPageSchema.safeParse(input ?? {})
+  if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
+  try { return { ok: true as const, page: await getTopFeedPage(parsed.data) } }
+  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+/** Round G: a page of Recent (newest first, mutes applied, reposts collapsed). */
+export async function loadRecentFeedPage(input: FeedRequest) {
+  const parsed = feedRequestSchema.safeParse(input)
+  if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
+  try { return { ok: true as const, page: await getRecentFeedPage(parsed.data) } }
+  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+/** Round G: Top for you or Recent, remembered on the server for every device. */
+export async function setFeedMode(mode: string) {
+  if (mode !== 'top' && mode !== 'recent') return { ok: false as const, error: 'Unknown feed mode.' }
+  try {
+    const user = await requireAwsUser()
+    await feedPreferences.setMode(user.id, mode)
+    return { ok: true as const }
+  } catch {
+    return { ok: false as const, error: 'We could not change the feed. Please try again.' }
+  }
+}
+
+/**
+ * Round G: "N new posts" for Top for you: a cheap count of unseen posts from the member's network
+ * since the snapshot was built. It never builds or returns a page.
+ */
+export async function countNewTopPosts(input: { since: string }) {
+  const since = z.string().datetime({ offset: true }).safeParse(input?.since)
+  if (!since.success) return { ok: false as const, count: 0 }
+  try {
+    const user = await requireAwsUser()
+    return { ok: true as const, count: await feedCandidateRepository.countNewPosts(user.id, new Date(since.data)) }
+  } catch {
+    return { ok: false as const, count: 0 }
+  }
+}
+
+/** Round G: every comment of a post, for "View all comments" under a feed card's preview. */
+export async function loadAllPostComments(postId: string) {
+  if (!z.string().uuid().safeParse(postId).success) return { ok: false as const, error: 'Invalid post.' }
+  try {
+    const comments = await getAllPostComments(postId)
+    return comments ? { ok: true as const, comments } : { ok: false as const, error: 'This post is no longer available.' }
+  } catch {
+    return { ok: false as const, error: 'We could not load the comments.' }
+  }
 }
 
 /** Round 14 (3.7): the next 20 of the member's own posts on My Activities › Posts. */

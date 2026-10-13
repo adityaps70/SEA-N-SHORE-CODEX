@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
-import { MAX_IMPRESSIONS_PER_REQUEST, signalsRepository } from '@/features/signals/repository'
+import { MAX_IMPRESSIONS_PER_REQUEST, incrementRankingMetric, signalsRepository } from '@/features/signals/repository'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
 
 export const runtime = 'nodejs'
@@ -12,7 +12,7 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' }
 const allow = createPublicPageRateLimiter({ windowMs: 60_000, maxPerWindow: 60 })
 
 const bodySchema = z.object({
-  postIds: z.array(z.string().uuid()).min(1).max(MAX_IMPRESSIONS_PER_REQUEST),
+  postIds: z.array(z.guid()).min(1).max(MAX_IMPRESSIONS_PER_REQUEST),
 })
 
 /** Same-site only: a page on another site cannot mark posts as seen for a member. */
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
   try {
     const user = await requireAwsUser()
     if (!allow(user.id)) return new Response(null, { status: 429, headers: { ...NO_STORE, 'Retry-After': '30' } })
-    await signalsRepository.recordImpressions(user.id, parsed.data.postIds)
+    const written = await signalsRepository.recordImpressions(user.id, parsed.data.postIds)
+    void incrementRankingMetric('feed.impressions', written)
     return new Response(null, { status: 204, headers: NO_STORE })
   } catch (error) {
     if (error instanceof AwsAuthenticationRequiredError) return new Response(null, { status: 401, headers: NO_STORE })

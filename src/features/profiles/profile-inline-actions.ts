@@ -30,6 +30,7 @@ import { profilePreferencesSchema, retainedPersonaDetailsSchema } from './profil
 import { editableRankSchema } from './schemas'
 import type { OwnProfile } from './types'
 import { plainFieldErrors } from '@/lib/validation/plain-messages'
+import { refreshPeopleSuggestionsQuietly } from '@/features/ranking/people-refresh'
 
 export type ProfileInlineActionState = {
   error?: string
@@ -380,6 +381,8 @@ export async function updateProfileAboutSection(
     return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
   }
 
+  // Round G (G2): rank and company drive People you may know.
+  await refreshPeopleSuggestionsQuietly(user.id)
   revalidateProfilePaths(profile.slug)
   return successState(previousState)
 }
@@ -444,6 +447,7 @@ export async function updateProfileRoleSection(
   } catch {
     return nextFailure(previousState, { error: 'We could not save your rank. Please try again.' })
   }
+  await refreshPeopleSuggestionsQuietly(user.id)
 
   revalidateProfilePaths(profile.slug)
   revalidatePath('/jobs')

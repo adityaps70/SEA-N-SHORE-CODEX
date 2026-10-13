@@ -15,6 +15,8 @@ import {
   unfollowProfileWithAurora,
 } from './service'
 import { connectionActionSchema, targetProfileSchema } from './schemas'
+import { refreshPeopleSuggestionsQuietly, removePeopleSuggestionPair } from '@/features/ranking/people-refresh'
+import { incrementRankingMetric } from '@/features/signals/repository'
 
 export type NetworkActionResult = { ok: true } | { ok: false; error: string }
 
@@ -37,9 +39,22 @@ function revalidateNetworkSurfaces() {
   revalidatePath('/notifications')
 }
 
+/**
+ * Round G (G2): a person the member just asked to connect, followed or blocked leaves their People
+ * you may know at once (both ways for a block), not at the next nightly run.
+ */
+async function dropSuggestion(actorId: string, targetId: string, bothWays = false) {
+  try {
+    await removePeopleSuggestionPair(actorId, targetId, bothWays)
+  } catch {
+    // Before migration 0083 there is no table; the live exclusions still hide the person.
+  }
+}
+
 async function targetAction(
   action: (actorId: string, targetId: string) => Promise<unknown>,
   targetId: string,
+  after?: (actorId: string, targetId: string) => Promise<void>,
 ): Promise<NetworkActionResult> {
   const parsed = targetProfileSchema.safeParse({ targetId })
   if (!parsed.success) return { ok: false, error: 'Invalid member.' }
@@ -47,6 +62,7 @@ async function targetAction(
   try {
     const user = await requireAwsUser()
     await action(user.id, parsed.data.targetId)
+    if (after) await after(user.id, parsed.data.targetId)
   } catch (error) {
     return {
       ok: false,
@@ -61,6 +77,7 @@ async function targetAction(
 async function connectionAction(
   action: (actorId: string, connectionId: string) => Promise<unknown>,
   connectionId: string,
+  after?: (actorId: string) => Promise<void>,
 ): Promise<NetworkActionResult> {
   const parsed = connectionActionSchema.safeParse({ connectionId })
   if (!parsed.success) return { ok: false, error: 'Invalid connection request.' }
@@ -68,6 +85,7 @@ async function connectionAction(
   try {
     const user = await requireAwsUser()
     await action(user.id, parsed.data.connectionId)
+    if (after) await after(user.id)
   } catch (error) {
     return {
       ok: false,
@@ -80,7 +98,7 @@ async function connectionAction(
 }
 
 export async function followProfile(targetId: string) {
-  return targetAction(followProfileWithAurora, targetId)
+  return targetAction(followProfileWithAurora, targetId, (actorId, id) => dropSuggestion(actorId, id))
 }
 
 export async function unfollowProfile(targetId: string) {
@@ -88,7 +106,10 @@ export async function unfollowProfile(targetId: string) {
 }
 
 export async function sendConnectionRequest(targetId: string) {
-  return targetAction(sendConnectionRequestWithAurora, targetId)
+  return targetAction(sendConnectionRequestWithAurora, targetId, async (actorId, id) => {
+    await dropSuggestion(actorId, id)
+    void incrementRankingMetric('pymk.requests_sent')
+  })
 }
 
 export async function cancelConnectionRequest(connectionId: string) {
@@ -96,7 +117,8 @@ export async function cancelConnectionRequest(connectionId: string) {
 }
 
 export async function acceptConnectionRequest(connectionId: string) {
-  return connectionAction(acceptConnectionRequestWithAurora, connectionId)
+  // Round G (G2): a new connection changes mutual counts, so the member's suggestions are recomputed.
+  return connectionAction(acceptConnectionRequestWithAurora, connectionId, (actorId) => refreshPeopleSuggestionsQuietly(actorId))
 }
 
 export async function declineConnectionRequest(connectionId: string) {
@@ -108,7 +130,7 @@ export async function removeConnection(connectionId: string) {
 }
 
 export async function blockProfile(targetId: string) {
-  return targetAction(blockProfileWithAurora, targetId)
+  return targetAction(blockProfileWithAurora, targetId, (actorId, id) => dropSuggestion(actorId, id, true))
 }
 
 export async function unblockProfile(targetId: string) {

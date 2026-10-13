@@ -71,6 +71,8 @@ export type FeedRowsLookup = {
   hashtag?: string
   cursor?: FeedCursor
   limit: number
+  /** Round G: leave out authors and organizations the viewer muted (the home feed). */
+  applyMutes?: boolean
 }
 
 /** Members tagged in one uploaded photo, keyed by the photo's storage path. */
@@ -239,7 +241,8 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
              or (tag_block.blocker_id = tagged.id and tag_block.blocked_id = $1)
         )
     ), '[]'::json) as post_photo_tags,
-    json_build_object('count', (select count(*)::int from public.post_comments comment_count where comment_count.post_id = p.id and comment_count.deleted_at is null)) as post_comment_count,
+    -- Round G: kept current by triggers (migration 0083), so the feed no longer counts per row.
+    json_build_object('count', coalesce((select stats.comments from public.post_stats stats where stats.post_id = p.id), 0)) as post_comment_count,
     exists (
       select 1 from public.follows viewer_follow
       where viewer_follow.follower_id = $1 and viewer_follow.following_id = p.author_id
@@ -381,6 +384,21 @@ export function publicPostSql(postRef = 'p', authorRef = 'author') {
   `
 }
 
+/** Round G: authors and organizations the viewer muted stay out of their feed (reposts of their posts too). */
+function mutedSql() {
+  return `
+    not exists (
+      select 1 from public.user_mutes muted
+      where muted.viewer_id = $1
+        and (
+          muted.muted_profile_id = p.author_id
+          or (p.company_id is not null and muted.muted_org_id = p.company_id)
+          or muted.muted_profile_id = (select muted_source.author_id from public.posts muted_source where muted_source.id = p.repost_of_post_id)
+        )
+    )
+  `
+}
+
 /** Posts the viewer hid stay out of their feed, including reposts of a hidden original. */
 function hiddenPostsSql() {
   return `
@@ -422,6 +440,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   async function listFeedRows(lookup: FeedRowsLookup): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId]
     const clauses = ['p.deleted_at is null', visibilitySql(), hiddenPostsSql()]
+    if (lookup.applyMutes) clauses.push(mutedSql())
     if (lookup.category) {
       values.push(lookup.category)
       clauses.push(`p.category = $${values.length}`)
@@ -798,7 +817,46 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     }
   }
 
-  async function getComments(postIds: string[], viewerProfileId?: string): Promise<FeedCommentRow[]> {
+  /**
+   * Round G: the "Top for you" snapshot's posts, in any order, re-checked against every feed rule
+   * (a post deleted, hidden, blocked or muted since the snapshot is simply left out).
+   */
+  async function listRowsByIds(viewerProfileId: string, postIds: string[]): Promise<FeedPostRow[]> {
+    if (!postIds.length) return []
+    return await queryRows(
+      `${FEED_ROW_SELECT}
+       where p.id = any($2::uuid[]) and p.deleted_at is null and ${visibilitySql()} and ${hiddenPostsSql()} and ${mutedSql()}`,
+      [viewerProfileId, postIds],
+    ) as FeedRow[]
+  }
+
+  /**
+   * Round G: the comment preview a feed page shows: the top `perPost` top-level comments of each post
+   * (most reactions, then newest). The rest load on demand.
+   */
+  async function getCommentPreview(postIds: string[], viewerProfileId: string, perPost = 2): Promise<FeedCommentRow[]> {
+    if (!postIds.length) return []
+    const top = await queryRows(
+      `select id from (
+         select c.id, row_number() over (
+           partition by c.post_id
+           order by (select count(*) from public.comment_reactions cr where cr.comment_id = c.id) desc, c.created_at desc, c.id desc
+         ) as position
+         from public.post_comments c
+         where c.post_id = any($1::uuid[]) and c.parent_comment_id is null and c.deleted_at is null
+           and not exists (
+             select 1 from public.user_blocks b
+             where (b.blocker_id = $2 and b.blocked_id = c.author_id) or (b.blocker_id = c.author_id and b.blocked_id = $2)
+           )
+       ) ranked
+       where position <= $3`,
+      [postIds, viewerProfileId, perPost],
+    ) as IdRow[]
+    if (!top.length) return []
+    return getComments(postIds, viewerProfileId, top.map((row) => row.id))
+  }
+
+  async function getComments(postIds: string[], viewerProfileId?: string, onlyCommentIds?: string[]): Promise<FeedCommentRow[]> {
     if (!postIds.length) return []
     const viewerSql = viewerProfileId
       ? `case when c.deleted_at is null then (select cr.reaction_type::text from public.comment_reactions cr where cr.comment_id = c.id and cr.user_id = $2 limit 1) else null::text end`
@@ -808,7 +866,12 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
          (c.author_id = $2 and c.deleted_at is null and now() < c.created_at + interval '15 minutes') as can_edit`
       : `false as viewer_owns,
          false as can_edit`
-    const values: readonly unknown[] = viewerProfileId ? [postIds, viewerProfileId] : [postIds]
+    const values: unknown[] = viewerProfileId ? [postIds, viewerProfileId] : [postIds]
+    let onlySql = ''
+    if (onlyCommentIds) {
+      values.push(onlyCommentIds)
+      onlySql = `and c.id = any($${values.length}::uuid[])`
+    }
     return await queryRows(
       `select
          c.id, c.post_id, c.parent_comment_id,
@@ -859,6 +922,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
        left join public.post_comments reply_target on reply_target.id = c.reply_to_comment_id
        left join public.profiles reply_target_author on reply_target_author.id = reply_target.author_id
        where c.post_id = any($1::uuid[])
+         ${onlySql}
          and (
            c.deleted_at is null
            or (c.parent_comment_id is null and exists (
@@ -1587,6 +1651,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     getViewerState,
     listReactionDetails,
     getComments,
+    getCommentPreview,
+    listRowsByIds,
     listTopLevelComments,
     countTopLevelComments,
     isMemberReady,
