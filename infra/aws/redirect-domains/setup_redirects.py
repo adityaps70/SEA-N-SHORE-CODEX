@@ -9,8 +9,8 @@ Creates, in the AWS account the AWS CLI is logged in to:
   - Route 53 alias records (A + AAAA) pointing each name at the distribution
 
 Run it in AWS CloudShell. It is safe to re-run: each run picks up where the last
-one stopped and prints the next step. To add a domain later (e.g. seanshore.sg),
-add it to DOMAINS and run again.
+one stopped and prints the next step. To add a domain later, add it to DOMAINS
+and run again.
 """
 import json
 import subprocess
@@ -18,7 +18,7 @@ import sys
 import tempfile
 import time
 
-DOMAINS = ["seanshore.nl", "seanshore.ph"]  # add "seanshore.sg" once it is registered
+DOMAINS = ["seanshore.nl", "seanshore.ph", "seanshore.si", "seaandshore.si"]
 TARGET = "https://seanshore.in"
 TAG = "seanshore-redirect-domains"
 CLOUDFRONT_HOSTED_ZONE_ID = "Z2FDTNDATAQYW2"  # fixed zone ID for every CloudFront alias
