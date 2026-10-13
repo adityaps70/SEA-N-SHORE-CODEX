@@ -3,6 +3,8 @@ import { candidateCredentialsSql } from './candidate-credentials-sql'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { scoreJobMatch } from './matching'
+import { CANDIDATE_V2_COLUMNS, mapCandidateV2 } from './repository'
+import { scoreJobV2 } from '@/features/ranking/job-scorer'
 import { PERSONAS, type Persona } from '@/features/profiles/persona'
 import { jobDepartmentDisplay, jobRankDisplay, roleDisplayLabel } from '@/features/roles/taxonomy'
 import { matchPersonaSql } from '@/features/roles/sql'
@@ -155,6 +157,10 @@ export type HiringApplicantCandidate = {
   skills: string[]
   certificates: JobCredential[]
   visas: string[]
+  /** Round G (G3): matching v2 inputs. */
+  availableFrom?: string | null
+  vesselTypeCodes?: string[]
+  experiences?: JobCandidateProfile['experiences']
 }
 
 export type HiringApplicant = {
@@ -273,7 +279,7 @@ type EditableJobRow = QueryResultRow & {
   min_match_to_apply?: string | number | null
 }
 
-type CredentialRow = { name: string; expires_at: string | null; verified: boolean }
+type CredentialRow = { name: string; expires_at: string | null; verified: boolean; code?: string | null }
 type EventRow = { id: string | number; status: JobApplicationStatus; note: string | null; created_at: string }
 type RecruiterNoteRow = { id: string; recruiter_id: string; note: string; created_at: string }
 type ApplicationPublisherScopeRow = QueryResultRow & {
@@ -322,6 +328,13 @@ type ApplicantRow = QueryResultRow & {
   skills: string[] | null
   credentials: CredentialRow[] | null
   visas: string[] | null
+  location?: string | null
+  available_from?: string | Date | null
+  vessel_type_codes?: string[] | null
+  experiences?: Array<{ track: string; rank_code: string | null; vessel_type_code: string | null; started_on: string | null; ended_on: string | null }> | null
+  job_vessel_type_codes?: string[] | null
+  job_certificate_list?: Array<{ name: string; code: string | null; required: boolean }> | null
+  job_visa_list?: Array<{ name: string; required: boolean }> | null
   job_id: string
   job_title: string
   company_name: string
@@ -561,7 +574,20 @@ const APPLICANT_SELECT = `
       select array_agg(vr.visa_name order by vr.visa_name)
       from public.job_visa_requirements vr
       where vr.job_id = j.id and vr.required = true
-    ), '{}'::text[]) as visa_requirements
+    ), '{}'::text[]) as visa_requirements,
+    ${CANDIDATE_V2_COLUMNS},
+    j.vessel_type_codes as job_vessel_type_codes,
+    coalesce((
+      select json_agg(json_build_object('name', cr.certificate_name, 'code', cr.certificate_type_code, 'required', cr.required)
+                      order by cr.required desc, cr.certificate_name)
+      from public.job_certificate_requirements cr
+      where cr.job_id = j.id
+    ), '[]'::json) as job_certificate_list,
+    coalesce((
+      select json_agg(json_build_object('name', vr.visa_name, 'required', vr.required) order by vr.required desc, vr.visa_name)
+      from public.job_visa_requirements vr
+      where vr.job_id = j.id
+    ), '[]'::json) as job_visa_list
 ` as const
 
 function mapAuthorizedCompany(row: CompanyRow | undefined): AuthorizedHiringCompany | null {
@@ -738,9 +764,14 @@ function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
           name: credential.name,
           expiresAt: credential.expires_at ?? null,
           verified: Boolean(credential.verified),
+          code: credential.code ?? null,
         }))
       : [],
     visas: Array.isArray(row.visas) ? row.visas : [],
+    ...(() => {
+      const v2 = mapCandidateV2(row)
+      return { availableFrom: v2.availableFrom, vesselTypeCodes: v2.vesselTypeCodes, experiences: v2.experiences }
+    })(),
   }
 }
 
@@ -764,6 +795,10 @@ function candidateProfile(candidate: HiringApplicantCandidate): JobCandidateProf
     skills: candidate.skills,
     certificates: candidate.certificates,
     visas: candidate.visas,
+    location: candidate.location,
+    availableFrom: candidate.availableFrom ?? null,
+    vesselTypeCodes: candidate.vesselTypeCodes ?? [],
+    experiences: candidate.experiences ?? [],
   }
 }
 
@@ -806,10 +841,13 @@ function mapApplicantJob(row: ApplicantRow): JobListing {
     visaRequirements: Array.isArray(row.visa_requirements) ? row.visa_requirements : [],
     urgent: Boolean(row.urgent),
     easyApply: row.easy_apply !== false,
+    vesselTypeCodes: Array.isArray(row.job_vessel_type_codes) ? row.job_vessel_type_codes : [],
+    ...(Array.isArray(row.job_certificate_list) ? { certificateList: row.job_certificate_list.map((item) => ({ name: item.name, code: item.code ?? null, required: item.required !== false })) } : {}),
+    ...(Array.isArray(row.job_visa_list) ? { visaList: row.job_visa_list.map((item) => ({ name: item.name, required: item.required !== false })) } : {}),
   }
 }
 
-function mapHiringApplicant(row: ApplicantRow): HiringApplicant {
+function mapHiringApplicant(row: ApplicantRow, matching: ApplicantMatching = 'v1'): HiringApplicant {
   const candidate = mapCandidate(row)
   const job = mapApplicantJob(row)
   return {
@@ -820,9 +858,13 @@ function mapHiringApplicant(row: ApplicantRow): HiringApplicant {
     coverNote: row.cover_note?.trim() ? row.cover_note : null,
     candidate,
     cvAttachment: cvReference(row),
-    match: scoreJobMatch(job, candidateProfile(candidate)),
+    match: matching === 'v2' ? scoreJobV2(job, candidateProfile(candidate)) : scoreJobMatch(job, candidateProfile(candidate)),
   }
 }
+
+/** Round G (G3): which matcher scores applicants ('v2' when the jobs switch is on for the recruiter). */
+export type ApplicantMatching = 'v1' | 'v2'
+export type ApplicantSort = 'best' | 'newest'
 
 function cvReference(
   row: Pick<ApplicantRow, 'cv_storage_path' | 'cv_file_name' | 'cv_mime_type' | 'cv_size_bytes'>,
@@ -839,7 +881,8 @@ function cvReference(
 
 /** Best match first (no score last), then the most recent application. Dates are ISO strings at this point. */
 function compareApplicants(left: HiringApplicant, right: HiringApplicant) {
-  return (right.match.score ?? -1) - (left.match.score ?? -1)
+  return Number(right.match.eligible ?? true) - Number(left.match.eligible ?? true)
+    || (right.match.score ?? -1) - (left.match.score ?? -1)
     || right.appliedAt.localeCompare(left.appliedAt)
     || left.applicationId.localeCompare(right.applicationId)
 }
@@ -1393,7 +1436,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     })
   }
 
-  async function listApplicants(userId: string, jobId: string, status?: JobApplicationStatus): Promise<HiringApplicant[]> {
+  /** Best match (default: eligible first, then score) or newest first. */
+  async function listApplicants(
+    userId: string,
+    jobId: string,
+    status?: JobApplicationStatus,
+    options: { matching?: ApplicantMatching; sort?: ApplicantSort } = {},
+  ): Promise<HiringApplicant[]> {
     const values: unknown[] = [userId, jobId, [...HIRING_ROLES]]
     const statusFilter = status ? 'and a.status = $4' : ''
     if (status) values.push(status)
@@ -1415,10 +1464,11 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       values,
     ) as ApplicantRow[]
 
-    return rows.map(mapHiringApplicant).sort(compareApplicants)
+    const applicants = rows.map((row) => mapHiringApplicant(row, options.matching))
+    return options.sort === 'newest' ? applicants : applicants.sort(compareApplicants)
   }
 
-  async function getApplicationReview(userId: string, applicationId: string): Promise<HiringApplicationReview | null> {
+  async function getApplicationReview(userId: string, applicationId: string, options: { matching?: ApplicantMatching } = {}): Promise<HiringApplicationReview | null> {
     const rows = await queryRows(
       `${APPLICANT_SELECT},
        coalesce((
@@ -1465,7 +1515,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     ) as ApplicantRow[]
     const row = rows[0]
     if (!row) return null
-    const applicant = mapHiringApplicant(row)
+    const applicant = mapHiringApplicant(row, options.matching)
     return {
       ...applicant,
       job: mapApplicantJob(row),

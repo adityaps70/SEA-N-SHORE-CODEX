@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { job, alreadyApplied, isSaved, match, profileReady } = await loadJobDetail(id)
+  const { job, alreadyApplied, isSaved, match, gateMatch, profileReady } = await loadJobDetail(id)
   if (!job) notFound()
 
   const salaryMin = formatSalary(job.salaryMin, job.salaryCurrency)
@@ -55,8 +55,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const metaChip = 'inline-flex items-center gap-1.5 max-md:rounded-full max-md:bg-mist-50 max-md:px-2.5 max-md:py-1 max-md:text-[13px] max-md:font-semibold max-md:text-navy-900'
   // Round 12: null → no badge; below 40 the page says "Low match" and what is missing.
   const display = jobMatchDisplay(match)
-  // Round 12: the same minimum-match gate applyToJob enforces on the server.
-  const gate = evaluateApplyGate(job, match)
+  // Round 12: the same minimum-match gate applyToJob enforces on the server (always the round-12 match).
+  const gate = evaluateApplyGate(job, gateMatch ?? match)
   const closedNotice = alreadyApplied
     ? null
     : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">Applications for this job closed on {formatDate(job.applyUntil)}.</p>
@@ -103,7 +103,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
           {match && display ? (
             <section aria-labelledby="maritime-match-heading" className="mt-8 overflow-hidden max-md:hidden rounded-[1.5rem] border border-ocean-700/20 bg-mist-50">
-              <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 text-xl font-semibold">Your Maritime Match</h2></div><div className="text-right">{display.band === 'low' ? <p className="text-2xl font-bold">Low match</p> : <><p className="text-3xl font-bold">{display.score}%</p><p className="text-xs text-white/60">{display.label}</p></>}</div></div>
+              <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 text-xl font-semibold">Your Maritime Match</h2></div><div className="text-right">{display.ineligible ? <p className="max-w-[16rem] text-base font-bold leading-snug" data-job-ineligible>{display.ineligible}</p> : display.band === 'low' || !display.showPercent ? <p className="text-2xl font-bold">{display.label}</p> : <><p className="text-3xl font-bold">{display.score}%</p><p className="text-xs text-white/60">{display.label}</p></>}</div></div>
               <div className="grid gap-5 p-5 md:grid-cols-2">
                 <div><h3 className="text-sm font-semibold text-navy-950">What matches</h3>{match.reasons.length ? <ul className="mt-3 space-y-2">{match.reasons.map((reason) => <li key={reason} className="flex items-start gap-2 text-sm leading-6 text-ink"><CheckCircle2 aria-hidden="true" className="mt-1 size-4 shrink-0 text-emerald-700" />{reason}</li>)}</ul> : <p className="mt-2 text-sm text-muted">Add more Maritime Passport details to improve match explanations.</p>}</div>
                 <div><h3 className="text-sm font-semibold text-navy-950">Check before applying</h3>{match.missingRequirements.length || match.warnings.length ? <ul className="mt-3 space-y-2">{[...match.missingRequirements, ...match.warnings].map((warning) => <li key={warning} className="flex items-start gap-2 text-sm leading-6 text-amber-900"><TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" />{warning}</li>)}</ul> : <p className="mt-2 text-sm font-medium text-emerald-800">No major profile gaps detected.</p>}</div>

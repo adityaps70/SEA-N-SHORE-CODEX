@@ -54,6 +54,17 @@ export type JobCredential = {
   name: string
   expiresAt: string | null
   verified: boolean
+  /** Round G: the certificate type code (stored, or matched from the name). */
+  code?: string | null
+}
+
+/** Round G (G3): one profile experience, for sea time in rank or on a vessel type. */
+export type JobCandidateExperience = {
+  track: string
+  rankCode: string | null
+  vesselTypeCode: string | null
+  startedOn: string | null
+  endedOn: string | null
 }
 
 export type JobCandidateProfile = {
@@ -78,12 +89,17 @@ export type JobCandidateProfile = {
   visas: string[]
   shoreCareerPreference: boolean
   skills: string[]
+  /** Round G (G3): matching v2 inputs (all optional, so round-12 callers keep working). */
+  location?: string | null
+  availableFrom?: string | null
+  vesselTypeCodes?: string[]
+  experiences?: JobCandidateExperience[]
 }
 
 export type JobMatchBand = 'low' | 'partial' | 'good' | 'strong'
 
 /** Profile data a job asks for that the member has not added yet (round 12 apply gate). */
-export type JobProfileGapKey = 'rank' | 'target_role' | 'role' | 'certificates' | 'sea_time' | 'vessel_types'
+export type JobProfileGapKey = 'rank' | 'target_role' | 'role' | 'certificates' | 'sea_time' | 'vessel_types' | 'availability'
 export type JobProfileGap = { key: JobProfileGapKey; label: string }
 
 export type JobMatchResult = {
@@ -99,6 +115,15 @@ export type JobMatchResult = {
   seaJobForOtherProfileType?: boolean
   /** Data the job asks for that the profile is missing. */
   profileGaps?: JobProfileGap[]
+  /** Round G (G3): matching v2. Bands only (no %), and hard requirements decide eligibility. */
+  version?: 1 | 2
+  eligible?: boolean
+  /** "Not eligible: needs COC: Chief Mate". */
+  ineligibleReason?: string | null
+  /** How many criteria the job specifies. */
+  criteria?: number
+  /** Points per criterion, for ?rankdebug=1. */
+  parts?: Record<string, number>
 }
 
 export type JobListing = {
@@ -143,6 +168,10 @@ export type JobListing = {
   visaRequirements: string[]
   urgent: boolean
   easyApply: boolean
+  /** Round G (G3): taxonomy codes and every listed certificate and visa (required or preferred). */
+  vesselTypeCodes?: string[]
+  certificateList?: Array<{ name: string; code: string | null; required: boolean }>
+  visaList?: Array<{ name: string; required: boolean }>
 }
 
 export type JobApplicationEvent = {

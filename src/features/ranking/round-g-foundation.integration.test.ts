@@ -190,8 +190,11 @@ describe('signals', () => {
 })
 
 describe('ranking settings', () => {
-  it('starts with the feed and people switches on for administrators only', async () => {
+  it('starts every switch on for administrators only (release 1: feed and people; release 2: the rest)', async () => {
     const switches = createRankingSwitches({ query })
-    expect(await switches.listModes()).toMatchObject({ feed: 'admins', people: 'admins', jobs: 'off', weekly_digest: 'off' })
+    expect(await switches.listModes()).toEqual({
+      feed: 'admins', people: 'admins', jobs: 'admins', search: 'admins', suggestions: 'admins',
+      notifications: 'admins', job_alerts: 'admins', weekly_digest: 'admins',
+    })
   })
 })

@@ -6,6 +6,8 @@ export type DatabaseQueryClient = {
   query<T extends QueryResultRow = QueryResultRow>(
     text: string,
     values?: readonly unknown[],
+    /** A prepared-statement name: the plan is kept on that pooled connection (round G search). */
+    name?: string,
   ): Promise<{ rows: T[] }>
 }
 
@@ -155,8 +157,14 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
         async query<R extends QueryResultRow = QueryResultRow>(
           text: string,
           values: readonly unknown[] = [],
+          name?: string,
         ) {
           try {
+            if (name) {
+              // pg's client takes a query config object for named (prepared) statements.
+              const named = client as unknown as { query(config: { name: string; text: string; values: unknown[] }): Promise<{ rows: R[] }> }
+              return await named.query({ name, text, values: [...values] })
+            }
             return await client.query<R>(text, values)
           } catch (error) {
             reportQueryFailure(text, error)

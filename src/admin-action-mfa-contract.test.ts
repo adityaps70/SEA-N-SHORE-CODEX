@@ -45,7 +45,7 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   // Learning round D (D2): an administrator may run any batch's sessions, attendance and recordings.
   ['src/features/learning/sessions/session-actions.ts', ['createSessionAction', 'createSessionSeriesAction', 'updateSessionAction', 'cancelSessionAction', 'markAttendanceAction', 'attachRecordingLinkAction', 'startRecordingUploadAction', 'saveUploadedRecordingAction', 'removeRecordingAction']],
   // Algorithms round G: Admin › Ranking switches.
-  ['src/features/ranking/admin-actions.ts', ['setRankingModeAction']],
+  ['src/features/ranking/admin-actions.ts', ['setRankingModeAction', 'sendTestJobAlertAction']],
 ]
 
 /** Bodies of the top-level functions in a module, by name. */

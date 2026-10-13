@@ -80,3 +80,57 @@ describe('jobs queries', () => {
     expect(repository.listJobAlerts).toHaveBeenCalledWith('viewer-1')
   })
 })
+
+describe('jobs for you v2 (round G, behind the jobs switch)', () => {
+  const on = { isEnabled: async () => true }
+  const seaProfile: JobCandidateProfile = { ...profile, persona: 'seafarer', roleKey: 'chief_officer' }
+  const many = Array.from({ length: 45 }, (_, index) => ({
+    ...job,
+    id: `job-${String(index).padStart(2, '0')}`,
+    acceptedRoleKeys: [index % 3 === 0 ? 'third_officer' : 'chief_officer'],
+    applyUntil: null,
+    publishedAt: new Date(Date.UTC(2026, 9, 12) - index * 3_600_000).toISOString(),
+  }))
+
+  function v2Queries(appliedIds: string[] = []) {
+    const repository = makeRepository()
+    repository.getCandidateProfile.mockResolvedValue(seaProfile)
+    repository.searchJobs.mockResolvedValue(many)
+    repository.getSavedJobIds.mockResolvedValue([])
+    repository.getAppliedJobIds.mockResolvedValue(appliedIds)
+    return { repository, queries: createJobsQueries({ requireUser: async () => ({ id: 'viewer-1' } as never), repository: repository as never, ranking: on }) }
+  }
+
+  it('scores the prefiltered pool of up to 300 and moves applied jobs to their own section', async () => {
+    const { repository, queries } = v2Queries(['job-01'])
+    const result = await queries.getJobsDiscovery({ mode: 'for-you' })
+    expect(repository.searchJobs).toHaveBeenCalledWith(expect.anything(), 300, 0, expect.objectContaining({ viewerId: 'viewer-1', departmentKeys: ['deck_officers'] }))
+    expect(result.version).toBe(2)
+    expect(result.items.map((item) => item.job.id)).not.toContain('job-01')
+    expect(result.applied.map((item) => item.job.id)).toEqual(['job-01'])
+  })
+
+  it('puts not-eligible jobs below eligible ones, with the reason, and keeps the apply gate on round 12', async () => {
+    const { queries } = v2Queries()
+    const all = [...(await queries.getJobsDiscovery({ mode: 'for-you' })).items, ...(await queries.getJobsDiscovery({ mode: 'for-you', page: '2' })).items, ...(await queries.getJobsDiscovery({ mode: 'for-you', page: '3' })).items]
+    const firstIneligible = all.findIndex((item) => item.match?.eligible === false)
+    expect(firstIneligible).toBeGreaterThan(0)
+    expect(all.slice(firstIneligible).every((item) => item.match?.eligible === false)).toBe(true)
+    expect(all[firstIneligible]!.match?.ineligibleReason).toMatch(/^Not eligible: needs /)
+    expect(all[0]!.gateMatch?.version).toBeUndefined()
+  })
+
+  it('paginates: pages do not overlap and together cover every job', async () => {
+    const { queries } = v2Queries()
+    const pages = await Promise.all(['1', '2', '3'].map((page) => queries.getJobsDiscovery({ mode: 'for-you', page })))
+    expect(pages.map((page) => page.items.length)).toEqual([20, 20, 5])
+    expect(pages.map((page) => page.hasMore)).toEqual([true, true, false])
+    expect(new Set(pages.flatMap((page) => page.items.map((item) => item.job.id))).size).toBe(45)
+  })
+
+  it('pages other sorts in SQL', async () => {
+    const { repository, queries } = v2Queries()
+    await queries.getJobsDiscovery({ mode: 'sea', sort: 'recent', page: '2' })
+    expect(repository.searchJobs).toHaveBeenCalledWith(expect.anything(), 21, 20)
+  })
+})

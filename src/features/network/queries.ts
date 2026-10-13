@@ -281,6 +281,14 @@ export async function getPeopleSimilarTo(profileId: string, limit = 5): Promise<
   return cards.map((profile) => ({ ...profile, relationship: NO_RELATIONSHIP }))
 }
 
+/** Round G (G4): people search results as cards with the viewer's real relationship (Connect, Pending, Message). */
+export async function getNetworkProfilesByIds(ids: readonly string[]): Promise<NetworkProfile[]> {
+  if (!ids.length) return []
+  const user = await requireAwsUser()
+  const [cards, graph] = await Promise.all([getAwsProfileCards([...ids]), loadViewerGraph(user.id)])
+  return withRelationship(user.id, profilesInIdOrder(cards, ids), graph.followedIds, graph.connections)
+}
+
 /** Round G: whether the precomputed People you may know (with sections and dismiss) is on for this member. */
 export async function isPeopleRankingEnabled() {
   const user = await requireAwsUser()

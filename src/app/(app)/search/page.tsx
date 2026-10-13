@@ -33,6 +33,8 @@ import {
 } from './search-filters'
 import { PHONE_RESULT_LIST_CLASS, SearchCourseRow, SearchGroupRow, SearchHashtagRow, SearchOrganizationRow, SearchPersonRow, hashtagPostCountLabel } from './search-result-rows'
 import { SearchPhoneBar } from './search-phone-bar'
+import { SearchV2, parseSearchTab } from './search-v2'
+import { isRankingEnabled } from '@/features/ranking/switches'
 
 export const metadata: Metadata = { title: 'Search' }
 
@@ -157,12 +159,19 @@ function settledValue<T>(result: PromiseSettledResult<T[]>, fallback: T[]): T[] 
 export default async function GlobalSearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; type?: string | string[] }>
+  searchParams: Promise<{ q?: string | string[]; type?: string | string[]; page?: string | string[] }>
 }) {
   const params = await searchParams
   const rawQuery = Array.isArray(params.q) ? params.q[0] : params.q
   const query = rawQuery?.trim().slice(0, 100) ?? ''
   const chip = parseSearchChip(params.type)
+
+  // Round G (G4): search_documents, live as you type, behind ranking_settings.search.
+  const viewer = await requireAwsUser()
+  if (await isRankingEnabled('search', viewer.id).catch(() => false)) {
+    const rawPage = Number(Array.isArray(params.page) ? params.page[0] : params.page)
+    return <SearchV2 viewerId={viewer.id} query={query.slice(0, 80)} tab={parseSearchTab(params.type)} page={Number.isInteger(rawPage) && rawPage > 1 && rawPage <= 50 ? rawPage : 1} />
+  }
 
   if (!query) {
     return (

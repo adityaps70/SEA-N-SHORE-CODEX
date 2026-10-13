@@ -7,8 +7,9 @@ import { JobListRow, JobRowList } from '@/features/jobs/components/job-list-row'
 import { JobsDiscoveryControls } from '@/features/jobs/components/jobs-discovery-controls'
 import { JobsMobileToolbar } from '@/features/jobs/components/jobs-mobile-toolbar'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
+import { NotInterestedItem } from '@/features/jobs/components/not-interested'
 import { JOB_DISCOVERY_MODES } from '@/features/jobs/catalog'
-import { getJobsDiscovery } from '@/features/jobs/queries'
+import { getJobsDiscovery, type JobDiscoveryItem } from '@/features/jobs/queries'
 
 export const metadata: Metadata = { title: 'Jobs' }
 
@@ -23,10 +24,40 @@ function serialize(params: RawParams) {
   return query.toString()
 }
 
+function pageHref(params: RawParams, page: number) {
+  const query = new URLSearchParams(serialize({ ...params, page: undefined }))
+  if (page > 1) query.set('page', String(page))
+  const text = query.toString()
+  return text ? `/jobs?${text}` : '/jobs'
+}
+
+/** Round G (G3): Jobs for you rows and cards carry "Not interested" (with Undo). */
+function JobItems({ items, notInterested }: { items: JobDiscoveryItem[]; notInterested: boolean }) {
+  const row = ({ job, match, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />
+  const card = ({ job, match, gateMatch, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobCard key={job.id} job={job} match={match} gateMatch={gateMatch} isSaved={isSaved} alreadyApplied={alreadyApplied} />
+  return (
+    <>
+      <div className="-mx-4 bg-white md:hidden">
+        <JobRowList label="Jobs">
+          {items.map((item) => notInterested
+            ? <NotInterestedItem key={item.job.id} jobId={item.job.id} jobTitle={item.job.title} as="li">{row(item)}</NotInterestedItem>
+            : row(item))}
+        </JobRowList>
+      </div>
+      <div className="grid gap-4 max-md:hidden xl:grid-cols-2">
+        {items.map((item) => notInterested
+          ? <NotInterestedItem key={item.job.id} jobId={item.job.id} jobTitle={item.job.title}>{card(item)}</NotInterestedItem>
+          : card(item))}
+      </div>
+    </>
+  )
+}
+
 export default async function JobsPage({ searchParams }: { searchParams: Promise<RawParams> }) {
   const rawParams = await searchParams
   const discovery = await getJobsDiscovery(rawParams)
-  const { filters, items, profileReady } = discovery
+  const { filters, items, profileReady, page, hasMore, applied, version } = discovery
+  const ranked = version === 2 && (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you')
   const alertQuery = serialize(rawParams) || 'mode=for-you'
   const activeFilterCount = [filters.department ? 1 : 0, filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
   const hasSearchConstraints = Boolean(filters.query || activeFilterCount || filters.mode !== 'for-you')
@@ -93,14 +124,9 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             <div className="flex shrink-0 items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:min-h-11 max-md:rounded-full max-md:border-0 max-md:px-2 max-md:text-ocean-700"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
           </div>
           {items.length ? (
-            <>
-              <div className="-mx-4 bg-white md:hidden">
-                <JobRowList label="Jobs">
-                  {items.map(({ job, match, isSaved, alreadyApplied }) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}
-                </JobRowList>
-              </div>
-              <div className="grid gap-4 max-md:hidden xl:grid-cols-2">{items.map(({ job, match, isSaved, alreadyApplied }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}</div>
-            </>
+            <JobItems items={items} notInterested={ranked} />
+          ) : page > 1 ? (
+            <p className="rounded-2xl border border-dashed border-mist-100 bg-white px-6 py-8 text-center text-sm text-muted">No more jobs on this page. <Link href={pageHref(rawParams, 1)} className="font-semibold text-ocean-700 underline">Back to the first page</Link></p>
           ) : (
             <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-12 text-center">
               <BriefcaseBusiness aria-hidden="true" className="mx-auto size-6 text-muted" />
@@ -112,6 +138,19 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               </div>
             </div>
           )}
+          {page > 1 || hasMore ? (
+            <nav aria-label="Job pages" className="mt-4 flex items-center justify-between gap-3 max-md:px-0">
+              {page > 1 ? <Link rel="prev" href={pageHref(rawParams, page - 1)} className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">Previous</Link> : <span />}
+              <span className="text-sm text-muted" aria-current="page">Page {page}</span>
+              {hasMore ? <Link rel="next" href={pageHref(rawParams, page + 1)} className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">Next</Link> : <span />}
+            </nav>
+          ) : null}
+          {applied.length ? (
+            <section aria-labelledby="jobs-applied-heading" className="mt-6">
+              <h2 id="jobs-applied-heading" className="mb-3 text-base font-bold text-navy-950 max-md:px-0">Applied <span className="font-normal text-muted">({applied.length})</span></h2>
+              <JobItems items={applied} notInterested={false} />
+            </section>
+          ) : null}
           <Link href="/hiring" className="-mx-4 mt-2 flex min-h-14 items-center gap-3 border-y border-mist-100 bg-white px-4 text-[15px] text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500 md:hidden">
             <BriefcaseBusiness aria-hidden="true" className="size-5 shrink-0" />
             <span className="min-w-0 flex-1"><strong className="font-semibold">Hiring?</strong> Post or manage jobs</span>

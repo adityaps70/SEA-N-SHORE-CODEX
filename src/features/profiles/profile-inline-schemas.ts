@@ -38,6 +38,16 @@ const sailingExperienceSchema = z.preprocess(
   z.number().finite().min(0).max(70).optional(),
 )
 
+/** Round G (G3): an optional date, from a year ago to three years ahead. */
+const availableFromSchema = z.preprocess(
+  (value) => (value === '' || value === null || value === undefined ? undefined : value),
+  z.iso.date('Enter a valid date.').refine((value) => {
+    const time = Date.parse(`${value}T00:00:00Z`)
+    const year = 365 * 86_400_000
+    return time >= Date.now() - year && time <= Date.now() + 3 * year
+  }, 'Pick a date within the next three years.').optional(),
+)
+
 export const profileIdentitySectionSchema = z.object({
   fullName: z.string().trim().min(2, 'Add your full name.').max(120),
   slug: usernameSchema,
@@ -63,6 +73,7 @@ export const profileProfessionalSectionSchema = z
     sailingExperienceYears: sailingExperienceSchema,
     vesselTypes: termsSchema,
     tradingAreas: termsSchema,
+    availableFrom: availableFromSchema,
     shoreCareerPreference: z.preprocess(
       (value) => value === true || value === 'true' || value === 'on',
       z.boolean(),

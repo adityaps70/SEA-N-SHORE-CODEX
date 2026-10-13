@@ -16,6 +16,7 @@ import { hiringRepository, managedJobLifecycle } from '@/features/jobs/hiring-re
 import { jobStatusPresentation, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from '@/features/jobs/types'
 import { formatYears } from '@/lib/format'
+import { isRankingEnabled } from '@/features/ranking/switches'
 
 export const metadata: Metadata = { title: 'Applicants' }
 
@@ -60,7 +61,11 @@ export default async function HiringApplicantsPage({
   const job = jobs.find((item) => item.id === jobId)
   if (!job) notFound()
 
-  const allApplicants = await hiringRepository.listApplicants(user.id, jobId)
+  // Round G (G3): Best match (default) or Newest, scored with matching v2 when the jobs switch is on.
+  const v2 = await isRankingEnabled('jobs', user.id).catch(() => false)
+  const sort = v2 && firstValue(query.sort) === 'newest' ? 'newest' : 'best'
+  const allApplicants = await hiringRepository.listApplicants(user.id, jobId, undefined, { matching: v2 ? 'v2' : 'v1', sort })
+  const withSort = (href: string) => (sort === 'newest' ? `${href}${href.includes('?') ? '&' : '?'}sort=newest` : href)
   const counts = new Map<JobApplicationStatus, number>()
   for (const applicant of allApplicants) counts.set(applicant.status, (counts.get(applicant.status) ?? 0) + 1)
   const applicants = status ? allApplicants.filter((applicant) => applicant.status === status) : allApplicants
@@ -125,9 +130,9 @@ export default async function HiringApplicantsPage({
             {visibleFilters.map((filter) => {
               const active = filter.value === 'all' ? !status : status === filter.value
               const count = filter.value === 'all' ? allApplicants.length : counts.get(filter.value) ?? 0
-              const href = filter.value === 'all'
+              const href = withSort(filter.value === 'all'
                 ? `/hiring/jobs/${jobId}/applicants`
-                : `/hiring/jobs/${jobId}/applicants?status=${filter.value}`
+                : `/hiring/jobs/${jobId}/applicants?status=${filter.value}`)
               return (
                 <Link
                   key={filter.value}
@@ -141,6 +146,26 @@ export default async function HiringApplicantsPage({
             })}
           </div>
         </nav>
+      ) : null}
+
+      {v2 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav aria-label="Sort applicants" className="flex items-center gap-2 text-sm">
+            <span className="font-semibold text-muted">Sort:</span>
+            {(['best', 'newest'] as const).map((value) => {
+              const base = status ? `/hiring/jobs/${jobId}/applicants?status=${status}` : `/hiring/jobs/${jobId}/applicants`
+              const href = value === 'newest' ? `${base}${base.includes('?') ? '&' : '?'}sort=newest` : base
+              return (
+                <Link key={value} href={href} aria-current={sort === value ? 'true' : undefined} className={`inline-flex min-h-10 items-center rounded-full px-3.5 text-sm font-semibold ${sort === value ? 'bg-navy-950 text-white' : 'bg-white text-navy-950 ring-1 ring-mist-200 hover:bg-mist-50'}`}>
+                  {value === 'best' ? 'Best match' : 'Newest'}
+                </Link>
+              )
+            })}
+          </nav>
+          {presentation.key === 'live' ? (
+            <Link href={`/hiring/jobs/${jobId}/candidates`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">Suggested candidates</Link>
+          ) : null}
+        </div>
       ) : null}
 
       <section aria-label="Applicants" className="space-y-3">
@@ -194,8 +219,14 @@ export default async function HiringApplicantsPage({
                           CV attached
                         </a>
                       ) : <span>No CV attached</span>}
-                      {applicant.match.reasons.slice(0, 2).map((reason) => <span key={reason}>✓ {reason}</span>)}
+                      {v2 ? null : applicant.match.reasons.slice(0, 2).map((reason) => <span key={reason}>✓ {reason}</span>)}
                     </div>
+                    {v2 && (applicant.match.reasons.length || display?.ineligible) ? (
+                      <ul aria-label="Why this match" className="mt-3 flex flex-wrap gap-2">
+                        {display?.ineligible ? <li className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">{display.ineligible}</li> : null}
+                        {applicant.match.reasons.slice(0, 3).map((reason) => <li key={reason} className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900">{reason}</li>)}
+                      </ul>
+                    ) : null}
                   </div>
                 </div>
 
@@ -203,7 +234,9 @@ export default async function HiringApplicantsPage({
                   <div className="text-left lg:text-right">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Match</p>
                     {/* Round 12: the same numbers and labels the candidate sees. */}
-                    {display && display.band !== 'low' ? (
+                    {display?.ineligible ? (
+                      <p className="mt-1 text-lg font-black text-amber-900 max-md:mt-0">Not eligible</p>
+                    ) : display && display.band !== 'low' && display.showPercent ? (
                       <>
                         <p className="mt-1 text-3xl font-black text-navy-950 max-md:mt-0 max-md:text-2xl">{display.score}%</p>
                         <p className="text-xs font-semibold text-muted">{display.label}</p>

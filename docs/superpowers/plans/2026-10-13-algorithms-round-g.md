@@ -255,6 +255,160 @@ sea-service records; no production data):
   - the full nightly run for 5,000 members took 401 s (77 ms p50, 107 ms p95, 300,000 rows stored); at 25 members
     per loop pass the worker finishes well inside the night.
 
+## Release 2, PR 3: G3 jobs and job alerts, G4 search, and the release 2 migration
+
+**Migrations `0084_algorithms_round_g_release_2_types` and `0085_algorithms_round_g_release_2`** (one guarded runner,
+`round-g-release-2-migration`; 0084 only adds the `job_alert_match` notification type, because a new enum value
+cannot be used in the transaction that adds it). Additive only.
+
+- **G3**:
+  - `job_alerts.last_checked_at`;
+  - `job_alert_deliveries` (a job is sent once per alert);
+  - `member_email_topics` (`job_alerts`, `weekly_digest`; a missing row means on);
+  - `ranking_emails` (the send queue; the row id is the unsubscribe token).
+- **G4**:
+  - `pg_trgm` (already on since 0063; `create extension if not exists` is a no-op);
+  - `search_documents` (kind, entity, name, normalised name, subtitle, `tsvector`, popularity, visibility, owner,
+    organisation, community, slug, avatar);
+  - indexes: btree `(kind, normalized_name text_pattern_ops)`, GIN trigram on `normalized_name`, GIN on `tsv`;
+  - one set-based refresh function per kind, triggers on profiles, maritime profiles, companies, communities, jobs,
+    courses, events, posts and post hashtags, and a one-time backfill (4.6 s for 5,000 members and 51,800 posts
+    locally);
+  - a removed or hidden source keeps its row as `hidden` (excluded everywhere); the worker clears those after a day.
+- **Switches**: `jobs`, `job_alerts`, `search`, `suggestions`, `notifications` and `weekly_digest` start at `admins`.
+
+**G3 jobs** (`ranking/job-weights.ts`, `ranking/job-scorer.ts`; `ranking_settings.jobs`):
+
+- **Score**:
+  - only criteria the job specifies count;
+  - score = points earned / points possible × 100 × specificity (1 criterion 0.75, 2 → 0.9, 3+ → 1), so a job with
+    0 or 1 criteria is never Strong;
+  - shown as Strong, Good or Partial match, with no %.
+- **Criteria**:
+  - rank 25 (exact or between accepted ranks), 15 at one ladder step;
+  - vessel type 20 (half for the same vessel group), from the profile and sea-service history;
+  - certificates 20 by taxonomy code (verified 1, self-reported 0.75; a higher COC grade covers a lower one);
+  - sea time 15 in rank or on the vessel type;
+  - availability 10 (the new "Available from" date against the joining window);
+  - skills 10 and location 5 for shore jobs;
+  - visas 10 (proportional);
+  - trading area 5.
+- **Not eligible** (ordered below every eligible job, labelled "Not eligible: needs X", never hidden): a rank more than
+  one step away or in another department, a required COC missing or expired, a required visa missing.
+- **Jobs for you**:
+  - the SQL prefilter (department, then rank band, then vessel group, then newest) scores up to 300 open jobs;
+  - match × freshness (half-life 14 days);
+  - applied jobs move to an "Applied" section; "Not interested" (with Undo) hides a job for 180 days;
+  - 20 per page with Previous and Next; other sorts page in SQL.
+- **Apply gate**: the employer's minimum-match gate keeps using the round-12 score that the server enforces. A job that
+  gate refuses is shown as "Not eligible: below this job's minimum match (N%)" and sorts with the not-eligible jobs, so
+  a card never says Strong match next to a button the member cannot use. Alerts, the digest and suggested candidates
+  leave such jobs out (`ranking/job-match.ts`).
+- **Job alerts** (`ranking/job-alerts.ts`, from the outbox worker every 15 minutes, from 02:00 UTC):
+  - daily (the old "instant" is treated as daily) or weekly on Mondays;
+  - new jobs since the last email that match the alert's filters and that the member is eligible for, best first, at
+    most 10;
+  - nothing new, no email;
+  - one transaction queues the email, records each job as delivered, adds the `job_alert_match` notification (the
+    Notifications Jobs chip now shows these) and moves the pointers;
+  - sent through the existing Resend client with suppression, a "Job alerts" topic, one-click unsubscribe
+    (`/api/email/unsubscribe`) and a Settings toggle.
+- **Strong-match push**: not built, because the site has no web push.
+- **Recruiters**:
+  - applicants sort by Best match (default; eligible first) or Newest, with reason chips;
+  - "Suggested candidates" lists only members who turned on "Let recruiters find me as open to work", scored without
+    their visas (visas never show on a profile), with Connect or Message (messaging is for connections only; no contact
+    details).
+
+**G4 search** (`features/search/`; `ranking_settings.search`):
+
+- **Relevance**:
+  - exact name, then name starts with the query, then a typo match on the name (pg_trgm word similarity 0.5), then
+    full text (headline, rank, company, vessel types, descriptions, post text in `english`, names and codes in
+    `simple`);
+  - rank and vessel synonyms ("2/O", "C/E", "ETO") match through code tokens;
+  - then boosts for connections, 2nd degree, verified and recently active.
+- **Privacy in the same statement**:
+  - every candidate is re-checked against its source's own visibility (open jobs, listable organisations, published
+    courses, upcoming events, the feed's post rules including private communities, hides and mutes);
+  - blocked members never appear, in either direction.
+- **One statement per keystroke**:
+  - bounded LATERAL branches per kind;
+  - a prepared statement (planning cost more than running);
+  - JIT off (JIT compile was about 300 ms);
+  - `statement_timeout` 300 ms; a timeout returns what is ready (`partial`), never a 500.
+- **Dropdown** (`GET /api/search/suggest`):
+  - up to 3 people, 2 organisations, 2 communities, 2 jobs and 1 course or event;
+  - organisations, communities and courses are cached per query for 45 s;
+  - 10 a second and 120 a minute per member, 429 above that;
+  - queries up to 80 characters.
+- **Client** (`search-client.ts`): 120 ms debounce, AbortController, a sequence number, the last 20 queries kept in
+  memory, quiet back-off on 429.
+- **UI**:
+  - the top bar is an ARIA combobox: highlighted matches, up/down/Enter/Esc, the count announced, recent searches with
+    Clear all;
+  - /search tabs (People, Posts, Jobs, Organizations, Communities, Courses, Events) update as you type (250 ms,
+    `router.replace`), with old results kept while loading, 20 per page, and the same view on phones.
+- **Admin**: "Searches with no results" (query and count, 30 days) on Admin › Ranking.
+- **Load test** (local; see the PR for numbers).
+
+## Release 2, PR 4: G5 suggestions, G6 notifications and digest, Ranking health
+
+**G5** (`ranking/suggestion-weights.ts`; `ranking_settings.suggestions`):
+
+- **Discover organizations**:
+  - sources: current and past companies, where connections work, what they follow, open jobs for your rank band,
+    training institutes for cadets, verified as the fallback;
+  - one reason line and an X (Undo);
+  - excludes followed, member and dismissed organisations.
+- **Organization pages**: "People who follow this page also follow" (at least 3 shared followers), else "Similar
+  pages" (same type, overlapping vessel group).
+- **Communities**:
+  - sources: persona, department or rank (Family Anchor is matched once it exists; it does not yet), connections who
+    are members, communities of organisations you follow, size;
+  - private communities by name, description and size only;
+  - joined, requested and dismissed ones are excluded.
+- **Events**:
+  - a "For you" tab next to All, covering the next 60 days;
+  - signals: host you follow or know, connections attending (a count), a category for your department, the same city
+    or country for in-person events (online always eligible), soonest first;
+  - registered, cancelled, full and dismissed events are excluded; "Full" now shows in All.
+- **Courses**:
+  - "Recommended for you" on Learn: a refresher for your own certificate expiring within 6 months ("Your AFF expires on
+    …"), department or rank band, next rank, popular in your rank band (90 days); free courses get no boost;
+  - "Learners also took" on course pages (at least 3 shared learners).
+
+**G6** (`ranking_settings.notifications`, `ranking_settings.weekly_digest`):
+
+- **Grouping**:
+  - reactions or comments on the same post within 24 h merge ("<name> and 5 others reacted to your post"), newest avatar,
+    opening the post;
+  - mentions, tags, connection requests, job matches and event changes are never merged and show "Important" until
+    read;
+  - there are no reaction emails or push today, so there is nothing to batch.
+- **Weekly digest** (`ranking/weekly-digest.ts`, from the outbox worker):
+  - Monday from 08:00 in the member's time zone (IST if unknown), plus a fixed per-member 0–59 minute offset;
+  - contents:
+    - up to 5 unseen public posts ranked by the G1 scorer (audience "anyone", not in a community, first line only);
+    - 5 eligible jobs;
+    - 3 people you may know;
+    - 2 events;
+    - 1 course;
+  - skipped below 3 items;
+  - `?src=digest` links and no pixel;
+  - one per member per week (dedupe key and a recorded skip);
+  - a "Weekly digest" topic with one-click unsubscribe and a Settings toggle.
+
+**MEASURE**:
+
+- Admin › Ranking health shows 7 and 28 days of totals only:
+  - feed impressions, reactions and comments per 100 impressions, and the Top or Recent split;
+  - PYMK requests and dismissals per 100 listed;
+  - applications by source (`?src=for_you|search|job_alert|digest`);
+  - alert and digest emails sent, and visits from them;
+  - the search zero-result rate.
+- Test job alert and test digest buttons on Admin › Ranking.
+
 ## Checklist
 
 - [x] Step 0

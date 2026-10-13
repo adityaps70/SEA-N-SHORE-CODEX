@@ -45,6 +45,7 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     tradingAreas: maritime?.trading_areas ?? [],
     shoreCareerPreference: maritime?.shore_career_preference ?? false,
     availability: maritime?.availability ?? null,
+    availableFrom: maritime?.available_from ? String(maritime.available_from).slice(0, 10) : null,
     skills: row.profile_skills.map(({ skill }) => skill),
   }
 }

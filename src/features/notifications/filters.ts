@@ -3,8 +3,8 @@ import type { NetworkNotification, NetworkNotificationType } from './types'
 /**
  * Notification chips (round 8 on phones; round F on every screen): All · Jobs · My posts · Mentions,
  * plus Learning (learning round A). Mentions covers @mentions of the member or an organization they
- * manage, and photo tags. No notification type is about jobs yet, so the Jobs chip shows its empty
- * state until job notifications exist; connection, follower and event notifications appear under All only.
+ * manage, and photo tags. Jobs shows job alert matches (algorithms round G); connection, follower
+ * and event notifications appear under All only.
  */
 export const NOTIFICATION_FILTERS = ['all', 'jobs', 'my_posts', 'mentions', 'learning'] as const
 export type NotificationFilter = (typeof NOTIFICATION_FILTERS)[number]
@@ -18,7 +18,7 @@ export const NOTIFICATION_FILTER_LABELS: Record<NotificationFilter, string> = {
 }
 
 export const NOTIFICATION_FILTER_TYPES: Record<Exclude<NotificationFilter, 'all'>, readonly NetworkNotificationType[]> = {
-  jobs: [],
+  jobs: ['job_alert_match'],
   my_posts: ['post_comment', 'comment_reply', 'post_reaction', 'comment_reaction'],
   mentions: ['post_mention', 'comment_mention', 'photo_tag', 'organization_mention'],
   learning: [

@@ -1,3 +1,4 @@
+import { isRankingEnabled } from '@/features/ranking/switches'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import type { AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { calculateProfileCompletion } from '@/features/feed/profile-completion'
@@ -27,7 +28,7 @@ function trimmed(value: string | null | undefined) {
 
 /** Everything the signed-in header, phone top bar, side drawer and bottom tabs need, loaded in parallel. */
 export async function getAppChromeData(user: AwsVerifiedUser) {
-  const [notificationUnreadCount, messagingUnreadCount, canAccessAdmin, profile, memberships, pendingConnectionRequestCount, portfolio] = await Promise.all([
+  const [notificationUnreadCount, messagingUnreadCount, canAccessAdmin, profile, memberships, pendingConnectionRequestCount, portfolio, liveSearch] = await Promise.all([
     // Round 14 (3.9): only the badge count; the bell loads its list when it is opened.
     getUnreadNotificationCount(),
     getUnreadMessageCount(),
@@ -39,6 +40,8 @@ export async function getAppChromeData(user: AwsVerifiedUser) {
     networkRepository.countIncomingRequests(user.id).catch(() => 0),
     // Only used for the drawer's "Complete profile · n%" line; the drawer omits it if this fails.
     getProfilePortfolio(user.id).catch(() => null),
+    // Round G (G4): search as you type in the top bar (ranking_settings.search; off keeps the plain form).
+    isRankingEnabled('search', user.id).catch(() => false),
   ])
   const profileCompletion = profile && (portfolio || !completionNeedsPortfolio(profile))
     ? calculateProfileCompletion(profile, {
@@ -69,6 +72,7 @@ export async function getAppChromeData(user: AwsVerifiedUser) {
     organizations,
     organizationCount: memberships.length,
     pendingConnectionRequestCount,
+    liveSearch,
   }
 }
 
@@ -83,6 +87,7 @@ export function appHeaderProps(chrome: AppChromeData) {
     viewer: chrome.viewer,
     organizations: chrome.organizations,
     organizationCount: chrome.organizationCount,
+    liveSearch: chrome.liveSearch,
   }
 }
 
