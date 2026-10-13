@@ -8,6 +8,7 @@ import { ProfileCardFieldError, ProfileCardForm, profileCardInputClass, profileC
 import { ProfileField, ProfileFieldList, ProfileSection, ProfileSectionEditButton } from './profile-section'
 import { formatYears } from '@/lib/format'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
+import { VesselTypesInput } from '@/features/taxonomy/components/vessel-types-input'
 
 type Detail = { label: string; value: string; icon: LucideIcon }
 
@@ -59,11 +60,10 @@ function MaritimeProfileEditor({
           <input name="sailingExperienceYears" type="number" min={0} max={70} defaultValue={profile.sailingExperienceYears?.toString() ?? ''} className={inputClass} />
           <ProfileCardFieldError fieldErrors={state.fieldErrors} name="sailingExperienceYears" />
         </label>
-        <label className={labelClass}>
-          Vessel types
-          <input name="vesselTypes" maxLength={2000} defaultValue={profile.vesselTypes.join(', ')} className={inputClass} />
+        <div className={labelClass}>
+          <VesselTypesInput name="vesselTypes" label="Vessel types" defaultValue={profile.vesselTypes.join(', ')} inputClassName={inputClass} />
           <ProfileCardFieldError fieldErrors={state.fieldErrors} name="vesselTypes" />
-        </label>
+        </div>
         <label className={labelClass}>
           Trading areas
           <input name="tradingAreas" maxLength={2000} defaultValue={profile.tradingAreas.join(', ')} className={inputClass} />

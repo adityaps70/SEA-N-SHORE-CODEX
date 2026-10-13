@@ -44,6 +44,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/learning/batches/batch-actions.ts', ['saveBatchSettingsAction', 'createBatchAction', 'updateBatchAction', 'setBatchManagerAction', 'addBatchInstructorAction', 'removeBatchInstructorAction', 'moveLearnerToBatchAction']],
   // Learning round D (D2): an administrator may run any batch's sessions, attendance and recordings.
   ['src/features/learning/sessions/session-actions.ts', ['createSessionAction', 'createSessionSeriesAction', 'updateSessionAction', 'cancelSessionAction', 'markAttendanceAction', 'attachRecordingLinkAction', 'startRecordingUploadAction', 'saveUploadedRecordingAction', 'removeRecordingAction']],
+  // Algorithms round G: Admin › Ranking switches.
+  ['src/features/ranking/admin-actions.ts', ['setRankingModeAction']],
 ]
 
 /** Bodies of the top-level functions in a module, by name. */
@@ -88,7 +90,7 @@ describe('platform-admin server actions are MFA-gated (Round 15)', () => {
 
   it('lists every exported action of the admin-only modules', () => {
     const adminOnly = ADMIN_ACTION_MODULES.filter(([path]) => /(^src\/features\/admin\/|admin-actions\.ts$)/.test(path))
-    expect(adminOnly.length).toBe(10)
+    expect(adminOnly.length).toBe(11)
     for (const [path, names] of adminOnly) {
       const exported = [...read(path).matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1])
       expect(exported.sort(), path).toEqual([...names].sort())

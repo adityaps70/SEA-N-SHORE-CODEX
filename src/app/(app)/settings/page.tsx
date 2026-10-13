@@ -164,9 +164,9 @@ export default async function SettingsPage() {
           >
             <div className="flex items-center gap-2">
               <Ban aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Blocked members</p>
+              <p className="font-semibold text-navy-950">Blocked &amp; muted</p>
             </div>
-            <p className="mt-1 text-sm leading-5 text-muted">See the people you blocked and unblock them.</p>
+            <p className="mt-1 text-sm leading-5 text-muted">See the people you blocked or muted, and undo either.</p>
             <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link

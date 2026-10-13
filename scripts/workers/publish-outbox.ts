@@ -16,6 +16,7 @@ import { issueMissingTaxDocuments } from '../../src/features/tax/tax-document-re
 import { withTransaction } from '../../src/lib/db/client'
 import { batchRepository } from '../../src/features/learning/batches/batch-repository'
 import { SESSION_REMINDER_SWEEP_MS, sweepSessionReminders } from '../../src/features/learning/sessions/session-reminders'
+import { createRankingSweeps } from '../../src/features/ranking/worker'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -80,6 +81,8 @@ const BATCH_STATUS_SWEEP_MS = 60 * 60 * 1000
 let nextBatchStatusSweepAt = 0
 // Round D: queue live-session reminders (1 day and 1 hour before) every 5 minutes; the learning email sweep sends them.
 let nextSessionReminderSweepAt = 0
+// Round G: ranking jobs (signal retention hourly, taxonomy backfill daily; each idempotent and time-gated).
+const rankingSweeps = createRankingSweeps()
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -335,6 +338,7 @@ async function main() {
       await runTaxDocumentEmailSweepIfDue()
       await runBatchStatusSweepIfDue()
       await runSessionReminderSweepIfDue()
+      await rankingSweeps.runDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

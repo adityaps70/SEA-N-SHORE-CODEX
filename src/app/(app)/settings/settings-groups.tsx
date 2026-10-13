@@ -39,7 +39,7 @@ export function settingsGroups(input: { planLabel: string | null }): SettingsGro
       rows: [
         { href: '/activities', label: 'My Activities', icon: Activity },
         { href: '/activities?tab=hidden', label: 'Hidden posts', icon: EyeOff },
-        { href: '/settings/blocked', label: 'Blocked members', icon: Ban },
+        { href: '/settings/blocked', label: 'Blocked & muted', icon: Ban },
       ],
     },
     {
