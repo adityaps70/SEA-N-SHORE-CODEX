@@ -1,6 +1,7 @@
 import { query } from '@/lib/db/client'
 import { runTaxonomyBackfill } from '@/features/taxonomy/backfill'
 import { purgeExpiredSignals } from '@/features/signals/retention'
+import { createPeopleSweep } from './people-sweep'
 
 /**
  * Round G: the ranking jobs, run from the existing outbox worker loop (scripts/workers/publish-outbox.ts)
@@ -10,7 +11,8 @@ import { purgeExpiredSignals } from '@/features/signals/retention'
 type Sweep = {
   name: string
   everyMs: number
-  run(): Promise<Record<string, unknown> | void>
+  /** A result is logged; undefined means "nothing worth logging" (a sweep part-way through its run). */
+  run(): Promise<Record<string, unknown> | void | undefined>
 }
 
 export const SIGNAL_RETENTION_SWEEP_MS = 60 * 60 * 1000
@@ -33,6 +35,8 @@ export function createRankingSweeps(input: {
   const sweeps: Sweep[] = input.sweeps ?? [
     { name: 'signal_retention', everyMs: SIGNAL_RETENTION_SWEEP_MS, run: () => purgeExpiredSignals() },
     { name: 'taxonomy_backfill', everyMs: TAXONOMY_BACKFILL_SWEEP_MS, run: () => runTaxonomyBackfill() },
+    // Nightly People you may know (02:00 IST), 25 members per loop pass; it keeps its own schedule.
+    createPeopleSweep(),
   ]
   const nextAt = new Map<string, number>()
   const schemaReady = input.schemaReady ?? roundGSchemaReady
@@ -51,7 +55,7 @@ export function createRankingSweeps(input: {
       nextAt.set(sweep.name, current + sweep.everyMs)
       try {
         const result = await sweep.run()
-        log(`[ranking_sweep_${sweep.name}]`, result ?? {})
+        if (result) log(`[ranking_sweep_${sweep.name}]`, result)
       } catch (error) {
         console.error(`[ranking_sweep_${sweep.name}_error]`, error instanceof Error ? error.message : 'unknown_error')
       }

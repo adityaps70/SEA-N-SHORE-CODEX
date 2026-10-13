@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { dismissSuggestionAction } from '@/features/signals/actions'
 import { sendConnectionRequest } from '../actions'
 import type { NetworkProfile } from '../types'
 
@@ -70,9 +71,20 @@ export function useSuggestionDeck(profiles: readonly NetworkProfile[]): Suggesti
     })
   }, [remove])
 
+  /** The X: hidden for 180 days (round G); the card slides out at once and comes back if saving fails. */
   const dismiss = useCallback((profile: NetworkProfile) => {
     remove(profile)
     setAnnouncement(`${profile.fullName} removed from your suggestions.`)
+    startTransition(async () => {
+      const result = await dismissSuggestionAction('person', profile.id)
+      if (result.ok) return
+      setRemoved((current) => {
+        const next = new Set(current)
+        next.delete(profile.id)
+        return next
+      })
+      setErrors((current) => ({ ...current, [profile.id]: result.error }))
+    })
   }, [remove])
 
   return { remaining, errors, announcement, connect, dismiss, focusRequest, pending }

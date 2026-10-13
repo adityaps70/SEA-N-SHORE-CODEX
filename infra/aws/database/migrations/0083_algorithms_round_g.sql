@@ -551,7 +551,10 @@ create table if not exists public.feed_sessions (
   viewer_id uuid not null references public.profiles(id) on delete cascade,
   visit_id uuid not null,
   post_ids uuid[] not null,
-  inserts jsonb not null default '[]'::jsonb,
+  -- Per-post reasons, reposted-by labels and inserts (people row, cards); never member text.
+  meta jsonb not null default '{}'::jsonb,
+  -- How far the member scrolled: positions before this were served (shown), the rest were not.
+  served_count integer not null default 0 check (served_count >= 0),
   stage text not null default 'ranked' check (stage in ('ranked', 'wider', 'explore', 'caught_up')),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '15 minutes')
@@ -591,3 +594,12 @@ create table if not exists public.ranking_metrics_daily (
 create index if not exists posts_repost_source_idx on public.posts (repost_of_post_id) where repost_of_post_id is not null and deleted_at is null;
 -- statement-breakpoint
 create index if not exists post_reactions_user_created_idx on public.post_reactions (user_id, created_at desc);
+-- statement-breakpoint
+-- People you may know: same institute and same company text (members without a linked organization).
+create index if not exists profiles_institution_match_idx
+  on public.profiles (public.taxonomy_normalize(institution_name))
+  where institution_name is not null;
+-- statement-breakpoint
+create index if not exists maritime_profiles_company_text_match_idx
+  on public.maritime_profiles (public.taxonomy_normalize(current_company))
+  where current_company is not null;

@@ -79,6 +79,7 @@ export function NetworkProfileCard({
         <p className="mt-1 min-h-10 line-clamp-2 text-sm leading-5 text-muted max-md:min-h-0 max-md:text-[13px] max-md:leading-[1.125rem]">
           {profile.headline ?? profile.summary ?? 'Maritime professional'}
         </p>
+        {profile.suggestionReason ? <p className="mt-1 line-clamp-1 text-xs font-semibold text-ocean-700">{profile.suggestionReason}</p> : null}
 
         {/* Phones: the compact grid card shows name and headline; details are on the profile. */}
         <div className="mt-4 space-y-2 text-left text-xs text-muted max-md:hidden">

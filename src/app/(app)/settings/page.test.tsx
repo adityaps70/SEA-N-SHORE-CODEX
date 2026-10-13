@@ -68,7 +68,8 @@ describe('SettingsPage', () => {
     expect(billing).toHaveAttribute('href', '/settings/billing')
     expect(billing).toHaveClass('border-mist-200', 'hover:border-ocean-300')
     expect(billing.querySelector('svg.lucide-chevron-right')).not.toBeNull()
-    expect(section.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(12)
+    expect(section.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(13)
+    expect(within(section).getByRole('link', { name: /Privacy settings/ })).toHaveAttribute('href', '/settings/privacy')
     expect(within(section).getByRole('link', { name: /Two-step verification/ })).toHaveAttribute('href', '/settings/security')
     expect(within(section).getByRole('link', { name: /Earnings/ })).toHaveAttribute('href', '/settings/earnings')
     expect(within(section).getByRole('link', { name: /Payout details/ })).toHaveAttribute('href', '/settings/payouts')
@@ -105,6 +106,7 @@ describe('SettingsPage', () => {
       ['Two-step verification', '/settings/security'],
       ['My Activities', '/activities'],
       ['Hidden posts', '/activities?tab=hidden'],
+      ['Privacy', '/settings/privacy'],
       ['Blocked & muted', '/settings/blocked'],
       ['Email notifications', '/settings/notifications'],
       ['Newsletter', '/newsletter'],

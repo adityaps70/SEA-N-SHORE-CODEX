@@ -21,6 +21,8 @@ export type RelationshipState = {
 export type NetworkProfile = PublicProfile & {
   relationship: RelationshipState
   relationshipSince?: string | null
+  /** Round G: one plain line on a People you may know card ("12 mutual connections"). */
+  suggestionReason?: string | null
 }
 
 export type NetworkConnectionRow = {

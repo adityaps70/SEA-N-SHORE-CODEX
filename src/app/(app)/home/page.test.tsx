@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomePage from './page'
-import { getFeedPage } from '@/features/feed/queries'
+import { getHomeFeed } from '@/features/feed/queries'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
@@ -12,7 +12,7 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-vi.mock('@/features/feed/queries', () => ({ getFeedPage: vi.fn() }))
+vi.mock('@/features/feed/queries', () => ({ getHomeFeed: vi.fn() }))
 vi.mock('@/features/roles/components/rank-selection-prompt', () => ({ RankSelectionPrompt: () => null }))
 vi.mock('@/features/network/queries', () => ({ getPeopleYouMayKnow: vi.fn() }))
 vi.mock('@/features/profiles/queries', () => ({ getOwnProfile: vi.fn() }))
@@ -36,6 +36,11 @@ vi.mock('@/features/feed/components/feed-list', () => ({
     <div>Feed list {category ?? 'all'} with {suggestions.length} suggestions</div>
   ),
 }))
+vi.mock('@/features/feed/components/home-feed', () => ({
+  HomeFeed: ({ initialMode, category, debug }: { initialMode: string; category?: string; debug?: boolean }) => (
+    <div>Home feed {initialMode} {category ?? 'all'}{debug ? ' debug' : ''}</div>
+  ),
+}))
 vi.mock('@/features/feed/components/post-composer', () => ({
   PostComposer: ({ composeRequest, hideTriggerOnPhones }: { composeRequest?: string; hideTriggerOnPhones?: boolean }) => (
     <div>Post composer {composeRequest ?? 'closed'}{hideTriggerOnPhones ? ' without phone trigger' : ''}</div>
@@ -44,7 +49,7 @@ vi.mock('@/features/feed/components/post-composer', () => ({
 
 const mockedGetOwnProfile = vi.mocked(getOwnProfile)
 const mockedGetOwnProfilePortfolio = vi.mocked(getOwnProfilePortfolio)
-const mockedGetFeedPage = vi.mocked(getFeedPage)
+const mockedGetHomeFeed = vi.mocked(getHomeFeed)
 const mockedGetPeopleYouMayKnow = vi.mocked(getPeopleYouMayKnow)
 
 const profile = {
@@ -79,7 +84,7 @@ describe('HomePage profile completeness evidence', () => {
       experiences: [{ id: 'exp-1' }] as never,
       credentials: [{ id: 'cred-1' }] as never,
     })
-    mockedGetFeedPage.mockResolvedValue({ posts: [], nextCursor: null })
+    mockedGetHomeFeed.mockResolvedValue({ mode: 'v1', page: { posts: [], nextCursor: null } })
     mockedGetPeopleYouMayKnow.mockResolvedValue([])
   })
 
@@ -94,7 +99,7 @@ describe('HomePage profile completeness evidence', () => {
   it('shows no topic chips on any screen size but still honours a ?category= link', async () => {
     render(await HomePage({ searchParams: Promise.resolve({ category: 'safety_lessons' }) }))
 
-    expect(mockedGetFeedPage).toHaveBeenCalledWith({ category: 'safety_lessons' })
+    expect(mockedGetHomeFeed).toHaveBeenCalledWith({ category: 'safety_lessons' })
     expect(screen.queryByRole('navigation', { name: 'Filter maritime feed' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Safety Lessons' })).not.toBeInTheDocument()
     expect(screen.getByText('Feed list safety_lessons with 0 suggestions')).toBeInTheDocument()
@@ -102,8 +107,15 @@ describe('HomePage profile completeness evidence', () => {
 
   it('ignores an unknown category', async () => {
     render(await HomePage({ searchParams: Promise.resolve({ category: 'gossip' }) }))
-    expect(mockedGetFeedPage).toHaveBeenCalledWith({ category: undefined })
+    expect(mockedGetHomeFeed).toHaveBeenCalledWith({ category: undefined })
     expect(screen.getByText('Feed list all with 0 suggestions')).toBeInTheDocument()
+  })
+
+  it('renders Top for you (round G) when the feed switch puts the member on the ranked feed', async () => {
+    mockedGetHomeFeed.mockResolvedValue({ mode: 'top', page: null })
+    render(await HomePage({ searchParams: Promise.resolve({ rankdebug: '1' }) }))
+    expect(screen.getByText('Home feed top all debug')).toBeInTheDocument()
+    expect(screen.queryByText(/^Feed list/)).not.toBeInTheDocument()
   })
 
   it('passes ?compose= to the composer and hides its trigger card on phones', async () => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, ShieldMinus, Trash2, UserMinus } from 'lucide-react'
+import { Bookmark, CircleHelp, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, ShieldMinus, ThumbsDown, Trash2, UserMinus, VolumeX } from 'lucide-react'
 import { useCallback, useRef, useState, type RefObject } from 'react'
 import { ActionMenu, ActionMenuItem, ActionMenuSeparator } from '@/components/ui/action-menu'
 
@@ -30,6 +30,10 @@ export function PostActionsMenu({
   canModerateGroup = false,
   onRemoveFromGroup,
   triggerRef: externalTriggerRef,
+  onWhy,
+  onShowLess,
+  onMute,
+  muteName,
 }: {
   authorName: string
   isOwner: boolean
@@ -53,6 +57,13 @@ export function PostActionsMenu({
   onEdit?(): void
   /** Receives the trigger element so dialogs opened from the menu can return focus to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>
+  /** Round G (home feed): "Why am I seeing this?" when the post came from Top for you. */
+  onWhy?(): void
+  /** Round G (home feed): "Show less like this". */
+  onShowLess?(): void
+  /** Round G (home feed): "Mute <name>": hides their posts without blocking or telling them. */
+  onMute?(): void
+  muteName?: string
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const internalTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -110,6 +121,21 @@ export function PostActionsMenu({
         ) : null}
         {isOwner || canDelete ? null : (
           <>
+            {onWhy ? (
+              <ActionMenuItem onClick={run(onWhy)} className={itemClass} icon={<CircleHelp aria-hidden="true" className="size-4" />}>
+                Why am I seeing this?
+              </ActionMenuItem>
+            ) : null}
+            {onShowLess ? (
+              <ActionMenuItem disabled={pending} onClick={run(onShowLess)} className={itemClass} icon={<ThumbsDown aria-hidden="true" className="size-4" />}>
+                Show less like this
+              </ActionMenuItem>
+            ) : null}
+            {onMute && muteName ? (
+              <ActionMenuItem disabled={pending} onClick={run(onMute)} className={itemClass} icon={<VolumeX aria-hidden="true" className="size-4" />}>
+                <span className="min-w-0 break-words">Mute {muteName}</span>
+              </ActionMenuItem>
+            ) : null}
             <ActionMenuItem disabled={pending} onClick={run(onHide)} className={itemClass} icon={<EyeOff aria-hidden="true" className="size-4" />}>
               Hide post
             </ActionMenuItem>

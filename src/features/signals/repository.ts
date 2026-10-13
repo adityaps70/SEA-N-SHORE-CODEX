@@ -86,6 +86,17 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
     return rows.length > 0
   }
 
+  /** Undo right after "Mute": by the muted member or organization rather than the row id. */
+  async function unmuteTarget(viewerId: string, target: { profileId?: string; companyId?: string }) {
+    const rows = await queryRows(
+      `delete from public.user_mutes
+       where viewer_id = $1 and (muted_profile_id = $2::uuid or muted_org_id = $3::uuid)
+       returning id`,
+      [viewerId, target.profileId ?? null, target.companyId ?? null],
+    )
+    return rows.length > 0
+  }
+
   async function listMutes(viewerId: string) {
     const rows = await queryRows(
       `select m.id, m.created_at,
@@ -141,6 +152,7 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
     muteProfile,
     muteOrganization,
     unmute,
+    unmuteTarget,
     listMutes,
     recordFeedFeedback,
     incrementMetric,

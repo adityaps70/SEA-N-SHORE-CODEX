@@ -50,7 +50,7 @@ The center column is the visual and functional priority.
 Order:
 1. post composer
 2. category filter row
-3. reverse-chronological community feed
+3. community feed: "Top for you" (ranked, the default) with a "Recent" newest-first switch (algorithms round G)
 4. explicit `Load more` pagination
 
 Infinite scrolling is deferred until the first feed is stable and measurable.
@@ -141,17 +141,28 @@ The first implementation uses a familiar `Like` interaction. Maritime-specific r
 
 ## 7. Feed behavior
 
-### First release ordering
+### Ordering (updated by algorithms round G, 13 October 2026)
 
-Use deterministic reverse chronological ordering with stable pagination:
-- `created_at DESC`
-- `id DESC` as tie-breaker
+Home opens on **Top for you**, a ranked feed. A **Recent** switch shows a true newest-first timeline
+(`created_at DESC`, `id DESC`, keyset cursor). The member's choice is remembered on the server. Category filters and
+group, hashtag and organization feeds stay newest first. Each ranking can be switched back to the first-release order
+without a deploy (Admin › Ranking, `ranking_settings.feed`): `off` restores this section's original behaviour.
 
-Each server page contains a fixed page size and `Load more` uses the last row's `(created_at, id)` cursor.
+Top for you is rule-based and explainable (`docs/superpowers/plans/2026-10-13-algorithms-round-g.md`, G1):
 
-Category filters narrow the same feed.
-
-Do not implement engagement-based ranking yet. A future recommendation layer can blend followed professionals, groups, categories, engagement, and recency after enough real network data exists.
+- Candidates: posts from the last 7 days (widened to 14 and 30 when there are fewer than 60) by the member's
+  connections, people and organizations they follow, their communities, posts their connections commented on or
+  reposted, and posts doing well with members like them. Every visibility rule, block, hide and mute applies.
+- Score = relationship × (0.6 + relevance) × engagement quality × freshness × penalties, with every weight in
+  `src/features/ranking/feed-weights.ts`. Engagement (reactions, comments, reposts, with connections' engagement
+  counting double) is used, log-scaled and capped. Freshness has a 24 h half-life with a floor for close
+  relationships, which replaces the earlier rule against old connected posts dominating.
+- Diversity: at most 2 posts per author or organization in any 10, never two in a row, at most 3 of a category in a
+  row. Reposts of the same content collapse to one card.
+- No repeats: a post the member has seen (≥50% visible for ≥1 s) or engaged with never comes back in Top for you,
+  on any device; the check is on the server. When nothing unseen is left, wider windows, then posts from outside the
+  network, then "You're all caught up".
+- Pagination is a position in a per-visit snapshot (`feed_sessions`, 15 minutes). A reload starts a new snapshot.
 
 ### Visibility
 
@@ -429,7 +440,7 @@ Not part of this home-feed milestone:
 - formal verification workflow and badges
 - reputation scores
 - advanced connection recommendations
-- algorithmic engagement ranking
+- machine-learned ranking (round G keeps ranking rule-based)
 - groups/group feeds
 - nested comment replies
 - reposts/repost counts

@@ -92,12 +92,39 @@ export type PeopleSuggestionLookup = {
   }
   /** A request the viewer sent that is gone (declined or withdrawn) hides that member this long. */
   declinedRequestWindow: string
+  /**
+   * Round G (migration 0083): also leave out members the viewer dismissed in the last 180 days and
+   * members who turned off "Show me in People you may know".
+   */
+  roundG?: boolean
 }
+
+const ROUND_G_PEOPLE_EXCLUSIONS_SQL = `
+      and not exists (
+        select 1 from public.suggestion_dismissals d
+        where d.viewer_id = viewer.id and d.kind = 'person' and d.target_id = cp.id and d.created_at > now() - interval '180 days'
+      )
+      and not exists (
+        select 1 from public.member_preferences opt_out
+        where opt_out.profile_id = cp.id and opt_out.show_in_people_suggestions = false
+      )`
 
 /**
  * The same narrow synthetic and test-data markers as isSyntheticDiscoveryText (lib/public-discovery.ts),
  * as one Postgres regular expression (\y is a word boundary), so they are excluded before the limit.
  */
+/**
+ * SQL that is true when `textSql` carries a synthetic marker. The regular expression only runs when
+ * a cheap substring check finds a candidate word (CASE keeps that order), so a large member table
+ * is not regex-scanned row by row.
+ */
+export function syntheticTextSql(textSql: string, patternSql: string) {
+  return `(case when strpos(lower(${textSql}), 'e2e') > 0 or strpos(lower(${textSql}), 'synthetic') > 0
+      or strpos(lower(${textSql}), 'fixture') > 0 or strpos(lower(${textSql}), 'seed') > 0
+      or strpos(lower(${textSql}), 'test') > 0 or strpos(lower(${textSql}), '@example.') > 0
+    then (${textSql}) ~* ${patternSql} else false end)`
+}
+
 export const SYNTHETIC_PROFILE_PATTERN_SQL = String.raw`\ye2e([-_[:space:]]|$)|\ysynthetic([-_[:space:]]|$)|\yfixture([-_[:space:]]|$)|\yseed(ed)?([-_[:space:]]|$)|\ytest[-_[:space:]]+(user|account|profile|course|mentor)\y|@[^[:space:]]+\.test\y|@example\.(test|invalid)\y`
 
 /**
@@ -111,7 +138,7 @@ export const SYNTHETIC_PROFILE_PATTERN_SQL = String.raw`\ye2e([-_[:space:]]|$)|\
  *   within the declined-request window (social_action_events remembers each request).
  * The rest are ordered by the shared-attribute score, then most recently updated.
  */
-function peopleSuggestionSql() {
+function peopleSuggestionSql(roundG = false) {
   return `
   with viewer as (
     select
@@ -168,7 +195,8 @@ function peopleSuggestionSql() {
           and e.target_profile_id = cp.id
           and e.created_at > now() - $9::interval
       )
-      and concat_ws(' ', cp.slug, cp.full_name, cp.headline, cp.summary, cmp.rank, cmp.current_company) !~* $10
+      and not ${syntheticTextSql("concat_ws(' ', cp.slug, cp.full_name, cp.headline, cp.summary, cmp.rank, cmp.current_company)", '$10')}
+      ${roundG ? ROUND_G_PEOPLE_EXCLUSIONS_SQL : ''}
     order by score desc, cp.updated_at desc, cp.id asc
     limit $2
   )
@@ -533,7 +561,7 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
   async function getPeopleSuggestions(lookup: PeopleSuggestionLookup): Promise<PublicProfile[]> {
     const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
     const { weights } = lookup
-    const rows = await queryRows(peopleSuggestionSql(), [
+    const rows = await queryRows(peopleSuggestionSql(Boolean(lookup.roundG)), [
       lookup.viewerProfileId,
       limit,
       weights.sharedVesselType,

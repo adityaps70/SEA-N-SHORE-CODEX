@@ -9,7 +9,8 @@ import { NetworkPersonListRow } from '@/features/network/components/network-pers
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
 import { NetworkSuggestionGrid } from '@/features/network/components/network-suggestion-grid'
 import { NetworkTabs } from '@/features/network/components/network-tabs'
-import { getNetworkHub } from '@/features/network/queries'
+import { getNetworkHub, getPeopleSuggestions, isPeopleRankingEnabled } from '@/features/network/queries'
+import { PEOPLE_SECTIONS, PEOPLE_SECTION_LABELS, type PeopleSection } from '@/features/ranking/people-scorer'
 import { parseNetworkTab } from '@/features/network/schemas'
 import type { NetworkFollowView, NetworkProfile } from '@/features/network/types'
 
@@ -89,9 +90,9 @@ function SearchField({
 export default async function NetworkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string; view?: string; sort?: string }>
+  searchParams: Promise<{ tab?: string; q?: string; view?: string; sort?: string; section?: string }>
 }) {
-  const { tab: tabValue, q: rawQuery, view: rawView, sort: rawSort } = await searchParams
+  const { tab: tabValue, q: rawQuery, view: rawView, sort: rawSort, section: rawSection } = await searchParams
   const tab = parseNetworkTab(tabValue)
   const query = typeof rawQuery === 'string' ? rawQuery.trim().slice(0, 100) : ''
   const sort = rawSort === 'name' ? 'name' : 'recent'
@@ -104,6 +105,14 @@ export default async function NetworkPage({
   ])
   const profiles = sortProfiles(hub.profiles, sort)
   const phoneInvitations = invitations.slice(0, PHONE_INVITATION_LIMIT)
+  // Round G (G2): with the new People you may know, Discover is grouped by why people are suggested.
+  const grouped = tab === 'discover' && !query && await isPeopleRankingEnabled().catch(() => false)
+  const section = (PEOPLE_SECTIONS as readonly string[]).includes(rawSection ?? '') ? rawSection as PeopleSection : null
+  const sections = grouped && !section
+    ? (await Promise.all(PEOPLE_SECTIONS.map(async (key) => ({ key, profiles: await getPeopleSuggestions(12, key).catch(() => []) }))))
+      .filter((entry) => entry.profiles.length)
+    : []
+  const sectionProfiles = grouped && section ? await getPeopleSuggestions(40, section).catch(() => []) : []
 
   return (
     <section className="py-2 max-md:-mt-4 max-md:py-0 sm:py-5">
@@ -170,9 +179,34 @@ export default async function NetworkPage({
               <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
               </div>
+            ) : section ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4 max-md:px-4">
+                  <h3 className="text-base font-semibold text-navy-950">{PEOPLE_SECTION_LABELS[section]}</h3>
+                  <Link href="/network?tab=discover" className="inline-flex min-h-10 items-center text-sm font-semibold text-ocean-700 hover:text-navy-950">All suggestions</Link>
+                </div>
+                <NetworkSuggestionGrid profiles={sectionProfiles} />
+              </>
             ) : (
-              // Round G hotfix: Connect or X replaces a card with the next person; an empty list says so.
-              <NetworkSuggestionGrid profiles={profiles} />
+              <>
+                {sections.map((entry) => (
+                  <section key={entry.key} aria-labelledby={`people-section-${entry.key}`} className="border-b border-mist-100 last:border-b-0">
+                    <div className="flex items-center justify-between gap-2 px-5 pt-4 max-md:px-4">
+                      <h3 id={`people-section-${entry.key}`} className="text-base font-semibold text-navy-950">{PEOPLE_SECTION_LABELS[entry.key]}</h3>
+                      <Link href={`/network?tab=discover&section=${entry.key}`} aria-label={`See all: ${PEOPLE_SECTION_LABELS[entry.key]}`} className="inline-flex min-h-10 items-center text-sm font-semibold text-ocean-700 hover:text-navy-950">See all</Link>
+                    </div>
+                    <NetworkSuggestionGrid profiles={entry.profiles} visibleCount={4} showEmptyState={false} />
+                  </section>
+                ))}
+                {sections.length ? <h3 className="px-5 pt-4 text-base font-semibold text-navy-950 max-md:px-4">More people you may know</h3> : null}
+                {/* Round G hotfix: Connect or X replaces a card with the next person; an empty list says so. */}
+                <NetworkSuggestionGrid profiles={profiles} />
+                {grouped ? (
+                  <p className="border-t border-mist-100 px-5 py-3 text-sm text-muted max-md:px-4">
+                    People you already follow are on <Link href="/network?tab=following" className="font-semibold text-ocean-700 hover:underline">People you follow</Link>.
+                  </p>
+                ) : null}
+              </>
             )}
           </section>
         ) : (

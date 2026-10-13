@@ -10,6 +10,7 @@ import { removeGroupPost } from '@/features/community/actions'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { followProfile, unfollowProfile } from '@/features/network/actions'
 import { deletePost, setPostHidden, setPostReaction, setPostSaved } from '../actions'
+import { feedFeedbackAction, muteMemberAction, muteOrganizationAction, unmuteFromFeedAction } from '@/features/signals/actions'
 import {
   EMPTY_REACTION_SUMMARY,
   POST_REACTIONS,
@@ -207,8 +208,14 @@ export function PostCard({
   roleBadge,
   signedOut = false,
   focusPhoto = null,
+  feedControls = false,
 }: {
   post: FeedPost
+  /**
+   * Round G: the home feed's extra controls in the ⋯ menu: "Why am I seeing this?" (Top for you),
+   * "Show less like this" and "Mute <name>".
+   */
+  feedControls?: boolean
   detail?: boolean
   readOnly?: boolean
   /**
@@ -244,6 +251,9 @@ export function PostCard({
   const [deleteError, setDeleteError] = useState('')
   const [deleted, setDeleted] = useState(false)
   const [hidden, setHidden] = useState(false)
+  const [muted, setMuted] = useState(false)
+  const [shownLess, setShownLess] = useState(false)
+  const [whyOpen, setWhyOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[]; organizationMentions: FeedOrganizationMention[]; audience?: PostAudience } | null>(null)
   const [notice, setNotice] = useState<FeedNotice | null>(null)
@@ -321,6 +331,38 @@ export function PostCard({
       }
       setHidden(next)
       if (!next) setNotice({ text: 'Post restored to your feed.', tone: 'success' })
+    })
+  }
+
+  /** Round G: "Show less like this": the post leaves the feed and the scorer down-weights its author and category. */
+  function showLess() {
+    if (readOnly || visibilityPending) return
+    setNotice(null)
+    startVisibilityTransition(async () => {
+      const result = await feedFeedbackAction(post.id, 'show_less')
+      if (!result.ok) {
+        setNotice({ text: result.error, tone: 'error' })
+        return
+      }
+      setShownLess(true)
+    })
+  }
+
+  /** Round G: "Mute <name>": their posts leave the feed; they are not told and nothing else changes. */
+  function changeMuted(next: boolean) {
+    if (readOnly || visibilityPending) return
+    setNotice(null)
+    const organizationId = post.organization?.id
+    startVisibilityTransition(async () => {
+      const result = next
+        ? organizationId ? await muteOrganizationAction(organizationId) : await muteMemberAction(post.author.id)
+        : await unmuteFromFeedAction(organizationId ? { companyId: organizationId } : { profileId: post.author.id })
+      if (!result.ok) {
+        setNotice({ text: result.error, tone: 'error' })
+        return
+      }
+      setMuted(next)
+      if (!next) setNotice({ text: `${publishedAsName(post)} is unmuted.`, tone: 'success' })
     })
   }
 
@@ -429,6 +471,39 @@ export function PostCard({
     )
   }
 
+  if (muted) {
+    return (
+      <Card className={`border border-mist-100 ${cardShape}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+          <div role="status" className="min-w-0">
+            <p className="text-sm font-semibold text-navy-950">{publishedAsName(post)} muted</p>
+            <p className="mt-0.5 text-sm text-muted">Their posts won&apos;t appear in your feed. They aren&apos;t told. Undo it any time in Settings › Blocked &amp; muted.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => changeMuted(false)}
+            disabled={visibilityPending}
+            className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 disabled:opacity-60"
+          >
+            {visibilityPending ? 'Restoring…' : 'Undo'}
+          </button>
+        </div>
+        {notice?.tone === 'error' ? <PostNotice notice={notice} onDismiss={() => setNotice(null)} /> : null}
+      </Card>
+    )
+  }
+
+  if (shownLess) {
+    return (
+      <Card className={`border border-mist-100 ${cardShape}`}>
+        <div role="status" className="px-4 py-4 sm:px-5">
+          <p className="text-sm font-semibold text-navy-950">Thanks. You&apos;ll see fewer posts like this.</p>
+          <p className="mt-0.5 text-sm text-muted">Posts from {publishedAsName(post)} and on this topic will show up less in Top for you.</p>
+        </div>
+      </Card>
+    )
+  }
+
   const isRepost = post.postType === 'repost'
   const isOwner = Boolean(post.viewerOwns)
   const canEdit = post.viewerCanEdit ?? isOwner
@@ -454,6 +529,13 @@ export function PostCard({
   return (
     <Card className={`overflow-visible border border-mist-100 ${cardShape}`}>
       <article aria-labelledby={`post-author-${post.id}`}>
+        {post.rank?.repostedBy ? (
+          <p data-testid="reposted-by" className="border-b border-mist-100 px-4 py-2 text-[13px] font-medium text-muted sm:px-5">
+            {post.rank.repostedBy.others > 0
+              ? `${post.rank.repostedBy.actorName} and ${post.rank.repostedBy.others} ${post.rank.repostedBy.others === 1 ? 'other' : 'others'} reposted this`
+              : `${post.rank.repostedBy.actorName} reposted this`}
+          </p>
+        ) : null}
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
           {organization
             ? <OrganizationLogoLink organization={organization} className="size-11 rounded-xl" />
@@ -541,6 +623,12 @@ export function PostCard({
               canModerateGroup={Boolean(post.viewerCanModerateGroup && post.group)}
               onRemoveFromGroup={() => { setDeleteError(''); setConfirmGroupRemove(true) }}
               triggerRef={menuTriggerRef}
+              {...(feedControls ? {
+                ...(post.rank?.reasons.length ? { onWhy: () => setWhyOpen(true) } : {}),
+                onShowLess: showLess,
+                onMute: () => changeMuted(true),
+                muteName: displayName,
+              } : {})}
             />
           ) : null}
         </header>
@@ -681,8 +769,27 @@ export function PostCard({
               readOnly={readOnly}
               composerOpen={composerOpen}
               expandReplies={detail}
+              commentsComplete={post.commentsComplete ?? true}
+              totalCount={post.commentCount}
             />
           </div>
+        ) : null}
+        {post.rank?.debug ? (
+          <details data-testid="rank-debug" className="border-t border-dashed border-amber-300 bg-amber-50 px-4 py-2 text-xs text-navy-900 sm:px-5">
+            <summary className="cursor-pointer font-semibold">Rank debug · score {post.rank.debug.score}</summary>
+            <p className="mt-1 font-mono">{post.rank.debug.version}</p>
+            <ul className="mt-1 grid grid-cols-2 gap-x-4 font-mono">
+              {Object.entries(post.rank.debug.parts).map(([part, value]) => <li key={part}>{part}: {value}</li>)}
+            </ul>
+          </details>
+        ) : null}
+        {whyOpen && post.rank ? (
+          <FeedDialog title="Why am I seeing this?" onClose={() => setWhyOpen(false)} size="sm" returnFocusRef={menuTriggerRef}>
+            <ul className="space-y-2 text-sm leading-6 text-ink">
+              {post.rank.reasons.map((reason) => <li key={reason} className="flex gap-2"><span aria-hidden="true" className="text-ocean-700">•</span>{reason}</li>)}
+            </ul>
+            <p className="mt-3 text-xs leading-5 text-muted">Top for you ranks posts from your connections, the people, pages and communities you follow, and members in your part of the industry. Use “Show less like this” or switch to Recent to see everything newest first.</p>
+          </FeedDialog>
         ) : null}
         <ReactionDetailsModal
           open={reactionsOpen}

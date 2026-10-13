@@ -6,6 +6,7 @@ import PublicProfilePage from './page'
 const mocks = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
   getPeopleYouMayKnow: vi.fn(),
+  getPeopleSimilarTo: vi.fn(),
   getRelationshipState: vi.fn(),
   getPublicPostsByAuthor: vi.fn(),
   getPostsByAuthor: vi.fn(),
@@ -77,6 +78,7 @@ vi.mock('@/features/profiles/profile-portfolio-queries', () => ({
 vi.mock('@/features/network/queries', () => ({
   getRelationshipState: mocks.getRelationshipState,
   getPeopleYouMayKnow: mocks.getPeopleYouMayKnow,
+  getPeopleSimilarTo: mocks.getPeopleSimilarTo,
 }))
 
 vi.mock('@/features/network/components/relationship-controls', () => ({
@@ -100,9 +102,9 @@ vi.mock('@/features/moderation/components/report-content-button', () => ({
 }))
 
 vi.mock('@/features/network/components/people-you-may-know', () => ({
-  PeopleYouMayKnow: ({ profiles }: { profiles: Array<{ fullName: string }> }) => (
-    <aside aria-label="Profile recommendations">
-      <h2>People you may know</h2>
+  PeopleYouMayKnow: ({ profiles, title }: { profiles: Array<{ fullName: string }>; title?: string }) => (
+    <aside aria-label={title ?? 'Profile recommendations'}>
+      <h2>{title ?? 'People you may know'}</h2>
       {profiles.map((profile) => <p key={profile.fullName}>{profile.fullName}</p>)}
     </aside>
   ),
@@ -150,6 +152,7 @@ beforeEach(() => {
     slug: 'member-three',
     fullName: 'Member Three',
   }])
+  mocks.getPeopleSimilarTo.mockResolvedValue([])
   mocks.getPublicPostsByAuthor.mockResolvedValue([{
     id: 'post-1',
     body: 'Public maritime update',
@@ -239,6 +242,16 @@ describe('Public Profile page', () => {
     expect(screen.getAllByRole('button', { name: 'Message' })).toHaveLength(1)
   })
 
+  it('shows "People similar to <name>" to a signed-in member viewing someone else (round G)', async () => {
+    mocks.getPeopleSimilarTo.mockResolvedValueOnce([{ id: '44444444-4444-4444-8444-444444444444', slug: 'member-four', fullName: 'Member Four' }])
+
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    expect(mocks.getPeopleSimilarTo).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    const similar = screen.getByRole('heading', { name: /^People similar to / })
+    expect(similar.closest('aside')).toHaveTextContent('Member Four')
+  })
+
   it('keeps posts public while omitting personalized recommendations and messaging for a signed-out viewer', async () => {
     mocks.getVerifiedUser.mockResolvedValueOnce(null)
 
@@ -248,6 +261,7 @@ describe('Public Profile page', () => {
     expect(screen.getByText('Public maritime update')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'People you may know' })).not.toBeInTheDocument()
     expect(mocks.getPeopleYouMayKnow).not.toHaveBeenCalled()
+    expect(mocks.getPeopleSimilarTo).not.toHaveBeenCalled()
     expect(screen.queryByText('Relationship controls')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Report profile' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()

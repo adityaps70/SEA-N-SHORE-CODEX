@@ -47,6 +47,18 @@ export async function unmuteAction(muteId: string): Promise<SignalActionResult> 
   return result
 }
 
+/** "Undo" on the muted notice in the feed. */
+export async function unmuteFromFeedAction(target: { profileId?: string; companyId?: string }): Promise<SignalActionResult> {
+  const profileId = target?.profileId
+  const companyId = target?.companyId
+  if ((profileId && !uuid.safeParse(profileId).success) || (companyId && !uuid.safeParse(companyId).success) || (!profileId && !companyId)) {
+    return { ok: false, error: 'Invalid entry.' }
+  }
+  const result = await run((viewerId) => signalsRepository.unmuteTarget(viewerId, { ...(profileId ? { profileId } : {}), ...(companyId ? { companyId } : {}) }), 'We could not unmute. Please try again.')
+  if (result.ok) revalidatePath('/settings/blocked')
+  return result
+}
+
 /** The X on a suggestion card: hidden for 180 days. */
 export async function dismissSuggestionAction(kind: string, targetId: string): Promise<SignalActionResult> {
   const parsedKind = z.enum(SUGGESTION_KINDS).safeParse(kind)

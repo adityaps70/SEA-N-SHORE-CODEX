@@ -23,6 +23,7 @@ import { normalizeUsername, usernameSchema } from './username'
 import { checkUsernameAvailabilityFromAurora, suggestAvailableUsernameFromAurora } from './username-availability'
 import type { ZodError } from 'zod'
 import { plainFieldErrors } from '@/lib/validation/plain-messages'
+import { refreshPeopleSuggestionsQuietly } from '@/features/ranking/people-refresh'
 
 export type OnboardingFormValues = {
   profileType?: ProfileType
@@ -233,6 +234,8 @@ export async function completeOnboarding(
     })
   }
 
+  // Round G (G2): a new member gets People you may know straight away, not after the nightly run.
+  await refreshPeopleSuggestionsQuietly(user.id)
   redirect(await homeOrReturnPath())
 }
 

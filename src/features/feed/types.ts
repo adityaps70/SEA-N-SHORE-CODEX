@@ -255,6 +255,22 @@ export type FeedPost = {
   /** The viewer administers the post's group and may remove the post from it (round 9B). */
   viewerCanModerateGroup?: boolean
   comments: FeedComment[]
+  /**
+   * Round G: false when `comments` is only a preview (the top 2 comments) and the rest load on
+   * demand; absent or true when every comment is loaded.
+   */
+  commentsComplete?: boolean
+  /** Round G "Top for you": why the post is shown, and the collapsed reposts label. */
+  rank?: FeedPostRank | null
+}
+
+export type FeedPostRank = {
+  /** One or two plain lines for "Why am I seeing this?". */
+  reasons: string[]
+  /** "<name> and N others reposted" when several reposts collapsed into this card. */
+  repostedBy: { actorName: string; others: number } | null
+  /** Admin-only ?rankdebug=1 data: the score and its parts. */
+  debug?: { version: string; score: number; parts: Record<string, number> } | null
 }
 
 export type RecentlyDeletedPost = {
@@ -282,6 +298,32 @@ export type HiddenPost = {
 export type FeedPage = {
   posts: FeedPost[]
   nextCursor: FeedCursor | null
+  /** Round G: present on "Top for you" pages. */
+  top?: TopFeedState
+  /** Round G: present on Recent pages of the home feed. */
+  recent?: RecentFeedState
+}
+
+export type FeedMode = 'top' | 'recent'
+
+/** Where a "Top for you" visit is: its snapshot, the next position, and what the end looks like. */
+export type TopFeedState = {
+  sessionId: string
+  visitId: string
+  /** Next position in the snapshot, or null when the member has seen everything there is. */
+  nextPosition: number | null
+  stage: 'ranked' | 'wider' | 'explore' | 'caught_up'
+  /** True once nothing unseen is left: show "You're all caught up". */
+  caughtUp: boolean
+  /** Few connections or no engagement yet: the feed shows the "improve your feed" card. */
+  coldStart: boolean
+  /** When the snapshot was built; "N new posts" counts unseen posts after it. */
+  snapshotAt: string
+}
+
+export type RecentFeedState = {
+  /** The first post at or before the member's previous visit: the "New since your last visit" divider goes above it. */
+  dividerBeforePostId: string | null
 }
 
 /**

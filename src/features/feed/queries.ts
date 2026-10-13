@@ -9,13 +9,34 @@ import { postPermissions } from './post-permissions'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
-import type { CursorPage, FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
+import { feedPreferences, type createFeedPreferences } from './preferences'
+import { rankingSwitches } from '@/features/ranking/switches'
+import { incrementRankingMetric } from '@/features/signals/repository'
+import { topFeed, type createTopFeed } from '@/features/ranking/top-feed'
+import type { CursorPage, FeedComment, FeedCursor, FeedMode, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
 type GetPreferredAuthorIds = () => Promise<Iterable<string>>
 type ListAdministeredGroupIds = (viewerId: string) => Promise<string[]>
+type TopFeed = ReturnType<typeof createTopFeed>
+type FeedPreferences = ReturnType<typeof createFeedPreferences>
+type RankingGate = { isEnabled(area: 'feed', profileId: string): Promise<boolean>; isAdministrator(profileId: string): Promise<boolean> }
+
+/** Round G: feed pages show the top 2 comments of each post; the rest load on demand. */
+export const FEED_COMMENT_PREVIEW = 2
+
+/**
+ * What Home shows: the old feed (switch off), or the member's mode. Top for you has no server page:
+ * it loads in the browser, so the page refresh after a reaction never builds a new snapshot.
+ */
+export type HomeFeed = { mode: 'v1'; page: FeedPage } | { mode: 'recent'; page: FeedPage } | { mode: 'top'; page: null }
+
+/** The original post of a repost, or the post itself: reposts of the same content collapse. */
+export function feedContentId(post: Pick<FeedPost, 'id' | 'repostOf'>) {
+  return post.repostOf?.id ?? post.id
+}
 
 export type CommentActivity = { post: FeedPost; viewerComments: FeedComment[] }
 
@@ -81,7 +102,13 @@ export function createFeedQueries(input: {
   loadAccessContext?: LoadAccessContext
   /** Community groups the viewer administers (round 9B); their posts get "Remove from group". */
   listAdministeredGroupIds?: ListAdministeredGroupIds
+  topFeed?: TopFeed
+  preferences?: FeedPreferences
+  ranking?: RankingGate
 }) {
+  const rankedFeed = input.topFeed ?? topFeed
+  const preferences = input.preferences ?? feedPreferences
+  const ranking: RankingGate = input.ranking ?? rankingSwitches
   const loadAccessContext = input.loadAccessContext ?? getAccessContext
   const listAdministeredGroupIds = input.listAdministeredGroupIds ?? communityRepository.listAdministeredGroupIds
 
@@ -116,14 +143,20 @@ export function createFeedQueries(input: {
     })
   }
 
-  async function hydratePosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
+  /**
+   * `commentPreview`: load only the top N comments of each post (feed pages, round G); the post says
+   * `commentsComplete: false` and the rest load on demand. Without it, every comment is loaded.
+   */
+  async function hydratePosts(rows: FeedPostRow[], viewerId: string, options: { commentPreview?: number } = {}): Promise<FeedPost[]> {
     if (!rows.length) return []
     const postIds = rows.map((row) => row.id)
     const sourceIds = repostSourceIds(rows)
     const allViewerStateIds = [...new Set([...postIds, ...sourceIds])]
     const [viewer, comments, repostSources] = await Promise.all([
       input.repository.getViewerState(viewerId, allViewerStateIds),
-      input.repository.getComments(postIds, viewerId),
+      options.commentPreview
+        ? input.repository.getCommentPreview(postIds, viewerId, options.commentPreview)
+        : input.repository.getComments(postIds, viewerId),
       sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
     ])
     const paths = [...new Set([
@@ -143,11 +176,16 @@ export function createFeedQueries(input: {
       commentsByPost.set(comment.post_id, existing)
     }
     const sourceById = new Map(repostSources.map((row) => [row.id, row] as const))
-    const posts = rows.map((row) => mapFeedPost({
-      ...row,
-      post_comments: commentsByPost.get(row.id) ?? [],
-      repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
-    }, viewer, signedUrls, viewerId))
+    const posts = rows.map((row) => {
+      const post = mapFeedPost({
+        ...row,
+        post_comments: commentsByPost.get(row.id) ?? [],
+        repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
+      }, viewer, signedUrls, viewerId)
+      if (!options.commentPreview) return post
+      const loaded = (commentsByPost.get(row.id) ?? []).filter((comment) => !comment.deleted_at).length
+      return { ...post, commentsComplete: loaded >= post.commentCount }
+    })
     return applyGroupModeration(await applyOrganizationPermissions(rows, posts, viewerId), viewerId)
   }
 
@@ -205,6 +243,109 @@ export function createFeedQueries(input: {
       (row) => Boolean(row.viewer_follows_organization),
     )
     return { posts: await hydratePosts(displayRows, user.id), nextCursor }
+  }
+
+  /**
+   * Round G: one page of "Top for you". No session: a new visit (reload / refresh) and a new snapshot
+   * without anything seen so far. The posts are re-checked against every feed rule when loaded.
+   */
+  async function getTopFeedPage(request: { sessionId?: string; position?: number; debug?: boolean } = {}): Promise<FeedPage> {
+    const user = await input.requireUser()
+    const result = await rankedFeed.page({
+      viewerId: user.id,
+      ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      ...(request.position !== undefined ? { position: request.position } : {}),
+    })
+    const rows = await input.repository.listRowsByIds(user.id, result.postIds)
+    const byId = new Map(rows.map((row) => [row.id, row] as const))
+    const ordered = result.postIds.flatMap((id) => {
+      const row = byId.get(id)
+      return row ? [row] : []
+    })
+    const showDebug = Boolean(request.debug) && await ranking.isAdministrator(user.id)
+    const posts = (await hydratePosts(ordered, user.id, { commentPreview: FEED_COMMENT_PREVIEW })).map((post) => {
+      const meta = result.session.meta.entries[post.id]
+      if (!meta) return post
+      return {
+        ...post,
+        rank: {
+          reasons: meta.reasons,
+          repostedBy: meta.repostedBy,
+          debug: showDebug && meta.debug ? { version: result.session.meta.version, ...meta.debug } : null,
+        },
+      }
+    })
+    if (request.position === undefined) void incrementRankingMetric('feed.top_pages')
+    return {
+      posts,
+      nextCursor: null,
+      top: {
+        sessionId: result.session.id,
+        visitId: result.session.visitId,
+        nextPosition: result.nextPosition,
+        stage: result.session.stage,
+        caughtUp: result.caughtUp,
+        coldStart: result.session.meta.coldStart,
+        snapshotAt: result.session.createdAt.toISOString(),
+      },
+    }
+  }
+
+  /**
+   * Round G: Recent stays a true newest-first timeline (so it can show posts already seen), with
+   * mutes applied, reposts of the same content collapsed, and the "New since your last visit" divider.
+   */
+  async function getRecentFeedPage(request: FeedRequest = {}): Promise<FeedPage> {
+    const parsed = feedRequestSchema.parse(request)
+    const user = await input.requireUser()
+    const rows = await input.repository.listFeedRows({
+      viewerProfileId: user.id,
+      ...(parsed.category ? { category: parsed.category } : {}),
+      ...(parsed.cursor ? { cursor: parsed.cursor } : {}),
+      limit: parsed.limit + 1,
+      applyMutes: true,
+    })
+    const hasMore = rows.length > parsed.limit
+    const pageRows = rows.slice(0, parsed.limit)
+    const nextCursor = feedNextCursor(pageRows, hasMore)
+    const seenContent = new Set<string>()
+    const uniqueRows = pageRows.filter((row) => {
+      const contentId = row.repost_of_post_id ?? row.id
+      if (seenContent.has(contentId)) return false
+      seenContent.add(contentId)
+      return true
+    })
+    const posts = await hydratePosts(uniqueRows, user.id, { commentPreview: FEED_COMMENT_PREVIEW })
+    let dividerBeforePostId: string | null = null
+    if (!parsed.cursor) {
+      const previousVisit = await preferences.touchVisit(user.id).catch(() => null)
+      if (previousVisit) {
+        const index = posts.findIndex((post) => new Date(post.createdAt).getTime() <= previousVisit.getTime())
+        dividerBeforePostId = index > 0 ? posts[index]!.id : null
+      }
+      void incrementRankingMetric('feed.recent_pages')
+    }
+    return { posts, nextCursor, recent: { dividerBeforePostId } }
+  }
+
+  /**
+   * Home: the old feed when the feed switch is off for this member (v1), otherwise their chosen mode
+   * (Top for you by default). A category filter always shows newest first.
+   */
+  async function getHomeFeed(request: { category?: FeedRequest['category'] } = {}): Promise<HomeFeed> {
+    const user = await input.requireUser()
+    const enabled = await ranking.isEnabled('feed', user.id)
+    if (!enabled) return { mode: 'v1', page: await getFeedPage(request.category ? { category: request.category } : {}) }
+    if (request.category) return { mode: 'recent', page: await getRecentFeedPage({ category: request.category }) }
+    const preference = await preferences.get(user.id).catch(() => ({ mode: null }))
+    const mode: FeedMode = preference.mode ?? 'top'
+    return mode === 'top' ? { mode, page: null } : { mode, page: await getRecentFeedPage({}) }
+  }
+
+  /** Every comment of one post (the "View all comments" on a feed card). */
+  async function getAllPostComments(postId: string): Promise<FeedComment[] | null> {
+    const post = await getPostById(postId)
+    return post ? post.comments : null
   }
 
   /** Organizations the signed-in member may publish posts for ("Post as"). */
@@ -327,7 +468,7 @@ export function createFeedQueries(input: {
     return await input.repository.postExists(id) ? { kind: 'members_only' } : { kind: 'missing' }
   }
 
-  return { getFeedPage, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyHiddenPosts, getMyCommentActivity, getPostById, getPostPage }
+  return { getFeedPage, getTopFeedPage, getRecentFeedPage, getHomeFeed, getAllPostComments, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyHiddenPosts, getMyCommentActivity, getPostById, getPostPage }
 }
 
 const productionQueries = createFeedQueries({
@@ -338,6 +479,10 @@ const productionQueries = createFeedQueries({
 })
 
 export const getFeedPage = productionQueries.getFeedPage
+export const getTopFeedPage = productionQueries.getTopFeedPage
+export const getRecentFeedPage = productionQueries.getRecentFeedPage
+export const getHomeFeed = productionQueries.getHomeFeed
+export const getAllPostComments = productionQueries.getAllPostComments
 export const getPostingOrganizations = productionQueries.getPostingOrganizations
 export const getSavedPosts = productionQueries.getSavedPosts
 export const getPostsByAuthor = productionQueries.getPostsByAuthor

@@ -3,7 +3,7 @@
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { NetworkProfile } from '../types'
 import { ConnectionPrimaryAction } from './connection-primary-action'
@@ -20,10 +20,16 @@ function initials(name: string) {
 export function PeopleYouMayKnow({
   profiles,
   excludeProfileId,
+  title = 'People you may know',
+  emptyState = true,
 }: {
   profiles: NetworkProfile[]
   /** The profile on screen (a member's page), which should not suggest itself. */
   excludeProfileId?: string
+  /** Round G: the same card lists "People similar to <name>" on a member's profile. */
+  title?: string
+  /** Lists other than People you may know render nothing when empty. */
+  emptyState?: boolean
 }) {
   const candidates = useMemo(
     () => (excludeProfileId ? profiles.filter((profile) => profile.id !== excludeProfileId) : profiles),
@@ -32,14 +38,15 @@ export function PeopleYouMayKnow({
   const deck = useSuggestionDeck(candidates)
   const containerRef = useFocusReplacement(deck)
   const visibleProfiles = deck.remaining.slice(0, PEOPLE_RAIL_VISIBLE)
+  if (!visibleProfiles.length && !emptyState) return null
 
   return (
     <Card className="border border-mist-100 p-4">
       <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Professional network</p>
-      <h2 className="mt-1 text-lg font-semibold text-navy-950">People you may know</h2>
+      <h2 className="mt-1 text-lg font-semibold text-navy-950">{title}</h2>
       <div ref={containerRef}>
         {visibleProfiles.length ? (
-          <ul aria-label="People you may know" className="mt-3 divide-y divide-mist-100">
+          <ul aria-label={title} className="mt-3 divide-y divide-mist-100">
             {visibleProfiles.map((profile) => {
               const identityLine = profile.summary ?? profile.headline ?? ([profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional')
               const profileInitials = (
@@ -56,7 +63,16 @@ export function PeopleYouMayKnow({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-navy-950">{profile.fullName}</p>
                       <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted">{identityLine}</p>
+                      {profile.suggestionReason ? <p className="mt-0.5 truncate text-xs font-medium text-ocean-700">{profile.suggestionReason}</p> : null}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => deck.dismiss(profile)}
+                      aria-label={`Dismiss ${profile.fullName} suggestion`}
+                      className="-mr-1 -mt-1 grid size-9 shrink-0 place-items-center rounded-full text-muted hover:bg-mist-50 hover:text-navy-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+                    >
+                      <X aria-hidden="true" className="size-4" />
+                    </button>
                   </div>
                   <div className="mt-2 ml-14 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <ConnectionPrimaryAction
