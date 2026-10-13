@@ -7,6 +7,7 @@ import { jobMatchDisplay } from '../match-display'
 import { evaluateApplyGate } from '../apply-gate'
 import { ApplyJobButton } from './apply-job-button'
 import { JobCompanyLogo } from './job-company-identity'
+import { NotInterestedButton } from './not-interested'
 import { SaveJobButton } from './save-job-button'
 
 function formatDate(value: string | null, prefix: string) {
@@ -31,11 +32,14 @@ function formatSalary(job: JobListing) {
 export function JobCard({
   job,
   match = null,
+  gateMatch,
   isSaved = false,
   alreadyApplied = false,
 }: {
   job: JobListing
   match?: JobMatchResult | null
+  /** Round G: the round-12 match the apply gate uses when `match` is matching v2. */
+  gateMatch?: JobMatchResult | null
   isSaved?: boolean
   alreadyApplied?: boolean
 }) {
@@ -44,7 +48,8 @@ export function JobCard({
   const joining = formatDate(job.joiningFrom, 'Joining')
   // Round 12: no badge for no match or below 40%; banded labels from 40%.
   const display = jobMatchDisplay(match)
-  const gate = match ? evaluateApplyGate(job, match) : undefined
+  const gateSource = gateMatch === undefined ? match : gateMatch
+  const gate = gateSource ? evaluateApplyGate(job, gateSource) : undefined
   const strongestReason = match?.reasons[0] ?? null
   const warning = match?.missingRequirements[0] ?? match?.warnings[0] ?? null
   const chips = [job.rank, job.department, job.domain === 'sea' ? job.vesselTypes[0] : null]
@@ -137,15 +142,19 @@ export function JobCard({
         <div data-job-match className="mt-4 border-t border-mist-100 pt-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-bold text-ocean-700">Your match</span>
-            <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-black text-white">{display.text}</span>
+            {display.ineligible ? null : <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-black text-white">{display.text}</span>}
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist-100">
-            <div
-              className="h-full rounded-full bg-teal-400"
-              style={{ width: `${Math.max(0, Math.min(100, display.score))}%` }}
-            />
-          </div>
-          {strongestReason ? (
+          {display.showPercent ? (
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist-100">
+              <div
+                className="h-full rounded-full bg-teal-400"
+                style={{ width: `${Math.max(0, Math.min(100, display.score))}%` }}
+              />
+            </div>
+          ) : null}
+          {display.ineligible ? (
+            <p data-job-ineligible className="mt-2 text-xs font-semibold text-amber-800">{display.ineligible}</p>
+          ) : strongestReason ? (
             <p className="mt-2 line-clamp-1 text-xs font-medium text-ink">{strongestReason}</p>
           ) : warning ? (
             <p className="mt-2 line-clamp-1 text-xs font-medium text-amber-800">Gap: {warning}</p>
@@ -169,6 +178,7 @@ export function JobCard({
           </Link>
         )}
         <SaveJobButton jobId={job.id} initialSaved={isSaved} compact />
+        <NotInterestedButton jobId={job.id} jobTitle={job.title} />
       </div>
     </Card>
   )

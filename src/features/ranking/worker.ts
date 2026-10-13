@@ -2,6 +2,8 @@ import { query } from '@/lib/db/client'
 import { runTaxonomyBackfill } from '@/features/taxonomy/backfill'
 import { purgeExpiredSignals } from '@/features/signals/retention'
 import { createPeopleSweep } from './people-sweep'
+import { createJobAlertSweep } from './job-alerts'
+import { createRankingEmailSweep } from './ranking-email-sending'
 
 /**
  * Round G: the ranking jobs, run from the existing outbox worker loop (scripts/workers/publish-outbox.ts)
@@ -11,6 +13,8 @@ import { createPeopleSweep } from './people-sweep'
 type Sweep = {
   name: string
   everyMs: number
+  /** A table the sweep needs (a later migration); until it exists the sweep waits quietly. */
+  requiresTable?: string
   /** A result is logged; undefined means "nothing worth logging" (a sweep part-way through its run). */
   run(): Promise<Record<string, unknown> | void | undefined>
 }
@@ -20,7 +24,11 @@ export const TAXONOMY_BACKFILL_SWEEP_MS = 24 * 60 * 60 * 1000
 
 /** True once migration 0083 is applied; until then the sweeps wait quietly. */
 async function roundGSchemaReady() {
-  const rows = await query(`select to_regclass('public.ranking_settings') is not null as ready`)
+  return tableExists('ranking_settings')
+}
+
+async function tableExists(table: string) {
+  const rows = await query(`select to_regclass($1) is not null as ready`, [`public.${table}`])
   return rows[0]?.ready === true
 }
 
@@ -29,6 +37,7 @@ export function createRankingSweeps(input: {
   now?: () => number
   log?: (tag: string, data: unknown) => void
   schemaReady?: () => Promise<boolean>
+  tableReady?: (table: string) => Promise<boolean>
 } = {}) {
   const now = input.now ?? Date.now
   const log = input.log ?? ((tag, data) => console.info(tag, data))
@@ -37,11 +46,25 @@ export function createRankingSweeps(input: {
     { name: 'taxonomy_backfill', everyMs: TAXONOMY_BACKFILL_SWEEP_MS, run: () => runTaxonomyBackfill() },
     // Nightly People you may know (02:00 IST), 25 members per loop pass; it keeps its own schedule.
     createPeopleSweep(),
+    // Release 2 (migration 0085): job alerts are queued from 02:00 UTC, and the queue is sent every minute.
+    createJobAlertSweep(),
+    createRankingEmailSweep(),
   ]
   const nextAt = new Map<string, number>()
   const schemaReady = input.schemaReady ?? roundGSchemaReady
+  const tableReady = input.tableReady ?? tableExists
+  const tables = new Map<string, { ready: boolean; checkedAt: number }>()
   let readyCheckedAt = -Infinity
   let ready = false
+
+  async function hasTable(table: string) {
+    const known = tables.get(table)
+    if (known?.ready) return true
+    if (known && now() - known.checkedAt < 10 * 60 * 1000) return false
+    const found = await tableReady(table).catch(() => false)
+    tables.set(table, { ready: found, checkedAt: now() })
+    return found
+  }
 
   async function runDue() {
     if (!ready && now() - readyCheckedAt >= 10 * 60 * 1000) {
@@ -52,6 +75,7 @@ export function createRankingSweeps(input: {
     for (const sweep of sweeps) {
       const current = now()
       if (current < (nextAt.get(sweep.name) ?? 0)) continue
+      if (sweep.requiresTable && !await hasTable(sweep.requiresTable)) continue
       nextAt.set(sweep.name, current + sweep.everyMs)
       try {
         const result = await sweep.run()

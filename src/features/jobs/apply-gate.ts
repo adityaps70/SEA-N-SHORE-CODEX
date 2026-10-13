@@ -9,6 +9,7 @@ export const PROFILE_GAP_EDITORS: Record<JobProfileGapKey, string> = {
   sea_time: 'profile-maritime',
   vessel_types: 'profile-maritime',
   certificates: 'credential:new',
+  availability: 'profile-maritime',
 }
 
 /** Cards a link may open on My Profile, with the label the discard prompt uses. */

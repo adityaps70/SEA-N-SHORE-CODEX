@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { jobMatchDisplay } from '@/features/jobs/match-display'
+import { isRankingEnabled } from '@/features/ranking/switches'
 import { FileText, IdCard, Target } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
@@ -58,7 +59,8 @@ export default async function HiringApplicantReviewPage({
   const cvProblem = firstValue(query.cv)
 
   const user = await requireAwsUser()
-  const review = await hiringRepository.getApplicationReview(user.id, applicationId)
+  const v2 = await isRankingEnabled('jobs', user.id).catch(() => false)
+  const review = await hiringRepository.getApplicationReview(user.id, applicationId, { matching: v2 ? 'v2' : 'v1' })
   if (!review) notFound()
 
   const candidate = review.candidate
@@ -145,8 +147,8 @@ export default async function HiringApplicantReviewPage({
               <div className="rounded-2xl bg-navy-950 px-5 py-4 text-white max-md:hidden sm:text-right">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/60">Match</p>
                 {/* Round 12: the same numbers and labels the candidate sees. */}
-                {matchDisplay && matchDisplay.band !== 'low' ? <p className="mt-1 text-4xl font-black">{matchDisplay.score}%</p> : <p className="mt-1 text-2xl font-black">{matchDisplay ? matchDisplay.label : 'Not scored'}</p>}
-                <p className="mt-1 text-xs text-white/65">{matchDisplay && matchDisplay.band !== 'low' ? matchDisplay.label : 'Structured maritime fit'}</p>
+                {matchDisplay?.ineligible ? <p className="mt-1 text-xl font-black">{matchDisplay.ineligible}</p> : matchDisplay && matchDisplay.band !== 'low' && matchDisplay.showPercent ? <p className="mt-1 text-4xl font-black">{matchDisplay.score}%</p> : <p className="mt-1 text-2xl font-black">{matchDisplay ? matchDisplay.label : 'Not scored'}</p>}
+                <p className="mt-1 text-xs text-white/65">{matchDisplay && matchDisplay.band !== 'low' && matchDisplay.showPercent ? matchDisplay.label : 'Structured maritime fit'}</p>
               </div>
             </div>
 

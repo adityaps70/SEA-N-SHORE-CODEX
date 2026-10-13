@@ -40,6 +40,32 @@ The review page combines the applicant professional profile, the full vacancy, d
 
 Use the existing Sea N Shore app shell and premium Jobs visual language: navy/off-white surfaces, restrained teal accents, rounded cards, high information density without clutter, mobile-first responsive layouts, clear trust indicators and no LinkedIn-blue imitation.
 
+## Round G: match v2, Jobs for you, job alerts and suggested candidates (13 October 2026)
+
+> Added by algorithms round G (G3). Behind `ranking_settings.jobs` and `ranking_settings.job_alerts`. Off restores the
+> round-12 behaviour within 30 s, with no deploy.
+
+- **Match v2** (`src/features/ranking/job-scorer.ts`, weights in `job-weights.ts`):
+  - Only the criteria a job specifies count, and the score is scaled for how specific the job is.
+  - Matches show as Strong, Good or Partial, with no percentage.
+  - A rank more than one step away or in another department, a missing or expired required COC, or a missing
+    required visa makes the job "Not eligible: needs X". Such jobs are listed below every eligible job, never hidden.
+- **Apply gate**: the employer's minimum-match gate keeps the round-12 score, which the server enforces. A job that
+  gate refuses shows as "Not eligible: below this job's minimum match". Alerts and the digest leave it out.
+- **Jobs for you**:
+  - A SQL prefilter scores up to 300 open jobs, ranked by match × freshness, 20 per page.
+  - Applied jobs move to an "Applied" section.
+  - "Not interested" (with Undo) hides a job for 180 days.
+- **Applicant pipeline**: applicants sort by Best match (the default; eligible first) or Newest, with reason chips.
+- **Suggested candidates**: lists only members who turned on "Let recruiters find me as open to work". They are scored
+  without their visas, and no contact details are shown.
+- **Job alerts**:
+  - Daily or weekly (Monday) emails from 02:00 UTC, with at most 10 new eligible matches; no email when nothing is new.
+  - Each job is sent once per alert, and an in-app `job_alert_match` notification is added.
+  - Sent through the existing email client with suppression, a "Job alerts" topic and one-click unsubscribe.
+
+See `docs/superpowers/plans/2026-10-13-algorithms-round-g.md` (Release 2, PR 3).
+
 ## Non-goals for this slice
 
 No ML/vector recommendation engine, messaging system, calendar interview scheduling, payment flow, ATS integration, or platform-admin verification console. Those can layer on later after the core Hiring workflow is proven.

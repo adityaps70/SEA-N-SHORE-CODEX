@@ -37,6 +37,7 @@ const copyByType: Record<NetworkNotificationType, string> = {
   learning_certificate_expiring: 'your certificate expires soon',
   learning_announcement: 'posted a course announcement',
   learning_session_reminder: 'your live session starts soon',
+  job_alert_match: 'new jobs match your job alert',
 }
 
 function learningCopy(row: NotificationRow) {
@@ -46,6 +47,15 @@ function learningCopy(row: NotificationRow) {
 }
 
 const EVENT_CANCELLED_MESSAGE = 'An event you registered for was cancelled because its organiser left Sea N Shore. Paid tickets are refunded in full.'
+/** Round G (G3): "3 new jobs match your alert “Second Officer tankers”." */
+export function jobAlertMatchMessage(details: unknown) {
+  const value = (details && typeof details === 'object' ? details : {}) as { alertName?: unknown; count?: unknown }
+  const count = typeof value.count === 'number' && value.count > 0 ? value.count : null
+  const name = typeof value.alertName === 'string' && value.alertName.trim() ? value.alertName.trim() : null
+  const jobs = count === null ? 'New jobs match' : `${count} new job${count === 1 ? '' : 's'} match${count === 1 ? 'es' : ''}`
+  return name ? `${jobs} your alert “${name}”.` : `${jobs} one of your job alerts.`
+}
+
 export const PLAN_TRIAL_ENDING_MESSAGE = 'Your free Pro trial ends soon. Choose a plan to keep it — the first payment is only taken on the day the trial ends.'
 
 type NotificationRepository = Pick<ReturnType<typeof createNotificationRepository>, 'listRecent' | 'countUnread'>
@@ -135,6 +145,7 @@ function destinationFor(row: NotificationRow, actor: ProfileSummary | null, tagg
   if (row.notification_type === 'connection_request') return '/network?tab=requests'
   if (row.notification_type === 'event_cancelled') return '/events/my'
   if (row.notification_type === 'plan_trial_ending') return '/settings/billing'
+  if (row.notification_type === 'job_alert_match') return '/jobs/alerts'
   if (row.notification_type === 'group_join_request') return row.group_slug ? `/community/${row.group_slug}?tab=members&requests=1` : '/community'
   if (row.notification_type === 'group_join_approved') return row.group_slug ? `/community/${row.group_slug}` : '/community'
   if (row.notification_type === 'organization_member_left') return row.company_slug ? `/organizations/${row.company_slug}/manage` : '/organizations'
@@ -170,6 +181,8 @@ function mapNotifications(
         ? EVENT_CANCELLED_MESSAGE
         : row.notification_type === 'plan_trial_ending'
           ? PLAN_TRIAL_ENDING_MESSAGE
+          : row.notification_type === 'job_alert_match'
+            ? jobAlertMatchMessage(row.details)
           : learningKindOf(row.notification_type)
             ? learningCopy(row)?.message ?? 'There is news about one of your courses.'
             : `${actorName} ${socialCopy(row)}.`,

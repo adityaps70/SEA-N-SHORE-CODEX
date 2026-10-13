@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
-import { Compass, Gauge, Ship, ShipWheel, Waves, type LucideIcon } from 'lucide-react'
+import { CalendarClock, Compass, Gauge, Ship, ShipWheel, Waves, type LucideIcon } from 'lucide-react'
 import { updateProfileProfessionalSection, type ProfileInlineActionState } from '../profile-inline-actions'
 import type { PublicProfile } from '../types'
 import { ProfileCardFieldError, ProfileCardForm, profileCardInputClass, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
@@ -69,6 +69,12 @@ function MaritimeProfileEditor({
           <input name="tradingAreas" maxLength={2000} defaultValue={profile.tradingAreas.join(', ')} className={inputClass} />
           <ProfileCardFieldError fieldErrors={state.fieldErrors} name="tradingAreas" />
         </label>
+        <label className={labelClass}>
+          Available from (optional)
+          <input name="availableFrom" type="date" defaultValue={profile.availableFrom ?? ''} aria-describedby="available-from-help" className={inputClass} />
+          <span id="available-from-help" className="text-xs font-normal text-muted">Shown on your profile and compared with job joining dates.</span>
+          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="availableFrom" />
+        </label>
         <label className="flex min-h-10 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
           <input name="shoreCareerPreference" type="checkbox" defaultChecked={profile.shoreCareerPreference} />
           Interested in shore opportunities
@@ -95,6 +101,9 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
       : null,
     profile.tradingAreas.length
       ? { label: 'Trading areas', value: profile.tradingAreas.join(' · '), icon: Compass }
+      : null,
+    profile.availableFrom
+      ? { label: 'Available from', value: new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${profile.availableFrom}T00:00:00Z`)), icon: CalendarClock }
       : null,
   ].filter((detail): detail is Detail => Boolean(detail))
 

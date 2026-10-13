@@ -41,6 +41,8 @@ export type NetworkNotificationType =
   | 'learning_announcement'
   /** Learning round D: a live session of the recipient's batch starts in a day or an hour. */
   | 'learning_session_reminder'
+  /** Algorithms round G (G3): new jobs matched one of the recipient's job alerts. No actor; details name the alert. */
+  | 'job_alert_match'
 
 export type NotificationActor = {
   id: string

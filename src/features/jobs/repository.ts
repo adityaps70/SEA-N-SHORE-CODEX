@@ -60,6 +60,9 @@ type JobRow = QueryResultRow & {
   accepted_role_keys?: string[] | null
   role_other_text?: string | null
   min_match_to_apply?: string | number | null
+  vessel_type_codes?: string[] | null
+  certificate_list?: Array<{ name: string; code: string | null; required: boolean }> | null
+  visa_list?: Array<{ name: string; required: boolean }> | null
 }
 
 type ApplicationEventRow = {
@@ -102,8 +105,12 @@ type CandidateRow = QueryResultRow & {
   availability: string | null
   shore_career_preference: boolean | null
   skills: string[] | null
-  credentials: Array<{ name: string; expires_at: string | null; verified: boolean }> | null
+  credentials: Array<{ name: string; expires_at: string | null; verified: boolean; code?: string | null }> | null
   visas: string[] | null
+  location?: string | null
+  available_from?: string | Date | null
+  vessel_type_codes?: string[] | null
+  experiences?: Array<{ track: string; rank_code: string | null; vessel_type_code: string | null; started_on: string | null; ended_on: string | null }> | null
 }
 
 type AlertRow = QueryResultRow & {
@@ -184,6 +191,9 @@ function mapJob(row: JobRow): JobListing {
     acceptedRoleKeys: Array.isArray(row.accepted_role_keys) ? row.accepted_role_keys : [],
     roleOtherText: row.role_other_text ?? null,
     minMatchToApply: minMatchValue(row.min_match_to_apply),
+    vesselTypeCodes: Array.isArray(row.vessel_type_codes) ? row.vessel_type_codes : [],
+    ...(Array.isArray(row.certificate_list) ? { certificateList: row.certificate_list.map((item) => ({ name: item.name, code: item.code ?? null, required: item.required !== false })) } : {}),
+    ...(Array.isArray(row.visa_list) ? { visaList: row.visa_list.map((item) => ({ name: item.name, required: item.required !== false })) } : {}),
   }
 }
 
@@ -282,7 +292,19 @@ const JOB_COLUMNS = `
       select array_agg(v.visa_name order by v.visa_name)
       from public.job_visa_requirements v
       where v.job_id = j.id and v.required = true
-    ), '{}'::text[]) as visa_requirements
+    ), '{}'::text[]) as visa_requirements,
+    j.vessel_type_codes,
+    coalesce((
+      select json_agg(json_build_object('name', r.certificate_name, 'code', r.certificate_type_code, 'required', r.required)
+                      order by r.required desc, r.certificate_name)
+      from public.job_certificate_requirements r
+      where r.job_id = j.id
+    ), '[]'::json) as certificate_list,
+    coalesce((
+      select json_agg(json_build_object('name', v.visa_name, 'required', v.required) order by v.required desc, v.visa_name)
+      from public.job_visa_requirements v
+      where v.job_id = j.id
+    ), '[]'::json) as visa_list
 ` as const
 
 const JOB_FROM = `
@@ -322,6 +344,110 @@ function normalizeLower(values: readonly string[]) {
   return values.map((value) => value.toLocaleLowerCase())
 }
 
+/** Round G (G3): matching v2 inputs for a candidate (`p` profiles, `mp` maritime_profiles). */
+export const CANDIDATE_V2_COLUMNS = `p.location,
+         mp.available_from,
+         mp.vessel_type_codes,
+         coalesce((
+           select json_agg(json_build_object(
+             'track', pe.track, 'rank_code', pe.rank_code, 'vessel_type_code', pe.vessel_type_code,
+             'started_on', pe.started_on, 'ended_on', case when pe.is_current then null else pe.ended_on end
+           ) order by pe.started_on desc nulls last)
+           from public.profile_experiences pe
+           where pe.profile_id = p.id
+         ), '[]'::json) as experiences`
+
+export function mapCandidateV2(row: Pick<CandidateRow, 'location' | 'available_from' | 'vessel_type_codes' | 'experiences'>) {
+  return {
+    location: row.location ?? null,
+    availableFrom: dateOnlyValue(row.available_from ?? null),
+    vesselTypeCodes: Array.isArray(row.vessel_type_codes) ? row.vessel_type_codes : [],
+    experiences: Array.isArray(row.experiences)
+      ? row.experiences.map((experience) => ({
+          track: experience.track,
+          rankCode: experience.rank_code ?? null,
+          vesselTypeCode: experience.vessel_type_code ?? null,
+          startedOn: experience.started_on ? String(experience.started_on).slice(0, 10) : null,
+          endedOn: experience.ended_on ? String(experience.ended_on).slice(0, 10) : null,
+        }))
+      : [],
+  }
+}
+
+/** Everything the job match reads about a candidate (`p` profiles, `mp` maritime_profiles). */
+export const CANDIDATE_PROFILE_COLUMNS = `
+         ${matchPersonaSql('p')} as persona,
+         p.role_key,
+         p.role_other_text,
+         p.cadet_stage_key,
+         p.target_role_key,
+         p.headline,
+         p.occupation_text,
+         coalesce((
+           select array_agg(pe.title order by pe.sort_order, pe.title)
+           from public.profile_experiences pe
+           where pe.profile_id = p.id and pe.track in ('shore_role', 'other_maritime')
+         ), '{}'::text[]) as experience_titles,
+         mp.rank,
+         mp.sailing_experience_years,
+         mp.vessel_types,
+         mp.trading_areas,
+         mp.availability,
+         mp.shore_career_preference,
+         coalesce((
+           select array_agg(ps.skill order by ps.skill)
+           from public.profile_skills ps
+           where ps.user_id = p.id
+         ), '{}'::text[]) as skills,
+         ${candidateCredentialsSql('p')} as credentials,
+         coalesce((
+           select array_agg(pv.visa_type order by pv.visa_type)
+           from public.profile_visas pv
+           where pv.profile_id = p.id
+             and pv.verification_state <> 'rejected'
+             and (pv.expires_on is null or pv.expires_on >= current_date)
+         ), '{}'::text[]) as visas,
+         ${CANDIDATE_V2_COLUMNS}`
+
+export function mapCandidateProfileRow(row: CandidateRow): JobCandidateProfile {
+  return {
+    persona: PERSONAS.find((persona) => persona === row.persona) ?? null,
+    roleKey: row.role_key ?? null,
+    roleOtherText: row.role_other_text ?? null,
+    cadetStageKey: row.cadet_stage_key ?? null,
+    targetRoleKey: row.target_role_key ?? null,
+    headline: row.headline ?? null,
+    occupationText: row.occupation_text ?? null,
+    experienceTitles: Array.isArray(row.experience_titles) ? row.experience_titles : [],
+    rank: row.rank ?? null,
+    sailingExperienceYears: numberOrNull(row.sailing_experience_years),
+    vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
+    tradingAreas: Array.isArray(row.trading_areas) ? row.trading_areas : [],
+    availability: row.availability ?? null,
+    shoreCareerPreference: Boolean(row.shore_career_preference),
+    skills: Array.isArray(row.skills) ? row.skills : [],
+    certificates: Array.isArray(row.credentials)
+      ? row.credentials.map((credential) => ({
+          name: credential.name,
+          expiresAt: credential.expires_at ?? null,
+          verified: Boolean(credential.verified),
+          code: credential.code ?? null,
+        }))
+      : [],
+    visas: Array.isArray(row.visas) ? row.visas : [],
+    ...mapCandidateV2(row),
+  }
+}
+
+export type { CandidateRow as JobCandidateRow }
+
+export type JobPoolOptions = {
+  viewerId: string
+  departmentKeys: string[]
+  rankBandKeys: string[]
+  vesselCodes: string[]
+}
+
 export function createJobsRepository(input: { query?: JobsQuery } = {}) {
   const queryRows: JobsQuery = input.query ?? ((text, values) => databaseQuery(text, values))
 
@@ -336,7 +462,12 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return rows.map(mapJob)
   }
 
-  async function searchJobs(filters: JobSearchFilters, limit = 60, offset = 0): Promise<JobListing[]> {
+  /**
+   * `pool` (round G, G3): the Jobs for you pool. Open jobs only (not past apply-by), without the
+   * member's "Not interested" jobs, ordered by the SQL prefilter (same department, then rank band,
+   * then vessel group, then newest) and capped at JOB_WEIGHTS.pool.maxScored for scoring in the app.
+   */
+  async function searchJobs(filters: JobSearchFilters, limit = 60, offset = 0, pool?: JobPoolOptions): Promise<JobListing[]> {
     const values: unknown[] = []
     const where: string[] = [OPEN_JOB_WHERE]
     const bind = (value: unknown) => {
@@ -401,7 +532,21 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       where.push(`coalesce(j.published_at, j.created_at) >= now() - (${bind(filters.postedWithinDays)}::int * interval '1 day')`)
     }
 
-    const orderBy = filters.sort === 'joining'
+    if (pool) {
+      where.push('(j.apply_until is null or j.apply_until >= current_date)')
+      where.push(`not exists (
+        select 1 from public.suggestion_dismissals sd
+        where sd.viewer_id = ${bind(pool.viewerId)}::uuid and sd.kind = 'job' and sd.target_id = j.id
+          and sd.created_at > now() - interval '180 days'
+      )`)
+    }
+
+    const orderBy = pool
+      ? `(j.department_key = any(${bind(pool.departmentKeys)}::text[])) desc nulls last,
+         (j.accepted_role_keys && ${bind(pool.rankBandKeys)}::text[]) desc nulls last,
+         (coalesce(j.vessel_type_codes, '{}'::text[]) && ${bind(pool.vesselCodes)}::text[]) desc,
+         coalesce(j.published_at, j.created_at) desc, j.id desc`
+      : filters.sort === 'joining'
       ? 'j.joining_from asc nulls last, coalesce(j.published_at, j.created_at) desc, j.id desc'
       : filters.sort === 'salary'
         ? 'coalesce(j.salary_max, j.salary_min) desc nulls last, coalesce(j.published_at, j.created_at) desc, j.id desc'
@@ -409,7 +554,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
           ? 'coalesce(j.published_at, j.created_at) desc, j.id desc'
           : 'j.urgent desc, coalesce(c.is_verified, false) desc, coalesce(j.published_at, j.created_at) desc, j.id desc'
 
-    const limitParam = bind(Math.min(Math.max(Math.trunc(limit), 1), 100))
+    const limitParam = bind(Math.min(Math.max(Math.trunc(limit), 1), pool ? 300 : 100))
     const offsetParam = bind(Math.max(Math.trunc(offset), 0))
     const rows = await queryRows(
       `${JOB_SELECT}
@@ -462,37 +607,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
   async function getCandidateProfile(profileId: string): Promise<JobCandidateProfile | null> {
     const rows = await queryRows(
       `select
-         ${matchPersonaSql('p')} as persona,
-         p.role_key,
-         p.role_other_text,
-         p.cadet_stage_key,
-         p.target_role_key,
-         p.headline,
-         p.occupation_text,
-         coalesce((
-           select array_agg(pe.title order by pe.sort_order, pe.title)
-           from public.profile_experiences pe
-           where pe.profile_id = p.id and pe.track in ('shore_role', 'other_maritime')
-         ), '{}'::text[]) as experience_titles,
-         mp.rank,
-         mp.sailing_experience_years,
-         mp.vessel_types,
-         mp.trading_areas,
-         mp.availability,
-         mp.shore_career_preference,
-         coalesce((
-           select array_agg(ps.skill order by ps.skill)
-           from public.profile_skills ps
-           where ps.user_id = p.id
-         ), '{}'::text[]) as skills,
-         ${candidateCredentialsSql('p')} as credentials,
-         coalesce((
-           select array_agg(pv.visa_type order by pv.visa_type)
-           from public.profile_visas pv
-           where pv.profile_id = p.id
-             and pv.verification_state <> 'rejected'
-             and (pv.expires_on is null or pv.expires_on >= current_date)
-         ), '{}'::text[]) as visas
+         ${CANDIDATE_PROFILE_COLUMNS}
        from public.profiles p
        left join public.maritime_profiles mp on mp.user_id = p.id
        where p.id = $1
@@ -502,32 +617,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       [profileId],
     ) as CandidateRow[]
     const row = rows[0]
-    if (!row) return null
-    return {
-      persona: PERSONAS.find((persona) => persona === row.persona) ?? null,
-      roleKey: row.role_key ?? null,
-      roleOtherText: row.role_other_text ?? null,
-      cadetStageKey: row.cadet_stage_key ?? null,
-      targetRoleKey: row.target_role_key ?? null,
-      headline: row.headline ?? null,
-      occupationText: row.occupation_text ?? null,
-      experienceTitles: Array.isArray(row.experience_titles) ? row.experience_titles : [],
-      rank: row.rank ?? null,
-      sailingExperienceYears: numberOrNull(row.sailing_experience_years),
-      vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
-      tradingAreas: Array.isArray(row.trading_areas) ? row.trading_areas : [],
-      availability: row.availability ?? null,
-      shoreCareerPreference: Boolean(row.shore_career_preference),
-      skills: Array.isArray(row.skills) ? row.skills : [],
-      certificates: Array.isArray(row.credentials)
-        ? row.credentials.map((credential) => ({
-            name: credential.name,
-            expiresAt: credential.expires_at ?? null,
-            verified: Boolean(credential.verified),
-          }))
-        : [],
-      visas: Array.isArray(row.visas) ? row.visas : [],
-    }
+    return row ? mapCandidateProfileRow(row) : null
   }
 
   async function listApplications(applicantId: string, limit?: number): Promise<JobApplication[]> {

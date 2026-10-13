@@ -1,12 +1,45 @@
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
+import { rankingSwitches } from '@/features/ranking/switches'
+import { compareRankedJobs } from '@/features/ranking/job-scorer'
+import { scoreJobForMember } from '@/features/ranking/job-match'
+import { JOB_WEIGHTS } from '@/features/ranking/job-weights'
+import { jobPoolOptions } from '@/features/ranking/job-pool'
 import { scoreJobMatch } from './matching'
 import { jobsRepository, type JobsRepository } from './repository'
 import { parseJobSearchParams } from './search'
+import type { JobCandidateProfile, JobListing, JobMatchResult } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type RawJobSearchParams = Record<string, string | string[] | undefined>
+type RankingSwitch = { isEnabled(area: 'jobs', profileId: string): Promise<boolean> }
 
-export function createJobsQueries(input: { requireUser: RequireUser; repository: JobsRepository }) {
+export type JobDiscoveryItem = {
+  job: JobListing
+  isSaved: boolean
+  alreadyApplied: boolean
+  /** What the member sees: matching v2 (bands, eligibility) when the jobs switch is on, else round 12. */
+  match: JobMatchResult | null
+  /** The round-12 match the Apply button's minimum-match gate is enforced with (same as the server). */
+  gateMatch?: JobMatchResult | null
+}
+
+const PAGE_SIZE = JOB_WEIGHTS.pool.pageSize
+
+function pageNumber(raw: string | string[] | undefined) {
+  const value = Number(Array.isArray(raw) ? raw[0] : raw)
+  return Number.isInteger(value) && value >= 1 && value <= 50 ? value : 1
+}
+
+export function createJobsQueries(input: { requireUser: RequireUser; repository: JobsRepository; ranking?: RankingSwitch }) {
+  const ranking: RankingSwitch = input.ranking ?? rankingSwitches
+
+  /** Matching v2 for display and ordering, with the round-12 match kept for the apply gate. */
+  function matchesFor(job: JobListing, profile: JobCandidateProfile | null, v2: boolean) {
+    if (!profile) return { match: null, gateMatch: null }
+    if (v2) return scoreJobForMember(job, profile)
+    const gateMatch = scoreJobMatch(job, profile)
+    return { match: gateMatch, gateMatch }
+  }
   async function getPublishedJobs() {
     await input.requireUser()
     return input.repository.listPublishedJobs(50)
@@ -20,6 +53,7 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
   async function getJobsDiscovery(rawParams: RawJobSearchParams) {
     const user = await input.requireUser()
     const filters = parseJobSearchParams(rawParams)
+    if (await ranking.isEnabled('jobs', user.id).catch(() => false)) return getJobsDiscoveryV2(user.id, filters, pageNumber(rawParams.page))
     const [jobs, profile] = await Promise.all([
       input.repository.searchJobs(filters, 60, 0),
       input.repository.getCandidateProfile(user.id),
@@ -31,11 +65,11 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
     ])
     const savedIds = new Set(savedIdsRaw)
     const appliedIds = new Set(appliedIdsRaw)
-    const items = jobs.map((job) => ({
+    const items: JobDiscoveryItem[] = jobs.map((job) => ({
       job,
       isSaved: savedIds.has(job.id),
       alreadyApplied: appliedIds.has(job.id),
-      match: profile ? scoreJobMatch(job, profile) : null,
+      ...matchesFor(job, profile, false),
     }))
 
     // "Best match" and For You order by the match score, jobs without a score (null) last.
@@ -49,7 +83,47 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
       })
     }
 
-    return { filters, items, profileReady: Boolean(profile) }
+    return { filters, items, profileReady: Boolean(profile), version: 1 as const, page: 1, hasMore: false, applied: [] as JobDiscoveryItem[] }
+  }
+
+  /**
+   * Round G (G3), behind ranking_settings.jobs. Recommended / Best match / For you: the SQL
+   * prefilter pool (up to 300), scored with matching v2, eligible first then match × freshness,
+   * applied jobs moved to an "Applied" section, "Not interested" jobs left out, 20 per page.
+   * Other sorts page in SQL. Search never hides a job for eligibility; it only orders it lower.
+   */
+  async function getJobsDiscoveryV2(userId: string, filters: ReturnType<typeof parseJobSearchParams>, page: number) {
+    const profile = await input.repository.getCandidateProfile(userId)
+    const ranked = filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you'
+    const jobs = ranked
+      ? await input.repository.searchJobs(filters, JOB_WEIGHTS.pool.maxScored, 0, jobPoolOptions(userId, profile))
+      : await input.repository.searchJobs(filters, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE)
+    const jobIds = jobs.map((job) => job.id)
+    const [savedIdsRaw, appliedIdsRaw] = await Promise.all([
+      input.repository.getSavedJobIds(userId, jobIds),
+      input.repository.getAppliedJobIds(userId, jobIds),
+    ])
+    const savedIds = new Set(savedIdsRaw)
+    const appliedIds = new Set(appliedIdsRaw)
+    const all: JobDiscoveryItem[] = jobs.map((job) => ({
+      job,
+      isSaved: savedIds.has(job.id),
+      alreadyApplied: appliedIds.has(job.id),
+      ...matchesFor(job, profile, true),
+    }))
+    const base = { filters, profileReady: Boolean(profile), version: 2 as const, page }
+    if (!ranked) {
+      return { ...base, items: all.slice(0, PAGE_SIZE), hasMore: all.length > PAGE_SIZE, applied: [] as JobDiscoveryItem[] }
+    }
+    const now = new Date()
+    const open = all.filter((item) => !item.alreadyApplied).sort((left, right) => compareRankedJobs(left, right, now))
+    const start = (page - 1) * PAGE_SIZE
+    return {
+      ...base,
+      items: open.slice(start, start + PAGE_SIZE),
+      hasMore: open.length > start + PAGE_SIZE,
+      applied: page === 1 ? all.filter((item) => item.alreadyApplied) : [],
+    }
   }
 
   async function getMyJobApplications() {
@@ -59,17 +133,20 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
 
   async function getJobDetailState(id: string) {
     const user = await input.requireUser()
-    const [job, alreadyApplied, isSaved, profile] = await Promise.all([
+    const [job, alreadyApplied, isSaved, profile, v2] = await Promise.all([
       input.repository.getPublishedJob(id),
       input.repository.hasApplied(id, user.id),
       input.repository.isJobSaved(id, user.id),
       input.repository.getCandidateProfile(user.id),
+      ranking.isEnabled('jobs', user.id).catch(() => false),
     ])
+    const matches = job ? matchesFor(job, profile, v2) : { match: null, gateMatch: null }
     return {
       job,
       alreadyApplied,
       isSaved,
-      match: job && profile ? scoreJobMatch(job, profile) : null,
+      match: matches.match,
+      gateMatch: matches.gateMatch,
       profileReady: Boolean(profile),
     }
   }

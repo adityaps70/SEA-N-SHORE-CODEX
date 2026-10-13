@@ -7,6 +7,7 @@ const routes = {
   learning: await import('./email/learning/unsubscribe/route'),
   newsletter: await import('./newsletter/unsubscribe/route'),
   test: await import('./email/legacy/test-unsubscribe/route'),
+  ranking: await import('./email/unsubscribe/route'),
 }
 
 /**
@@ -22,6 +23,7 @@ describe('one-click unsubscribe GET redirects', () => {
     ['learning', () => routes.learning.GET(new Request(`${internal}/api/email/learning/unsubscribe?token=abc`)), 'https://seanshore.in/email/learning/unsubscribe?token=abc'],
     ['newsletter', () => routes.newsletter.GET(new Request(`${internal}/api/newsletter/unsubscribe?token=abc`)), 'https://seanshore.in/newsletter/unsubscribe?token=abc'],
     ['legacy reminder test', () => routes.test.GET(), 'https://seanshore.in/email/legacy/test-link?link=unsubscribe'],
+    ['job alerts and digest', () => routes.ranking.GET(new Request(`${internal}/api/email/unsubscribe?token=abc`)), 'https://seanshore.in/email/unsubscribe?token=abc'],
   ])('%s: redirects to the public site, not the container address', async (_name, open, location) => {
     const response = await open()
     expect(response.status).toBe(303)

@@ -147,7 +147,8 @@ describe('jobs repository', () => {
       targetRoleKey: null, headline: 'Chief Officer', occupationText: null, experienceTitles: [],
       rank: 'Chief Officer', sailingExperienceYears: 7.5, vesselTypes: ['Oil Tanker'], tradingAreas: ['Worldwide'],
       availability: '2026-09-18', shoreCareerPreference: false, skills: ['Leadership'],
-      certificates: [{ name: 'STCW', expiresAt: '2028-01-01', verified: true }], visas: ['US C1/D'],
+      certificates: [{ name: 'STCW', expiresAt: '2028-01-01', verified: true, code: null }], visas: ['US C1/D'],
+      location: null, availableFrom: null, vesselTypeCodes: [], experiences: [],
     })
     expect(seen[0]?.text).toContain('public.maritime_profiles')
     expect(seen[0]?.text).toContain('public.profile_skills')

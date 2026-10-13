@@ -165,8 +165,8 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
       await client.query(
         `insert into public.maritime_profiles (
            user_id, rank, current_vessel, sailing_experience_years, vessel_types,
-           trading_areas, shore_career_preference, updated_at
-         ) values ($1, $2, $3, $4, $5::text[], $6::text[], $7, now())
+           trading_areas, shore_career_preference, available_from, updated_at
+         ) values ($1, $2, $3, $4, $5::text[], $6::text[], $7, $8::date, now())
          on conflict (user_id) do update set
            rank = excluded.rank,
            current_vessel = excluded.current_vessel,
@@ -174,6 +174,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
            vessel_types = excluded.vessel_types,
            trading_areas = excluded.trading_areas,
            shore_career_preference = excluded.shore_career_preference,
+           available_from = excluded.available_from,
            updated_at = now()`,
         [
           profileId,
@@ -183,6 +184,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
           data.vesselTypes,
           data.tradingAreas,
           data.shoreCareerPreference,
+          data.availableFrom ?? null,
         ],
       )
       await saveRole(client, profileId, role)

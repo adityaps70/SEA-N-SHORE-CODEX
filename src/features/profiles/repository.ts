@@ -249,7 +249,8 @@ const PROFILE_SELECT = `
         'vessel_types', mp.vessel_types,
         'trading_areas', mp.trading_areas,
         'shore_career_preference', mp.shore_career_preference,
-        'availability', mp.availability
+        'availability', mp.availability,
+        'available_from', mp.available_from
       )
     end as maritime_profiles,
     case

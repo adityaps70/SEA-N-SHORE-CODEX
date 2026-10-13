@@ -6,6 +6,8 @@ import { backLinkClass } from '@/components/ui/interactive-styles'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { createLearningEmailPreferences } from '@/features/learning/learning-email-sending'
 import { LearningEmailToggle } from './learning-email-toggle'
+import { RankingEmailToggle } from './ranking-email-toggle'
+import { createRankingEmailPreferences } from '@/features/ranking/ranking-email-sending'
 import { memberTimeZoneRepository } from '@/features/learning/sessions/member-time-zone'
 import { TimeZoneSetting } from '@/features/learning/sessions/components/time-zone-setting'
 
@@ -13,12 +15,15 @@ export const metadata: Metadata = { title: 'Email notifications · Settings' }
 export const dynamic = 'force-dynamic'
 
 const preferences = createLearningEmailPreferences()
+const topicPreferences = createRankingEmailPreferences()
 
 /** Settings → Email notifications (learning round A): which notifications also come by email. */
 export default async function EmailNotificationsPage() {
   const user = await requireAwsUser()
-  const [learningEnabled, timeZone] = await Promise.all([
+  const [learningEnabled, topics, timeZone] = await Promise.all([
     preferences.learningEmailsEnabled(user.id),
+    // Round G: before migration 0085 there is no topic table; show the defaults (on).
+    topicPreferences.topics(user.id).catch(() => ({ job_alerts: true, weekly_digest: true })),
     memberTimeZoneRepository.get(user.id).catch(() => ({ timeZone: null, source: 'auto' as const })),
   ])
 
@@ -35,6 +40,19 @@ export default async function EmailNotificationsPage() {
         </p>
       </header>
       <p className="text-sm leading-6 text-muted md:hidden">Everything still appears in Notifications on Sea N Shore.</p>
+      <section aria-label="Jobs" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
+        <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Jobs</h2>
+        <div className="mt-2">
+          <RankingEmailToggle
+            topic="job_alerts"
+            title="Job alert emails"
+            description="New jobs that match your job alerts and your profile, daily or weekly as each alert is set. At most 10 jobs an email, and nothing when nothing new matches."
+            onText="Job alert emails are on."
+            offText="Job alert emails are off. Matches still appear in Notifications."
+            initiallyEnabled={topics.job_alerts}
+          />
+        </div>
+      </section>
       <section aria-label="Learning" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
         <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Learning</h2>
         <div className="mt-2">

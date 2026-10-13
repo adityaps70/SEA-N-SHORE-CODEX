@@ -15,6 +15,12 @@ export const SIGNAL_RETENTION = {
   /** Snapshots live 15 minutes; keep an hour for the "served but not seen" demotion on reload. */
   feedSessions: '1 hour',
   rankingMetrics: '400 days',
+  /** Release 2: sent job alert and digest emails (the row id is the unsubscribe token). */
+  rankingEmails: '180 days',
+  /** Alerts only look back 14 days, so older deliveries can no longer cause a resend. */
+  jobAlertDeliveries: '90 days',
+  /** Search rows for removed or hidden sources (they are already excluded from every query). */
+  hiddenSearchDocuments: '1 day',
 } as const
 
 export const SIGNAL_RETENTION_BATCH = 5000
@@ -26,6 +32,9 @@ const DELETES = [
   ['feed_feedback', `delete from public.feed_feedback where ctid in (select ctid from public.feed_feedback where created_at < now() - $1::interval limit $2) returning 1`, SIGNAL_RETENTION.feedFeedback],
   ['feed_sessions', `delete from public.feed_sessions where id in (select id from public.feed_sessions where expires_at < now() - $1::interval limit $2) returning 1`, SIGNAL_RETENTION.feedSessions],
   ['ranking_metrics_daily', `delete from public.ranking_metrics_daily where ctid in (select ctid from public.ranking_metrics_daily where day < (now() - $1::interval)::date limit $2) returning 1`, SIGNAL_RETENTION.rankingMetrics],
+  ['ranking_emails', `delete from public.ranking_emails where id in (select id from public.ranking_emails where created_at < now() - $1::interval and status <> 'pending' limit $2) returning 1`, SIGNAL_RETENTION.rankingEmails],
+  ['search_documents', `delete from public.search_documents where ctid in (select ctid from public.search_documents where visibility = 'hidden' and updated_at < now() - $1::interval limit $2) returning 1`, SIGNAL_RETENTION.hiddenSearchDocuments],
+  ['job_alert_deliveries', `delete from public.job_alert_deliveries where ctid in (select ctid from public.job_alert_deliveries where delivered_at < now() - $1::interval limit $2) returning 1`, SIGNAL_RETENTION.jobAlertDeliveries],
 ] as const
 
 export async function purgeExpiredSignals(input: { query?: Query; batch?: number } = {}) {
@@ -33,8 +42,13 @@ export async function purgeExpiredSignals(input: { query?: Query; batch?: number
   const batch = input.batch ?? SIGNAL_RETENTION_BATCH
   const purged: Record<string, number> = {}
   for (const [name, sql, interval] of DELETES) {
-    const rows = await queryRows(sql, [interval, batch])
-    purged[name] = rows.length
+    try {
+      const rows = await queryRows(sql, [interval, batch])
+      purged[name] = rows.length
+    } catch (error) {
+      // A table from a later migration (release 2) that is not applied yet: skip it this pass.
+      if ((error as { code?: string })?.code !== '42P01') throw error
+    }
   }
   return purged
 }

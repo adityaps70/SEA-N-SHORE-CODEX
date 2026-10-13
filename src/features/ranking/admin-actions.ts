@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { query } from '@/lib/db/client'
 import { isRankingArea, isRankingMode, rankingSwitches } from './switches'
+import { createJobAlertSender } from './job-alerts'
 
 export type RankingSwitchResult = { ok: true } | { ok: false; error: string }
 
@@ -29,4 +30,28 @@ export async function setRankingModeAction(area: string, mode: string): Promise<
   }
   revalidatePath('/admin/ranking')
   return { ok: true }
+}
+
+/**
+ * Admin › Ranking: queue a test job alert email to the signed-in administrator (their first alert,
+ * or Jobs for you), so the owner sees a real one before the alerts go to everyone. Marked [Test].
+ */
+export async function sendTestJobAlertAction(): Promise<RankingSwitchResult & { jobs?: number }> {
+  let adminId: string
+  try {
+    adminId = (await requirePlatformAdministratorUser()).id
+  } catch {
+    return { ok: false, error: 'Only platform administrators can send test emails.' }
+  }
+  try {
+    const result = await createJobAlertSender().queueTest(adminId)
+    await query(
+      `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+       values ($1, 'ranking.test_email_queued', 'ranking_email', 'job_alerts', $2::jsonb)`,
+      [adminId, JSON.stringify({ jobs: result.jobs })],
+    )
+    return { ok: true, jobs: result.jobs }
+  } catch {
+    return { ok: false, error: 'The test email could not be queued. Is migration 0085 applied?' }
+  }
 }

@@ -139,7 +139,7 @@ describe('certificates (round B)', () => {
 
     const [shown] = await repository.listForProfile(learner.learnerId, { includeHidden: false })
     expect(shown).toMatchObject({ courseTitle: 'Fixture SIRE Readiness', hidden: false, expired: false, expiresAt: null })
-    expect(await credentials()).toEqual([{ name: 'Fixture SIRE Readiness', expires_at: null, verified: true }])
+    expect(await credentials()).toEqual([{ code: null, name: 'Fixture SIRE Readiness', expires_at: null, verified: true }])
 
     await repository.setHiddenFromProfile(learner.learnerId, shown!.certificateId, true)
     expect(await repository.listForProfile(learner.learnerId, { includeHidden: false })).toEqual([])

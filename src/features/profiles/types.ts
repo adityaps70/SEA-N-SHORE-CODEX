@@ -61,6 +61,8 @@ export type PublicProfile = {
   shoreCareerPreference: boolean
   /** Old at sea / ashore / available-from answer. Still stored, but no longer asked for or shown. */
   availability: string | null
+  /** Round G (G3): optional "available from" date (YYYY-MM-DD), matched with job joining dates. */
+  availableFrom?: string | null
   skills: string[]
 }
 
@@ -109,6 +111,7 @@ export type PublicProfileRow = {
     trading_areas: string[]
     shore_career_preference: boolean
     availability: string | null
+    available_from?: string | null
   } | null
   /** JSON object for the linked, listed organization (see mapLinkedOrganization). */
   current_organization?: unknown

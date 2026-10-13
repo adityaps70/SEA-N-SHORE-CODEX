@@ -60,6 +60,14 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
     }
   }
 
+  /** "Undo" right after a dismissal. */
+  async function undoDismissSuggestion(viewerId: string, kind: SuggestionKind, targetId: string) {
+    await queryRows(
+      `delete from public.suggestion_dismissals where viewer_id = $1 and kind = $2 and target_id = $3`,
+      [viewerId, kind, targetId],
+    )
+  }
+
   async function muteProfile(viewerId: string, profileId: string) {
     await queryRows(
       `insert into public.user_mutes (viewer_id, muted_profile_id)
@@ -149,6 +157,7 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
   return {
     recordImpressions,
     dismissSuggestion,
+    undoDismissSuggestion,
     muteProfile,
     muteOrganization,
     unmute,

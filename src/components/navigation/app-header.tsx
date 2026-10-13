@@ -18,6 +18,7 @@ import { AccountMenuSignOut, accountMenuItems, type HeaderOrganization } from '.
 import { ActiveNavLink } from './active-nav-link'
 import { HeaderMenu, type HeaderMenuItem } from './header-menu'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
+import { LiveSearchBox } from '@/features/search/components/live-search-box'
 
 export { organizationMenuItems, type HeaderOrganization } from './account-menu'
 
@@ -55,6 +56,7 @@ export function AppHeader({
   viewer = { name: 'Member', avatarUrl: null },
   organizations = [],
   organizationCount = organizations.length,
+  liveSearch = false,
 }: {
   unreadCount: number
   messagingUnreadCount?: number
@@ -63,6 +65,8 @@ export function AppHeader({
   /** The first few organizations the member belongs to (owners and administrators first). */
   organizations?: HeaderOrganization[]
   organizationCount?: number
+  /** Round G (G4): search as you type with a results dropdown. */
+  liveSearch?: boolean
 }) {
   const accountItems = accountMenuItems({ canAccessAdmin, organizations, organizationCount })
 
@@ -101,6 +105,9 @@ export function AppHeader({
           >
             <Search aria-hidden="true" className="size-5" />
           </Link>
+          {liveSearch ? (
+            <LiveSearchBox inputId="global-search" className="hidden lg:block" inputClassName="min-h-10 w-44 rounded-lg bg-mist-50 py-2 pl-9 pr-8 text-sm text-ink placeholder:text-muted xl:w-56 2xl:w-[22rem]" />
+          ) : (
           <form action="/search" method="get" role="search" className="relative hidden lg:block">
             <label htmlFor="global-search" className="sr-only">Search Sea N Shore</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -113,6 +120,7 @@ export function AppHeader({
               className="min-h-10 w-44 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted xl:w-56 2xl:w-[22rem]"
             />
           </form>
+          )}
           <HeaderMenu
             label="Create"
             items={createItems}

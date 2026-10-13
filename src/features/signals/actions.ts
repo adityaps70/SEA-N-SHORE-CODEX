@@ -64,8 +64,15 @@ export async function dismissSuggestionAction(kind: string, targetId: string): P
   const parsedKind = z.enum(SUGGESTION_KINDS).safeParse(kind)
   if (!parsedKind.success || !uuid.safeParse(targetId).success) return { ok: false, error: 'Invalid suggestion.' }
   const result = await run((viewerId) => signalsRepository.dismissSuggestion(viewerId, parsedKind.data, targetId), 'We could not hide this suggestion. Please try again.')
-  if (result.ok) void incrementRankingMetric(`${parsedKind.data === 'person' ? 'pymk' : `suggest_${parsedKind.data}`}.dismissed`)
+  if (result.ok) void incrementRankingMetric(parsedKind.data === 'person' ? 'pymk.dismissed' : parsedKind.data === 'job' ? 'jobs.not_interested' : `suggest_${parsedKind.data}.dismissed`)
   return result
+}
+
+/** "Undo" on a dismissed suggestion or a "Not interested" job. */
+export async function undoDismissSuggestionAction(kind: string, targetId: string): Promise<SignalActionResult> {
+  const parsedKind = z.enum(SUGGESTION_KINDS).safeParse(kind)
+  if (!parsedKind.success || !uuid.safeParse(targetId).success) return { ok: false, error: 'Invalid suggestion.' }
+  return run((viewerId) => signalsRepository.undoDismissSuggestion(viewerId, parsedKind.data, targetId), 'We could not undo that. Please try again.')
 }
 
 /** "Show less like this" / "Not relevant" from the post menu. */

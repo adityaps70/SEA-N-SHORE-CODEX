@@ -4,6 +4,7 @@ import { relativeTimeFrom } from '@/lib/relative-time'
 import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
+import { NotInterestedButton } from './not-interested'
 import { JobCompanyLogo } from './job-company-identity'
 import { SaveJobButton } from './save-job-button'
 
@@ -59,15 +60,16 @@ export function JobListRow({
         </p>
         {place ? <p className="mt-0.5 line-clamp-2 text-[13px] text-muted">{place}</p> : null}
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
-          {display?.showInList ? <span className="font-semibold text-ocean-800">{display.text}</span> : null}
+          {display?.showInList ? <span data-job-ineligible={display.ineligible ? '' : undefined} className={display.ineligible ? 'font-semibold text-amber-800' : 'font-semibold text-ocean-800'}>{display.text}</span> : null}
           {display?.showInList && (applyState || age) ? <span aria-hidden="true">·</span> : null}
           {applyState ? <span className={applyState === 'Applications closed' ? 'font-medium text-amber-800' : ''}>{applyState}</span> : null}
           {applyState && age ? <span aria-hidden="true">·</span> : null}
           {age ? <span>{age}</span> : null}
         </p>
       </div>
-      <div className="-mr-2 -mt-1.5 shrink-0">
+      <div className="-mr-2 -mt-1.5 flex shrink-0 flex-col items-center">
         <SaveJobButton jobId={job.id} initialSaved={isSaved} variant="icon" jobTitle={job.title} />
+        <NotInterestedButton jobId={job.id} jobTitle={job.title} variant="icon" />
       </div>
     </li>
   )
