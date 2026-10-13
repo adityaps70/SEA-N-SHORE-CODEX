@@ -78,6 +78,106 @@ export type DiscoveryCandidateLookup = {
   searchQuery?: string
 }
 
+export type PeopleSuggestionLookup = {
+  viewerProfileId: string
+  limit: number
+  /** Points per shared attribute; see RECOMMENDATION_WEIGHTS in features/network/recommendations.ts. */
+  weights: {
+    sharedVesselType: number
+    sharedSkill: number
+    sharedTradingArea: number
+    rankMatch: number
+    sameProfileType: number
+    sameLocation: number
+  }
+  /** A request the viewer sent that is gone (declined or withdrawn) hides that member this long. */
+  declinedRequestWindow: string
+}
+
+/**
+ * The same narrow synthetic and test-data markers as isSyntheticDiscoveryText (lib/public-discovery.ts),
+ * as one Postgres regular expression (\y is a word boundary), so they are excluded before the limit.
+ */
+export const SYNTHETIC_PROFILE_PATTERN_SQL = String.raw`\ye2e([-_[:space:]]|$)|\ysynthetic([-_[:space:]]|$)|\yfixture([-_[:space:]]|$)|\yseed(ed)?([-_[:space:]]|$)|\ytest[-_[:space:]]+(user|account|profile|course|mentor)\y|@[^[:space:]]+\.test\y|@example\.(test|invalid)\y`
+
+/**
+ * Hotfix (round G): People you may know. Every exclusion runs in SQL before the limit, over every
+ * eligible member, so excluded people never use up the slots:
+ * - the viewer; organisation and company profiles; inactive, not onboarded or synthetic profiles;
+ * - any connection row with the viewer: accepted, or pending in either direction
+ *   (a request the viewer received belongs in Invitations);
+ * - members the viewer follows; blocks in either direction;
+ * - members the viewer asked to connect whose request is gone, so it was declined (or withdrawn),
+ *   within the declined-request window (social_action_events remembers each request).
+ * The rest are ordered by the shared-attribute score, then most recently updated.
+ */
+function peopleSuggestionSql() {
+  return `
+  with viewer as (
+    select
+      vp.id,
+      vp.profile_type,
+      nullif(lower(btrim(vp.location)), '') as location,
+      nullif(lower(btrim(vmp.rank)), '') as rank,
+      coalesce((select array_agg(lower(btrim(value))) from unnest(vmp.vessel_types) value), '{}'::text[]) as vessel_types,
+      coalesce((select array_agg(lower(btrim(value))) from unnest(vmp.trading_areas) value), '{}'::text[]) as trading_areas,
+      coalesce((select array_agg(lower(btrim(vps.skill))) from public.profile_skills vps where vps.user_id = vp.id), '{}'::text[]) as skills
+    from public.profiles vp
+    left join public.maritime_profiles vmp on vmp.user_id = vp.id
+    where vp.id = $1
+  ),
+  candidates as (
+    select
+      cp.id,
+      cp.updated_at,
+      (
+        case when exists (select 1 from unnest(cmp.vessel_types) value where lower(btrim(value)) = any(viewer.vessel_types)) then $3::int else 0 end
+        + case when exists (select 1 from public.profile_skills cps where cps.user_id = cp.id and lower(btrim(cps.skill)) = any(viewer.skills)) then $4::int else 0 end
+        + case when exists (select 1 from unnest(cmp.trading_areas) value where lower(btrim(value)) = any(viewer.trading_areas)) then $5::int else 0 end
+        + case when viewer.rank is not null and lower(btrim(cmp.rank)) = viewer.rank then $6::int else 0 end
+        + case when cp.profile_type = viewer.profile_type then $7::int else 0 end
+        + case when viewer.location is not null and lower(btrim(cp.location)) = viewer.location then $8::int else 0 end
+      ) as score
+    from public.profiles cp
+    cross join viewer
+    left join public.maritime_profiles cmp on cmp.user_id = cp.id
+    where cp.id <> viewer.id
+      and cp.account_status = 'active'
+      and cp.onboarding_completed_at is not null
+      and cp.slug is not null
+      and coalesce(cp.identity_root, 'professional') <> 'organisation'
+      and cp.profile_type is distinct from 'company'
+      and not exists (
+        select 1 from public.connections c
+        where (c.user_low_id = viewer.id and c.user_high_id = cp.id)
+           or (c.user_high_id = viewer.id and c.user_low_id = cp.id)
+      )
+      and not exists (
+        select 1 from public.follows f
+        where f.follower_id = viewer.id and f.following_id = cp.id
+      )
+      and not exists (
+        select 1 from public.user_blocks b
+        where (b.blocker_id = viewer.id and b.blocked_id = cp.id)
+           or (b.blocker_id = cp.id and b.blocked_id = viewer.id)
+      )
+      and not exists (
+        select 1 from public.social_action_events e
+        where e.profile_id = viewer.id
+          and e.action = 'connection_request'
+          and e.target_profile_id = cp.id
+          and e.created_at > now() - $9::interval
+      )
+      and concat_ws(' ', cp.slug, cp.full_name, cp.headline, cp.summary, cmp.rank, cmp.current_company) !~* $10
+    order by score desc, cp.updated_at desc, cp.id asc
+    limit $2
+  )
+  ${PROFILE_SELECT}
+  join candidates on candidates.id = p.id
+  order by candidates.score desc, candidates.updated_at desc, p.id asc
+`
+}
+
 const PROFILE_SELECT = `
   select
     p.id,
@@ -430,12 +530,31 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
     }
   }
 
+  async function getPeopleSuggestions(lookup: PeopleSuggestionLookup): Promise<PublicProfile[]> {
+    const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
+    const { weights } = lookup
+    const rows = await queryRows(peopleSuggestionSql(), [
+      lookup.viewerProfileId,
+      limit,
+      weights.sharedVesselType,
+      weights.sharedSkill,
+      weights.sharedTradingArea,
+      weights.rankMatch,
+      weights.sameProfileType,
+      weights.sameLocation,
+      lookup.declinedRequestWindow,
+      SYNTHETIC_PROFILE_PATTERN_SQL,
+    ])
+    return mapPublicRows(rows)
+  }
+
   return {
     getOwnProfile,
     getPublicProfileBySlug,
     getPublicProfileById,
     getPublicProfilesByIds,
     getDiscoveryCandidates,
+    getPeopleSuggestions,
   }
 }
 

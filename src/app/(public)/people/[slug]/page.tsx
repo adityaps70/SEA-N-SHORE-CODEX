@@ -50,7 +50,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const [relationship, portfolio, recommendations, posts, networkSummary, dgProfile, organizations] = await Promise.all([
     viewer && viewingSomeoneElse ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
-    viewer ? getPeopleYouMayKnow(3) : Promise.resolve([]),
+    viewer ? getPeopleYouMayKnow() : Promise.resolve([]),
     // Round F: members see the author's posts by the member rules; signed-out visitors only "Anyone" posts.
     viewer ? getPostsByAuthor(profile.id) : getPublicPostsByAuthor(profile.id),
     // Counts are for signed-in members only; signed-out visitors see none.
@@ -137,7 +137,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       {viewer ? (
         // Phones: People you may know lives on the Network tab.
         <aside className="min-w-0 max-md:hidden lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
-          <PeopleYouMayKnow profiles={recommendations} />
+          <PeopleYouMayKnow profiles={recommendations} excludeProfileId={profile.id} />
           <RailFooter visibleFrom="lg" />
         </aside>
       ) : (

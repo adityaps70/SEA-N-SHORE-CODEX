@@ -3,6 +3,7 @@ import {
   CONNECTION_REQUEST_COOLDOWN,
   CONNECTION_REQUEST_COOLDOWN_CODE,
   SOCIAL_ACTION_EVENT_RETENTION,
+  CONNECTION_REQUEST_EVENT_RETENTION,
   SOCIAL_ACTION_PRUNE_BATCH,
   SOCIAL_ACTION_QUOTAS,
   consumeSocialActionQuota,
@@ -45,6 +46,7 @@ describe('social action quota limits', () => {
     expect(CONNECTION_REQUEST_COOLDOWN).toBe('7 days')
     expect(CONNECTION_REQUEST_COOLDOWN_CODE).toBe('network_connection_request_cooldown')
     expect(SOCIAL_ACTION_EVENT_RETENTION).toBe('8 days')
+    expect(CONNECTION_REQUEST_EVENT_RETENTION).toBe('181 days')
   })
 
   it('has a friendly shared message for every quota code', () => {
@@ -106,7 +108,8 @@ describe('consumeSocialActionQuota', () => {
     expect(calls[1].values).toEqual([MEMBER, 'connection_request', '24 hours', 50, TARGET, '7 days'])
     expect(calls[1].text).toMatch(/e\.target_profile_id = \$5::uuid/)
     expect(calls[1].text).toMatch(/e\.created_at > now\(\) - \$6::interval/)
-    expect(calls[2].values).toEqual([MEMBER, 'connection_request', TARGET, '8 days', SOCIAL_ACTION_PRUNE_BATCH])
+    // Connection-request rows stay 181 days: People you may know hides declined requests for 180 days.
+    expect(calls[2].values).toEqual([MEMBER, 'connection_request', TARGET, '181 days', SOCIAL_ACTION_PRUNE_BATCH])
   })
 
   it('refuses a repeat request to the same member within 7 days with the cooldown code', async () => {

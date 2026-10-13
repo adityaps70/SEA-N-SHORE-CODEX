@@ -9,6 +9,23 @@ export const RECOMMENDATION_WEIGHTS = {
   sameLocation: 1,
 } as const
 
+/**
+ * Hotfix (round G): a connection request the viewer sent that is gone (declined or withdrawn)
+ * keeps that member out of People you may know this long. social_action_events keeps
+ * connection-request rows for SOCIAL_ACTION_RETENTION.connection_request (features/social/quotas.ts).
+ */
+export const DECLINED_REQUEST_SUGGESTION_WINDOW = '180 days'
+
+/** How many suggestions each surface loads: the cards shown plus spares that slide in after Connect or dismiss. */
+export const PEOPLE_SUGGESTION_LIMITS = {
+  /** Home and profile rails show 3. */
+  rail: 12,
+  /** The phone feed row shows up to 10. */
+  feedRow: 20,
+  /** /network Discover shows a grid of up to 30. */
+  discover: 40,
+} as const
+
 function normalize(value: string) {
   return value.trim().toLocaleLowerCase('en')
 }

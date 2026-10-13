@@ -7,8 +7,11 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import { loadFeedPage } from '../actions'
 import type { FeedPage, FeedPost, PostCategory } from '../types'
+import { useSuggestionDeck } from '@/features/network/components/suggestion-deck'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
+
+const NO_SUGGESTIONS: NetworkProfile[] = []
 
 export type FeedListScope = {
   /** Only posts published in this community group. */
@@ -21,14 +24,17 @@ export function FeedList({
   initialPage,
   category,
   scope,
-  suggestions = [],
+  suggestions,
   roleBadges,
 }: {
   initialPage: FeedPage
   category?: PostCategory
   /** Group or hashtag feed; the open feed passes nothing. */
   scope?: FeedListScope
-  /** People you may know (the desktop rail's data), shown as a swipe row inside the phone feed. */
+  /**
+   * People you may know (the desktop rail's data), shown as a swipe row inside the phone feed.
+   * Home passes it (an empty list shows the "seen everyone" state once); other feeds leave it out.
+   */
   suggestions?: NetworkProfile[]
   /** Round 9C: a community's Posts tab passes its owner and moderators (by profile id) for a chip next to the author. */
   roleBadges?: Record<string, 'Owner' | 'Moderator'>
@@ -44,6 +50,9 @@ export function FeedList({
   const inFlightRef = useRef(false)
   /** After a failed page the observer stops auto-retrying; the member taps "Try again". */
   const failedRef = useRef(false)
+  const showPeople = suggestions !== undefined
+  // One deck for every row, so a person connected in one row is gone from the others too.
+  const peopleDeck = useSuggestionDeck(suggestions ?? NO_SUGGESTIONS)
   const groupId = scope?.groupId
   const hashtag = scope?.hashtag
 
@@ -158,12 +167,13 @@ export function FeedList({
             <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-900 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Explore Network</Link>
           </div>
         </div>
-        {suggestions.length ? <div className="-mx-4 mt-2 md:hidden"><FeedPeopleRow profiles={suggestions} /></div> : null}
+        {showPeople ? <div className="-mx-4 mt-2 md:hidden"><FeedPeopleRow deck={peopleDeck} showEmptyState /></div> : null}
       </div>
     )
   }
 
-  const peoplePositions = suggestions.length ? peopleRowPositions(posts.length) : new Set<number>()
+  const peoplePositions = showPeople ? peopleRowPositions(posts.length) : new Set<number>()
+  const firstPeoplePosition = Math.min(...peoplePositions)
 
   return (
     // Phones: posts run edge to edge with an 8px mist gap between them.
@@ -182,7 +192,7 @@ export function FeedList({
       {posts.map((post, index) => (
         <Fragment key={post.id}>
           <PostCard post={post} flushOnPhones loadingPriority={postLoadingPriority(index)} roleBadge={roleBadges?.[post.author.id]} />
-          {peoplePositions.has(index) ? <FeedPeopleRow profiles={suggestions} /> : null}
+          {peoplePositions.has(index) ? <FeedPeopleRow deck={peopleDeck} showEmptyState={index === firstPeoplePosition} /> : null}
         </Fragment>
       ))}
       {/* Fixed-height footer: loading, retry and the end state swap in place, so the page never jumps. */}

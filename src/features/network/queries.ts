@@ -2,10 +2,11 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   getAwsNetworkProfiles,
   getAwsOwnProfile,
+  getAwsPeopleSuggestions,
   getAwsPublicProfilesByIds,
 } from '@/features/profiles/aws-queries'
 import { networkRepository } from './repository'
-import { scoreRecommendation } from './recommendations'
+import { PEOPLE_SUGGESTION_LIMITS, scoreRecommendation } from './recommendations'
 import type {
   NetworkConnectionRow,
   NetworkFollowView,
@@ -116,7 +117,20 @@ export async function getNetworkHub(
   const incomingRequestCount = pending.filter((connection) => connection.requested_by !== user.id).length
   const normalizedSearch = searchQuery.trim()
 
+  if (tab === 'discover' && !normalizedSearch) {
+    const profiles = await getPeopleSuggestions(PEOPLE_SUGGESTION_LIMITS.discover)
+    return {
+      tab,
+      profiles,
+      receivedRequests: [],
+      sentRequests: [],
+      incomingRequestCount,
+      totalCount: profiles.length,
+    }
+  }
+
   if (tab === 'discover') {
+    // A search on Discover (and the search page's People results) finds anyone, connections included.
     const [viewer, candidates] = await Promise.all([
       getAwsOwnProfile(),
       getAwsNetworkProfiles(60, normalizedSearch),
@@ -227,9 +241,21 @@ export async function getNetworkHub(
   }
 }
 
-export async function getPeopleYouMayKnow(limit = 4): Promise<NetworkProfile[]> {
-  const hub = await getNetworkHub('discover')
-  return hub.profiles.slice(0, Math.min(Math.max(limit, 1), 5))
+const NO_RELATIONSHIP: RelationshipState = { following: false, connection: { kind: 'none', connectionId: null } }
+
+/**
+ * People you may know (round G hotfix): the SQL leaves out the viewer, connections, pending requests
+ * either way, follows, recently declined requests, blocks, organisations and synthetic profiles
+ * before the limit, so every returned member has no relationship with the viewer yet.
+ */
+export async function getPeopleSuggestions(limit: number = PEOPLE_SUGGESTION_LIMITS.rail): Promise<NetworkProfile[]> {
+  const profiles = await getAwsPeopleSuggestions(limit)
+  return profiles.map((profile) => ({ ...profile, relationship: NO_RELATIONSHIP }))
+}
+
+/** The rail and feed-row suggestions: the cards shown plus spares that slide in after Connect. */
+export async function getPeopleYouMayKnow(limit: number = PEOPLE_SUGGESTION_LIMITS.rail): Promise<NetworkProfile[]> {
+  return getPeopleSuggestions(limit)
 }
 
 export async function getPreferredFeedAuthorIds(): Promise<Set<string>> {

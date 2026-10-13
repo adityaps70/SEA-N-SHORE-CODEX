@@ -7,6 +7,7 @@ import { ManageNetworkRow } from '@/features/network/components/manage-network-r
 import { NetworkInvitationRow } from '@/features/network/components/network-invitation-row'
 import { NetworkPersonListRow } from '@/features/network/components/network-person-list-row'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
+import { NetworkSuggestionGrid } from '@/features/network/components/network-suggestion-grid'
 import { NetworkTabs } from '@/features/network/components/network-tabs'
 import { getNetworkHub } from '@/features/network/queries'
 import { parseNetworkTab } from '@/features/network/schemas'
@@ -19,10 +20,6 @@ const PHONE_INVITATION_LIMIT = 3
 const PHONE_FULL_BLEED = 'max-md:-mx-4 max-md:mt-2 max-md:rounded-none max-md:border-x-0 max-md:shadow-none'
 
 const emptyCopy = {
-  discover: {
-    title: 'No new professionals to recommend yet.',
-    body: 'As more Sea N Shore members complete their profiles, relevant people will appear here.',
-  },
   connections: {
     title: 'Your first professional connection is waiting to happen.',
     body: 'Discover people across the maritime community, then send a connection request to build your network.',
@@ -158,25 +155,28 @@ export default async function NetworkPage({
       ) : null}
 
       {tab === 'discover' ? (
-        profiles.length ? (
+        profiles.length || !query ? (
           <section className={`mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm ${PHONE_FULL_BLEED}`} aria-labelledby="people-you-may-know-heading">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist-100 px-5 py-4 max-md:border-b-0 max-md:px-4 max-md:pb-3">
               <div>
                 <h2 id="people-you-may-know-heading" className="text-xl font-semibold text-navy-950 max-md:text-[17px] max-md:font-bold">People you may know</h2>
                 <p className="mt-1 text-sm text-muted max-md:hidden">
-                  {query ? `${profiles.length} relevant result${profiles.length === 1 ? '' : 's'} for “${query}”.` : 'Recommended members based on your profile and network.'}
+                  {query ? `${profiles.length} relevant result${profiles.length === 1 ? '' : 's'} for “${query}”.` : 'People you are not connected with or following yet, based on your profile.'}
                 </p>
               </div>
               {query ? <Link href="/network?tab=discover" className="text-sm font-semibold text-ocean-700 hover:text-navy-950">Clear search</Link> : null}
             </div>
-            <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
-            </div>
+            {query ? (
+              <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
+              </div>
+            ) : (
+              // Round G hotfix: Connect or X replaces a card with the next person; an empty list says so.
+              <NetworkSuggestionGrid profiles={profiles} />
+            )}
           </section>
-        ) : query ? (
-          <EmptyState title={`No professionals found for “${query}”.`} body="Try a name, rank, company, location, vessel type, trading area, or professional skill." />
         ) : (
-          <EmptyState title={emptyCopy.discover.title} body={emptyCopy.discover.body} />
+          <EmptyState title={`No professionals found for “${query}”.`} body="Try a name, rank, company, location, vessel type, trading area, or professional skill." />
         )
       ) : null}
 

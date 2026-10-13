@@ -14,18 +14,32 @@ export function ConnectionPrimaryAction({
   initialRelationship,
   className = '',
   variant = 'block',
+  onConnect,
+  externalError = '',
+  fullName,
 }: {
   profileId: string
   initialRelationship: RelationshipState
   className?: string
   /** `pill`: one compact ocean outline pill (Connect, Pending, Accept or Message) for list rows. */
   variant?: 'block' | 'pill'
+  /** Suggestion decks own the request: Connect calls this, which replaces the card at once. */
+  onConnect?: () => void
+  /** An error the deck reports after a refused request (the card is back). */
+  externalError?: string
+  /** Names the member in the Connect button's accessible name ("Connect with …") in lists of cards. */
+  fullName?: string
 }) {
   const [relationship, setRelationship] = useState(initialRelationship)
   const [pending, startTransition] = useTransition()
-  const [error, setError] = useState('')
+  const [ownError, setError] = useState('')
+  const error = ownError || externalError
 
   function sendRequest() {
+    if (onConnect) {
+      onConnect()
+      return
+    }
     const previous = relationship
     setRelationship({ ...relationship, connection: { kind: 'outgoing_pending', connectionId: profileId } })
     setError('')
@@ -60,7 +74,7 @@ export function ConnectionPrimaryAction({
   return (
     <div className="space-y-1.5">
       {relationship.connection.kind === 'none' ? (
-        <button type="button" disabled={pending} onClick={sendRequest} className={buttonClass}>
+        <button type="button" disabled={pending} onClick={sendRequest} className={buttonClass} data-suggestion-connect={onConnect ? '' : undefined} aria-label={fullName ? `Connect with ${fullName}` : undefined}>
           {variant === 'pill' ? null : <UserPlus aria-hidden="true" className="size-4" />}
           Connect
         </button>

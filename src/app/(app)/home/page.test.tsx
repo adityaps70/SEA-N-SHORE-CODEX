@@ -116,11 +116,13 @@ describe('HomePage profile completeness evidence', () => {
     expect(screen.getByText('Post composer closed without phone trigger')).toBeInTheDocument()
   })
 
-  it('gives the phone feed up to five suggestions and keeps three for the desktop rail', async () => {
+  it('loads one suggestion list with spares for the phone feed row and the desktop rail', async () => {
     mockedGetPeopleYouMayKnow.mockResolvedValue([1, 2, 3, 4, 5].map((id) => ({ id: `p${id}` })) as never)
     render(await HomePage({ searchParams: Promise.resolve({}) }))
-    expect(mockedGetPeopleYouMayKnow).toHaveBeenCalledWith(5)
-    expect(screen.getByText('Rail suggestions 3')).toBeInTheDocument()
+    // Round G hotfix: 20 = up to 10 in the phone row plus spares; the rail shows 3 and keeps the rest
+    // as spares that replace a card after Connect (see people-you-may-know.test.tsx).
+    expect(mockedGetPeopleYouMayKnow).toHaveBeenCalledWith(20)
+    expect(screen.getByText('Rail suggestions 5')).toBeInTheDocument()
     expect(screen.getByText('Feed list all with 5 suggestions')).toBeInTheDocument()
   })
 })
