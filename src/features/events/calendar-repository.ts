@@ -364,6 +364,88 @@ async function listDiscoverEvents(viewerId: string, filters: CalendarEventFilter
   `, [value.search, value.category, value.eventType, value.format, value.location])
 }
 
+export type EventsForYouInput = {
+  categories: readonly string[]
+  city: string | null
+  country: string | null
+  limit: number
+  weights: {
+    windowDays: number; hostFollowedOrConnected: number; connectionAttending: number; connectionAttendingCap: number
+    topicMatch: number; sameCity: number; sameCountry: number; online: number
+  }
+}
+
+/**
+ * Round G (G5): the events "For you" tab. Upcoming within 60 days, scored by a host the member
+ * follows or is connected to, connections attending (a count only: attendees are never named),
+ * a category that suits their department, and the same city or country for in-person events
+ * (online events are always eligible); soonest first among equals. Never an event they registered
+ * for, a cancelled or full event, or one they dismissed.
+ */
+async function listEventsForYou(viewerId: string, input: EventsForYouInput) {
+  const W = input.weights
+  const ranked = await query<{ id: string; connections_attending: string | number; host_known: boolean; topic: boolean; same_city: boolean; same_country: boolean }>(
+    `with viewer_connections as (
+       select case when c.user_low_id = $1 then c.user_high_id else c.user_low_id end as id
+       from public.connections c
+       where c.status = 'accepted' and (c.user_low_id = $1 or c.user_high_id = $1)
+     ),
+     candidates as (
+       select e.id, e.start_at,
+         (e.host_user_id in (select id from viewer_connections)
+           or exists (select 1 from public.follows f where f.follower_id = $1 and f.following_id = e.host_user_id)
+           or (e.company_id is not null and exists (select 1 from public.organization_follows of where of.follower_id = $1 and of.company_id = e.company_id))) as host_known,
+         (select count(*) from public.event_attendees a where a.event_id = e.id and a.user_id in (select id from viewer_connections))::int as connections_attending,
+         e.category = any($3::text[]) as topic,
+         (e.format <> 'online' and $4::text <> '' and lower(e.city) = lower($4::text)) as same_city,
+         (e.format <> 'online' and $5::text <> '' and lower(e.country) = lower($5::text)) as same_country,
+         e.format in ('online', 'hybrid') as online
+       from public.events e
+       where e.status = 'published'
+         and ${EVENT_OPEN_SQL}
+         and e.end_at > now()
+         and e.start_at < now() + make_interval(days => $2::int)
+         and e.host_user_id <> $1
+         and not exists (select 1 from public.event_attendees mine where mine.event_id = e.id and mine.user_id = $1)
+         and (e.capacity is null or (select count(*) from public.event_attendees seats where seats.event_id = e.id) < e.capacity)
+         and not exists (
+           select 1 from public.suggestion_dismissals d
+           where d.viewer_id = $1 and d.kind = 'event' and d.target_id = e.id and d.created_at > now() - interval '180 days'
+         )
+         and not exists (
+           select 1 from public.user_blocks b
+           where (b.blocker_id = $1 and b.blocked_id = e.host_user_id) or (b.blocker_id = e.host_user_id and b.blocked_id = $1)
+         )
+     )
+     select c.*
+     from candidates c
+     order by
+       case when c.host_known then $6::real else 0 end
+       + least(c.connections_attending * $7::real, $8::real)
+       + case when c.topic then $9::real else 0 end
+       + case when c.same_city then $10::real when c.same_country then $11::real else 0 end
+       + case when c.online then $12::real else 0 end desc,
+       c.start_at asc, c.id
+     limit $13`,
+    [viewerId, W.windowDays, [...input.categories], input.city ?? '', input.country ?? '',
+      W.hostFollowedOrConnected, W.connectionAttending, W.connectionAttendingCap, W.topicMatch, W.sameCity, W.sameCountry, W.online,
+      Math.min(Math.max(Math.trunc(input.limit), 1), 50)],
+  )
+  if (!ranked.length) return []
+  const events = await rowsForViewer(viewerId, `where e.id = any($2::uuid[])`, [ranked.map((row) => row.id)])
+  const byId = new Map(events.map((event) => [event.id, event]))
+  return ranked.flatMap((row) => {
+    const event = byId.get(row.id)
+    if (!event) return []
+    const attending = Number(row.connections_attending)
+    const reason = row.host_known ? `From ${event.publisherName ?? 'a host'} you follow or know`
+      : attending > 0 ? `${attending} connection${attending === 1 ? '' : 's'} attending`
+        : row.same_city || row.same_country ? `Near you${event.city ? ` in ${event.city}` : ''}`
+          : row.topic ? 'Matches your department' : null
+    return [{ ...event, reason }]
+  })
+}
+
 /** Upcoming published events hosted as one organization (organization page Events tab). */
 async function listOrganizationEvents(viewerId: string, companyId: string, limit = 30) {
   return rowsForViewer(viewerId, `
@@ -574,6 +656,7 @@ async function withdrawAttendance(userId: string, eventId: string) {
 
 export const calendarEventRepository = {
   listDiscoverEvents,
+  listEventsForYou,
   listOrganizationEvents,
   listMyEvents,
   listMyPastEvents,

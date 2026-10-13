@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
 import { relativeTimeFrom } from '@/lib/relative-time'
-import { deleteNotification, loadNotifications, markAllNotificationsRead, markNotificationRead } from '../actions'
+import { deleteNotification, deleteNotifications, loadNotifications, markAllNotificationsRead, markNotificationRead, markNotificationsRead } from '../actions'
 import {
   NOTIFICATION_FILTERS,
   NOTIFICATION_FILTER_LABELS,
@@ -61,7 +61,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
     setError('')
     startTransition(async () => {
       if (!notification.readAt) {
-        const result = await markNotificationRead(notification.id)
+        const result = notification.groupIds ? await markNotificationsRead(notification.groupIds) : await markNotificationRead(notification.id)
         if (!result.ok) {
           setError(result.error)
           return
@@ -78,7 +78,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
     if (notification.readAt) return
     const readAt = new Date().toISOString()
     setItems((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
-    void markNotificationRead(notification.id).catch(() => undefined)
+    void (notification.groupIds ? markNotificationsRead(notification.groupIds) : markNotificationRead(notification.id)).catch(() => undefined)
   }
 
   function markAll() {
@@ -102,7 +102,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
     const previous = items
     setItems((current) => current.filter((item) => item.id !== notification.id))
     startTransition(async () => {
-      const result = await deleteNotification(notification.id)
+      const result = notification.groupIds ? await deleteNotifications(notification.groupIds) : await deleteNotification(notification.id)
       if (!result.ok) {
         setItems(previous)
         setError(result.error)
@@ -220,6 +220,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
                     <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
                     <span className="mt-0.5 flex items-center gap-2">
                       {unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-700" aria-hidden="true" /> : null}
+                      {unread && notification.important ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Important</span> : null}
                       <time dateTime={notification.createdAt} title={notification.createdAt} className="block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
                     </span>
                   </span>

@@ -51,6 +51,7 @@ import {
 } from '@/features/organizations/organization-page-profile'
 import { isWellbeingType, organizationTypeHasField, wellbeingServiceLabel } from '@/features/organizations/organization-types'
 import { organizationRepository } from '@/features/organizations/repository'
+import { getRelatedOrganizations } from '@/features/ranking/suggestions'
 import { organizationWorkspaceRepository, type OrganizationWorkspace } from '@/features/organizations/workspace-repository'
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
 
@@ -154,7 +155,8 @@ export default async function OrganizationPage({
   const previewLimit = 2
   const [peopleCount, similar, contactProfileId, jobs, events, courses, people] = await Promise.all([
     settle(organizationWorkspaceRepository.countPeople(workspace.id)),
-    settle(organizationWorkspaceRepository.listSimilarOrganizations(workspace, user.id, 4)),
+    // Round G (G5): co-follows or similar pages when ranking_settings.suggestions is on; else v1 by type.
+    settle(getRelatedOrganizations(workspace, 4).then(async (related) => related ?? { title: 'Pages people also viewed', organizations: await organizationWorkspaceRepository.listSimilarOrganizations(workspace, user.id, 4) })),
     organizationWorkspaceRepository.getContactProfileId(workspace.id).catch(() => null),
     wantsJobs ? settle(jobsRepository.listPublishedJobsForCompany(workspace.id, tab === 'home' ? previewLimit : 30)) : null,
     wantsEvents ? settle(calendarEventRepository.listOrganizationEvents(user.id, workspace.id, tab === 'home' ? previewLimit : 30)) : null,
@@ -554,12 +556,12 @@ export default async function OrganizationPage({
             </section>
           )}
 
-          {similar.ok && similar.value.length ? (
+          {similar.ok && similar.value.organizations.length ? (
             // Phones: hidden; Discover on /organizations lists the same suggestions.
             <section aria-labelledby="similar-heading" className="rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] max-md:hidden">
-              <h2 id="similar-heading" className="mb-3 font-bold text-navy-950">Pages people also viewed</h2>
+              <h2 id="similar-heading" className="mb-3 font-bold text-navy-950">{similar.value.title}</h2>
               <ul className="divide-y divide-mist-100">
-                {similar.value.map((organization) => <OrganizationSuggestionRow key={organization.id} organization={organization} />)}
+                {similar.value.organizations.map((organization) => <OrganizationSuggestionRow key={organization.id} organization={organization} />)}
               </ul>
               <Link href="/organizations#discover" className="mt-3 inline-flex text-sm font-semibold text-ocean-700 hover:underline">Discover more organizations</Link>
             </section>

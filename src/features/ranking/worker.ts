@@ -4,6 +4,7 @@ import { purgeExpiredSignals } from '@/features/signals/retention'
 import { createPeopleSweep } from './people-sweep'
 import { createJobAlertSweep } from './job-alerts'
 import { createRankingEmailSweep } from './ranking-email-sending'
+import { createWeeklyDigestSweep } from './weekly-digest'
 
 /**
  * Round G: the ranking jobs, run from the existing outbox worker loop (scripts/workers/publish-outbox.ts)
@@ -48,6 +49,7 @@ export function createRankingSweeps(input: {
     createPeopleSweep(),
     // Release 2 (migration 0085): job alerts are queued from 02:00 UTC, and the queue is sent every minute.
     createJobAlertSweep(),
+    createWeeklyDigestSweep(),
     createRankingEmailSweep(),
   ]
   const nextAt = new Map<string, number>()

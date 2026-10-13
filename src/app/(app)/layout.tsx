@@ -1,6 +1,7 @@
 import { AppFooter } from '@/components/navigation/app-footer'
 import { appHeaderProps, getAppChromeData, mobileAppHeaderProps, mobileNavProps } from '@/components/navigation/app-chrome-data'
 import { AppHeader } from '@/components/navigation/app-header'
+import { SourceVisitBeacon } from '@/features/ranking/components/source-visit-beacon'
 import { MobileAppHeader } from '@/components/navigation/mobile-app-header'
 import { MobileNav } from '@/components/navigation/mobile-nav'
 import { requireUser } from '@/features/auth/queries'
@@ -33,6 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppFooter />
         <MessagingDock viewerId={user.id} initialUnreadCount={chrome.messagingUnreadCount} />
         <MobileNav {...mobileNavProps(chrome)} />
+        <SourceVisitBeacon />
       </div>
     </MessagingRealtimeProvider>
   )

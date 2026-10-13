@@ -30,12 +30,15 @@ export function JobListRow({
   isSaved = false,
   alreadyApplied = false,
   className = '',
+  source,
 }: {
   job: JobListing
   match?: JobMatchResult | null
   isSaved?: boolean
   alreadyApplied?: boolean
   className?: string
+  /** Round G: 'for_you' or 'search', carried to the job page. */
+  source?: string
 }) {
   const open = isApplyUntilOpen(job.applyUntil, todayIsoDate())
   const place = [job.location, formatJoining(job)].filter(Boolean).join(' · ')
@@ -49,7 +52,7 @@ export function JobListRow({
       <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={job.companyLogoPath} size="md" />
       <div className="min-w-0 flex-1">
         <Link
-          href={`/jobs/${job.id}`}
+          href={source ? `/jobs/${job.id}?src=${source}` : `/jobs/${job.id}`}
           className="line-clamp-2 text-[15px] font-semibold leading-5 text-ocean-700 after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-ocean-500"
         >
           {job.title}

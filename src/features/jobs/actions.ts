@@ -1,5 +1,6 @@
 'use server'
 
+import { incrementRankingMetric } from '@/features/signals/repository'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { userCan } from '@/features/access/server'
@@ -115,10 +116,14 @@ export async function prepareJobApplicationCvUpload(
   }
 }
 
+/** Round G: where an application started, for Admin › Ranking health (counts only). */
+const JOB_APPLICATION_SOURCES = ['for_you', 'search', 'jobs', 'job_page', 'job_alert', 'digest'] as const
+
 export async function applyToJob(
   jobId: string,
   cvInput?: JobApplicationCvReference | null,
   coverNoteInput?: string | null,
+  sourceInput?: string | null,
 ): Promise<ApplyToJobResult> {
   const parsed = jobIdSchema.safeParse(jobId)
   if (!parsed.success) return { ok: false, error: 'Invalid job.' }
@@ -183,6 +188,8 @@ export async function applyToJob(
 
   revalidateCandidateJobs(parsed.data)
   revalidatePath('/activities')
+  const source = (JOB_APPLICATION_SOURCES as readonly string[]).includes(sourceInput ?? '') ? sourceInput : 'job_page'
+  void incrementRankingMetric(`jobs.applications.${source}`)
   return { ok: true, alreadyApplied: false }
 }
 

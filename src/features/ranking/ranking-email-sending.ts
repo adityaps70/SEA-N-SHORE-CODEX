@@ -2,8 +2,10 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
 import { withEmailSuppression } from '@/lib/email/suppression'
+import { incrementRankingMetric } from '@/features/signals/repository'
 import type { JobAlertEmailPayload } from './job-alerts'
-import { RANKING_EMAIL_FROM, RANKING_EMAIL_TOPICS, jobAlertEmail, type RankingEmailTopic, type RenderedEmail } from './ranking-email'
+import { RANKING_EMAIL_FROM, RANKING_EMAIL_TOPICS, jobAlertEmail, weeklyDigestEmail, type RankingEmailTopic, type RenderedEmail } from './ranking-email'
+import { DIGEST_MIN_ITEMS, digestItemCount, type DigestPayload } from './weekly-digest'
 
 /**
  * Round G: sends the queued job alert (G3) and weekly digest (G6) emails from the outbox worker,
@@ -176,6 +178,13 @@ const DEFAULT_RENDERERS: Partial<Record<RankingEmailTopic, RankingEmailRenderer>
     if (!value || typeof value.alertName !== 'string' || !Array.isArray(value.jobs)) return null
     return jobAlertEmail({ emailId, payload: value, ...(siteUrl ? { siteUrl } : {}) })
   },
+  weekly_digest: ({ emailId, payload, siteUrl }) => {
+    const value = payload as DigestPayload | null
+    if (!value || !Array.isArray(value.posts) || !Array.isArray(value.jobs) || !Array.isArray(value.people) || !Array.isArray(value.events) || !Array.isArray(value.courses)) return null
+    // The empty digest is never sent (a test digest is, so the owner can check the layout).
+    if (!value.test && digestItemCount(value) < DIGEST_MIN_ITEMS) return null
+    return weeklyDigestEmail({ emailId, payload: value, ...(siteUrl ? { siteUrl } : {}) })
+  },
 }
 
 export function createRankingEmailWorker(input: {
@@ -226,6 +235,7 @@ export function createRankingEmailWorker(input: {
         tags: [{ name: 'category', value: delivery.topic }],
       })
       await repository.markSent(delivery.id, result.messageId)
+      void incrementRankingMetric(`email.${delivery.topic}.sent`).catch(() => undefined)
       return 'sent' as const
     } catch (error) {
       const retryable = error instanceof ResendApiError && error.retryable

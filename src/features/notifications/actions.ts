@@ -79,6 +79,25 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
 }
 
 /** Deletes one of the signed-in member's own notifications (the phone row "…" sheet). */
+/** Round G (G6): a grouped row ("X and 5 others reacted") stands for several notifications. */
+export async function markNotificationsRead(ids: string[]): Promise<NotificationActionResult> {
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50) return { ok: false, error: 'Invalid notification.' }
+  for (const id of ids) {
+    const result = await markNotificationRead(id)
+    if (!result.ok) return result
+  }
+  return { ok: true }
+}
+
+export async function deleteNotifications(ids: string[]): Promise<NotificationActionResult> {
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50) return { ok: false, error: 'Invalid notification.' }
+  for (const id of ids) {
+    const result = await deleteNotification(id)
+    if (!result.ok) return result
+  }
+  return { ok: true }
+}
+
 export async function deleteNotification(id: string): Promise<NotificationActionResult> {
   const parsed = notificationIdSchema.safeParse(id)
   if (!parsed.success) return { ok: false, error: 'Invalid notification.' }

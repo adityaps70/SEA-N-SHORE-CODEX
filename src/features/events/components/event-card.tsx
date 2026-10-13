@@ -18,7 +18,7 @@ function titleCase(value: string) { return value.replaceAll('_', ' ').replace(/\
  * Event card. Below `md` it becomes a compact row (round 8): image on the left, amber date
  * line, title, place and price; the chips, summary and facts stay on the event page.
  */
-export function EventCard({ event, showStatus = false }: { event: CalendarEvent; showStatus?: boolean }) {
+export function EventCard({ event, showStatus = false, reason = null }: { event: CalendarEvent; showStatus?: boolean; reason?: string | null }) {
   const place = [event.locationName, event.city, event.country].filter(Boolean).join(', ')
   const phoneMeta = [
     event.viewerIsAttending ? (event.viewerHasPaid ? 'Attending · Paid' : 'Attending') : null,
@@ -61,8 +61,9 @@ export function EventCard({ event, showStatus = false }: { event: CalendarEvent;
         <div className="grid gap-2 text-sm text-navy-700 max-md:hidden">
           <span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-teal-700" />{dateLabel(event.startAt, event.timezone)}</span>
           <span className="flex items-center gap-2">{event.format === 'online' ? <Monitor className="h-4 w-4 text-teal-700" /> : <MapPin className="h-4 w-4 text-teal-700" />}{event.format === 'online' ? 'Online' : `${place || 'Venue to be confirmed'}${event.format === 'hybrid' ? ' · also online' : ''}`}</span>
-          <span className="flex items-center gap-2"><Users className="h-4 w-4 text-teal-700" />{event.attendeeCount}{event.capacity ? ` / ${event.capacity}` : ''} attending</span>
+          <span className="flex items-center gap-2"><Users className="h-4 w-4 text-teal-700" />{event.attendeeCount}{event.capacity ? ` / ${event.capacity}` : ''} attending{event.capacity && event.attendeeCount >= event.capacity && !event.viewerIsAttending ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-900">Full</span> : null}</span>
         </div>
+        {reason ? <p className="text-xs font-semibold text-ocean-800">{reason}</p> : null}
         {event.topics.length ? <div className="flex flex-wrap gap-1.5 max-md:hidden">{event.topics.slice(0, 4).map((topic) => <span key={topic} className="rounded-lg bg-mist-50 px-2 py-1 text-xs text-navy-700">{topic}</span>)}</div> : null}
         <p className="mt-auto border-t border-mist-100 pt-3 text-xs text-muted max-md:hidden">Hosted by <span className="font-semibold text-navy-800">{event.publisherName}</span></p>
         <div className="flex items-center justify-between border-t border-mist-100 pt-3 text-sm font-bold text-teal-700 max-md:hidden">

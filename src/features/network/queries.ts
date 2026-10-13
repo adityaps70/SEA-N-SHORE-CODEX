@@ -266,6 +266,7 @@ export async function getPeopleSuggestions(limit: number = PEOPLE_SUGGESTION_LIM
       return profile ? [{ ...profile, relationship: NO_RELATIONSHIP, suggestionReason: item.reason }] : []
     })
     void incrementRankingMetric('pymk.lists_shown')
+    void incrementRankingMetric('pymk.cards_listed', profiles.length)
     return profiles
   }
   const profiles = await getAwsPeopleSuggestions(limit)

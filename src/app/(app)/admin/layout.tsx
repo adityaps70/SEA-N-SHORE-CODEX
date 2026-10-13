@@ -42,6 +42,7 @@ const sections: Section[] = [
   { href: '/admin/newsletter', label: 'Newsletter', icon: Mail },
   { href: '/admin/legacy-invites', label: 'Legacy invites', icon: MailPlus },
   { href: '/admin/ranking', label: 'Ranking', icon: SlidersHorizontal },
+  { href: '/admin/ranking/health', label: 'Ranking health', icon: Activity },
   { href: '/admin/deleted-content', label: 'Deleted content', icon: Trash2 },
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]

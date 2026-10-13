@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { getVerifiedUser } from '@/features/auth/queries'
+import { getLearnersAlsoTook } from '@/features/ranking/course-suggestions'
 import { jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { courseJsonLd, courseMetadata } from '@/features/learning/course-seo'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
@@ -337,13 +338,15 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
 
   // Public page: signed-out visitors see the course and its free previews; enrolling needs an account.
   const user = await getVerifiedUser()
-  const [enrollment, overview, curriculum, trailerUrl, reviews] = await Promise.all([
+  const [enrollment, overview, curriculum, trailerUrl, reviews, alsoTook] = await Promise.all([
     user ? enrollmentRepository.getLearnerEnrollment(user.id, course.id) : Promise.resolve(null),
     // The summary and outline are conveniences: the course page must still render without them.
     marketplaceRepository.getPublishedCourseOverview(course.id).catch(() => EMPTY_OVERVIEW),
     publicCourseRepository.getPublicCurriculum(course.id).catch(() => [] as PublicCurriculumSection[]),
     course.trailerPath ? createMediaReadUrl(course.trailerPath).catch(() => null) : Promise.resolve(null),
     courseRatingRepository.getPublicReviews(course.id).catch(() => EMPTY_REVIEWS),
+    // Round G (G5): co-enrolment (at least 3 shared learners), signed-in members, suggestions switch on.
+    getLearnersAlsoTook(course.id, user?.id ?? null).catch(() => null),
   ])
   const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
   const isFree = !isPaidCourse(course)
@@ -510,6 +513,22 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
             <EvidenceList items={course.requirements} />
           </div>
         </section>
+
+        {alsoTook?.length ? (
+          <section aria-labelledby="also-took-heading" className={`${PHONE_FLAT_SECTION} lg:order-7 lg:col-span-2`}>
+            <h2 id="also-took-heading" className="text-lg font-bold text-navy-950">Learners also took</h2>
+            <ul className="mt-3 divide-y divide-mist-100">
+              {alsoTook.map((other) => (
+                <li key={other.id}>
+                  <Link href={`/learn/courses/${other.slug}`} className="flex min-h-14 flex-col justify-center py-2 hover:bg-mist-50">
+                    <span className="font-semibold text-navy-950">{other.title}</span>
+                    <span className="text-sm text-muted">{other.category} · {other.mentorName}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <CourseReviewsSection
           data={reviews}

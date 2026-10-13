@@ -1,3 +1,5 @@
+import { groupNotifications } from './grouping'
+import { isRankingEnabled } from '@/features/ranking/switches'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { resolveFeedMediaUrls } from '@/features/feed/media'
 import { POST_REACTION_META } from '@/features/feed/types'
@@ -202,8 +204,15 @@ export function createNotificationQueries(input: {
   repository: NotificationRepository
   getProfiles: GetProfiles
   resolveMediaUrls?: ResolveMediaUrls
+  /** Round G (G6): whether reactions and comments are grouped for this member (ranking_settings.notifications). */
+  groupingEnabled?: (profileId: string) => Promise<boolean>
 }) {
   const resolveMediaUrls = input.resolveMediaUrls ?? resolveFeedMediaUrls
+  const groupingEnabled = input.groupingEnabled ?? (async () => false)
+
+  async function present(recipientId: string, notifications: NetworkNotification[]) {
+    return await groupingEnabled(recipientId).catch(() => false) ? groupNotifications(notifications) : notifications
+  }
 
   /** Actors (with signed photos) and post previews for one page of rows, in two batched lookups. */
   async function hydrate(recipientId: string, rows: readonly NotificationRow[]) {
@@ -229,7 +238,7 @@ export function createNotificationQueries(input: {
   async function getNotifications(limit = 50): Promise<NetworkNotification[]> {
     const user = await input.requireUser()
     const rows = await input.repository.listRecent(user.id, limit)
-    return hydrate(user.id, rows)
+    return present(user.id, await hydrate(user.id, rows))
   }
 
   /** Round 14 (3.9): the header badge only needs this one count (notifications_recipient_read_created_idx). */
@@ -245,7 +254,7 @@ export function createNotificationQueries(input: {
       input.repository.listRecent(user.id, 8),
       input.repository.countUnread(user.id),
     ])
-    return { recent: await hydrate(user.id, rows), unreadCount }
+    return { recent: await present(user.id, await hydrate(user.id, rows)), unreadCount }
   }
 
   return { getNotifications, getNotificationChrome, getUnreadNotificationCount }
@@ -255,6 +264,7 @@ const productionQueries = createNotificationQueries({
   requireUser: requireAwsUser,
   repository: createNotificationRepository(),
   getProfiles: getAwsPublicProfilesByIds,
+  groupingEnabled: (profileId) => isRankingEnabled('notifications', profileId),
 })
 
 export const getNotifications = productionQueries.getNotifications

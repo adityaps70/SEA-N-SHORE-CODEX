@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
 import { getVerifiedUser } from '@/features/auth/queries'
+import { DismissibleSuggestion } from '@/features/ranking/components/dismissible-suggestion'
+import { getRecommendedCourses } from '@/features/ranking/course-suggestions'
 import { coursePrice, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
 import { catalogueMetadata } from '@/features/learning/course-seo'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
@@ -84,7 +86,7 @@ function PricingLabel({ course }: { course: MarketplaceCourse }) {
  * Round E (E8): the image shows on its own (16:9, nothing laid over it), so text baked into a thumbnail is
  * never covered; the category and price sit in the card body.
  */
-function CourseCard({ course }: { course: MarketplaceCourse }) {
+function CourseCard({ course, reason = null }: { course: MarketplaceCourse; reason?: string | null }) {
   const firstOutcome = course.learningOutcomes[0] ?? null
   const thumbnailPath = course.thumbnailPath
 
@@ -126,6 +128,7 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
           {course.title}
           <ArrowRight aria-hidden="true" className="mt-1 size-4 shrink-0" />
         </Link>
+        {reason ? <p className="mt-2 text-sm font-semibold text-ocean-800">{reason}</p> : null}
         {course.subtitle ? <p className="mt-2 text-sm leading-6 text-muted">{course.subtitle}</p> : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold text-muted">
@@ -174,11 +177,13 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   const category = normalizeParam(params.category)
   const search = normalizeParam(params.search)
   const user = await getVerifiedUser()
-  const [courses, mentorState, access, organizations] = await Promise.all([
+  const [courses, mentorState, access, organizations, recommended] = await Promise.all([
     marketplaceRepository.listPublishedCourses({ category, search }),
     user ? learningRepository.getMentorApplicationState(user.id) : null,
     user ? getAccessContext(user.id) : null,
     user ? organizationRepository.listUserOrganizations(user.id) : [],
+    // Round G (G5): a personal row for signed-in members when ranking_settings.suggestions is on.
+    !category && !search ? getRecommendedCourses(user?.id ?? null).catch(() => null) : Promise.resolve(null),
   ])
   const isActiveTrainer = mentorState?.kind === 'mentor' && mentorState.mentorStatus === 'active'
   const hasOrganizationLmsAccess = organizations.some((organization) =>
@@ -290,6 +295,20 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           ))}
         </nav>
       </section>
+
+      {recommended?.length ? (
+        <section aria-labelledby="recommended-courses-heading" className="mt-7 max-md:mt-4">
+          <h2 id="recommended-courses-heading" className="text-section-title font-bold text-navy-950 max-md:text-card-title">Recommended for you</h2>
+          <p className="mt-1 text-sm text-muted">From your certificates, rank and what members in your rank are taking.</p>
+          <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {recommended.map(({ course, reason }) => (
+              <DismissibleSuggestion key={course.id} kind="course" targetId={course.id} name={course.title}>
+                <CourseCard course={course} reason={reason} />
+              </DismissibleSuggestion>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-7 max-md:mt-4">
         <div className="flex flex-wrap items-end justify-between gap-3">

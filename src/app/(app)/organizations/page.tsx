@@ -15,6 +15,8 @@ import { OrganizationCardMenu } from '@/features/organizations/components/leave-
 import { OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { NewOrganizationPanel } from '@/features/organizations/components/new-organization-panel'
 import { PhoneShowMoreList } from '@/features/organizations/components/phone-show-more-list'
+import { DismissibleSuggestion } from '@/features/ranking/components/dismissible-suggestion'
+import { getDiscoverOrganizationsForYou } from '@/features/ranking/suggestions'
 import { RequestAccessForm, type RequestAccessState } from '@/features/organizations/components/request-access-form'
 import { organizationManageHref, organizationPlanBillingHref } from '@/features/organizations/organization-page-profile'
 import { organizationRepository } from '@/features/organizations/repository'
@@ -41,6 +43,11 @@ const VERIFICATION_NOTE = 'Verification confirms an organization is genuine. It 
 const primaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg bg-navy-950 px-3 text-xs font-bold text-white transition hover:bg-navy-900'
 const secondaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50'
 
+/** Round G (G5): the one plain reason line on a personalised Discover card. */
+function reasonChip(reason: string | null) {
+  return reason ? <span className="text-xs font-semibold text-ocean-800">{reason}</span> : undefined
+}
+
 export default async function OrganizationsPage({
   searchParams,
 }: {
@@ -61,7 +68,8 @@ export default async function OrganizationsPage({
     query.length >= 2 ? organizationRepository.searchCompanies(query) : Promise.resolve([]),
     getAccessContext(user.id),
     organizationAccessRequestRepository.countPendingForManager(user.id),
-    organizationWorkspaceRepository.listDiscoverOrganizations(user.id, 6).catch(() => null),
+    // Round G (G5): personalised when ranking_settings.suggestions is on; else the verified list (v1).
+    getDiscoverOrganizationsForYou(6).catch(() => null).then((personal) => personal ?? organizationWorkspaceRepository.listDiscoverOrganizations(user.id, 6).catch(() => null)),
   ])
   const nowIso = new Date().toISOString()
 
@@ -353,7 +361,14 @@ export default async function OrganizationsPage({
             className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
             initial={3}
             moreLabel="See more organizations"
-            items={discover.map((organization) => ({ key: organization.id, node: <OrganizationCard organization={organization} /> }))}
+            items={discover.map((organization) => ({
+              key: organization.id,
+              node: 'reason' in organization ? (
+                <DismissibleSuggestion kind="org" targetId={organization.id} name={organization.name}>
+                  <OrganizationCard organization={organization} meta={reasonChip((organization as { reason: string | null }).reason)} />
+                </DismissibleSuggestion>
+              ) : <OrganizationCard organization={organization} />,
+            }))}
           />
         ) : (
           <p className="text-sm leading-6 text-muted">You already follow every verified organization we can suggest. Use search to find more.</p>

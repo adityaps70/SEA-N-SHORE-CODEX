@@ -5,6 +5,7 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { query } from '@/lib/db/client'
 import { isRankingArea, isRankingMode, rankingSwitches } from './switches'
 import { createJobAlertSender } from './job-alerts'
+import { createWeeklyDigest } from './weekly-digest'
 
 export type RankingSwitchResult = { ok: true } | { ok: false; error: string }
 
@@ -30,6 +31,27 @@ export async function setRankingModeAction(area: string, mode: string): Promise<
   }
   revalidatePath('/admin/ranking')
   return { ok: true }
+}
+
+/** Admin › Ranking: queue a test weekly digest to the signed-in administrator, marked [Test]. */
+export async function sendTestDigestAction(): Promise<RankingSwitchResult & { items?: number }> {
+  let adminId: string
+  try {
+    adminId = (await requirePlatformAdministratorUser()).id
+  } catch {
+    return { ok: false, error: 'Only platform administrators can send test emails.' }
+  }
+  try {
+    const result = await createWeeklyDigest().queueTest(adminId)
+    await query(
+      `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+       values ($1, 'ranking.test_email_queued', 'ranking_email', 'weekly_digest', $2::jsonb)`,
+      [adminId, JSON.stringify({ items: result.items })],
+    )
+    return { ok: true, items: result.items }
+  } catch {
+    return { ok: false, error: 'The test digest could not be queued. Is migration 0085 applied?' }
+  }
 }
 
 /**

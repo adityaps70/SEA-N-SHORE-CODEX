@@ -348,6 +348,15 @@ Required behavior coverage:
 - precise timestamp remains available accessibly;
 - ordering remains unchanged.
 
+> **Algorithms round G (13 October 2026), G6:**
+>
+> - Behind `ranking_settings.notifications`, reactions or comments on the same post within 24 hours show as one row
+>   ("<name> and 5 others reacted to your post"). The row shows the newest avatar and opens the post.
+> - Mentions, tags, connection requests, job matches and event changes are never merged. They show "Important"
+>   until read.
+> - The weekly digest email (`ranking_settings.weekly_digest`) is described in
+>   `docs/superpowers/plans/2026-10-13-algorithms-round-g.md`.
+
 ### Regression
 
 - existing comment creation/replying still works;

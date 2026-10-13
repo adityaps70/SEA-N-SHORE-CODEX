@@ -15,6 +15,7 @@ export function ApplyJobButton({
   variant,
   label,
   gate,
+  source,
 }: {
   jobId: string
   alreadyApplied: boolean
@@ -25,6 +26,8 @@ export function ApplyJobButton({
   variant?: 'bar'
   /** Overrides the trigger label (e.g. "Apply now" in the phone bar for non-Easy-Apply jobs). */
   label?: string
+  /** Round G: where the member found the job (counted on Admin › Ranking health). */
+  source?: string
 }) {
   const bar = variant === 'bar'
   const [submitted, setSubmitted] = useState(alreadyApplied)
@@ -148,7 +151,9 @@ export function ApplyJobButton({
         }
       }
 
-      const result = await applyToJob(jobId, cvReference, coverNote.trim() || null)
+      const result = source
+        ? await applyToJob(jobId, cvReference, coverNote.trim() || null, source)
+        : await applyToJob(jobId, cvReference, coverNote.trim() || null)
       if (result.ok) {
         setSubmitted(true)
         setOpen(false)

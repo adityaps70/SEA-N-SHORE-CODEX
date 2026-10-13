@@ -40,8 +40,12 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: `${job.title} at ${job.companyName}`, description: job.summary ?? undefined }
 }
 
-export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
+const APPLY_SOURCES = new Set(['for_you', 'search', 'jobs', 'job_alert', 'digest'])
+
+export default async function JobDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ src?: string | string[] }> }) {
   const { id } = await params
+  const rawSource = (await searchParams)?.src
+  const source = typeof rawSource === 'string' && APPLY_SOURCES.has(rawSource) ? rawSource : 'job_page'
   const { job, alreadyApplied, isSaved, match, gateMatch, profileReady } = await loadJobDetail(id)
   if (!job) notFound()
 
@@ -120,7 +124,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </article>
 
         <aside className="min-w-0 space-y-4 self-start max-md:pb-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:[scrollbar-width:none] lg:[&::-webkit-scrollbar]:hidden">
-          <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2">{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} gate={gate} /> : closedNotice}<SaveJobButton jobId={job.id} initialSaved={isSaved} /></div><div className="mt-4 border-t border-mist-100 pt-3"><JobShareActions jobId={job.id} jobTitle={job.title} companyName={job.companyName} /></div></div>
+          <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2">{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} gate={gate} source={source} /> : closedNotice}<SaveJobButton jobId={job.id} initialSaved={isSaved} /></div><div className="mt-4 border-t border-mist-100 pt-3"><JobShareActions jobId={job.id} jobTitle={job.title} companyName={job.companyName} /></div></div>
           <section aria-labelledby="job-company-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
             <h2 id="job-company-heading" className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">{job.companyId ? 'Posted by' : 'Posted by a recruiter'}</h2>
             <div className="mt-3">
@@ -142,7 +146,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </aside>
       </div>
 
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 py-3 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden" data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} gate={gate} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">Applications closed</span>}</div>
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 py-3 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden" data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} gate={gate} source={source} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">Applications closed</span>}</div>
     </section>
   )
 }
