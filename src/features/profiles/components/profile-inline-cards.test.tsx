@@ -351,14 +351,18 @@ describe('Cancel and Esc', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Professional Record' }))
     expect(screen.getByRole('combobox', { name: 'Department' })).toHaveValue('deck_officers')
     expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toHaveValue('master')
-    for (const [name, value] of [['Current vessel', 'MT Example'], ['Vessel types', 'Oil Tanker'], ['Trading areas', 'Worldwide']]) {
+    for (const [name, value] of [['Current vessel', 'MT Example'], ['Trading areas', 'Worldwide']]) {
       expect(screen.getByRole('textbox', { name })).toHaveValue(value)
     }
+    // Round G: vessel types are chips picked from the taxonomy list.
+    expect(screen.getByRole('list', { name: 'Selected vessel types' })).toHaveTextContent('Oil Tanker')
+    expect(screen.getByRole('combobox', { name: 'Vessel types' })).toHaveValue('')
     expect(screen.getByRole('spinbutton', { name: 'Sailing experience years' })).toHaveValue(18)
     expect(screen.getByRole('checkbox', { name: 'Interested in shore opportunities' })).toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mocks.updateProfileProfessionalSection).toHaveBeenCalledTimes(1))
     expect(lastFormData(mocks.updateProfileProfessionalSection).get('roleKey')).toBe('master')
+    expect(lastFormData(mocks.updateProfileProfessionalSection).get('vesselTypes')).toBe('Oil Tanker')
     await waitFor(() => expect(screen.queryByRole('combobox', { name: 'Current or most recent rank' })).not.toBeInTheDocument())
   })
 })

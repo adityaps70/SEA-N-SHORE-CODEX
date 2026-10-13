@@ -23,6 +23,7 @@ import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection } from './profile-section'
 import { PhoneShowAll } from './profile-show-all'
 import { setCertificateHiddenFromProfile } from '@/features/learning/certificate-profile-actions'
 import type { ProfileLearningCertificate } from '@/features/learning/certificate-repository'
+import { TaxonomyDatalist } from '@/features/taxonomy/components/taxonomy-datalist'
 
 const initialActionState: ProfilePortfolioActionState = {}
 
@@ -139,7 +140,8 @@ function CredentialEditor({
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className={labelClass}>
           Certificate / CoC name
-          <input name="name" maxLength={180} defaultValue={credential?.name ?? ''} className={inputClass} placeholder="Certificate of Competency - Master" />
+          <input name="name" maxLength={180} defaultValue={credential?.name ?? ''} className={inputClass} placeholder="Start typing: COC: Master, Advanced Fire Fighting…" list="credential-name-options" autoComplete="off" />
+          <TaxonomyDatalist id="credential-name-options" kind="certificate" />
           <ProfileCardFieldError fieldErrors={errors} name="name" />
         </label>
         <label className={labelClass}>

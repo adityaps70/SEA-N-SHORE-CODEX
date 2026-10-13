@@ -8,6 +8,7 @@ import type { NetworkProfile } from '@/features/network/types'
 import { loadFeedPage } from '../actions'
 import type { FeedPage, FeedPost, PostCategory } from '../types'
 import { useSuggestionDeck } from '@/features/network/components/suggestion-deck'
+import { usePostImpressions } from '../impressions/use-post-impressions'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
 
@@ -53,6 +54,8 @@ export function FeedList({
   const showPeople = suggestions !== undefined
   // One deck for every row, so a person connected in one row is gone from the others too.
   const peopleDeck = useSuggestionDeck(suggestions ?? NO_SUGGESTIONS)
+  // Round G: a post counts as seen after ≥50% of it is visible for ≥1 s (sent in batches and on pagehide).
+  const impressionRef = usePostImpressions()
   const groupId = scope?.groupId
   const hashtag = scope?.hashtag
 
@@ -191,7 +194,9 @@ export function FeedList({
       ) : null}
       {posts.map((post, index) => (
         <Fragment key={post.id}>
-          <PostCard post={post} flushOnPhones loadingPriority={postLoadingPriority(index)} roleBadge={roleBadges?.[post.author.id]} />
+          <div ref={impressionRef(post.id)}>
+            <PostCard post={post} flushOnPhones loadingPriority={postLoadingPriority(index)} roleBadge={roleBadges?.[post.author.id]} />
+          </div>
           {peoplePositions.has(index) ? <FeedPeopleRow deck={peopleDeck} showEmptyState={index === firstPeoplePosition} /> : null}
         </Fragment>
       ))}

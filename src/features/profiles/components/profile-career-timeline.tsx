@@ -26,6 +26,7 @@ import type { ProfileExperienceRecord, ProfileExperienceTrack } from '../profile
 import { ProfileCardFieldError, ProfileCardForm, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
 import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection } from './profile-section'
 import { PhoneShowAll } from './profile-show-all'
+import { TaxonomyDatalist } from '@/features/taxonomy/components/taxonomy-datalist'
 
 const initialActionState: ProfilePortfolioActionState = {}
 
@@ -148,7 +149,8 @@ function ExperienceEditor({
 
         <label className={labelClass}>
           {labels.title}
-          <input name="title" maxLength={160} defaultValue={record?.title ?? ''} className={inputClass} />
+          <input name="title" maxLength={160} defaultValue={record?.title ?? ''} className={inputClass} list="experience-title-options" autoComplete="off" />
+          <TaxonomyDatalist id="experience-title-options" kind="rank" />
           <ProfileCardFieldError fieldErrors={errors} name="title" />
         </label>
 
@@ -167,7 +169,8 @@ function ExperienceEditor({
             </label>
             <label className={labelClass}>
               Vessel type
-              <input name="vesselType" maxLength={120} defaultValue={record?.vesselType ?? ''} className={inputClass} placeholder="Oil tanker, LNG, bulk carrier…" />
+              <input name="vesselType" maxLength={120} defaultValue={record?.vesselType ?? ''} className={inputClass} placeholder="Start typing: Oil Tanker, LNG Carrier, Bulk Carrier…" list="experience-vessel-options" autoComplete="off" />
+              <TaxonomyDatalist id="experience-vessel-options" kind="vessel" />
               <ProfileCardFieldError fieldErrors={errors} name="vesselType" />
             </label>
           </>

@@ -9,6 +9,7 @@ import type { OwnProfile } from '../types'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
+import { VesselTypesInput } from '@/features/taxonomy/components/vessel-types-input'
 
 const initialState: ProfileActionState = {}
 
@@ -172,11 +173,10 @@ export function ProfileEditForm({
                 <input name="sailingExperienceYears" type="number" min={0} max={70} defaultValue={textValue('sailingExperienceYears', profile.sailingExperienceYears?.toString() ?? '')} className={inputClass} />
                 <FieldError state={state} name="sailingExperienceYears" />
               </label>
-              <label className={labelClass}>
-                Vessel types
-                <input name="vesselTypes" maxLength={2000} defaultValue={textValue('vesselTypes', profile.vesselTypes.join(', '))} className={inputClass} />
+              <div className={labelClass}>
+                <VesselTypesInput name="vesselTypes" label="Vessel types" defaultValue={textValue('vesselTypes', profile.vesselTypes.join(', '))} inputClassName={inputClass} />
                 <FieldError state={state} name="vesselTypes" />
-              </label>
+              </div>
               <label className={labelClass}>
                 Trading areas
                 <input name="tradingAreas" maxLength={2000} defaultValue={textValue('tradingAreas', profile.tradingAreas.join(', '))} className={inputClass} />
