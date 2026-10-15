@@ -16,6 +16,8 @@ type Result =
 function message(error: unknown) {
   if (error instanceof Error) {
     if (error.message === 'material_not_found') return 'We could not find this SCORM material.'
+    if (error.message === 'scorm_forbidden') return 'You do not have permission to edit this course’s materials. Ask its trainer or an organization owner, administrator or LMS manager.'
+    if (error.message === 'learning_media_reference_invalid') return 'This SCORM ZIP was not uploaded for this course. Upload it again here.'
     if (error.message === 'material_not_scorm') return 'This material is not configured as SCORM.'
     if (error.message === 'course_edit_forbidden') return courseEditLockedCopy(null, 'Your material changes')
     if (error.message.includes('manifest')) return 'The ZIP does not contain a valid root SCORM manifest.'

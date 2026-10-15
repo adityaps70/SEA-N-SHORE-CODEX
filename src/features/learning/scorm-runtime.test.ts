@@ -25,6 +25,14 @@ describe('SCORM runtime normalization', () => {
     expect(isScormCompletionTerminal(next)).toBe(true)
   })
 
+  it('treats SCORM 1.2 lesson_status "completed" as complete, and "incomplete" as not', () => {
+    const done = normalizeScorm12Update(createScormRuntimeState(), { 'cmi.core.lesson_status': 'completed' })
+    expect(done.completionStatus).toBe('completed')
+    expect(isScormCompletionTerminal(done)).toBe(true)
+    const started = normalizeScorm12Update(createScormRuntimeState(), { 'cmi.core.lesson_status': 'incomplete' })
+    expect(isScormCompletionTerminal(started)).toBe(false)
+  })
+
   it('normalizes SCORM 2004 completion and scaled score', () => {
     const next = normalizeScorm2004Update(createScormRuntimeState(), {
       'cmi.completion_status': 'completed',
