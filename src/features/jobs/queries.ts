@@ -142,6 +142,26 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
     }
   }
 
+  /**
+   * Round H (H5): /jobs for signed-out visitors and search engines. Live jobs only (none past apply-by or
+   * the joining window), no match, no saved or applied state. Recommended and Best match need a member
+   * profile, so they fall back to Newest.
+   */
+  async function getSignedOutJobsDiscovery(rawParams: RawJobSearchParams) {
+    const parsed = parseJobSearchParams(rawParams)
+    const filters = { ...parsed, sort: parsed.sort === 'recommended' || parsed.sort === 'best' ? 'recent' as const : parsed.sort }
+    const page = pageNumber(rawParams.page)
+    const jobs = await input.repository.searchJobs(filters, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE, undefined, { liveOnly: true })
+    const items: JobDiscoveryItem[] = jobs.slice(0, PAGE_SIZE).map((job) => ({ job, isSaved: false, alreadyApplied: false, match: null, gateMatch: null }))
+    return { filters, items, profileReady: false, version: 1 as const, page, hasMore: jobs.length > PAGE_SIZE, applied: [] as JobDiscoveryItem[] }
+  }
+
+  /** Round H (H5): a published job for a signed-out visitor (no match, saved or applied state). */
+  async function getSignedOutJobDetailState(id: string) {
+    const job = await input.repository.getPublishedJob(id)
+    return { job, alreadyApplied: false, isSaved: false, match: null, gateMatch: null, profileReady: false }
+  }
+
   async function getMyJobApplications() {
     const user = await input.requireUser()
     return input.repository.listApplications(user.id)
@@ -186,8 +206,10 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
     getPublishedJobs,
     getPublishedJob,
     getJobsDiscovery,
+    getSignedOutJobsDiscovery,
     getMyJobApplications,
     getJobDetailState,
+    getSignedOutJobDetailState,
     getJobApplicationState,
     getSavedJobs,
     getJobAlerts,
@@ -201,6 +223,8 @@ export const getPublishedJob = productionQueries.getPublishedJob
 export const getJobsDiscovery = productionQueries.getJobsDiscovery
 export const getMyJobApplications = productionQueries.getMyJobApplications
 export const getJobDetailState = productionQueries.getJobDetailState
+export const getSignedOutJobsDiscovery = productionQueries.getSignedOutJobsDiscovery
+export const getSignedOutJobDetailState = productionQueries.getSignedOutJobDetailState
 export const getJobApplicationState = productionQueries.getJobApplicationState
 export const getSavedJobs = productionQueries.getSavedJobs
 export const getJobAlerts = productionQueries.getJobAlerts

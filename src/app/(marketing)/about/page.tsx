@@ -1,6 +1,12 @@
 import type { Metadata } from 'next'
+import { metaDescription } from '@/lib/seo/meta'
 
-export const metadata: Metadata = { title: 'About' }
+// Round H (H5): a canonical address and a plain-text search description.
+export const metadata: Metadata = {
+  title: 'About',
+  description: metaDescription('Sea N Shore connects seafarers, shore professionals, recruiters, trainers, students, families and maritime organizations through trusted profiles, jobs, learning and events.'),
+  alternates: { canonical: '/about' },
+}
 
 export default function AboutPage() {
   return (

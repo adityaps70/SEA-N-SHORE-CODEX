@@ -2,6 +2,7 @@ import { postLoadingPriority } from '@/features/feed/post-loading-priority'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { RailFooter } from '@/components/navigation/rail-footer'
 import { getVerifiedUser } from '@/features/auth/queries'
@@ -25,16 +26,21 @@ import { getViewableDgProfileDocument } from '@/features/profiles/profile-docume
 import { getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getProfileOrganizations, getPublicProfileBySlug } from '@/features/profiles/queries'
+import { privacyPreferences } from '@/features/profiles/privacy-preferences'
+import { personJsonLd, profileMetadata } from '@/features/profiles/profile-seo'
+import { siteOrigin } from '@/features/learning/course-seo'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
+import { jsonLd } from '@/lib/seo/meta'
+
+// Round H (H5): one read per request for metadata and the page; a failed read counts as "not allowed".
+const allowsSearchIndexing = cache((profileId: string) => privacyPreferences.allowsSearchIndexing(profileId).catch(() => false))
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const profile = await getPublicProfileBySlug(slug)
   if (!profile) return { title: 'Member not found' }
-  return {
-    title: profile.headline ? `${profile.fullName} · ${profile.headline}` : profile.fullName,
-    description: profile.summary ?? undefined,
-  }
+  // Round H (H5): noindex unless the owner lets search engines show the profile; then a canonical address.
+  return profileMetadata(profile, { allowIndexing: await allowsSearchIndexing(profile.id) })
 }
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -46,7 +52,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   if (!profile) notFound()
 
   const viewingSomeoneElse = Boolean(viewer && viewer.id !== profile.id)
-  const [relationship, portfolio, recommendations, posts, networkSummary, dgProfile, organizations, similarPeople] = await Promise.all([
+  const [allowIndexing, relationship, portfolio, recommendations, posts, networkSummary, dgProfile, organizations, similarPeople] = await Promise.all([
+    allowsSearchIndexing(profile.id),
     viewer && viewingSomeoneElse ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
     viewer ? getPeopleYouMayKnow() : Promise.resolve([]),
@@ -66,6 +73,10 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const profileContent = (
     <main className={`mx-auto grid w-full max-w-6xl gap-4 px-4 py-4 max-md:gap-2 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1fr)_300px] ${viewer ? '' : 'max-md:pb-24 max-md:pt-0'}`}>
       <div className="grid min-w-0 gap-4 max-md:gap-2">
+        {/* Round H (H5): Person structured data only for members who allow search engines. */}
+        {allowIndexing ? (
+          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(personJsonLd(profile, siteOrigin())) }} />
+        ) : null}
         {viewer ? (
           <MobilePageBar
             backHref="/home"

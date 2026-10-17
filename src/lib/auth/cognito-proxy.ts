@@ -48,7 +48,13 @@ export function isPublicLearnRoute(pathname: string) {
  * Round F: a post page opens for anyone. Signed-in members still get their session refreshed here, so
  * an expired access token never makes them look signed out; signed-out visitors are never redirected.
  */
-const SOFT_AUTH_PATHS = [/^\/posts\/[^/]+$/]
+const SOFT_AUTH_PATHS = [
+  /^\/posts\/[^/]+$/,
+  // Round H (H5): the jobs list and each job page (UUID) open the same way, for visitors and search
+  // engines. Saved jobs, applications, alerts and any other /jobs page stay signed-in only.
+  /^\/jobs$/,
+  /^\/jobs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+]
 
 export function isSoftAuthRoute(pathname: string) {
   return SOFT_AUTH_PATHS.some((pattern) => pattern.test(pathname))
@@ -76,7 +82,7 @@ export function signInRedirectUrl(request: NextRequest) {
 const allowPublicPostView = createPublicPageRateLimiter()
 
 export function isCognitoProtectedRoute(pathname: string) {
-  if (isPublicLearnRoute(pathname)) return false
+  if (isPublicLearnRoute(pathname) || isSoftAuthRoute(pathname)) return false
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
@@ -101,7 +107,8 @@ export function createCognitoProxyHandler(session: RouteSession, options: { allo
     }
 
     if (soft) {
-      // Signed out: the page renders read-only, at most 60 views a minute per visitor address.
+      // Signed out: the page renders read-only, at most 60 views a minute per visitor address (shared by
+      // post and job pages).
       const key = trustedClientIp(request.headers) ?? 'unknown'
       if (!allowSignedOutView(key)) {
         return new NextResponse('Too many requests. Please wait a minute and try again.', {

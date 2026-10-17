@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseJobSearchParams } from './search'
-import { createJobsRepository } from './repository'
+import { createJobsRepository, JOB_ACCEPTING_SQL, LIVE_JOB_SQL } from './repository'
 
 describe('jobs repository', () => {
   it('lists every published job even when its application deadline has passed', async () => {
@@ -302,5 +302,32 @@ describe('jobs repository', () => {
     expect(seen[2]?.values?.[0]).toBe('viewer-1')
     expect(seen[3]?.text).toContain('insert into public.job_reports')
     expect(seen[3]?.values).toEqual(['job-1', 'viewer-1', 'fake_company', 'Company identity looks suspicious'])
+  })
+
+  it('lists live jobs only for the sitemap, with their last change (round H, H5)', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{ id: 'job-1', updated_at: new Date('2026-10-02T09:30:00.000Z') }, { id: 'job-2', updated_at: '2026-10-03T10:00:00.000Z' }]
+      },
+    })
+
+    await expect(repository.listSitemapJobs()).resolves.toEqual([
+      { id: 'job-1', updatedAt: '2026-10-02T09:30:00.000Z' },
+      { id: 'job-2', updatedAt: '2026-10-03T10:00:00.000Z' },
+    ])
+    expect(seen[0]?.text).toContain(LIVE_JOB_SQL)
+    expect(seen[0]?.text).toContain('j.deleted_at is null')
+    expect(seen[0]?.values).toEqual([50_000])
+  })
+
+  it('leaves expired jobs out of the signed-out list only when asked (round H, H5)', async () => {
+    const seen: string[] = []
+    const repository = createJobsRepository({ query: async (text) => { seen.push(text); return [] } })
+    await repository.searchJobs(parseJobSearchParams({}), 21, 0, undefined, { liveOnly: true })
+    await repository.searchJobs(parseJobSearchParams({}), 21, 0)
+    expect(seen[0]).toContain(JOB_ACCEPTING_SQL)
+    expect(seen[1]).not.toContain(JOB_ACCEPTING_SQL)
   })
 })

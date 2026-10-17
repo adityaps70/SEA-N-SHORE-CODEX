@@ -1,4 +1,7 @@
-import { NotFoundView } from '@/components/feedback/not-found-view'
+import { NOT_FOUND_METADATA, NotFoundView } from '@/components/feedback/not-found-view'
+
+// Round H (H5): "Page not found · Sea N Shore", noindex.
+export const metadata = NOT_FOUND_METADATA
 
 /** Member profiles and certificates that do not exist or are no longer public. */
 export default function PublicNotFound() {

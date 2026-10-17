@@ -8,7 +8,7 @@ function source(path: string) {
 
 describe('premium candidate jobs experience contract', () => {
   it('turns /jobs into maritime discovery with modes, structured filters and profile recommendations', () => {
-    const page = source('src/app/(app)/jobs/page.tsx')
+    const page = source('src/app/(public)/jobs/page.tsx')
     const subnav = source('src/features/jobs/components/jobs-subnav.tsx')
     const controls = source('src/features/jobs/components/jobs-discovery-controls.tsx')
     expect(page).toContain('getJobsDiscovery')
@@ -39,7 +39,7 @@ describe('premium candidate jobs experience contract', () => {
   })
 
   it('gives job detail an explainable maritime match and candidate safety controls', () => {
-    const page = source('src/app/(app)/jobs/[id]/page.tsx')
+    const page = source('src/app/(public)/jobs/[id]/page.tsx')
     expect(page).toContain('getJobDetailState')
     expect(page).toContain('Your Maritime Match')
     expect(page).toContain('missingRequirements')
@@ -66,7 +66,7 @@ describe('premium candidate jobs experience contract', () => {
   })
 
   it('gives phones compact jobs screens without removing desktop surfaces (round 8)', () => {
-    const page = source('src/app/(app)/jobs/page.tsx')
+    const page = source('src/app/(public)/jobs/page.tsx')
     expect(page).toContain('<JobsMobileToolbar')
     expect(page).toContain('<JobListRow')
     expect(page).toContain('href="/hiring"')

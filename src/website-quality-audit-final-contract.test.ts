@@ -20,7 +20,7 @@ describe('remaining website quality audit contract', () => {
   })
 
   it('makes job discovery responsive, removable, countable and truthfully sorted', () => {
-    const jobs = source('src/app/(app)/jobs/page.tsx')
+    const jobs = source('src/app/(public)/jobs/page.tsx')
     const controls = source('src/features/jobs/components/jobs-discovery-controls.tsx')
     expect(controls).toContain('router.replace')
     expect(controls).toContain('Clear all')

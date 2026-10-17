@@ -594,3 +594,29 @@ export const getPublicProfileBySlugFromAurora = profileRepository.getPublicProfi
 export const getPublicProfileByIdFromAurora = profileRepository.getPublicProfileById
 export const getPublicProfilesByIdsFromAurora = profileRepository.getPublicProfilesByIds
 export const getDiscoveryCandidatesFromAurora = profileRepository.getDiscoveryCandidates
+
+/**
+ * Round H (H5): public profile pages the sitemap may list: active, onboarded members who turned on
+ * "Let search engines show my profile". Everyone else is left out (and their page carries noindex).
+ */
+export async function listSearchIndexableProfiles(
+  limit = 50_000,
+  queryRows: (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]> = (text, values) => databaseQuery(text, values),
+): Promise<Array<{ slug: string; updatedAt: string }>> {
+  const rows = await queryRows(
+    `select p.slug, p.updated_at
+     from public.profiles p
+     join public.member_preferences preference
+       on preference.profile_id = p.id
+      and preference.allow_search_indexing
+     where p.account_status = 'active'
+       and p.onboarding_completed_at is not null
+       and p.slug is not null
+     order by p.updated_at desc, p.id asc
+     limit $1`,
+    [Math.min(Math.max(Math.trunc(limit), 1), 50_000)],
+  ) as Array<{ slug: string | null; updated_at: string | Date }>
+  return rows.flatMap((row) => row.slug
+    ? [{ slug: row.slug, updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at }]
+    : [])
+}

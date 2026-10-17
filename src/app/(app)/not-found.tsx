@@ -1,4 +1,7 @@
-import { NotFoundView } from '@/components/feedback/not-found-view'
+import { NOT_FOUND_METADATA, NotFoundView } from '@/components/feedback/not-found-view'
+
+// Round H (H5): "Page not found · Sea N Shore", noindex.
+export const metadata = NOT_FOUND_METADATA
 
 /** Shown inside the signed-in shell when a post, job, event, course or profile no longer exists. */
 export default function AppNotFound() {

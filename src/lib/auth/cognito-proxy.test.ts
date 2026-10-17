@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-import { createCognitoProxyHandler, rememberReturnPath } from './cognito-proxy'
+import { createCognitoProxyHandler, isCognitoProtectedRoute, rememberReturnPath } from './cognito-proxy'
 import { RETURN_PATH_COOKIE } from './return-path'
 
 function request(path: string) {
@@ -67,9 +67,10 @@ describe('Cognito protected route proxy', () => {
 
   it('keeps the page and its query in the return path, without Next\'s _rsc parameter, for page loads only', async () => {
     const handler = createCognitoProxyHandler({ getVerifiedPrincipal: vi.fn(async () => null), refreshSession: vi.fn(async () => false) })
-    const page = await handler(request('/jobs?type=deck&_rsc=abc12'))
-    expect(new URL(page.headers.get('location')!).searchParams.get('next')).toBe('/jobs?type=deck')
-    const action = await handler(new NextRequest('https://staging.seaandshore.in/jobs', { method: 'POST' }))
+    // Round H (H5): /jobs itself is public now; its signed-in-only pages keep the wall.
+    const page = await handler(request('/jobs/saved?type=deck&_rsc=abc12'))
+    expect(new URL(page.headers.get('location')!).searchParams.get('next')).toBe('/jobs/saved?type=deck')
+    const action = await handler(new NextRequest('https://staging.seaandshore.in/jobs/saved', { method: 'POST' }))
     expect(action.headers.get('location')).toBe('https://staging.seaandshore.in/auth/sign-in')
   })
 
@@ -130,7 +131,11 @@ describe('Cognito protected route proxy', () => {
     '/hashtags/sire',
     '/hiring',
     '/home',
-    '/jobs',
+    '/jobs/saved',
+    '/jobs/applications',
+    '/jobs/alerts',
+    '/jobs/not-a-job-id',
+    '/jobs/11111111-1111-4111-8111-111111111111/anything-new',
     '/learn/my-learning',
     '/learn/studio',
     '/learn/studio/courses/33333333-3333-4333-8333-333333333333/edit',
@@ -152,8 +157,22 @@ describe('Cognito protected route proxy', () => {
       refreshSession: vi.fn(async () => false),
     })
 
-    await handler(request(path))
+    const response = await handler(request(path))
     expect(getVerifiedPrincipal).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(307)
+  })
+
+  it.each(['/jobs', '/jobs/11111111-1111-4111-8111-111111111111'])('%s opens signed out, after trying to refresh a member session (round H, H5)', async (path) => {
+    const getVerifiedPrincipal = vi.fn(async () => null)
+    const refreshSession = vi.fn(async () => false)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal, refreshSession }, { allowSignedOutView: () => true })
+
+    const response = await handler(request(path))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('location')).toBeNull()
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+    expect(isCognitoProtectedRoute(path)).toBe(false)
   })
 
   it.each(['/about', '/accessibility', '/help', '/privacy', '/terms', '/copyright', '/newsletter', '/contact', '/pricing', '/refunds', '/shipping'])('%s is public', async (path) => {

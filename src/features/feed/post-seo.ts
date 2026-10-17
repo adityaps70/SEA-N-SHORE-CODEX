@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
+import { metaDescription } from '@/lib/seo/meta'
 import type { FeedPost } from './types'
 
 /**
@@ -14,13 +15,12 @@ export function postPath(postId: string) {
   return `/posts/${postId}`
 }
 
-/** The first 150 characters of the post's text, on one line, cut at a word when it can be. */
-export function postShareDescription(body: string, maxChars = 150) {
-  const text = body.replace(/\s+/g, ' ').trim()
-  if (text.length <= maxChars) return text
-  const cut = text.slice(0, maxChars - 1)
-  const boundary = cut.lastIndexOf(' ')
-  return `${(boundary > maxChars * 0.6 ? cut.slice(0, boundary) : cut).trimEnd()}…`
+/**
+ * The start of the post's text, on one line, cut at a word when it can be.
+ * Round H (H5): plain text via the shared metaDescription (Markdown markers and emoji removed, at most 160 characters).
+ */
+export function postShareDescription(body: string) {
+  return metaDescription(body)
 }
 
 function hasPhoto(post: FeedPost) {

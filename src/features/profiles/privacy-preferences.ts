@@ -15,8 +15,24 @@ import {
  */
 type Query = (text: string, values?: readonly unknown[]) => Promise<Array<Record<string, unknown>>>
 
-export type PrivacyPreferences = { showInPeopleSuggestions: boolean; openToRecruiters: boolean }
+export type PrivacyPreferences = { showInPeopleSuggestions: boolean; openToRecruiters: boolean; allowSearchIndexing: boolean }
 export type PrivacyPreferenceKey = keyof PrivacyPreferences
+
+/** Round H (H5): every switch key, for validating what the settings page sends. */
+export const PRIVACY_PREFERENCE_KEYS = ['showInPeopleSuggestions', 'openToRecruiters', 'allowSearchIndexing'] as const satisfies readonly PrivacyPreferenceKey[]
+
+export function isPrivacyPreferenceKey(value: unknown): value is PrivacyPreferenceKey {
+  return (PRIVACY_PREFERENCE_KEYS as readonly unknown[]).includes(value)
+}
+
+export const DEFAULT_PRIVACY_PREFERENCES: PrivacyPreferences = { showInPeopleSuggestions: true, openToRecruiters: false, allowSearchIndexing: false }
+
+const PREFERENCE_COLUMNS: Record<PrivacyPreferenceKey, string> = {
+  showInPeopleSuggestions: 'show_in_people_suggestions',
+  openToRecruiters: 'open_to_recruiters',
+  // Round H (H5): "Let search engines show my profile" (off by default, migration 0088).
+  allowSearchIndexing: 'allow_search_indexing',
+}
 
 /** Personas that may be found by recruiters as open to work. */
 export const OPEN_TO_WORK_PERSONAS = ['seafarer', 'shore_professional'] as const
@@ -30,17 +46,35 @@ export function createPrivacyPreferences(input: { query?: Query } = {}) {
 
   async function get(profileId: string): Promise<PrivacyPreferences> {
     const rows = await queryRows(
-      `select show_in_people_suggestions, open_to_recruiters from public.member_preferences where profile_id = $1`,
+      `select show_in_people_suggestions, open_to_recruiters, allow_search_indexing from public.member_preferences where profile_id = $1`,
       [profileId],
     )
     return {
       showInPeopleSuggestions: rows[0]?.show_in_people_suggestions !== false,
       openToRecruiters: rows[0]?.open_to_recruiters === true,
+      allowSearchIndexing: rows[0]?.allow_search_indexing === true,
+    }
+  }
+
+  /**
+   * Round H (H5): whether the member lets search engines list their public profile page. No row, or a
+   * failed read, means no: the page then carries noindex and stays out of the sitemap.
+   */
+  async function allowsSearchIndexing(profileId: string): Promise<boolean> {
+    try {
+      const rows = await queryRows(
+        `select allow_search_indexing from public.member_preferences where profile_id = $1`,
+        [profileId],
+      )
+      return rows[0]?.allow_search_indexing === true
+    } catch {
+      return false
     }
   }
 
   async function set(profileId: string, key: PrivacyPreferenceKey, value: boolean) {
-    const column = key === 'showInPeopleSuggestions' ? 'show_in_people_suggestions' : 'open_to_recruiters'
+    const column = PREFERENCE_COLUMNS[key]
+    if (!column) throw new Error('Unknown privacy setting.')
     await queryRows(
       `insert into public.member_preferences (profile_id, ${column}, updated_at) values ($1, $2, now())
        on conflict (profile_id) do update set ${column} = excluded.${column}, updated_at = now()`,
@@ -73,7 +107,7 @@ export function createPrivacyPreferences(input: { query?: Query } = {}) {
     )
   }
 
-  return { get, set, getChoices, setChoice }
+  return { get, set, allowsSearchIndexing, getChoices, setChoice }
 }
 
 export type PrivacyChoices = { messagePermission: MessagePermission; connectionsVisibility: ConnectionsVisibility }

@@ -1,5 +1,8 @@
 import { Wordmark } from '@/components/brand/wordmark'
-import { NotFoundView } from '@/components/feedback/not-found-view'
+import { NOT_FOUND_METADATA, NotFoundView } from '@/components/feedback/not-found-view'
+
+// Round H (H5): "Page not found · Sea N Shore", noindex.
+export const metadata = NOT_FOUND_METADATA
 
 export default function NotFound() {
   return (

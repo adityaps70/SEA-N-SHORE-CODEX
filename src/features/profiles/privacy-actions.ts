@@ -4,13 +4,14 @@ import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { query } from '@/lib/db/client'
 import { CONNECTIONS_VISIBILITIES, MESSAGE_PERMISSIONS } from './privacy-choices'
-import { canBeOpenToRecruiters, privacyPreferences, type PrivacyChoiceKey, type PrivacyPreferenceKey } from './privacy-preferences'
+import { canBeOpenToRecruiters, isPrivacyPreferenceKey, privacyPreferences, type PrivacyChoiceKey } from './privacy-preferences'
 
 export type PrivacyActionResult = { ok: true; value: boolean } | { ok: false; error: string }
 
 /** Settings › Privacy: saves one switch as soon as it changes. */
 export async function setPrivacyPreference(key: string, value: boolean): Promise<PrivacyActionResult> {
-  if ((key !== 'showInPeopleSuggestions' && key !== 'openToRecruiters') || typeof value !== 'boolean') {
+  // Round H (H5): "Let search engines show my profile" (allowSearchIndexing) saves through here too.
+  if (!isPrivacyPreferenceKey(key) || typeof value !== 'boolean') {
     return { ok: false, error: 'Unknown setting.' }
   }
   try {
@@ -21,7 +22,7 @@ export async function setPrivacyPreference(key: string, value: boolean): Promise
         return { ok: false, error: 'This setting is for seafarers and shore professionals.' }
       }
     }
-    await privacyPreferences.set(user.id, key as PrivacyPreferenceKey, value)
+    await privacyPreferences.set(user.id, key, value)
     revalidatePath('/settings/privacy')
     return { ok: true, value }
   } catch {

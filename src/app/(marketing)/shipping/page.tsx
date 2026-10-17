@@ -1,10 +1,13 @@
 import type { Metadata } from 'next'
 import { LegalList, LegalPage, LegalSection, RelatedPolicies, TextLink } from '@/components/legal/legal-page'
 import { BUSINESS } from '@/config/business'
+import { metaDescription } from '@/lib/seo/meta'
 
+// Round H (H5): a canonical address and a plain-text search description.
 export const metadata: Metadata = {
   title: 'Shipping & delivery policy',
-  description: `${BUSINESS.brandName} sells digital services only. How and when you get access after paying.`,
+  description: metaDescription(`${BUSINESS.brandName} sells digital services only. How and when you get access after paying.`),
+  alternates: { canonical: '/shipping' },
 }
 
 export default function ShippingPage() {

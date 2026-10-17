@@ -1,8 +1,14 @@
 import type { Metadata } from 'next'
 import { LegalList, LegalPage, LegalSection, RelatedPolicies, TextLink } from '@/components/legal/legal-page'
 import { BUSINESS, businessAddressLine, grievanceContact } from '@/config/business'
+import { metaDescription } from '@/lib/seo/meta'
 
-export const metadata: Metadata = { title: 'Privacy' }
+// Round H (H5): a canonical address and a plain-text search description.
+export const metadata: Metadata = {
+  title: 'Privacy',
+  description: metaDescription(`How ${BUSINESS.brandName} uses account and profile information, how payments are processed, and how to make a privacy request.`),
+  alternates: { canonical: '/privacy' },
+}
 
 export default function PrivacyPage() {
   const grievance = grievanceContact()

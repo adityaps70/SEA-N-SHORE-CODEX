@@ -1,8 +1,14 @@
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { Flag, Scale, ShieldCheck } from 'lucide-react'
+import { metaDescription } from '@/lib/seo/meta'
 
-export const metadata: Metadata = { title: 'Copyright & IP' }
+// Round H (H5): a canonical address and a plain-text search description.
+export const metadata: Metadata = {
+  title: 'Copyright & IP',
+  description: metaDescription('How ownership of content works on Sea N Shore, and how to submit a copyright or IP complaint about specific user-generated content.'),
+  alternates: { canonical: '/copyright' },
+}
 
 export default function CopyrightPage() {
   return (

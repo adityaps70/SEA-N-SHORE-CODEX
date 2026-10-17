@@ -15,6 +15,8 @@ import { SheetPortal } from './sheet-portal'
 type JobsMobileToolbarProps = {
   filters: JobSearchFilters
   resultCount: number
+  /** Round H (H5): a signed-out visitor: no "My jobs", and For You reads "All jobs" (no profile to match). */
+  signedOut?: boolean
 }
 
 const COLLAPSED_CHIP_COUNT = 6
@@ -99,7 +101,7 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
  * discovery modes and "All filters", the active-filter chips, and the full-screen filter sheet that
  * holds every filter from the desktop panel. Filters apply as they change, like the desktop panel.
  */
-export function JobsMobileToolbar({ filters, resultCount }: JobsMobileToolbarProps) {
+export function JobsMobileToolbar({ filters, resultCount, signedOut = false }: JobsMobileToolbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -176,7 +178,7 @@ export function JobsMobileToolbar({ filters, resultCount }: JobsMobileToolbarPro
       </form>
 
       <nav aria-label="Job views" className={`${CHIP_ROW_CLASS} mt-1`}>
-        <Link href="/jobs/applications" className={chipClass(false)}>My jobs</Link>
+        {signedOut ? null : <Link href="/jobs/applications" className={chipClass(false)}>My jobs</Link>}
         {JOB_DISCOVERY_MODES.map((mode) => (
           <Link
             key={mode.value}
@@ -184,7 +186,7 @@ export function JobsMobileToolbar({ filters, resultCount }: JobsMobileToolbarPro
             aria-current={filters.mode === mode.value ? 'page' : undefined}
             className={chipClass(filters.mode === mode.value)}
           >
-            {mode.label}
+            {signedOut && mode.value === 'for-you' ? 'All jobs' : mode.label}
           </Link>
         ))}
         <button
