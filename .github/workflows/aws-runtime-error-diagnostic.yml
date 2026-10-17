@@ -1,0 +1,74 @@
+name: AWS Runtime Error Diagnostic
+
+# Read-only. Prints the database errors and Google sign-in callback errors that AWS Remote Verify counts in the
+# current PRIMARY web deployment, with the lines that follow each one in its log stream (error code and the SQL
+# text, which has placeholders and no values). Emails are redacted. Changes nothing in AWS.
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-runtime-error-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: aws-runtime-error-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  runtime-error-context:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Print runtime error context for the PRIMARY deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AWS_REGION"
+          test -n "$ECS_CLUSTER"
+          test -n "$ECS_SERVICE"
+          test -n "$ECS_TASK_DEFINITION"
+          test -n "$ECS_CONTAINER_NAME"
+          aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > /tmp/service.json
+          PRIMARY_CREATED_AT=$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].createdAt // empty' /tmp/service.json)
+          test -n "$PRIMARY_CREATED_AT"
+          START_MS=$(( ( $(date -d "$PRIMARY_CREATED_AT" +%s) - 30 ) * 1000 ))
+          aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$ECS_TASK_DEFINITION" --query taskDefinition --output json > /tmp/task-definition.json
+          LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $NAME) | .logConfiguration.options["awslogs-group"] // empty' /tmp/task-definition.json)
+          test -n "$LOG_GROUP"
+          aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --output json > /tmp/events.json
+          echo "PRIMARY_DEPLOYMENT_CREATED_AT=$PRIMARY_CREATED_AT"
+          echo "EVENTS_REVIEWED=$(jq '.events | length' /tmp/events.json)"
+          echo "=== DATABASE AND SIGN-IN ERRORS (UTC time, then the next lines of the same stream) ==="
+          jq -r '
+            [.events[]] | group_by(.logStreamName) | .[] | . as $stream
+            | range(0; length) as $i
+            | select($stream[$i].message | test("\\[database_query_failed\\]|\\[auth_callback_failed\\]"))
+            | [
+                (($stream[$i].timestamp / 1000) | floor | todate),
+                ([$stream[$i:$i + 4][] | .message | gsub("\\s+"; " ")] | join(" ") | .[0:600])
+              ]
+            | @tsv
+          ' /tmp/events.json \
+            | sort \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+            | tail -n 40
+          echo "RUNTIME_ERROR_DIAGNOSTIC_COMPLETE=true"
