@@ -23,6 +23,7 @@ import {
 } from './job-lifecycle'
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from './types'
 import { validateJobRoles } from '@/features/roles/job-role-input'
+import { URGENT_LIMIT_MESSAGE } from './urgent'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
@@ -114,6 +115,8 @@ function safeMutationError(error: unknown) {
   if (error instanceof Error && error.message === 'capability_required') {
     return 'Creator Pro or Organization Pro with verified hiring access is required for job publishing.'
   }
+  // Round H (H7): at most 2 live urgent jobs per organization.
+  if (error instanceof Error && error.message === 'job_urgent_limit_reached') return URGENT_LIMIT_MESSAGE
   if (error instanceof Error && error.message === 'job_state_changed') {
     return 'This job was changed in another window. Refresh the page to see its current state, then try again.'
   }
@@ -135,6 +138,7 @@ function databaseErrorField(error: unknown, field: string) {
 function logHiringMutationError(operation: string, error: unknown) {
   if (error instanceof HiringValidationError) return
   if (error instanceof Error && error.message === 'hiring_forbidden') return
+  if (error instanceof Error && error.message === 'job_urgent_limit_reached') return
 
   console.error('hiring_mutation_failed', {
     operation,

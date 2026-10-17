@@ -24,6 +24,11 @@ describe('audit formatting', () => {
     expect(auditTargetLabel('group')).toBe('Group')
     expect(auditTargetHref('group', 'g1')).toBe('/admin/communities?group=g1')
     expect(auditTargetHref('unknown', 'x')).toBeNull()
+    // Round H (H7): support requests and site settings.
+    expect(auditSummary('support_ticket', 'support_ticket.replied')).toBe('Support request replied')
+    expect(auditTargetHref('support_ticket', 't1')).toBe('/admin/support/t1')
+    expect(auditSummary('site_setting', 'site_setting.updated')).toBe('Site setting updated')
+    expect(auditTargetHref('site_setting', 'about_page')).toBe('/admin/settings')
   })
 
   it('summarises decision, prior state, report count and the reason', () => {

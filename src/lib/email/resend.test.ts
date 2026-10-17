@@ -59,6 +59,19 @@ describe('Resend email client', () => {
     })
   })
 
+  it('sends reply_to only when a reply address is given (round H, H7)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ id: 'email_789' }))
+    const client = createResendEmailClient({ apiKey: 're_test_secret', fetch: fetchMock })
+
+    await client.sendEmail({ from: 'a@b.com', to: 'c@d.com', subject: 'x', text: 'x', html: '<p>x</p>', replyTo: ' operations@example.com ' })
+    await client.sendEmail({ from: 'a@b.com', to: 'c@d.com', subject: 'x', text: 'x', html: '<p>x</p>', replyTo: ' ' })
+
+    const first = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body))
+    expect(first.reply_to).toBe('operations@example.com')
+    const second = JSON.parse(String((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body))
+    expect(second).not.toHaveProperty('reply_to')
+  })
+
   it('sends attachments as base64 files and leaves the field out when there are none', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ id: 'email_456' }))
     const client = createResendEmailClient({ apiKey: 're_test_secret', fetch: fetchMock })

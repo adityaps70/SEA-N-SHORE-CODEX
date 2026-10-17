@@ -43,9 +43,11 @@ const TARGET_LABELS: Record<string, string> = {
   event: 'Event',
   group: 'Group',
   course_review: 'Course review',
-  // Round H (H7): learning audit targets.
+  // Round H (H7): learning, support and site settings audit targets.
   learning_course: 'Course',
   learning_mentor_application: 'Trainer application',
+  support_ticket: 'Support request',
+  site_setting: 'Site setting',
 }
 
 export function auditTargetLabel(targetType: string) {
@@ -59,6 +61,8 @@ export function auditTargetHref(targetType: string, targetId: string) {
   if (targetType === 'organization_application') return `/admin/organizations/${targetId}`
   if (targetType === 'user_account') return `/admin/users/${targetId}`
   if (targetType === 'group') return `/admin/communities?group=${targetId}`
+  if (targetType === 'support_ticket') return `/admin/support/${targetId}`
+  if (targetType === 'site_setting') return '/admin/settings'
   return null
 }
 

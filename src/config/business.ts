@@ -1,13 +1,17 @@
+import { GST_SUPPLIER } from '@/features/tax/gst'
+
 /**
  * Who runs Sea N Shore — the one source of truth for the business details shown on the
  * Contact, Terms, Privacy, Refund, Shipping and Pricing pages and in every footer.
  * Payment-gateway reviewers (Cashfree KYC) compare these with the KYC business, so keep
  * them exactly as registered.
  *
- * OWNER TO-DO: fill `registeredAddress`, `llpin` and `gstin` once they are confirmed
- * (copy them exactly from the LLP registration / GST certificate). Until then they stay
- * '' and the pages show only the city line; empty fields are never rendered.
- * Grievance officer fields are optional: when empty, the support email is shown instead.
+ * Round H (H7): `registeredAddress` comes from the one source already printed on every GST
+ * invoice (GST_SUPPLIER in src/features/tax/gst.ts), so the Contact page and the invoices
+ * can never disagree. OWNER TO-DO: fill `llpin` and `gstin` once they are confirmed (copy
+ * them exactly from the LLP registration / GST certificate); empty fields are never rendered.
+ * Grievance officer fields are optional: when empty, the support email is shown instead. The
+ * Contact page's Grievance Officer is edited in Admin › Site settings.
  *
  * Pure data, safe to import from client and server code.
  */
@@ -31,6 +35,11 @@ export type BusinessDetails = {
   grievanceOfficer: { name: string; email: string; phone: string }
 }
 
+/** The registered office as printed on GST invoices, on one line, with the country. */
+export function registeredAddressLine(lines: readonly string[] = GST_SUPPLIER.address, country = 'India') {
+  return [...lines, country].map((line) => line.trim()).filter(Boolean).join(', ')
+}
+
 export const BUSINESS: BusinessDetails = {
   brandName: 'Sea N Shore',
   brandTagline: 'Global Shipping Community',
@@ -38,7 +47,7 @@ export const BUSINESS: BusinessDetails = {
   city: 'Navi Mumbai',
   region: 'Maharashtra',
   country: 'India',
-  registeredAddress: '',
+  registeredAddress: registeredAddressLine(),
   email: 'info@beaufortmarine.in',
   phone: { display: '+91 85914 63321', tel: '+918591463321' },
   llpin: '',

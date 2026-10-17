@@ -18,6 +18,7 @@ import { batchRepository } from '../../src/features/learning/batches/batch-repos
 import { SESSION_REMINDER_SWEEP_MS, sweepSessionReminders } from '../../src/features/learning/sessions/session-reminders'
 import { createRankingSweeps } from '../../src/features/ranking/worker'
 import { SITE_HEALTH_PROBE_MS, runSiteHealthProbe } from '../../src/features/ops/site-health-probe'
+import { createSupportEmailSweep } from '../../src/features/support/support-email-sending'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -86,6 +87,10 @@ let nextSessionReminderSweepAt = 0
 const rankingSweeps = createRankingSweeps()
 // Round H (H1): the outside-in site check (home page and /api/health) once a minute, as CloudWatch metrics.
 let nextSiteHealthProbeAt = 0
+// Round H (H7): Contact page ticket emails (new request and member reply to operations, admin answer to the
+// sender), every minute. Idempotent (one email per queue row); waits quietly until migration 0089 is applied.
+const supportEmailSweep = createSupportEmailSweep()
+let nextSupportEmailSweepAt = 0
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -331,6 +336,19 @@ async function runSiteHealthProbeIfDue() {
   }
 }
 
+async function runSupportEmailSweepIfDue() {
+  const now = Date.now()
+  if (now < nextSupportEmailSweepAt) return
+  nextSupportEmailSweepAt = now + supportEmailSweep.everyMs
+  try {
+    // Counts only: no names, addresses or messages in the logs.
+    const result = await supportEmailSweep.run()
+    if (result) console.info('[support_ticket_email_sweep]', result)
+  } catch (error) {
+    console.error('[support_ticket_email_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -355,6 +373,7 @@ async function main() {
       await runBatchStatusSweepIfDue()
       await runSessionReminderSweepIfDue()
       await rankingSweeps.runDue()
+      await runSupportEmailSweepIfDue()
       await runSiteHealthProbeIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)

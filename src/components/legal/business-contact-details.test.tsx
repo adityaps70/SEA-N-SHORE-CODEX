@@ -7,7 +7,7 @@ afterEach(() => cleanup())
 
 describe('BusinessContactDetails', () => {
   it('shows the operator, the city line, email, phone and hours while the address is not known', () => {
-    render(<BusinessContactDetails />)
+    render(<BusinessContactDetails business={{ ...BUSINESS, registeredAddress: '' }} />)
     expect(screen.getByText('Beaufort Marine Services LLP')).toBeVisible()
     expect(screen.getByText('Navi Mumbai, Maharashtra, India')).toBeVisible()
     expect(screen.getByText('Location')).toBeInTheDocument()
@@ -15,6 +15,12 @@ describe('BusinessContactDetails', () => {
     expect(screen.getByRole('link', { name: '+91 85914 63321' })).toHaveAttribute('href', 'tel:+918591463321')
     expect(screen.getByText('Monday to Saturday, 10:00–18:00 IST')).toBeVisible()
     expect(screen.queryByText(/LLPIN|GSTIN/)).not.toBeInTheDocument()
+  })
+
+  it('shows the registered address from the GST invoices by default (round H, H7)', () => {
+    render(<BusinessContactDetails />)
+    expect(screen.getByText('0502, Hermes Hiranandani Fortune City, Bhokarpada, Panvel, Raigad, Maharashtra 410206, India')).toBeVisible()
+    expect(screen.getByText('Registered address')).toBeInTheDocument()
   })
 
   it('shows the registered address and registration numbers once they are filled in', () => {

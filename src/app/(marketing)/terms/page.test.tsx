@@ -19,7 +19,7 @@ describe('TermsPage', () => {
     render(<TermsPage />)
 
     expect(screen.getAllByText(/Beaufort Marine Services LLP/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/Navi Mumbai, Maharashtra, India/)).toBeVisible()
+    expect(screen.getByText(/0502, Hermes Hiranandani Fortune City, Bhokarpada, Panvel, Raigad, Maharashtra 410206, India/)).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Payments, plans and paid content' })).toBeVisible()
     expect(screen.getByText(/processed by our payment gateway, Cashfree Payments/)).toBeVisible()
     expect(screen.getByText(/Prices are in Indian rupees \(INR\) and include applicable taxes where this is stated/)).toBeVisible()

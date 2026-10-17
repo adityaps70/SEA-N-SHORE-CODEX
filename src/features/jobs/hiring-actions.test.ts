@@ -546,3 +546,26 @@ describe('applicant management actions', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/hiring/applicants/${applicationId}`)
   })
 })
+
+describe('urgent jobs limit (round H, H7)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'recruiter-1', cognitoSub: 'sub-1', email: null })
+    mocks.getManagedJob.mockResolvedValue(managedJob({ status: 'draft' }))
+  })
+
+  it('turns the repository’s urgent limit into a friendly form error, without logging it as a failure', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.createJob.mockRejectedValue(new Error('job_urgent_limit_reached'))
+    await expect(createHiringJob(createInput({ urgent: true }))).resolves.toEqual({
+      ok: false,
+      error: 'Your organization already has 2 live urgent jobs. Each job stays urgent for 14 days; untick Urgent on one of them, or save this job without it.',
+    })
+    mocks.changeJobStatus.mockRejectedValue(new Error('job_urgent_limit_reached'))
+    await expect(changeHiringJobStatus(jobId, 'publish', { applyUntil: future })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('2 live urgent jobs') })
+    mocks.updateJob.mockRejectedValue(new Error('job_urgent_limit_reached'))
+    await expect(updateHiringJob(jobId, updateInput({ urgent: true }), 'publish')).resolves.toMatchObject({ ok: false, error: expect.stringContaining('2 live urgent jobs') })
+    expect(error).not.toHaveBeenCalledWith('hiring_mutation_failed', expect.anything())
+    error.mockRestore()
+  })
+})

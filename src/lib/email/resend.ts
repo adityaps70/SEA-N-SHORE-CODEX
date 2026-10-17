@@ -143,6 +143,8 @@ export type ResendEmailInput = {
   tags?: Array<{ name: string; value: string }>
   /** Files attached to the email; `content` is base64. */
   attachments?: Array<{ filename: string; content: string }>
+  /** Where a reply goes (Resend `reply_to`), when it should not go to the sender address. */
+  replyTo?: string
   idempotencyKey?: string
 }
 
@@ -175,6 +177,7 @@ export function createResendEmailClient(options: { apiKey: string; fetch?: Fetch
         ...(Object.keys(customHeaders).length ? { headers: customHeaders } : {}),
         ...(input.tags?.length ? { tags: input.tags } : {}),
         ...(attachments.length ? { attachments } : {}),
+        ...(clean(input.replyTo) ? { reply_to: clean(input.replyTo) } : {}),
       }
 
       let response: Response
