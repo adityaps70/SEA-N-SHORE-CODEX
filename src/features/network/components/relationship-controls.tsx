@@ -38,6 +38,8 @@ export function RelationshipControls({
   variant = 'default',
   reportProfile = false,
   openMenuEvent,
+  messageAllowed,
+  connectInMenu = false,
 }: {
   profileId: string
   initialRelationship: RelationshipState
@@ -49,6 +51,10 @@ export function RelationshipControls({
   reportProfile?: boolean
   /** A window event name that opens the "…" menu, e.g. from the phone page bar's "…". */
   openMenuEvent?: string
+  /** Round H (H7): shows Message to someone the viewer is not connected with when their privacy choice allows it. */
+  messageAllowed?: boolean
+  /** Round H (H7): list rows outside Connections (Following) keep Connect and Accept under "…". */
+  connectInMenu?: boolean
 }) {
   const canonicalRelationshipKey = relationshipStateKey(initialRelationship)
   const [lastCanonicalRelationshipKey, setLastCanonicalRelationshipKey] = useState(canonicalRelationshipKey)
@@ -169,7 +175,7 @@ export function RelationshipControls({
   return (
     <div className="space-y-2">
       <div className={`flex flex-wrap items-center gap-2 ${profileVariant ? 'max-md:flex-nowrap' : ''}`}>
-        {relationship.connection.kind === 'none' ? (
+        {relationship.connection.kind === 'none' && !connectInMenu ? (
           <button type="button" disabled={pending} onClick={connect} className={primaryClass}>
             {profileVariant ? <UserPlus aria-hidden="true" className={phoneIcon} /> : null}
             Connect
@@ -181,14 +187,14 @@ export function RelationshipControls({
             {profileVariant ? <Clock3 aria-hidden="true" className={phoneIcon} /> : null}<span>Pending</span></span>
         ) : null}
 
-        {relationship.connection.kind === 'incoming_pending' ? (
+        {relationship.connection.kind === 'incoming_pending' && !connectInMenu ? (
           <button type="button" disabled={pending} onClick={() => respond('accept')} className={primaryClass}>
             {profileVariant ? <Check aria-hidden="true" className={phoneIcon} /> : null}
             Accept
           </button>
         ) : null}
 
-        {relationship.connection.kind === 'connected' ? (
+        {relationship.connection.kind === 'connected' || messageAllowed ? (
           <div className={profileVariant ? 'max-md:min-w-0 max-md:flex-1' : 'contents'}>
             <StartConversationButton targetProfileId={profileId} className={`${compact ? 'min-h-9 px-3 text-xs' : ''} ${profileVariant ? PHONE_MESSAGE_PILL : ''} ${compact && menuIconOnly ? PHONE_MESSAGE_ICON : ''}`.trim()} />
           </div>
@@ -225,6 +231,32 @@ export function RelationshipControls({
           >
             {relationship.following ? 'Following' : 'Follow'}
           </ActionMenuItem>
+          {connectInMenu && relationship.connection.kind === 'none' ? (
+            <ActionMenuItem
+              disabled={pending}
+              onClick={() => {
+                setMenuOpen(false)
+                connect()
+              }}
+              className={menuItemClass}
+              icon={<UserPlus aria-hidden="true" className={phoneIcon} />}
+            >
+              Connect
+            </ActionMenuItem>
+          ) : null}
+          {connectInMenu && relationship.connection.kind === 'incoming_pending' ? (
+            <ActionMenuItem
+              disabled={pending || awaitingRefresh}
+              onClick={() => {
+                setMenuOpen(false)
+                respond('accept')
+              }}
+              className={menuItemClass}
+              icon={<Check aria-hidden="true" className={phoneIcon} />}
+            >
+              Accept request
+            </ActionMenuItem>
+          ) : null}
           {relationship.connection.kind === 'outgoing_pending' ? (
             <ActionMenuItem
               disabled={pending || awaitingRefresh}

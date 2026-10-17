@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { MessagingDock } from '@/features/messaging/components/messaging-dock'
 import { getUnreadMessageCount } from '@/features/messaging/queries'
@@ -16,7 +17,7 @@ const MAIN_CLASS = 'mx-auto w-full max-w-page-wide px-4 py-4 md:py-6'
  */
 export default async function PublicJobsLayout({ children }: { children: React.ReactNode }) {
   const viewer = await getVerifiedUser()
-  if (!viewer) return <main id="main-content" className={MAIN_CLASS}>{children}</main>
+  if (!viewer) return <MainLandmark className={MAIN_CLASS}>{children}</MainLandmark>
 
   const [messagingUnreadCount, legacyConversion] = await Promise.all([
     getUnreadMessageCount().catch(() => 0),
@@ -25,7 +26,7 @@ export default async function PublicJobsLayout({ children }: { children: React.R
   return (
     <>
       {legacyConversion?.status === 'pending' ? <LegacyOrganizationConversionBanner /> : null}
-      <main id="main-content" className={MAIN_CLASS}>{children}</main>
+      <MainLandmark className={MAIN_CLASS}>{children}</MainLandmark>
       <MessagingDock viewerId={viewer.id} initialUnreadCount={messagingUnreadCount} />
       <SourceVisitBeacon />
     </>

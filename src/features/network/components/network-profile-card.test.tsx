@@ -46,7 +46,9 @@ describe('NetworkProfileCard', () => {
     render(<NetworkProfileCard profile={profile} />)
     expect(screen.getByText('Capt. Meera Nair')).toBeInTheDocument()
     expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
-    expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
+    // Round H (H7): the headline already says "Master", so the context line shows the organization only.
+    expect(screen.getByText('Ocean Example')).toBeInTheDocument()
+    expect(screen.queryByText(/Master · Ocean Example/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /dismiss capt\. meera nair suggestion/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Capt. Meera Nair' })).toHaveAttribute('href', '/people/capt-meera-nair')
@@ -77,8 +79,12 @@ describe('NetworkProfileCard', () => {
     render(<NetworkProfileCard profile={profile} actions="full" />)
     expect(screen.getByTestId('person-card-actions')).toHaveAttribute('data-slug', 'capt-meera-nair')
     expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
-    // Headline, rank · organization and location, like the network cards.
+    // Headline, rank · organization and location, like the network cards (round H, H7: the rank is left out
+    // when the headline already says it).
     expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
+    expect(screen.getByText('Ocean Example')).toBeInTheDocument()
+    cleanup()
+    render(<NetworkProfileCard profile={{ ...profile, headline: 'Tanker operations specialist' }} actions="full" />)
     expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
     expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
   })

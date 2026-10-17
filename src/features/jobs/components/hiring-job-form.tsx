@@ -9,6 +9,8 @@ import type { HiringPublisherOption } from '../publishers'
 import { AcceptedRolesPicker, type AcceptedRolesValue } from '@/features/roles/components/accepted-roles-picker'
 import { DEFAULT_MIN_MATCH_TO_APPLY } from '@/features/roles/job-role-input'
 import { domainForDepartment, normaliseLegacyRank, roleByKey } from '@/features/roles/taxonomy'
+import { JOB_DESCRIPTION_MIN_LENGTH, validateJobForm, type JobFormField, type JobFormValidation } from '../job-form-rules'
+import { todayIsoDate } from '../job-lifecycle'
 
 type HiringJobFormProps =
   | { mode: 'create'; publisherOptions: HiringPublisherOption[]; initial?: never; jobId?: never; publishLabel?: never }
@@ -79,6 +81,16 @@ function buildInput(formData: FormData): HiringJobUpdateInput {
   }
 }
 
+/** Round H (H7): an error (after a save attempt) or a warning under one field. */
+function FieldIssue({ id, issue }: { id: string; issue: { message: string; tone: 'error' | 'warning' } | null }) {
+  if (!issue) return null
+  return (
+    <span id={id} className={`block text-xs font-medium ${issue.tone === 'error' ? 'text-red-700' : 'text-amber-800'}`}>
+      {issue.tone === 'warning' ? 'Check: ' : ''}{issue.message}
+    </span>
+  )
+}
+
 function join(values: string[] | undefined) {
   return values?.join(', ') ?? ''
 }
@@ -113,10 +125,49 @@ export function HiringJobForm(props: HiringJobFormProps) {
   const selectedPublisher = props.mode === 'create'
     ? props.publisherOptions.find((option) => option.key === publisherKey) ?? null
     : null
+  // Round H (H7): the shared job form rules. Warnings show as you type; errors after a save attempt.
+  const formRef = useRef<HTMLFormElement>(null)
+  const [rules, setRules] = useState<JobFormValidation | null>(null)
+  const [showErrors, setShowErrors] = useState(false)
+  const today = todayIsoDate()
+  const savedJoiningFrom = initial?.joiningFrom ?? null
+  const minJoiningDate = savedJoiningFrom && savedJoiningFrom < today ? savedJoiningFrom : today
+
+  function checkRules(formData: FormData) {
+    return validateJobForm(buildInput(formData), { today, savedJoiningFrom })
+  }
+
+  function recheck() {
+    if (formRef.current) setRules(checkRules(new FormData(formRef.current)))
+  }
+
+  function fieldIssue(field: JobFormField) {
+    const error = showErrors ? rules?.errors.find((issue) => issue.field === field) : undefined
+    if (error) return { message: error.message, tone: 'error' as const }
+    const warning = rules?.warnings.find((issue) => issue.field === field)
+    return warning ? { message: warning.message, tone: 'warning' as const } : null
+  }
+
+  function fieldProps(field: JobFormField, hintId?: string) {
+    const issue = fieldIssue(field)
+    const describedBy = [hintId, issue ? `hiring-job-${field}-issue` : null].filter(Boolean).join(' ')
+    return {
+      'aria-invalid': issue?.tone === 'error' ? true : undefined,
+      'aria-describedby': describedBy || undefined,
+    }
+  }
 
   function submit(formData: FormData) {
     setMessage(null)
     setIsError(false)
+    const checked = checkRules(formData)
+    setRules(checked)
+    setShowErrors(true)
+    if (checked.errors.length) {
+      setIsError(true)
+      setMessage(checked.errors.length === 1 ? checked.errors[0]!.message : `Fix ${checked.errors.length} things before saving: ${checked.errors.map((issue) => issue.message).join(' ')}`)
+      return
+    }
     const fields = buildInput(formData)
     const submitted = formData.get('intent')
     const intent: HiringJobSaveIntent = submitted === 'publish' || submitted === 'save' ? submitted : intentRef.current
@@ -165,7 +216,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
     : initial?.status === 'draft' ? 'Save draft' : 'Save changes'
 
   return (
-    <form action={submit} className="space-y-5">
+    <form ref={formRef} action={submit} onChange={recheck} className="space-y-5">
       {props.mode === 'create' ? (
         <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
           <div>
@@ -202,7 +253,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-navy-950">{option.name}</span>
-                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-muted">
                           {option.kind === 'personal' ? 'Personal' : 'Organization'}
                         </span>
                       </div>
@@ -295,20 +346,27 @@ export function HiringJobForm(props: HiringJobFormProps) {
             </>
           ) : null}
 
-          <label className={labelClass}>
-            Location
-            <input className={inputClass} name="location" defaultValue={initial?.location ?? ''} placeholder="Worldwide / Mumbai / Dubai" />
-          </label>
+          <div className="space-y-1.5">
+            <label className={`block ${labelClass}`}>
+              Location
+              <input className={inputClass} name="location" defaultValue={initial?.location ?? ''} placeholder="Worldwide / Mumbai / Dubai" {...fieldProps('location')} />
+            </label>
+            <FieldIssue id="hiring-job-location-issue" issue={fieldIssue('location')} />
+          </div>
 
           <label className={`${labelClass} sm:col-span-2`}>
             Summary
             <textarea className={`${inputClass} min-h-24`} name="summary" defaultValue={initial?.summary ?? ''} placeholder="A concise overview candidates will see first." required />
           </label>
 
-          <label className={`${labelClass} sm:col-span-2`}>
-            Description
-            <textarea className={`${inputClass} min-h-40`} name="description" defaultValue={initial?.description ?? ''} placeholder="Responsibilities, contract details and role context." required />
-          </label>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className={`block ${labelClass}`}>
+              Description
+              <textarea className={`${inputClass} min-h-40`} name="description" defaultValue={initial?.description ?? ''} placeholder="Responsibilities, contract details and role context." required {...fieldProps('description', 'hiring-job-description-hint')} />
+            </label>
+            <span id="hiring-job-description-hint" className="block text-xs font-normal text-muted">At least {JOB_DESCRIPTION_MIN_LENGTH} characters, and more than the job title.</span>
+            <FieldIssue id="hiring-job-description-issue" issue={fieldIssue('description')} />
+          </div>
         </div>
       </section>
 
@@ -328,21 +386,30 @@ export function HiringJobForm(props: HiringJobFormProps) {
           <fieldset className="rounded-xl border border-mist-100 p-4 sm:col-span-2">
             <legend className="px-1 text-sm font-semibold text-navy-900">Experience</legend>
             <div className="mt-1 grid gap-4 sm:grid-cols-2">
-              <label className={labelClass}>
-                Minimum years
-                <input className={inputClass} type="number" min="0" step="0.5" name="experienceMinYears" defaultValue={initial?.experienceMinYears ?? ''} />
-              </label>
-              <label className={labelClass}>
-                Maximum years
-                <input className={inputClass} type="number" min="0" step="0.5" name="experienceMaxYears" defaultValue={initial?.experienceMaxYears ?? ''} />
-              </label>
+              <div className="space-y-1.5">
+                <label className={`block ${labelClass}`}>
+                  Minimum years
+                  <input className={inputClass} type="number" min="0" step="0.5" name="experienceMinYears" defaultValue={initial?.experienceMinYears ?? ''} {...fieldProps('experienceMinYears')} />
+                </label>
+                <FieldIssue id="hiring-job-experienceMinYears-issue" issue={fieldIssue('experienceMinYears')} />
+              </div>
+              <div className="space-y-1.5">
+                <label className={`block ${labelClass}`}>
+                  Maximum years
+                  <input className={inputClass} type="number" min="0" step="0.5" name="experienceMaxYears" defaultValue={initial?.experienceMaxYears ?? ''} {...fieldProps('experienceMaxYears')} />
+                </label>
+                <FieldIssue id="hiring-job-experienceMaxYears-issue" issue={fieldIssue('experienceMaxYears')} />
+              </div>
             </div>
           </fieldset>
 
-          <label className={`${labelClass} sm:col-span-2`}>
-            Sailing regions
-            <input className={inputClass} name="regions" defaultValue={join(initial?.regions)} placeholder="Worldwide, Middle East, Europe" />
-          </label>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className={`block ${labelClass}`}>
+              Sailing regions
+              <input className={inputClass} name="regions" defaultValue={join(initial?.regions)} placeholder="Worldwide, Middle East, Europe" {...fieldProps('regions')} />
+            </label>
+            <FieldIssue id="hiring-job-regions-issue" issue={fieldIssue('regions')} />
+          </div>
 
           <label className={labelClass}>
             Certificates
@@ -368,10 +435,13 @@ export function HiringJobForm(props: HiringJobFormProps) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>
-            Joining date
-            <input className={inputClass} type="date" name="joiningFrom" defaultValue={initial?.joiningFrom ?? ''} />
-          </label>
+          <div className="space-y-1.5">
+            <label className={`block ${labelClass}`}>
+              Joining date
+              <input className={inputClass} type="date" name="joiningFrom" min={minJoiningDate} defaultValue={initial?.joiningFrom ?? ''} {...fieldProps('joiningFrom')} />
+            </label>
+            <FieldIssue id="hiring-job-joiningFrom-issue" issue={fieldIssue('joiningFrom')} />
+          </div>
           <label className={labelClass}>
             Last date to apply
             <input className={inputClass} type="date" name="applyUntil" defaultValue={initial?.applyUntil ?? ''} />
@@ -384,10 +454,13 @@ export function HiringJobForm(props: HiringJobFormProps) {
             Salary minimum
             <input className={inputClass} type="number" min="0" step="1" name="salaryMin" defaultValue={initial?.salaryMin ?? ''} />
           </label>
-          <label className={labelClass}>
-            Salary maximum
-            <input className={inputClass} type="number" min="0" step="1" name="salaryMax" defaultValue={initial?.salaryMax ?? ''} />
-          </label>
+          <div className="space-y-1.5">
+            <label className={`block ${labelClass}`}>
+              Salary maximum
+              <input className={inputClass} type="number" min="0" step="1" name="salaryMax" defaultValue={initial?.salaryMax ?? ''} {...fieldProps('salaryMax')} />
+            </label>
+            <FieldIssue id="hiring-job-salaryMax-issue" issue={fieldIssue('salaryMax')} />
+          </div>
           <label className={labelClass}>
             Currency
             <input className={inputClass} name="salaryCurrency" defaultValue={initial?.salaryCurrency ?? 'USD'} placeholder="USD" />

@@ -6,6 +6,7 @@ import Link from '@/components/navigation/intent-link'
 import { MapPin, Ship, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { NetworkProfile } from '../types'
+import { personContextParts } from '../person-context'
 import { ConnectionPrimaryAction } from './connection-primary-action'
 import { PersonCardActions } from './person-card-actions'
 
@@ -34,7 +35,8 @@ export function NetworkProfileCard({
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
 
-  const maritimeContext = [profile.rank, profile.currentCompany].filter(Boolean).join(' · ')
+  // Round H (H7): rank and organization without repeating the headline.
+  const maritimeContext = personContextParts(profile, ['rank', 'currentCompany']).join(' · ')
   const secondaryContext = profile.location || profile.vesselTypes[0] || profile.skills[0] || 'Maritime professional'
 
   const profileInitials = (

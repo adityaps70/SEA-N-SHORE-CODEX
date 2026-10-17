@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { sanitizeArticleHtml } from './article-html'
 import { convertLegacyArticle } from './legacy-article-conversion'
 import { articleText, sameWordsIgnoringCase } from './text-diff'
+import { pluralize, pluralizeWithVerb } from '@/lib/format'
 
 /**
  * Learning round E: the one-off content task behind the guarded `learning-round-e-content` runner. It runs once as an
@@ -199,7 +200,7 @@ export async function runRoundEContentApply(deps: RoundEContentDeps, confirmatio
 
   const planned = (await plainArticles(query, course.id)).map(planConversion)
   const refused = planned.filter((article) => !article.sameWords || !article.sanitized)
-  if (refused.length) throw new Error(`Refusing: ${refused.length} article(s) would change wording or lose markup (${refused.map((article) => article.lessonId).join(', ')}).`)
+  if (refused.length) throw new Error(`Refusing: ${pluralize(refused.length, 'article')} would change wording or lose markup (${refused.map((article) => article.lessonId).join(', ')}).`)
   if (!planned.length) throw new Error('No plain-text articles to convert; refusing to open an empty draft.')
 
   const { revisionCourseId, created } = await startRevision(course.user_id, course.id)
@@ -227,7 +228,7 @@ export async function runRoundEContentApply(deps: RoundEContentDeps, confirmatio
   })
 
   const left = await plainArticles(query, revisionCourseId)
-  if (left.length) throw new Error(`${left.length} plain-text article(s) remain in the draft after the conversion.`)
+  if (left.length) throw new Error(`${pluralizeWithVerb(left.length, 'plain-text article', 'remains', 'remain')} in the draft after the conversion.`)
   const status = await query(`select status from public.learning_courses where id = $1`, [revisionCourseId])
   if (status[0]?.status !== 'draft') throw new Error('The draft revision is not a draft after the conversion.')
   log(`ROUND_E_DRAFT_REVISION id=${revisionCourseId} converted=${planned.length} url=${siteUrl}/learn/studio/courses/${revisionCourseId}/changes`)

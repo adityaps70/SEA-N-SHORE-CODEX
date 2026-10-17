@@ -2,7 +2,7 @@
 
 import { Fragment, useId } from 'react'
 import { useFormResetKey } from './use-form-reset-key'
-import { rolesFor, type RoleDepartment } from '../taxonomy'
+import { OTHER_ROLE_TEXT_MAX, rolesFor, type RoleDepartment } from '../taxonomy'
 
 export type RolePickerValue = {
   departmentKey: string
@@ -125,7 +125,7 @@ export function RolePicker({
             id={otherId}
             name={names.other}
             value={value.otherText}
-            maxLength={100}
+            maxLength={OTHER_ROLE_TEXT_MAX}
             required
             aria-invalid={Boolean(errors?.other)}
             aria-describedby={errors?.other ? `${otherId}-description` : undefined}

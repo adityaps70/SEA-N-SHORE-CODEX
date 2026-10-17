@@ -23,6 +23,7 @@ import { createLessonMediaUrl, createMediaReadUrl } from '@/lib/aws/storage'
 import { renderArticleHtml } from '@/features/learning/article-html'
 import { FocusModeToggle, FocusSidebarToggle, PlayerShell, SidebarRailToggle } from '@/features/learning/components/player-shell'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
+import { moduleCrumb } from '@/features/learning/module-label'
 import { readingMinutes } from '@/features/learning/reading-time'
 import { courseAnnouncementRepository, type CourseAnnouncement } from '@/features/learning/course-announcement-repository'
 import { courseCommunityRepository } from '@/features/learning/course-community-repository'
@@ -211,7 +212,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   const breadcrumb = selectedLesson && selectedModuleIndex >= 0 ? (
     <nav aria-label="Breadcrumb" className="min-w-0 flex-1 max-md:hidden">
       <ol className="flex min-w-0 items-center gap-1.5 text-meta text-muted">
-        <li className="shrink-0">Module {selectedModuleIndex + 1}</li>
+        <li className="min-w-0 max-w-[45%] shrink-0 truncate">{moduleCrumb(selectedModuleIndex, course.sections[selectedModuleIndex]?.title ?? '')}</li>
         <li aria-hidden="true"><ChevronRight className="size-3.5" /></li>
         <li className="min-w-0 truncate font-semibold text-navy-900" aria-current="page">{selectedLesson.title}</li>
       </ol>

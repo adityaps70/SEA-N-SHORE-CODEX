@@ -19,7 +19,7 @@ export default async function OrganizationConversionPage() {
       <div className="mx-auto max-w-page-narrow">
         <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100">
           <Wordmark compact />
-          <span className="inline-flex items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm">
+          <span className="inline-flex items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm">
             <ArrowLeftRight aria-hidden="true" className="size-3.5" /> Account conversion
           </span>
         </div>

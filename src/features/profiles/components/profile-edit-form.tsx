@@ -8,6 +8,9 @@ import { personaUsesProfessionalCompany } from '../persona'
 import type { OwnProfile } from '../types'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
+import { NameCaseSuggestion } from './name-case-suggestion'
+import { LocationPicker } from './location-picker'
+import { HeadlineUrlCheck } from './headline-url-check'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 import { VesselTypesInput } from '@/features/taxonomy/components/vessel-types-input'
 import { buttonClass } from '@/components/ui/interactive-styles'
@@ -79,8 +82,9 @@ export function ProfileEditForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className={labelClass}>
               Full name
-              <input name="fullName" required maxLength={120} defaultValue={textValue('fullName', profile.fullName)} className={inputClass} />
+              <input id="profile-edit-full-name" name="fullName" required maxLength={120} defaultValue={textValue('fullName', profile.typedFullName ?? profile.fullName)} className={inputClass} />
               <FieldError state={state} name="fullName" />
+              <NameCaseSuggestion inputId="profile-edit-full-name" />
             </label>
             <UsernameField
               initialValue={usernameValue}
@@ -93,15 +97,17 @@ export function ProfileEditForm({
                 ? 'We created this username for you when you joined. Changing it once does not count toward your 2 changes.'
                 : undefined}
             />
-            <label className={labelClass}>
-              Location
-              <input name="location" maxLength={120} defaultValue={textValue('location', profile.location ?? '')} className={inputClass} />
+            {/* Round H (H7): a city picker over an offline list; free text stays possible ("Other"). */}
+            <div className={labelClass}>
+              <label htmlFor="profile-edit-location">Location</label>
+              <LocationPicker id="profile-edit-location" defaultValue={textValue('location', profile.location ?? '')} className={inputClass} invalid={Boolean(state.fieldErrors?.location?.[0])} />
               <FieldError state={state} name="location" />
-            </label>
+            </div>
             <label className={labelClass}>
               Headline
-              <input name="headline" required maxLength={160} defaultValue={textValue('headline', profile.headline ?? '')} className={inputClass} />
+              <input id="profile-edit-headline" name="headline" required maxLength={160} defaultValue={textValue('headline', profile.headline ?? '')} className={inputClass} />
               <FieldError state={state} name="headline" />
+              <HeadlineUrlCheck inputId="profile-edit-headline" />
             </label>
             {showCompanyField ? (
               <div className="min-w-0 sm:col-span-2">

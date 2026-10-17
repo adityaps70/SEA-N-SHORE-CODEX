@@ -40,7 +40,7 @@ function toFormState(value: MentorApplicationInput): FormState {
 }
 
 function inputClassName(invalid = false) {
-  return `mt-2 min-h-12 w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted/60 focus:ring-2 ${
+  return `mt-2 min-h-12 w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:ring-2 ${
     invalid ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : 'border-mist-200 focus:border-teal-500 focus:ring-teal-100'
   }`
 }

@@ -6,12 +6,15 @@ import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CommunityIconEditor, CommunityMediaControls } from '@/features/community/components/community-media-controls'
+import { CommunityModerationPanel } from '@/features/community/components/community-moderation-panel'
 import { EditGroupForm } from '@/features/community/components/edit-group-form'
 import { GroupCover, GroupIconTile } from '@/features/community/components/group-icon-tile'
 import { GroupMembersList } from '@/features/community/components/group-members-list'
 import { GroupMembershipButton } from '@/features/community/components/group-membership-button'
 import { GroupPageMenu } from '@/features/community/components/group-page-menu'
 import { JoinRequestsPanel } from '@/features/community/components/join-requests-panel'
+import { WelcomePostPrompt } from '@/features/community/components/welcome-post-prompt'
+import { shouldShowWelcomePrompt } from '@/features/community/welcome-post'
 import { communityRepository } from '@/features/community/repository'
 import {
   GROUP_PAGE_TABS,
@@ -91,7 +94,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
   const memberQuery = single(search.q).trim().slice(0, 100)
   const pagePath = groupHref(group.slug)
 
-  const [admins, profile, feedPage, members, requests, moderators] = await Promise.all([
+  const [admins, profile, feedPage, members, requests, moderators, pendingCount] = await Promise.all([
     tab === 'about' ? communityRepository.listMembers(group.id, { adminsOnly: true, limit: 20 }).then(withAvatars).catch((): GroupMember[] => []) : [],
     tab === 'posts' && isMember ? getOwnProfile() : null,
     tab === 'posts' && canSee ? getFeedPage({ groupId: group.id }) : null,
@@ -99,10 +102,18 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
     // Waiting requests are listed for moderators whatever the join setting: switching to Open never approves them.
     tab === 'members' && isAdmin ? communityRepository.listPendingRequests(group.id).then(withAvatars) : [],
     tab === 'posts' && canSee ? communityRepository.listMembers(group.id, { adminsOnly: true, limit: 200 }).catch((): GroupMember[] => []) : [],
+    // Round H (H7): the Moderation panel's join-request count (the Members tab lists the requests themselves).
+    isAdmin && tab !== 'members' ? communityRepository.countPendingRequests(group.id).catch(() => 0) : 0,
   ])
   // "Owner" / "Moderator" chips next to the author of posts inside the community.
   const roleBadges = Object.fromEntries(moderators.filter((entry) => entry.role !== 'member').map((entry) => [entry.profileId, GROUP_ROLE_LABELS[entry.role] as 'Owner' | 'Moderator']))
   const showJoinRequests = isAdmin && (group.joinPolicy === 'approval' || requests.length > 0)
+  // Round H (H7): a new community's owner is asked for a welcome post until an owner or moderator has posted.
+  const showWelcomePrompt = tab === 'posts' && isOwner && Boolean(profile) && shouldShowWelcomePrompt({
+    isOwner,
+    postAuthorIds: (feedPage?.posts ?? []).map((post) => post.author.id),
+    moderatorIds: moderators.map((entry) => entry.profileId),
+  })
 
   const tabs = GROUP_PAGE_TABS.map((entry) => ({ ...entry, href: groupTabHref(group.slug, entry.id) }))
   const visibilityLabel = group.visibility === 'private' ? 'Private group' : 'Public group'
@@ -136,7 +147,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
                 <span>{visibilityLabel}</span>
                 <span aria-hidden="true">·</span>
                 <Link href={groupTabHref(group.slug, 'members')} scroll={false} className="font-semibold text-ocean-700 hover:underline">{pluralize(group.memberCount, 'member')}</Link>
-                {group.viewerMembership?.status === 'pending' ? <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">Request pending</span> : null}
+                {group.viewerMembership?.status === 'pending' ? <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-bold text-amber-900">Request pending</span> : null}
               </p>
             </div>
             <div className="mt-4 flex flex-wrap items-start gap-2 max-md:flex-nowrap max-md:items-center">
@@ -156,6 +167,16 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
             </div>
           </div>
         </section>
+
+        {isAdmin && tab !== 'members' ? (
+          <CommunityModerationPanel
+            pendingCount={pendingCount}
+            approvalRequired={group.joinPolicy === 'approval'}
+            requestsHref={`${pagePath}?requests=1`}
+            membersHref={groupTabHref(group.slug, 'members')}
+            editHref={`${groupTabHref(group.slug, 'about')}&edit=1`}
+          />
+        ) : null}
 
         {tab === 'about' ? (
           <>
@@ -196,6 +217,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
             <PageSection id="posts-heading" title="Posts"><JoinToSee what="posts" group={group} /></PageSection>
           ) : (
             <div className="space-y-4 max-md:space-y-2">
+              {showWelcomePrompt ? <WelcomePostPrompt group={{ id: group.id, name: group.name, description: group.description }} /> : null}
               {isMember && profile ? (
                 <PostComposer profile={profile} group={{ id: group.id, name: group.name }} />
               ) : !isMember ? (

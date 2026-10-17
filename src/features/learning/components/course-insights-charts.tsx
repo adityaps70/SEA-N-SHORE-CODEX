@@ -7,6 +7,7 @@ import type {
   CurrencyRevenue,
   QuizDifficulty,
 } from '../mentor-course-insights-repository'
+import { pluralize } from '@/lib/format'
 
 /*
  * Learning Studio course insight charts. Plain HTML/CSS marks (no chart library), server-rendered.
@@ -114,8 +115,8 @@ export function LessonDropOffChart({ funnel }: { funnel: CourseLessonFunnel }) {
   }, null)
   const first = lessons[0]!
   const last = lessons[lessons.length - 1]!
-  const summary = `Of ${learnerCount} learners, ${first.reachedCount} (${first.reachedPercent}%) reached the first material and ${last.completedCount} (${last.completedPercent}%) completed the last.`
-    + (biggestDrop ? ` The largest drop is before “${lessons[biggestDrop.index]!.title}”, with ${biggestDrop.drop} fewer learners.` : '')
+  const summary = `Of ${pluralize(learnerCount, 'learner')}, ${first.reachedCount} (${first.reachedPercent}%) reached the first material and ${last.completedCount} (${last.completedPercent}%) completed the last.`
+    + (biggestDrop ? ` The largest drop is before “${lessons[biggestDrop.index]!.title}”, with ${pluralize(biggestDrop.drop, 'fewer learner', 'fewer learners')}.` : '')
 
   return (
     <ChartCard title="Lesson drop-off" description={description}>
@@ -138,7 +139,7 @@ export function LessonDropOffChart({ funnel }: { funnel: CourseLessonFunnel }) {
           </li>
         ))}
       </ol>
-      <TableView caption={`Lesson drop-off for ${learnerCount} learners`}>
+      <TableView caption={`Lesson drop-off for ${pluralize(learnerCount, 'learner')}`}>
         <thead>
           <tr><th scope="col" className={th}>Material</th><th scope="col" className={th}>Reached</th><th scope="col" className={th}>Completed</th></tr>
         </thead>
@@ -186,7 +187,7 @@ export function QuizDifficultyChart({ quizzes }: { quizzes: QuizDifficulty[] }) 
               <h4 className="text-sm font-bold uppercase tracking-[0.1em] text-teal-700">{quiz.lessonTitle}</h4>
               <p className="sr-only">
                 {answered.length
-                  ? `${answered.length} of ${quiz.questions.length} questions have answers.`
+                  ? `${answered.length} of ${pluralize(quiz.questions.length, 'question')} ${answered.length === 1 ? 'has' : 'have'} answers.`
                     + (hardest.length ? ` Hardest: ${hardest.map((question) => `question ${question.position} at ${question.correctPercent}% correct`).join(', ')}.` : '')
                   : 'Not enough answers yet.'}
               </p>
@@ -249,7 +250,7 @@ function ColumnChart({ columns, label }: {
           return (
             <div key={column.key} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end">
               {column.capLabel && total > 0 ? (
-                <span className="mb-1 text-[10px] font-bold leading-none text-navy-900 tabular-nums">{column.capLabel}</span>
+                <span className="mb-1 text-xs font-bold leading-none text-navy-900 tabular-nums">{column.capLabel}</span>
               ) : null}
               <div className="flex w-full max-w-6 flex-col-reverse gap-[2px]" style={{ height: max > 0 ? `${(total / max) * 85}%` : '0%' }}>
                 {column.segments.filter((segment) => segment.value > 0).map((segment, index, visible) => (
@@ -269,7 +270,7 @@ function ColumnChart({ columns, label }: {
       </div>
       <div className="mt-1.5 flex gap-[2px] sm:gap-1.5">
         {columns.map((column) => (
-          <span key={column.key} className="min-w-0 flex-1 truncate text-center text-[10px] font-semibold text-muted">{column.axisLabel}</span>
+          <span key={column.key} className="min-w-0 flex-1 truncate text-center text-xs font-semibold text-muted">{column.axisLabel}</span>
         ))}
       </div>
     </div>
@@ -296,7 +297,7 @@ function RevenueChart({ revenue }: { revenue: CurrencyRevenue }) {
           <div key={tile.label} className="rounded-xl bg-mist-50 p-3">
             <dt className="text-xs font-semibold text-muted">{tile.label}</dt>
             <dd className="mt-1 break-words font-bold text-navy-950">{tile.value}</dd>
-            <dd className="text-[11px] text-muted">{tile.note}</dd>
+            <dd className="text-xs text-muted">{tile.note}</dd>
           </div>
         ))}
       </dl>

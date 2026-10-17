@@ -149,7 +149,7 @@ export function PersonCardActions({
             <ActionMenuItem disabled={pending} onClick={() => { setMenuOpen(false); toggleFollow() }} icon={relationship.following ? <UserRoundCheck aria-hidden="true" /> : <UserRoundPlus aria-hidden="true" />}>
               {relationship.following ? 'Following' : 'Follow'}
             </ActionMenuItem>
-            <Link href={`/people/${slug}`} role="menuitem" onClick={() => setMenuOpen(false)} className="flex min-h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none [&>svg]:size-4 max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px] max-md:[&>svg]:size-5">
+            <Link href={`/people/${slug}`} role="menuitem" onClick={() => setMenuOpen(false)} className="flex min-h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:-outline-offset-2 [&>svg]:size-4 max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px] max-md:[&>svg]:size-5">
               <UserRound aria-hidden="true" />
               View profile
             </Link>

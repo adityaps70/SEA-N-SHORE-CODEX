@@ -43,13 +43,27 @@ beforeEach(() => {
 })
 
 const standardPlan = { id: 'plan-standard', name: 'Standard', priceMinor: 500000, discountPriceMinor: 400000, currency: 'INR', accessMonths: null, position: 0 }
-const standardOffer = { id: 'plan-standard', name: 'Standard', priceLabel: '₹4,000', listLabel: '₹5,000', accessLabel: 'Lifetime access', currency: 'INR', amountMinor: 400_000, unavailableMessage: null }
+// Round H (H7): without a recent sale at the list price, the list price is not struck through.
+const standardOffer = { id: 'plan-standard', name: 'Standard', priceLabel: '₹4,000', listLabel: null, accessLabel: 'Lifetime access', currency: 'INR', amountMinor: 400_000, unavailableMessage: null }
 
 describe('course purchase state', () => {
   it('offers Buy course at the discounted price when payments are on', async () => {
     await expect(loadCoursePurchaseState({ userId, course, enrollment: null })).resolves.toEqual({
       kind: 'buy', priceLabel: '₹4,000', plans: [standardOffer], renewal: null, configured: true, blockedMessage: undefined, pending: null,
     })
+  })
+
+  it('strikes through a plan\'s list price only after a sale at that price on that plan (Round H, H7)', async () => {
+    const sale = { courseId: course.id, planId: 'plan-standard', listPriceMinor: 500000, currency: 'INR' }
+    await expect(loadCoursePurchaseState({ userId, course, enrollment: null, listPriceSales: [sale] })).resolves.toMatchObject({
+      plans: [{ ...standardOffer, listLabel: '₹5,000' }],
+    })
+    // A sale on another plan, at another price or for another course is not evidence.
+    for (const other of [{ ...sale, planId: 'plan-six' }, { ...sale, listPriceMinor: 450000 }, { ...sale, courseId: userId }]) {
+      await expect(loadCoursePurchaseState({ userId, course, enrollment: null, listPriceSales: [other] })).resolves.toMatchObject({
+        plans: [standardOffer],
+      })
+    }
   })
 
   it('shows "Purchases open soon" (not a broken button) when payments are not set up or cannot be read', async () => {

@@ -165,7 +165,7 @@ export function ReactionPicker({
         onTouchMove={endTouch}
         onTouchCancel={endTouch}
         onContextMenu={(event) => { if (recentlyTouched()) event.preventDefault() }}
-        className={`inline-flex min-w-0 cursor-pointer select-none items-center justify-center rounded-full border transition [-webkit-touch-callout:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${triggerStyle} ${reactedStyles}`}
+        className={`inline-flex min-w-0 cursor-pointer select-none items-center justify-center rounded-full border transition [-webkit-touch-callout:none] disabled:cursor-not-allowed disabled:opacity-50 ${triggerStyle} ${reactedStyles}`}
       >
         {value === 'like' ? (
           <ThumbsUp aria-hidden="true" data-reacted="true" className={`fill-current ${variant === 'post' ? 'size-5' : 'size-4'}`} />
@@ -195,7 +195,7 @@ export function ReactionPicker({
                   onChange(value === reaction ? null : reaction)
                   setOpen(false)
                 }}
-                className={`group relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
+                className={`group relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-mist-50 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
               >
                 <span aria-hidden="true" className="text-xl">{meta.emoji}</span>
                 <span data-reaction-label className="sr-only">{meta.label}</span>

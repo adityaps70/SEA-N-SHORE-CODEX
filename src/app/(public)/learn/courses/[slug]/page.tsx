@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import { cache } from 'react'
 import Image from 'next/image'
@@ -31,7 +32,12 @@ import { CourseActionBar, type CourseActionBarMode } from '@/features/learning/c
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import { EnrollFreeControl } from '@/features/learning/components/enroll-free-control'
 import { CoursePurchasePanel, type CoursePurchaseState } from '@/features/learning/components/course-purchase-panel'
-import { coursePrice, discountPercent, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
+import { coursePrice, formatCourseAmount, isPaidCourse, struckListPrice, wasListPriceCharged, type ListPriceSale } from '@/features/learning/course-pricing'
+import { formatCourseDuration } from '@/features/learning/course-duration'
+import { coursePageRepository, type CertificatePreviewSettings, type CoursePublisherCard as CoursePublisherCardData } from '@/features/learning/course-page-repository'
+import { CoursePublisherCard } from '@/features/learning/components/course-publisher-card'
+import { CertificatePreview } from '@/features/learning/components/certificate-preview'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import { loadCoursePurchaseState } from '@/features/learning/course-purchase-state'
 import { batchRepository } from '@/features/learning/batches/batch-repository'
 import { batchClosedReason, type CourseBatch } from '@/features/learning/batches/batch-rules'
@@ -62,11 +68,16 @@ function formatLabel(format: MarketplaceCourse['courseFormat']) {
   return 'Recorded'
 }
 
-function PriceBlock({ course }: { course: MarketplaceCourse }) {
+/**
+ * Round H (H7): the list price is struck through ("Save N%") only when the course really sold at it on
+ * Sea N Shore in the last 90 days (`listPriceRecentlyCharged`); otherwise the selling price stands alone.
+ */
+function PriceBlock({ course, listPriceRecentlyCharged }: { course: MarketplaceCourse; listPriceRecentlyCharged: boolean }) {
   if (!isPaidCourse(course)) return <p className="mt-2 text-3xl font-extrabold tracking-tight">Free</p>
   const price = coursePrice(course)
   if (!price) return <p className="mt-2 text-3xl font-extrabold tracking-tight">{formatCourseAmount(course.priceMinor, course.currency)}</p>
-  if (price.discountPriceMinor === null) {
+  const struck = struckListPrice(price, listPriceRecentlyCharged)
+  if (!struck) {
     return <p className="mt-2 text-3xl font-extrabold tracking-tight">{formatCourseAmount(price.amountMinor, price.currency)}</p>
   }
   return (
@@ -76,9 +87,9 @@ function PriceBlock({ course }: { course: MarketplaceCourse }) {
       </p>
       <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-white/60 line-through decoration-white/60">
-          <span className="sr-only">Was </span>{formatCourseAmount(price.listPriceMinor, price.currency)}
+          <span className="sr-only">Was </span>{formatCourseAmount(struck.listPriceMinor, price.currency)}
         </span>
-        <span className="rounded-full bg-teal-400/15 px-2.5 py-0.5 text-xs font-bold text-teal-100">Save {discountPercent(price)}%</span>
+        <span className="rounded-full bg-teal-400/15 px-2.5 py-0.5 text-xs font-bold text-teal-100">Save {struck.savePercent}%</span>
       </p>
     </div>
   )
@@ -87,11 +98,8 @@ function PriceBlock({ course }: { course: MarketplaceCourse }) {
 /** Card on desktop; a flat full-width white band on phones. */
 const PHONE_FLAT_SECTION = 'rounded-[1.5rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:p-4 max-md:shadow-none sm:p-7'
 
+/** Round H (H7): a section with no items is left out by the page, so there is no filler copy here. */
 function EvidenceList({ items }: { items: string[] }) {
-  if (!items.length) {
-    return <p className="text-sm leading-6 text-muted">No additional prerequisites have been specified for this course.</p>
-  }
-
   return (
     <ul className="space-y-3">
       {items.map((item) => (
@@ -121,16 +129,13 @@ function CourseDescription({ text }: { text: string }) {
   )
 }
 
-function durationLabel(seconds: number) {
-  if (seconds <= 0) return null
-  if (seconds >= 3600) {
-    const hours = Math.round(seconds / 1800) / 2
-    return `${hours} h`
-  }
-  return `${Math.max(1, Math.round(seconds / 60))} min`
+/** Trimmed, non-empty entries of a course list field (outcomes, audience, requirements). */
+function filledItems(items: string[]) {
+  return items.map((item) => item.trim()).filter(Boolean)
 }
 
 function priceChipLabel(course: MarketplaceCourse) {
+  // The chip shows the selling price only; any struck-through price is in the Course access card.
   if (!isPaidCourse(course)) return 'Free'
   const price = coursePrice(course)
   return price ? formatCourseAmount(price.amountMinor, price.currency) : formatCourseAmount(course.priceMinor, course.currency)
@@ -155,6 +160,21 @@ function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: Co
 const EMPTY_OVERVIEW: PublishedCourseOverview = { sections: [], lessonCount: 0, durationSeconds: 0, learnerCount: 0, publisher: null }
 const EMPTY_REVIEWS: PublicCourseReviews = { averageRating: null, reviewCount: 0, reviews: [] }
 
+/** Round H (H7): a scaled-down sample of the certificate, for courses that issue one. */
+function CertificatePreviewSection({ settings, course }: { settings: CertificatePreviewSettings; course: MarketplaceCourse }) {
+  return (
+    <section aria-labelledby="certificate-preview-heading" className={`${PHONE_FLAT_SECTION} lg:order-5`}>
+      <h2 id="certificate-preview-heading" className="flex items-center gap-2 text-section-title font-bold text-navy-950 max-md:text-lg">
+        <Award aria-hidden="true" className="size-5 text-teal-700" /> Certificate
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-muted">Complete the course to earn a certificate like this one, with your name and a verification code.</p>
+      <div className="mx-auto mt-4 max-w-md">
+        <CertificatePreview settings={settings} courseTitle={course.title} mentorName={course.mentorName} />
+      </div>
+    </section>
+  )
+}
+
 /** Learning round C: the average of approved reviews, e.g. "★ 4.6 · 12 ratings". */
 function RatingSummary({ reviews, className = '' }: { reviews: PublicCourseReviews; className?: string }) {
   if (!reviews.reviewCount || reviews.averageRating === null) return null
@@ -170,7 +190,7 @@ function RatingSummary({ reviews, className = '' }: { reviews: PublicCourseRevie
 
 /** Phone course header (round 8): cover, chips, title, trainer link and learners. */
 function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIEWS }: { course: MarketplaceCourse; overview: PublishedCourseOverview; trailerUrl: string | null; reviews?: PublicCourseReviews }) {
-  const duration = durationLabel(overview.durationSeconds)
+  const duration = formatCourseDuration(overview.durationSeconds)
   const publisherHref = overview.publisher
     ? overview.publisher.kind === 'organization' ? `/organizations/${overview.publisher.slug}` : `/people/${overview.publisher.slug}`
     : null
@@ -222,7 +242,7 @@ function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIE
           ) : null}
           {duration ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-100 px-3 py-1 text-navy-900">
-              <Clock3 aria-hidden="true" className="size-4" /> {duration}
+              <Clock3 aria-hidden="true" className="size-4" /> <span className="sr-only">Total length </span>{duration}
             </span>
           ) : null}
         </div>
@@ -276,12 +296,12 @@ function CourseCurriculum({ slug, sections, enrolled }: { slug: string; sections
     return {
       id: `${sectionIndex}-${section.title}`,
       title: section.title,
-      summary: seconds ? `${count} · ${durationLabel(seconds)}` : count,
+      summary: seconds ? `${count} · ${formatCourseDuration(seconds)}` : count,
       items: section.lessons.map((lesson) => ({
         id: lesson.id,
         title: lesson.title,
         href: lesson.preview ? `/learn/courses/${slug}/preview/${lesson.id}` : null,
-        meta: [lessonTypeLabel(lesson.lessonType), lesson.durationSeconds ? durationLabel(lesson.durationSeconds) : null].filter(Boolean).join(' · '),
+        meta: [lessonTypeLabel(lesson.lessonType), lesson.durationSeconds ? formatCourseDuration(lesson.durationSeconds) : null].filter(Boolean).join(' · '),
         status: lesson.preview ? 'preview' as const : enrolled ? 'outline' as const : 'locked' as const,
         statusLabel: lesson.preview ? 'Free preview' : null,
       })),
@@ -339,7 +359,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
 
   // Public page: signed-out visitors see the course and its free previews; enrolling needs an account.
   const user = await getVerifiedUser()
-  const [enrollment, overview, curriculum, trailerUrl, reviews, alsoTook] = await Promise.all([
+  const [enrollment, overview, curriculum, trailerUrl, reviews, alsoTook, listPriceSales, publisher, certificateSettings] = await Promise.all([
     user ? enrollmentRepository.getLearnerEnrollment(user.id, course.id) : Promise.resolve(null),
     // The summary and outline are conveniences: the course page must still render without them.
     marketplaceRepository.getPublishedCourseOverview(course.id).catch(() => EMPTY_OVERVIEW),
@@ -348,10 +368,20 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
     courseRatingRepository.getPublicReviews(course.id).catch(() => EMPTY_REVIEWS),
     // Round G (G5): co-enrolment (at least 3 shared learners), signed-in members, suggestions switch on.
     getLearnersAlsoTook(course.id, user?.id ?? null).catch(() => null),
+    // Round H (H7): read-only extras; each one simply hides its part of the page when it fails.
+    isPaidCourse(course) ? coursePageRepository.listRecentListPriceSales([course.id]).catch(() => [] as ListPriceSale[]) : Promise.resolve([] as ListPriceSale[]),
+    coursePageRepository.getPublisherCard(course.id).catch(() => null as CoursePublisherCardData | null),
+    course.certificateEnabled ? coursePageRepository.getCertificatePreviewSettings(course.id).catch(() => null) : Promise.resolve(null),
   ])
+  const listPriceRecentlyCharged = wasListPriceCharged(listPriceSales, { courseId: course.id, listPriceMinor: course.priceMinor, currency: course.currency })
+  const publisherPhotoUrl = publisher?.photoPath ? await createMediaImageSrc(publisher.photoPath).catch(() => null) : null
+  const totalDuration = formatCourseDuration(overview.durationSeconds)
+  const outcomes = filledItems(course.learningOutcomes)
+  const audience = filledItems(course.targetAudience)
+  const requirements = filledItems(course.requirements)
   const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
   const isFree = !isPaidCourse(course)
-  const purchase: CoursePurchaseState | null = isFree || !user ? null : await loadCoursePurchaseState({ userId: user.id, course, enrollment })
+  const purchase: CoursePurchaseState | null = isFree || !user ? null : await loadCoursePurchaseState({ userId: user.id, course, enrollment, listPriceSales })
   // Round D: a batch course lists its batches; the learner picks one before enrolling or buying.
   const batchCourse = (await batchRepository.courseMode(course.id).catch(() => 'self_paced' as const)) === 'batches'
   const batches: CourseBatch[] = batchCourse && !initiallyEnrolled ? await batchRepository.listForLearners(course.id).catch(() => []) : []
@@ -360,7 +390,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
   const coursePath = `/learn/courses/${course.slug}`
 
   return (
-    <main className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <MainLandmark className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(courseJsonLd(course, overview.publisher, reviews)) }} />
       <MobilePageBar
         backHref="/learn"
@@ -428,12 +458,18 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
                   <Award aria-hidden="true" className="size-3.5 text-teal-200" /> Certificate
                 </span>
               ) : null}
+              {/* Round H (H7): total length from the material durations; hidden when unknown. */}
+              {totalDuration ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
+                  <Clock3 aria-hidden="true" className="size-3.5 text-teal-200" /> <span className="sr-only">Total length </span>{totalDuration}
+                </span>
+              ) : null}
             </div>
           </div>
 
           <aside className="border-t border-white/10 bg-white/[0.055] p-6 max-md:border-t-0 max-md:p-5 sm:p-8 lg:border-l lg:border-t-0 lg:p-6">
             <h2 className="sr-only">Course access</h2>
-            <PriceBlock course={course} />
+            <PriceBlock course={course} listPriceRecentlyCharged={listPriceRecentlyCharged} />
             <p className="mt-2 text-sm leading-6 text-white/65">
               {isFree
                 ? 'Learning access is free for signed-in Sea N Shore members. Enroll with your existing account.'
@@ -481,39 +517,56 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
       {/* Two columns on desktop with the full-width curriculum after the first row (lg:order); phones keep source order.
           Round H (H6): items-start, so a short box (Who this course is for) is as tall as its content, not its row. */}
       <div data-testid="course-detail-sections" className="mt-6 grid gap-6 max-md:order-2 max-md:mt-2 max-md:gap-2 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
-        <section
-          aria-label="What you will learn"
-          className={`${PHONE_FLAT_SECTION} lg:order-1`}
-        >
-          <h2 className="text-section-title font-bold text-navy-950">What you will learn</h2>
-          <div className="mt-5 max-md:mt-3">
-            <EvidenceList items={course.learningOutcomes} />
-          </div>
-        </section>
+        {outcomes.length ? (
+          <section
+            aria-label="What you will learn"
+            className={`${PHONE_FLAT_SECTION} lg:order-1`}
+          >
+            <h2 className="text-section-title font-bold text-navy-950">What you will learn</h2>
+            <div className="mt-5 max-md:mt-3">
+              <EvidenceList items={outcomes} />
+            </div>
+          </section>
+        ) : null}
 
         <CourseCurriculum slug={course.slug} sections={curriculum} enrolled={initiallyEnrolled} />
 
-        <section
-          aria-label="Who this course is for"
-          className={`${PHONE_FLAT_SECTION} self-start lg:order-2`}
-        >
-          <h2 className="flex items-center gap-2 text-section-title font-bold text-navy-950">
-            <Users aria-hidden="true" className="size-5 text-teal-700" /> Who this course is for
-          </h2>
-          <div className="mt-5">
-            <EvidenceList items={course.targetAudience} />
-          </div>
-        </section>
+        {audience.length ? (
+          <section
+            aria-label="Who this course is for"
+            className={`${PHONE_FLAT_SECTION} self-start lg:order-2`}
+          >
+            <h2 className="flex items-center gap-2 text-section-title font-bold text-navy-950">
+              <Users aria-hidden="true" className="size-5 text-teal-700" /> Who this course is for
+            </h2>
+            <div className="mt-5">
+              <EvidenceList items={audience} />
+            </div>
+          </section>
+        ) : null}
 
-        <section
-          aria-label="Requirements"
-          className={`${PHONE_FLAT_SECTION} lg:order-4`}
-        >
-          <h2 className="text-section-title font-bold text-navy-950">Requirements</h2>
-          <div className="mt-5">
-            <EvidenceList items={course.requirements} />
-          </div>
-        </section>
+        {requirements.length ? (
+          <section
+            aria-label="Requirements"
+            className={`${PHONE_FLAT_SECTION} lg:order-4`}
+          >
+            <h2 className="text-section-title font-bold text-navy-950">Requirements</h2>
+            <div className="mt-5">
+              <EvidenceList items={requirements} />
+            </div>
+          </section>
+        ) : null}
+
+        {publisher ? (
+          <CoursePublisherCard
+            course={course}
+            publisher={publisher}
+            photoUrl={publisherPhotoUrl}
+            className={`${PHONE_FLAT_SECTION} lg:order-4`}
+          />
+        ) : null}
+
+        {certificateSettings ? <CertificatePreviewSection settings={certificateSettings} course={course} /> : null}
 
         {alsoTook?.length ? (
           <section aria-labelledby="also-took-heading" className={`${PHONE_FLAT_SECTION} lg:order-7 lg:col-span-2`}>
@@ -549,6 +602,6 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
       </div>
 
       {barMode ? <CourseActionBar course={{ id: course.id, slug: course.slug, title: course.title }} mode={barMode} /> : null}
-    </main>
+    </MainLandmark>
   )
 }

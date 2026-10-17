@@ -83,3 +83,17 @@ describe('CurriculumAccordion (learning round E, E1)', () => {
     expect(screen.queryByRole('button', { name: 'Expand all' })).not.toBeInTheDocument()
   })
 })
+
+describe('CurriculumAccordion module labels (Round H, H7)', () => {
+  afterEach(() => cleanup())
+
+  it('shows a numbered section title once, without a second "Module N" label', () => {
+    render(<CurriculumAccordion modules={[
+      { id: 'n1', title: 'Module 1 · Team Working', items: [] },
+      { id: 'n2', title: 'Bridge resource management', items: [] },
+    ]} />)
+    const first = screen.getByRole('button', { name: /Team Working/ })
+    expect(first.textContent?.match(/Module 1/g)).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /Module 2\s*Bridge resource management/ })).toBeInTheDocument()
+  })
+})

@@ -14,6 +14,7 @@ import {
 } from '@/features/legacy-invites/admin-actions'
 import type { LegacyReminderTestResult } from '@/features/legacy-invites/reminder-test'
 import { buttonClass } from '@/components/ui/interactive-styles'
+import { pluralize } from '@/lib/format'
 
 const MODES = {
   invite: {
@@ -85,7 +86,7 @@ export function LegacyInviteControls(props: {
           disabled={pending || props.prepared === 0}
           onClick={() => run(
             mode.start,
-            `Start sending ${props.prepared} prepared ${mode.noun}(s)? Once a message is handed to Resend it cannot be recalled.`,
+            `Start sending ${pluralize(props.prepared, `prepared ${mode.noun}`)}? Once a message is handed to Resend it cannot be recalled.`,
             `Prepared ${mode.noun}s moved to the send queue.`,
           )}
           className={buttonClass({ variant: 'primary', size: 'sm' })}
@@ -98,7 +99,7 @@ export function LegacyInviteControls(props: {
           disabled={pending || props.prepared === 0}
           onClick={() => run(
             mode.cancel,
-            `Cancel all ${props.prepared} prepared ${mode.noun}(s)? No email will be sent to them.`,
+            `Cancel all ${pluralize(props.prepared, `prepared ${mode.noun}`)}? No email will be sent to them.`,
             `Prepared ${mode.noun}s cancelled.`,
           )}
           className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -111,7 +112,7 @@ export function LegacyInviteControls(props: {
           disabled={pending || unsent === 0}
           onClick={() => run(
             mode.stop,
-            `Stop ${unsent} queued/retry ${mode.noun}(s)? Messages already in Sending or already accepted by Resend cannot be recalled.`,
+            `Stop ${pluralize(unsent, `queued/retry ${mode.noun}`)}? Messages already in Sending or already accepted by Resend cannot be recalled.`,
             `Remaining queued/retry ${mode.noun}s stopped.`,
           )}
           className="min-h-10 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
@@ -122,7 +123,7 @@ export function LegacyInviteControls(props: {
 
       {props.sending > 0 ? (
         <p className="text-xs font-semibold text-amber-700">
-          {props.sending} message(s) are currently being processed. Those may already be with Resend and cannot be guaranteed cancellable.
+          {props.sending === 1 ? '1 message is' : `${props.sending} messages are`} currently being processed. {props.sending === 1 ? 'It' : 'Those'} may already be with Resend and cannot be guaranteed cancellable.
         </p>
       ) : null}
       {message ? <p className="text-xs text-muted">{message}</p> : null}

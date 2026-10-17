@@ -10,13 +10,23 @@ import type { MarketplaceCourse } from '../marketplace-repository'
 export function CoursePublisherAvatar({
   course,
   className = 'size-9 text-xs',
+  photoUrl = null,
 }: {
   course: Pick<MarketplaceCourse, 'mentorName' | 'publisherLogoUrl'>
   /** Size and text size, e.g. "size-11 text-sm". */
   className?: string
+  /** Round H (H7): the trainer's profile photo, used when there is no organization logo. */
+  photoUrl?: string | null
 }) {
   const initial = <span aria-hidden="true">{course.mentorName.charAt(0).toUpperCase()}</span>
   const logo = course.publisherLogoUrl
+  if (!logo && photoUrl) {
+    return (
+      <span data-testid="course-publisher-avatar" className={cn('relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-navy-950 font-extrabold text-white', className)}>
+        <MediaImage src={photoUrl} alt="" fill avatar sizes="64px" fallback={initial} />
+      </span>
+    )
+  }
   return (
     <span
       data-testid="course-publisher-avatar"

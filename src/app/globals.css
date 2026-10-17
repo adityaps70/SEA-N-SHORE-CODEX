@@ -29,6 +29,8 @@
   --ink: #102532;
   /* 4.5:1 or better on white, mist-50, mist-100 and mist-200 (WCAG AA for small text). */
   --muted: #566a77;
+  /* Round H (H8): the focus ring colour (3:1 or better against white and every mist background). */
+  --focus-ring: var(--ocean-700);
   --surface: #ffffff;
   --radius-card: 1.25rem;
   --shadow-card: 0 18px 48px rgb(7 27 45 / 0.08);
@@ -137,51 +139,51 @@ html[data-learn-player] [data-app-footer] { display: none; }
   }
 }
 
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: none;
-  box-shadow: none !important;
+/* Round H (H8): one focus ring for every interactive element: a 2px solid outline, 2px off the element, in
+   --focus-ring (ocean-700: 7.2:1 on white, 6.4:1 on mist-100). It replaces the 1px teal-500 outline (2.9:1) and
+   the text fields' bare teal border (inputs had no ring at all).
+   Kept in the utilities layer behind a zero-specificity :where(), so it beats a plain `outline-none` (which only
+   removed the browser's ring) while a component's explicit focus-visible: utilities still win: an inset
+   offset in a clipped row (focus-visible:-outline-offset-2) or a white ring on a dark surface
+   (focus-visible:outline-white). [tabindex="-1"] (dialogs and landmarks focused by script) is left out. */
+@layer utilities {
+  :where(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [tabindex]:not([tabindex="-1"]),
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="menuitemradio"],
+    [role="menuitemcheckbox"],
+    [role="option"],
+    [contenteditable="true"]
+  ):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  border-color: var(--teal-500) !important;
+/* Round H (H8): "Skip to content", the first focusable element on every page; shown only while focused. */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: 0.75rem;
+  background: var(--navy-950);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
 }
-
-a:focus-visible,
-button:focus-visible,
-[role="button"]:focus-visible,
-summary:focus-visible,
-input[type="checkbox"]:focus-visible,
-input[type="radio"]:focus-visible,
-input[type="range"]:focus-visible,
-input[type="file"]:focus-visible {
-  outline: 1px solid var(--teal-500);
-  outline-offset: 2px;
-}
-
-/* Round E (E10): on learning pages, a 2px ocean-600 outline (5.3:1 on white) instead of 1px teal-500 (2.9:1), and
-   text fields get a visible ring too (the border alone was 2.9:1). */
-.lms a:focus-visible,
-.lms button:focus-visible,
-.lms [role="button"]:focus-visible,
-.lms [tabindex]:focus-visible,
-.lms summary:focus-visible,
-.lms input[type="checkbox"]:focus-visible,
-.lms input[type="radio"]:focus-visible,
-.lms input[type="range"]:focus-visible {
-  outline: 2px solid var(--ocean-600);
-  outline-offset: 2px;
-}
-
-.lms input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
-.lms textarea:focus-visible,
-.lms select:focus-visible {
-  border-color: var(--ocean-600) !important;
-  box-shadow: 0 0 0 1px var(--ocean-600) !important;
-}
+.skip-link:focus,
+.skip-link:focus-visible { transform: none; outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .onboarding-maritime-fields { display: grid; }
 

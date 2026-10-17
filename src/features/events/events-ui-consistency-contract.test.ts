@@ -40,15 +40,14 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
     const globalCss = source('src/app/globals.css')
     const form = source('src/features/events/components/event-form.tsx')
 
-    expect(globalCss).toContain('input:focus-visible')
-    expect(globalCss).toContain('textarea:focus-visible')
-    expect(globalCss).toContain('select:focus-visible')
-    expect(globalCss).toContain('border-color: var(--teal-500)')
-    expect(globalCss).toContain('box-shadow: none !important')
-    expect(globalCss).toContain('outline: none')
-    expect(globalCss).toContain('a:focus-visible')
-    expect(globalCss).toContain('button:focus-visible')
-    expect(globalCss).toContain('outline: 1px solid var(--teal-500)')
+    // Round H (H8): one 2px --focus-ring outline (2px offset) for links, buttons and form fields alike, replacing
+    // the fields' bare teal border (no ring) and the 1px teal-500 outline (2.9:1). See src/app/focus-ring-contract.test.ts.
+    const focusRule = globalCss.match(/:where\(([\s\S]*?)\):focus-visible \{([\s\S]*?)\}/)
+    expect(focusRule).not.toBeNull()
+    for (const element of ['input', 'textarea', 'select', 'a[href]', 'button']) expect(focusRule![1]).toContain(element)
+    expect(focusRule![2]).toContain('outline: 2px solid var(--focus-ring)')
+    expect(globalCss).not.toContain('box-shadow: none !important')
+    expect(globalCss).not.toContain('outline: 1px solid var(--teal-500)')
     expect(globalCss).not.toContain(':focus-visible { outline: 3px')
 
     expect(form).toContain('focus:border-teal-500')

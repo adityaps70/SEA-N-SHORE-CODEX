@@ -71,7 +71,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
   }
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Communities"
         meta={pluralize(groups.length, 'group')}
@@ -214,6 +214,6 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
         </div>
         <AdminGroupForm />
       </section>
-    </main>
+    </div>
   )
 }

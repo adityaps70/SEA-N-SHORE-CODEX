@@ -33,6 +33,7 @@ vi.mock('@/features/newsletter/components/newsletter-footer-signup', () => ({
 }))
 
 import MarketingLayout from './layout'
+import { MainLandmark } from '@/components/layout/main-landmark'
 
 const MEMBER = { id: '11111111-1111-4111-8111-111111111111', cognitoSub: 'sub-member', email: 'member@example.com' }
 
@@ -56,7 +57,7 @@ function expectMemberChrome() {
   // The full app header (primary destinations and the account menu), not the cut-down Home / My Profile one.
   const header = document.querySelector('[data-app-header]') as HTMLElement
   expect(header).not.toBeNull()
-  const primary = within(header).getByRole('navigation', { name: 'Primary' })
+  const primary = within(header).getByRole('navigation', { name: 'Main' })
   expect(within(primary).getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/jobs')
   expect(within(header).getByRole('button', { name: 'Account menu' })).toBeInTheDocument()
   expect(screen.queryByRole('navigation', { name: 'Public navigation' })).not.toBeInTheDocument()
@@ -135,6 +136,22 @@ describe('marketing layout (Round H, H6)', () => {
     await renderLayout('/pricing')
     expect(screen.getByRole('navigation', { name: 'Public navigation' })).toBeInTheDocument()
     expect(screen.getByText('Pricing page')).toBeInTheDocument()
+  })
+
+  it.each([['a member', MEMBER], ['a visitor', null]])('gives %s a skip link first and exactly one main landmark (Round H, H8)', async (_who, viewer) => {
+    mocks.getVerifiedUser.mockResolvedValue(viewer)
+    mocks.pathname = '/pricing'
+    const { container } = render(await MarketingLayout({ children: <MainLandmark className="page-box">Pricing page</MainLandmark> }))
+
+    const mains = container.querySelectorAll('main')
+    expect(mains).toHaveLength(1)
+    expect(mains[0]).toHaveAttribute('id', 'main-content')
+    expect(mains[0]).toHaveTextContent('Pricing page')
+    // The page's own MainLandmark becomes a plain box inside the shell's main.
+    expect(container.querySelector('.page-box')?.tagName).toBe('DIV')
+    const firstFocusable = container.querySelector('a[href], button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')
+    expect(firstFocusable).toHaveTextContent('Skip to content')
+    expect(firstFocusable).toHaveAttribute('href', '#main-content')
   })
 
   it('keeps the member chrome with plain defaults when the counts or profile cannot be loaded', async () => {

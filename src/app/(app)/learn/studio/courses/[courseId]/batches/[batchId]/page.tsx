@@ -10,6 +10,7 @@ import { batchStartLabel, batchStatusLabel, seatsLeft } from '@/features/learnin
 import { BatchForm, BatchStaffPanel } from '@/features/learning/batches/components/batch-forms'
 import { BatchTabs } from '@/features/learning/batches/components/batch-tabs'
 import { formatZonedTime } from '@/features/learning/sessions/session-time'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Batch' }
 
@@ -47,7 +48,7 @@ export default async function CourseBatchPage({ params }: { params: Promise<{ co
           {batchStartLabel(batch)} · {batchStatusLabel(batch.status)}
         </p>
         <p className="mt-1 text-sm text-white/70">
-          {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${batch.seatLimit} seats (${left} left)` : ' · no seat limit'}
+          {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${pluralize(batch.seatLimit, 'seat')} (${left} left)` : ' · no seat limit'}
           {batch.heldCount ? ` · ${batch.heldCount} at checkout` : ''}
         </p>
         <div className="mt-5 flex flex-wrap gap-3">

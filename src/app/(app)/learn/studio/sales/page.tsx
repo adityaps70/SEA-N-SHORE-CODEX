@@ -91,7 +91,7 @@ function SaleItem({ sale }: { sale: CourseSaleRow }) {
               </>
             ) : null}
             <dt className="font-semibold text-navy-700">Order ID</dt>
-            <dd className="break-all font-mono text-[11px] text-navy-900">{courseOrderReference(sale)}</dd>
+            <dd className="break-all font-mono text-xs text-navy-900">{courseOrderReference(sale)}</dd>
           </dl>
           {refundDue ? (
             <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">

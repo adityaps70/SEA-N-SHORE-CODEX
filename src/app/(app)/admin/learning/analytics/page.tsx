@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminLearningAnalyticsRepository } from '@/features/learning/admin-analytics-repository'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Learning analytics · Admin' }
 
@@ -55,7 +56,7 @@ export default async function AdminLearningAnalyticsPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-bold text-white/80">
-            <span className="rounded-full bg-white/10 px-3 py-1.5">{summary.courseCount} courses</span>
+            <span className="rounded-full bg-white/10 px-3 py-1.5">{pluralize(summary.courseCount, 'course')}</span>
             <span className="rounded-full bg-white/10 px-3 py-1.5">{summary.publishedCourseCount} published</span>
           </div>
         </div>
@@ -132,7 +133,7 @@ export default async function AdminLearningAnalyticsPage() {
                     <h3 className="mt-1 text-lg font-bold text-navy-950">{course.title}</h3>
                   </div>
                   <span className="shrink-0 rounded-full bg-mist-50 px-3 py-1 text-xs font-bold text-muted">
-                    {course.enrollmentCount} enrollments
+                    {pluralize(course.enrollmentCount, 'enrollment')}
                   </span>
                 </div>
 
@@ -151,7 +152,7 @@ export default async function AdminLearningAnalyticsPage() {
                   </div>
                   <div className="rounded-xl bg-mist-50 p-3">
                     <p className="text-xs font-semibold text-muted">To review</p>
-                    <p className="mt-1 font-bold text-navy-950">{course.pendingAssignmentCount} attempts</p>
+                    <p className="mt-1 font-bold text-navy-950">{pluralize(course.pendingAssignmentCount, 'attempt')}</p>
                   </div>
                 </div>
 

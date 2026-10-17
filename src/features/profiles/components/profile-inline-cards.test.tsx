@@ -204,7 +204,7 @@ describe('header card (round 11)', () => {
     expect(screen.getByRole('textbox', { name: /Username/ })).toHaveValue('aditya-pratap-singh')
     expect(screen.getByText('Username changes remaining: 1 of 2.')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Headline' })).toHaveValue('Maritime enthusiast')
-    expect(screen.getByRole('textbox', { name: 'Location' })).toHaveValue('Lucknow')
+    expect(screen.getByRole('combobox', { name: 'Location' })).toHaveValue('Lucknow')
     expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
     // Round 12: an enthusiast has no rank list; the rank saved by an earlier profile can only be removed.
     expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
@@ -490,9 +490,10 @@ describe('Access & goals Profile box', () => {
 })
 
 describe('Experience follows the profile type', () => {
+  // Round H (H7): an empty timeline's only add button is the empty state's "Add your first experience".
   it('a Maritime Enthusiast adds a "Work / other role" without vessel fields', () => {
     render(inProvider(<ProfileCareerTimeline experiences={[]} editable persona="maritime_enthusiast" />))
-    fireEvent.click(screen.getByRole('button', { name: 'Add experience' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first experience' }))
     const type = screen.getByRole('combobox', { name: 'Experience type' })
     expect(type).toHaveValue('other_maritime')
     expect(within(type).getByRole('option', { name: 'Work / other role' })).toBeInTheDocument()
@@ -508,7 +509,7 @@ describe('Experience follows the profile type', () => {
 
   it('training shows course, institute, dates and description', () => {
     render(inProvider(<ProfileCareerTimeline experiences={[]} editable persona="trainer_instructor" />))
-    fireEvent.click(screen.getByRole('button', { name: 'Add experience' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first experience' }))
     expect(screen.getByRole('combobox', { name: 'Experience type' })).toHaveValue('training')
     expect(screen.getByLabelText('Course / programme')).toBeInTheDocument()
     expect(screen.getByLabelText('Institute')).toBeInTheDocument()
@@ -520,13 +521,13 @@ describe('Experience follows the profile type', () => {
 
   it('shore personas default to a shore role', () => {
     render(inProvider(<ProfileCareerTimeline experiences={[]} editable persona="recruiter_hr" />))
-    fireEvent.click(screen.getByRole('button', { name: 'Add experience' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first experience' }))
     expect(screen.getByRole('combobox', { name: 'Experience type' })).toHaveValue('shore_role')
   })
 
   it('a Seafarer still defaults to Sea service with vessel fields', () => {
     render(inProvider(<ProfileCareerTimeline experiences={[]} editable persona="seafarer" />))
-    fireEvent.click(screen.getByRole('button', { name: 'Add experience' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first experience' }))
     expect(screen.getByRole('combobox', { name: 'Experience type' })).toHaveValue('sea_service')
     expect(screen.getByLabelText('Vessel')).toBeInTheDocument()
     expect(screen.getByLabelText('Cargo experience')).toBeInTheDocument()

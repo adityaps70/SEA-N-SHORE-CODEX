@@ -1,5 +1,6 @@
 import { evaluateApplyGate } from '@/features/jobs/apply-gate'
 import { scoreJobMatch } from '@/features/jobs/matching'
+import { pushCheck } from '@/features/jobs/match-checks'
 import type { JobCandidateProfile, JobListing, JobMatchResult } from '@/features/jobs/types'
 import { scoreJobV2 } from './job-scorer'
 
@@ -17,7 +18,10 @@ export function scoreJobForMember(job: JobListing, profile: JobCandidateProfile,
   if (gate.status === 'below_minimum') {
     // What the gate found missing joins the list, so "to check" agrees with the Apply button.
     const missingRequirements = [...new Set([...match.missingRequirements, ...gate.missing])]
-    return { match: { ...match, eligible: false, ineligibleReason: `Not eligible: below this job’s minimum match (${gate.minimum}%)`, missingRequirements }, gateMatch }
+    // Round H (H7): and their explained checks, so "Check before applying" lists them too.
+    const checks = [...(match.checks ?? [])]
+    for (const check of gateMatch.checks ?? []) pushCheck(checks, check)
+    return { match: { ...match, eligible: false, ineligibleReason: `Not eligible: below this job’s minimum match (${gate.minimum}%)`, missingRequirements, checks }, gateMatch }
   }
   if (gate.status === 'sea_job_profile_type') {
     return { match: { ...match, eligible: false, ineligibleReason: 'Not eligible: this role is for seafarers' }, gateMatch }

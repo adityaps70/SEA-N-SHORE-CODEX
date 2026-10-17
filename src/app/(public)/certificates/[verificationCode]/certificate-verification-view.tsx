@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
@@ -60,7 +61,7 @@ export function JoinBar() {
 export function CertificateNotVerified({ joinBar }: { joinBar: ReactNode }) {
   return (
     <>
-      <main className="mx-auto flex min-h-[70vh] max-w-page-narrow items-center px-5 py-16">
+      <MainLandmark className="mx-auto flex min-h-[70vh] max-w-page-narrow items-center px-5 py-16">
         <section className="w-full rounded-[2rem] border border-rose-100 bg-white p-7 text-center shadow-[var(--shadow-card)] sm:p-10">
           <XCircle className="mx-auto size-10 text-rose-600" aria-hidden="true" />
           <h1 className="mt-4 text-3xl font-bold text-navy-950">Certificate not verified</h1>
@@ -68,7 +69,7 @@ export function CertificateNotVerified({ joinBar }: { joinBar: ReactNode }) {
             No Sea N Shore Learning certificate matches this verification code. Check the code printed on the certificate and try again.
           </p>
         </section>
-      </main>
+      </MainLandmark>
       {joinBar}
     </>
   )

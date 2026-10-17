@@ -32,7 +32,7 @@ export function ResumeCourseCard({ resume }: { resume: ResumeCourse }) {
   const detail = point.kind === 'next'
     ? `${point.lesson.title} · ${lessonTypeLabel(point.lesson.lessonType)}`
     : point.kind === 'all_done'
-      ? `You have completed all ${point.total} lessons.`
+      ? point.total === 1 ? 'You have completed the only lesson.' : `You have completed all ${point.total} lessons.`
       : point.opensAt
         ? `Next lesson opens on ${formatLearningDate(point.opensAt)}.`
         : 'Your next lesson isn’t open yet.'

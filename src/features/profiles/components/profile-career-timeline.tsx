@@ -280,8 +280,8 @@ function ExperienceEntry({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-ocean-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.1em] text-ocean-700">{EXPERIENCE_TRACK_LABELS[record.track]}</span>
-              {record.isCurrent ? <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800">Current</span> : null}
+              <span className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-[.1em] text-ocean-700">{EXPERIENCE_TRACK_LABELS[record.track]}</span>
+              {record.isCurrent ? <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800">Current</span> : null}
             </div>
             <h3 className="mt-2 text-base font-semibold text-navy-950">{record.title}</h3>
             {record.organization ? (
@@ -338,7 +338,8 @@ export function ProfileCareerTimeline({
     <ProfileSection
       id="profile-experience"
       title="Experience"
-      action={editable && !adding ? (
+      // Round H (H7): with no entries yet, the empty state's "Add your first experience" is the only add button.
+      action={editable && !adding && experiences.length ? (
         <button ref={adderTriggerRef} type="button" onClick={openAdder} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add experience">
           <Plus aria-hidden="true" className="size-4 max-md:size-5" />
           <span className="max-md:sr-only">Add experience</span>
@@ -349,7 +350,7 @@ export function ProfileCareerTimeline({
 
       {experiences.length ? (
         <PhoneShowAll
-          noun="experience"
+          noun="experiences"
           className="relative mt-6 space-y-4 before:absolute before:bottom-6 before:left-3 before:top-2 before:w-px before:bg-mist-100 max-md:mt-4 max-md:space-y-5 max-md:before:hidden"
         >
           {experiences.map((record) => (
@@ -365,7 +366,7 @@ export function ProfileCareerTimeline({
               ? 'Add the jobs, roles and training that tell people what you do.'
               : 'Add sea service, shore positions, training roles and other maritime experience.'}
           </p>
-          <button type="button" onClick={openAdder} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
+          <button ref={adderTriggerRef} type="button" onClick={openAdder} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
             Add your first experience
           </button>

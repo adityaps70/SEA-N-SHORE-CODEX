@@ -35,9 +35,9 @@ export function RailFooter({ visibleFrom = 'xl' }: { visibleFrom?: RailBreakpoin
     <footer
       aria-label="Site footer"
       data-rail-footer={visibleFrom}
-      className={`${visibilityClass[visibleFrom]} relative bg-mist-50 px-2 pb-16 pt-4 text-center text-[11px] leading-4 text-muted`}
+      className={`${visibilityClass[visibleFrom]} relative bg-mist-50 px-2 pb-16 pt-4 text-center text-xs leading-4 text-muted`}
     >
-      <nav aria-label="Footer">
+      <nav aria-label="Footer links">
         <ul className="flex flex-wrap justify-center gap-x-3 gap-y-0.5">
           {railKeyLinks().map((link) => (
             <li key={link.href}>
@@ -50,7 +50,7 @@ export function RailFooter({ visibleFrom = 'xl' }: { visibleFrom?: RailBreakpoin
         <RailFooterMore className={linkClass}>
           {footerLinkGroups({ signedIn: true }).map((group) => (
             <div key={group.title}>
-              <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">{group.title}</h2>
+              <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-muted">{group.title}</h2>
               <ul className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                 {group.links.map((link) => (
                   <li key={link.href}>

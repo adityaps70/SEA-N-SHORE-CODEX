@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
@@ -56,7 +57,7 @@ export default async function PersonNetworkPage({
   const firstName = firstNameOf(profile.fullName)
 
   return (
-    <main id="main-content" className="mx-auto grid w-full max-w-page-wide gap-5 px-4 py-6 max-md:gap-4 max-md:pt-4 sm:px-6 sm:py-10">
+    <MainLandmark className="mx-auto grid w-full max-w-page-wide gap-5 px-4 py-6 max-md:gap-4 max-md:pt-4 sm:px-6 sm:py-10">
       <MobilePageBar backHref={`/people/${profile.slug}`} title={`${profile.fullName}'s network`} className="!mb-0" />
       <div className="max-md:-mb-4">
         <Link
@@ -123,6 +124,6 @@ export default async function PersonNetworkPage({
           {emptyCopy(list, firstName)}
         </div>
       )}
-    </main>
+    </MainLandmark>
   )
 }

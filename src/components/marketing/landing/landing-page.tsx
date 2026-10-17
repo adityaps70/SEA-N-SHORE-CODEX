@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { FaqItem } from '@/components/marketing/faq/faq-data'
 import { MotionRoot, ScrollProgress } from '@/components/marketing/motion'
 import { AudiencesSection, FeedSection, OrganizationsSection } from './landing-community'
@@ -31,11 +32,12 @@ export function LandingPage({ signedIn, googleEnabled, prices, faqs }: LandingPa
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
       <link rel="stylesheet" href={FONTS_HREF} precedence="default" />
 
-      <a className="skip" href="#main-content">Skip to content</a>
+      {/* Round H (H8): members get "Skip to content" from the app chrome, before its header. */}
+      {signedIn ? null : <a className="skip" href="#main-content">Skip to content</a>}
       {/* Round H (H6): members get the fixed app header, so the landing's own header and top progress bar are left out. */}
       {signedIn ? null : <ScrollProgress />}
       {signedIn ? null : <LandingHeader />}
-      <main id="main-content" tabIndex={-1}>
+      <MainLandmark>
         <div id="top" />
         <LandingHero signedIn={signedIn} googleEnabled={googleEnabled} />
         <HiringMarquee />
@@ -51,7 +53,7 @@ export function LandingPage({ signedIn, googleEnabled, prices, faqs }: LandingPa
         <PricingSection prices={prices} />
         <FaqSection items={faqs} />
         <FinalCta signedIn={signedIn} />
-      </main>
+      </MainLandmark>
       {signedIn ? null : <LandingFooter />}
     </MotionRoot>
   )

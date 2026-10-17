@@ -207,7 +207,7 @@ export function GatewayCheckoutButton(props: GatewayCheckoutButtonProps) {
             placeholder="98765 43210"
             aria-invalid={phoneError ? true : undefined}
             aria-describedby={phoneError ? `${phoneId}-error` : `${phoneId}-help`}
-            className="min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/30 aria-[invalid=true]:border-rose-400"
+            className="min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 aria-[invalid=true]:border-rose-400"
           />
           {phoneError
             ? <p id={`${phoneId}-error`} className="text-xs font-semibold leading-5 text-rose-700">{phoneError}</p>

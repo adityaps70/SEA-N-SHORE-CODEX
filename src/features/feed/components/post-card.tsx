@@ -114,10 +114,10 @@ function RepostSourceCard({ source, expanded = false }: { source: FeedRepostSour
           <Link href={publishedAsHref(source)} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
             {name}
           </Link>
-          <p className="mt-0.5 truncate text-xs text-muted">
+          <p className="mt-0.5 truncate text-meta text-muted">
             {organization ? 'Organization' : authorContext(source.author)}
           </p>
-          <time suppressHydrationWarning dateTime={source.createdAt} title={new Date(source.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
+          <time suppressHydrationWarning dateTime={source.createdAt} title={new Date(source.createdAt).toISOString()} className="mt-1 block text-meta text-muted">
             {relativeTime(source.createdAt)}
           </time>
         </div>
@@ -549,8 +549,8 @@ export function PostCard({
               >
                 {displayName}
               </Link>
-              {roleBadge && !organization ? <span className="rounded-md bg-ocean-50 px-1.5 text-[11px] font-bold text-ocean-700">{roleBadge}</span> : null}
-              {isRepost ? <span className="text-xs font-medium text-muted">{repostCommentary ? 'reposted with thoughts' : 'reposted'}</span> : null}
+              {roleBadge && !organization ? <span className="rounded-md bg-ocean-50 px-1.5 text-xs font-bold text-ocean-700">{roleBadge}</span> : null}
+              {isRepost ? <span className="text-meta font-medium text-muted">{repostCommentary ? 'reposted with thoughts' : 'reposted'}</span> : null}
             </div>
             <p className="mt-0.5 truncate text-sm text-muted">
               {organization
@@ -559,7 +559,7 @@ export function PostCard({
                   : isOwner ? 'Organization · Posted by you' : 'Organization'
                 : authorContext(post.author)}
             </p>
-            <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+            <p className="mt-1 flex items-center gap-1 text-meta text-muted">
               <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()}>
                 {relativeTime(post.createdAt)}
               </time>

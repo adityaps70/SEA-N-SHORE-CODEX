@@ -28,6 +28,7 @@ import {
   setMessageReactionAction,
 } from '../actions'
 import { isWithinMessageEditWindow } from '../edit-policy'
+import { messageActionLabel } from '../message-action-labels'
 import { publishMessagingUnreadCount } from '../unread-client'
 import type { MessagingMessageDto } from '../queries'
 import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
@@ -135,7 +136,8 @@ function AttachmentCard({
         aria-label={`Open photo ${attachment.name}`}
         aria-haspopup="dialog"
         data-testid={`message-photo-${message.id}`}
-        className="mb-2 block w-full cursor-zoom-in overflow-hidden rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+        // Round H (H8): a white ring inside your own (dark) bubble, where the ocean ring would not show.
+        className={`mb-2 block w-full cursor-zoom-in overflow-hidden rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 ${mine ? 'focus-visible:outline-white' : 'focus-visible:outline-ocean-500'}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- authorised attachment route or local preview */}
         <img
@@ -174,7 +176,7 @@ function AttachmentCard({
       download={attachment.name}
       className={`mb-2 flex min-w-56 items-center gap-3 rounded-xl border px-3 py-3 transition ${
         mine
-          ? 'border-white/20 bg-white/10 hover:bg-white/15'
+          ? 'border-white/20 bg-white/10 hover:bg-white/15 focus-visible:outline-white'
           : 'border-mist-200 bg-mist-50 hover:bg-mist-100'
       }`}
     >
@@ -183,7 +185,7 @@ function AttachmentCard({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-semibold">{attachment.name}</span>
-        <span className={`mt-0.5 block text-[10px] ${mine ? 'text-white/70' : 'text-muted'}`}>
+        <span className={`mt-0.5 block text-xs ${mine ? 'text-white/90' : 'text-muted'}`}>
           {fileSize(attachment.size)}
         </span>
       </span>
@@ -199,10 +201,10 @@ function ReplyPreview({ message, mine }: { message: MessageThreadItem; mine: boo
   return (
     <div className={`mb-2 rounded-xl border-l-3 px-3 py-2 text-xs ${
       mine
-        ? 'border-white/70 bg-white/10 text-white/80'
+        ? 'border-white/70 bg-white/10 text-white'
         : 'border-ocean-500 bg-ocean-50 text-navy-900'
     }`}>
-      <p className="text-[10px] font-bold uppercase tracking-[0.08em] opacity-70">Reply</p>
+      <p className="text-xs font-bold uppercase tracking-[0.08em]">Reply</p>
       <p className="mt-0.5 line-clamp-2">
         {reply.deleted
           ? 'Original message unavailable'
@@ -572,6 +574,7 @@ export function MessageThread({
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
             {messages.map((message, index) => {
               const mine = message.senderProfileId === viewerId
+              const owner = { mine, senderName: name }
               const state = deliveryState(message)
               const canonicalStatus = mine && !state
                 ? (isMessageSeen(message, peerReadCursor) ? 'Seen' : 'Sent')
@@ -600,7 +603,7 @@ export function MessageThread({
                   {showDay ? (
                     <div className="my-4 flex items-center gap-3" aria-label={`Messages from ${dayLabel(message.createdAt)}`}>
                       <span className="h-px flex-1 bg-mist-100" />
-                      <time dateTime={message.createdAt} className="text-[11px] font-semibold tracking-[0.08em] text-muted">{dayLabel(message.createdAt)}</time>
+                      <time dateTime={message.createdAt} className="text-xs font-semibold tracking-[0.08em] text-muted">{dayLabel(message.createdAt)}</time>
                       <span className="h-px flex-1 bg-mist-100" />
                     </div>
                   ) : null}
@@ -612,13 +615,13 @@ export function MessageThread({
                           mode="reaction"
                           align="start"
                           currentEmoji={myReaction}
-                          triggerLabel={`React to message ${message.id}`}
+                          triggerLabel={messageActionLabel('react', owner)}
                           onSelect={(emoji) => void react(message.id, emoji)}
                         />
                         {canonicalForReply && onReply ? (
                           <button
                             type="button"
-                            aria-label={`Reply to message ${message.id}`}
+                            aria-label={messageActionLabel('reply', owner)}
                             onClick={() => onReply(canonicalForReply)}
                             className="grid size-8 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-700"
                           >
@@ -679,7 +682,7 @@ export function MessageThread({
                                 type="button"
                                 aria-label="Cancel edit"
                                 onClick={cancelEdit}
-                                className="min-h-8 cursor-pointer rounded-lg border border-white/30 bg-white/10 px-3 text-[11px] font-semibold text-white hover:bg-white/20"
+                                className="min-h-8 cursor-pointer rounded-lg border border-white/30 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20"
                               >
                                 Cancel
                               </button>
@@ -688,7 +691,7 @@ export function MessageThread({
                                 aria-label="Save edit"
                                 disabled={!editBody.trim() || pendingMessageId === message.id}
                                 onClick={() => void saveEdit(message.id)}
-                                className="min-h-8 cursor-pointer rounded-lg bg-white px-3 text-[11px] font-bold text-navy-950 hover:bg-mist-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="min-h-8 cursor-pointer rounded-lg bg-white px-3 text-xs font-bold text-navy-950 hover:bg-mist-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Save
                               </button>
@@ -713,13 +716,13 @@ export function MessageThread({
                               }`}
                             >
                               <span>{reaction.emoji}</span>
-                              {reaction.count > 1 ? <span className="text-[10px] font-semibold text-white/80">{reaction.count}</span> : null}
+                              {reaction.count > 1 ? <span className="text-xs font-semibold text-white/80">{reaction.count}</span> : null}
                             </button>
                           ))}
                         </div>
                       ) : null}
 
-                      <div className={`mt-1 flex items-center gap-1.5 px-1 text-[10px] ${state === 'failed' ? 'text-red-600' : 'text-muted'}`}>
+                      <div className={`mt-1 flex items-center gap-1.5 px-1 text-xs ${state === 'failed' ? 'text-red-600' : 'text-muted'}`}>
                         <span>{clock(message.createdAt)}</span>
                         {message.editedAt ? <span>Edited</span> : null}
                         {mine && state === 'sending' ? <><Clock3 aria-hidden="true" className="size-3" /><span>Sending</span></> : null}
@@ -732,7 +735,7 @@ export function MessageThread({
                         <button
                           type="button"
                           aria-haspopup="dialog"
-                          aria-label={`Options for message ${message.id}`}
+                          aria-label={messageActionLabel('options', owner)}
                           onClick={() => openMessageSheet(message.id)}
                           className="sr-only focus:not-sr-only focus:mt-1 focus:rounded-full focus:border focus:border-mist-200 focus:px-3 focus:py-1 focus:text-xs md:hidden"
                         >
@@ -746,7 +749,7 @@ export function MessageThread({
                         {canonicalForReply && onReply ? (
                           <button
                             type="button"
-                            aria-label={`Reply to message ${message.id}`}
+                            aria-label={messageActionLabel('reply', owner)}
                             onClick={() => onReply(canonicalForReply)}
                             className="grid size-8 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-700"
                           >
@@ -757,14 +760,14 @@ export function MessageThread({
                           mode="reaction"
                           align="end"
                           currentEmoji={myReaction}
-                          triggerLabel={`React to message ${message.id}`}
+                          triggerLabel={messageActionLabel('react', owner)}
                           onSelect={(emoji) => void react(message.id, emoji)}
                         />
                         {canonicalForReply ? (
                           <details data-dismissible-menu className="relative">
                             <summary
                               role="button"
-                              aria-label={`More actions for message ${message.id}`}
+                              aria-label={messageActionLabel('more', owner)}
                               className="grid size-8 cursor-pointer list-none place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-navy-950"
                             >
                               <Ellipsis aria-hidden="true" className="size-4" />

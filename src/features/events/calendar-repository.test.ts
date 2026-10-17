@@ -132,6 +132,21 @@ describe('calendar event repository', () => {
     db.query.mockReset()
   })
 
+  it('keeps cancelled events out of every public list: Discover, the archive and organization pages (round H, H7)', async () => {
+    db.query.mockResolvedValue([])
+    await calendarEventRepository.listDiscoverEvents(viewerId, '')
+    await calendarEventRepository.listPastEvents(viewerId, '')
+    await calendarEventRepository.listOrganizationEvents(viewerId, companyId)
+    const lists = db.query.mock.calls.map((call) => String(call[0]).replace(/\s+/g, ' '))
+    expect(lists).toHaveLength(3)
+    for (const sql of lists) {
+      const where = sql.split('left join public.companies c on c.id = e.company_id')[1] ?? ''
+      // Only published events are listed, so a cancelled (or draft) event never appears.
+      expect(where).toMatch(/where (e\.company_id = \$2::uuid and )?e\.status = 'published'/)
+    }
+    db.query.mockReset()
+  })
+
   it('refuses new free registrations for an event whose host’s plan ended', async () => {
     db.txQuery.mockResolvedValueOnce({ rows: [{ id: eventId, host_user_id: hostId, status: 'published', end_at: '2099-01-01T00:00:00.000Z', capacity: null, registration_mode: 'open', registration_closes_at: null, plan_visible: false }] })
     await expect(calendarEventRepository.attendEvent(viewerId, eventId)).rejects.toThrow('event_not_open')

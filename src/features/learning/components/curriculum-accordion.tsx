@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { CheckCircle2, ChevronDown, Circle, LockKeyhole, PlayCircle } from 'lucide-react'
+import { moduleLabel } from '../module-label'
 
 /**
  * Learning round E (E1): the course curriculum as an accordion, one module per row. Used by the player's
@@ -209,7 +210,10 @@ export function CurriculumAccordion({
                 >
                   <ChevronDown aria-hidden="true" className={`mt-1 size-4 shrink-0 text-navy-500 transition-transform ${expanded ? '' : '-rotate-90'}`} />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-meta font-medium text-muted">Module {moduleIndex + 1}</span>
+                    {/* Round H (H7): no "Module N" above a title that already starts with it. */}
+                    {moduleLabel(moduleIndex, module.title) ? (
+                      <span className="block text-meta font-medium text-muted">{moduleLabel(moduleIndex, module.title)}</span>
+                    ) : null}
                     <span className="block font-sans text-[15px] font-semibold leading-snug text-navy-950">{module.title}</span>
                     <span className="mt-0.5 block text-meta text-muted">
                       {percent !== null ? `${module.done}/${total} · ${percent}%` : module.summary ?? `${total} item${total === 1 ? '' : 's'}`}
@@ -231,7 +235,7 @@ export function CurriculumAccordion({
                           {item.statusLabel ? <span aria-hidden="true"> · {item.statusLabel}</span> : null}
                         </span>
                         {item.note ? (
-                          <span className={`mt-1 inline-flex max-w-full rounded-full px-2 py-0.5 text-[11px] font-semibold ${active ? 'bg-white/15 text-white' : 'bg-amber-50 text-amber-800'}`}>
+                          <span className={`mt-1 inline-flex max-w-full rounded-full px-2 py-0.5 text-xs font-semibold ${active ? 'bg-white/15 text-white' : 'bg-amber-50 text-amber-800'}`}>
                             <span className="truncate">{item.note}</span>
                           </span>
                         ) : null}

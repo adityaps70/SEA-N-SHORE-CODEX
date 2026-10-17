@@ -30,7 +30,7 @@ export function OrganizationStatusBadge({
         title="Added by someone who works there. Nobody manages this page yet."
         className={cn(
           'inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 font-semibold text-amber-900',
-          size === 'sm' ? 'px-1.5 py-0.5 text-[11px]' : 'px-2 py-0.5 text-xs',
+          size === 'sm' ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-0.5 text-xs',
           className,
         )}
       >

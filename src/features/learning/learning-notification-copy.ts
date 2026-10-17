@@ -1,5 +1,6 @@
 import { LEARNING_NOTIFICATION_KINDS, type LearningNotificationDetails, type LearningNotificationKind } from './learning-notifications'
 import { DEFAULT_TIME_ZONE, formatZonedRange, formatZonedTime } from './sessions/session-time'
+import { pluralize } from '@/lib/format'
 
 /**
  * What a learning notification says and where it leads, shared by the in-app list and the email.
@@ -112,11 +113,11 @@ export function learningNotificationCopy(kind: LearningNotificationKind, details
       const days = details.daysLeft ?? 30
       const when = details.expiresAt
         ? new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(details.expiresAt))
-        : `in ${days} days`
+        : `in ${pluralize(days, 'day')}`
       return {
         message: `Your certificate for ${course} expires ${details.expiresAt ? `on ${when}` : when}. Renew it by taking the course again.`,
         path: details.verificationCode ? `/certificates/${details.verificationCode}` : '/learn/my-learning',
-        subject: `Your ${course} certificate expires in ${days} days`,
+        subject: `Your ${course} certificate expires in ${pluralize(days, 'day')}`,
         action: 'View your certificate',
       }
     }

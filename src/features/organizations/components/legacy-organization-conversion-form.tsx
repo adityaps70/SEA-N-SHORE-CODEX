@@ -210,7 +210,7 @@ export function LegacyOrganizationConversionForm({
                   </span>
                 </span>
                 {organization.verified ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-800">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-800">
                     <ShieldCheck aria-hidden="true" className="size-3" /> Verified
                   </span>
                 ) : null}

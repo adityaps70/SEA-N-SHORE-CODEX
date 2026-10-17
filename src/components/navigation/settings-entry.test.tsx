@@ -29,6 +29,16 @@ describe('Settings navigation', () => {
     expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument()
   })
 
+  it('names each account menu item by its label and keeps the description as its description (Round H, H8)', () => {
+    render(<AppHeader unreadCount={0} messagingUnreadCount={0} viewer={{ name: 'Placeholder Member' }} canAccessAdmin />)
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Profile' })).toHaveAccessibleDescription('View and edit your Maritime Passport')
+    expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAccessibleDescription('Account, privacy, activity and data')
+    expect(screen.getByRole('menuitem', { name: 'Admin' })).toHaveAccessibleDescription('Platform administration')
+    expect(screen.getByRole('menuitem', { name: 'Organizations' })).toHaveAttribute('href', '/organizations')
+  })
+
   it('offers Settings, Help, Plans & billing and Sign out from the phone side drawer for every signed-in user', () => {
     render(<MobileAppHeader />)
 

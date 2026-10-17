@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
+import { USER_WEBSITE_REL, userWebsiteHref } from '@/lib/user-website'
 import { Check, Crown, ExternalLink, Link2, LogOut, MessageCircleMore, MessagesSquare, MoreHorizontal, Share2, UserPlus } from 'lucide-react'
 import { ActionMenu, ActionMenuItem, visibleMenuItems } from '@/components/ui/action-menu'
 import { startDirectConversationAction } from '@/features/messaging/actions'
@@ -169,7 +170,7 @@ export function OrganizationPageMenu({
 
   const itemClass = 'py-2'
   // Anchors keep the row look of ActionMenuItem; phone-only rows hide from md up.
-  const linkItemClass = cn('flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none [&>svg]:size-4 [&>svg]:shrink-0 max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px] max-md:[&>svg]:size-5')
+  const linkItemClass = cn('flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:-outline-offset-2 [&>svg]:size-4 [&>svg]:shrink-0 max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px] max-md:[&>svg]:size-5')
   const rowClass = (action: OrganizationMenuAction, base: string) => (phoneOnlyItems.includes(action) ? `${base} md:hidden` : base)
 
   return (
@@ -198,7 +199,7 @@ export function OrganizationPageMenu({
         className="w-56 shadow-[var(--shadow-card)]"
       >
         {websiteHref ? (
-          <a href={websiteHref} target="_blank" rel="noreferrer" role="menuitem" onClick={close} className={rowClass('website', linkItemClass)}>
+          <a href={userWebsiteHref(websiteHref) ?? undefined} target="_blank" rel={USER_WEBSITE_REL} role="menuitem" onClick={close} className={rowClass('website', linkItemClass)}>
             <ExternalLink aria-hidden="true" className="size-4 text-muted" /> Visit website
             <span className="sr-only">(opens in a new tab)</span>
           </a>

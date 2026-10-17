@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   getAccessContext: vi.fn(),
   listUserOrganizations: vi.fn(),
   listPublishedCourses: vi.fn(),
+  listRecentListPriceSales: vi.fn(async () => [] as unknown[]),
+}))
+
+vi.mock('@/features/learning/course-page-repository', () => ({
+  coursePageRepository: { listRecentListPriceSales: mocks.listRecentListPriceSales },
 }))
 
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
@@ -264,5 +269,19 @@ describe('/learn marketplace', () => {
       openGraph: { url: '/learn', title: 'Maritime courses on Sea N Shore' },
       twitter: { card: 'summary_large_image' },
     })
+  })
+
+  it('strikes through a card\'s list price only when it sold at that price in the last 90 days (Round H, H7)', async () => {
+    const discounted = { ...course, discountPriceMinor: 1_500_000 }
+    mocks.listPublishedCourses.mockResolvedValue([discounted])
+    await renderLearnPage({ search: 'sire' })
+    expect(mocks.listRecentListPriceSales).toHaveBeenCalledWith([course.id])
+    expect(screen.getByText('₹15,000')).toBeInTheDocument()
+    expect(screen.queryByText('₹20,000')).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.listRecentListPriceSales.mockResolvedValueOnce([{ courseId: course.id, planId: 'plan-a', listPriceMinor: 2_000_000, currency: 'INR' }])
+    await renderLearnPage({ search: 'sire' })
+    expect(screen.getByText('₹20,000').closest('.line-through')).not.toBeNull()
   })
 })

@@ -5,12 +5,13 @@ import type { JobListing } from '@/features/jobs/types'
 const mocks = vi.hoisted(() => ({
   getJobDetailState: vi.fn(),
   getSignedOutJobDetailState: vi.fn(),
+  getJobPageExtras: vi.fn(),
   getVerifiedUser: vi.fn(),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
 }))
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), usePathname: () => '/jobs/x' }))
-vi.mock('@/features/jobs/queries', () => ({ getJobDetailState: mocks.getJobDetailState, getSignedOutJobDetailState: mocks.getSignedOutJobDetailState }))
+vi.mock('@/features/jobs/queries', () => ({ getJobDetailState: mocks.getJobDetailState, getSignedOutJobDetailState: mocks.getSignedOutJobDetailState, getJobPageExtras: mocks.getJobPageExtras }))
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.getVerifiedUser }))
 vi.mock('@/features/jobs/actions', () => ({ applyToJob: vi.fn(), prepareJobApplicationCvUpload: vi.fn(), saveJob: vi.fn(), unsaveJob: vi.fn() }))
 vi.mock('@/features/moderation/components/report-content-button', () => ({ ReportContentButton: ({ label }: { label: string }) => <button type="button">{label}</button> }))
@@ -54,6 +55,11 @@ const job: JobListing = {
 }
 
 afterEach(() => cleanup())
+
+beforeEach(() => {
+  // Round H (H7): the applicant range and similar jobs load for every visitor.
+  mocks.getJobPageExtras.mockResolvedValue({ applicantCount: 0, similarJobs: [] })
+})
 
 describe('job detail page', () => {
   beforeEach(() => {
@@ -179,5 +185,77 @@ describe('job detail page signed out (round H, H5)', () => {
     await expect(JobDetailPage({ params: Promise.resolve({ id: job.id }) })).rejects.toThrow('NEXT_NOT_FOUND')
     await expect(JobDetailPage({ params: Promise.resolve({ id: 'saved-search' }) })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(mocks.getSignedOutJobDetailState).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('job detail page facts, checks and similar jobs (round H, H7)', () => {
+  const similar: JobListing = { ...job, id: '44444444-4444-4444-8444-444444444444', title: 'Chief Officer — PSV', companyName: 'Placeholder Offshore', salaryMin: 240, salaryMax: 240, salaryCurrency: 'USD', salaryPeriod: 'day' }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.getVerifiedUser.mockResolvedValue(null)
+    mocks.getSignedOutJobDetailState.mockResolvedValue({
+      job: { ...job, salaryMin: 3_900_000, salaryMax: 5_000_000, salaryCurrency: 'INR', salaryPeriod: 'year' },
+      alreadyApplied: false, isSaved: false, match: null, gateMatch: null, profileReady: false,
+    })
+    mocks.getJobPageExtras.mockResolvedValue({ applicantCount: 12, similarJobs: [similar] })
+  })
+
+  it('shows signed-out visitors the posted date, the applicant range and the salary in LPA', async () => {
+    render(await JobDetailPage({ params: Promise.resolve({ id: job.id }) }))
+
+    const line = screen.getByTestId('job-posted-line')
+    expect(line.className).not.toContain('md:hidden')
+    expect(line).toHaveTextContent(/^Posted .+ · 10–25 applicants$/)
+    expect(within(line).getByText(/^Posted/).tagName).toBe('TIME')
+    expect(screen.getByText('₹39–50 LPA')).toBeInTheDocument()
+    expect(mocks.getJobPageExtras).toHaveBeenCalledWith(expect.objectContaining({ id: job.id }))
+  })
+
+  it('says "Be among the first applicants" when nobody has applied', async () => {
+    mocks.getJobPageExtras.mockResolvedValue({ applicantCount: 0, similarJobs: [] })
+    render(await JobDetailPage({ params: Promise.resolve({ id: job.id }) }))
+    expect(screen.getByTestId('job-posted-line')).toHaveTextContent('Be among the first applicants')
+    expect(screen.queryByRole('heading', { name: 'Similar jobs' })).toBeNull()
+  })
+
+  it('lists similar jobs as compact cards linking to each job', async () => {
+    render(await JobDetailPage({ params: Promise.resolve({ id: job.id }) }))
+
+    const section = screen.getByRole('heading', { name: 'Similar jobs' }).closest('section')!
+    expect(within(section).getByRole('link', { name: similar.title })).toHaveAttribute('href', `/jobs/${similar.id}`)
+    expect(within(section).getByText(/\$240\/day/)).toBeInTheDocument()
+  })
+
+  it('explains each check on phones and desktop: what is required and what the profile has', async () => {
+    mocks.getVerifiedUser.mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333' })
+    mocks.getJobDetailState.mockResolvedValue({
+      job,
+      alreadyApplied: false,
+      isSaved: false,
+      match: {
+        score: 55,
+        reasons: ['AHTS experience'],
+        missingRequirements: ['COC: Master', '5+ years experience'],
+        warnings: [],
+        checks: [
+          { key: 'certificate', label: 'Certificate', required: 'COC: Master', yours: 'COC: Chief Mate' },
+          { key: 'experience', label: 'Sea time', required: '5+ years', yours: '3 years' },
+        ],
+      },
+      profileReady: true,
+    })
+    render(await JobDetailPage({ params: Promise.resolve({ id: job.id }) }))
+
+    const phone = screen.getByRole('heading', { level: 2, name: 'Check before applying' }).closest('section')!
+    expect(phone.className).toContain('md:hidden')
+    expect(phone.className).not.toContain('max-md:hidden')
+    expect(within(phone).getByText('Required: COC: Master')).toBeInTheDocument()
+    expect(within(phone).getByText('Your profile: COC: Chief Mate')).toBeInTheDocument()
+    expect(within(phone).getByText('Required: 5+ years')).toBeInTheDocument()
+    expect(within(phone).getByText('Your profile: 3 years')).toBeInTheDocument()
+
+    const desktop = screen.getByRole('heading', { name: 'Your Maritime Match' }).closest('section')!
+    expect(within(desktop).getByText('Your profile: COC: Chief Mate')).toBeInTheDocument()
   })
 })

@@ -1,8 +1,9 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComposerProfile } from '../types'
 import { PostComposer } from './post-composer'
+import { requestComposerPrefill } from '../compose-request'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock('../actions', () => ({
@@ -69,5 +70,21 @@ describe('PostComposer scoped to a community group (round 9B)', () => {
     expect(screen.queryByText(/^Audience:/)).not.toBeInTheDocument()
     expect(within(dialog).getAllByText(/Members only/)).toHaveLength(1)
     expect(within(dialog).getAllByText('Audience')).toHaveLength(1)
+  })
+})
+
+describe('PostComposer prefill (round H, H7: community welcome post)', () => {
+  it('opens with the requested text for its own group only and keeps a draft the member already wrote', async () => {
+    render(<PostComposer profile={profile} group={group} />)
+
+    act(() => requestComposerPrefill({ groupId: 'another-group', body: 'Not for this composer' }))
+    expect(screen.queryByRole('dialog', { name: /create a post/i })).not.toBeInTheDocument()
+
+    act(() => requestComposerPrefill({ groupId: group.id, body: 'Welcome to Tanker Professionals!' }))
+    const dialog = await screen.findByRole('dialog', { name: /create a post/i })
+    expect(within(dialog).getByRole('textbox', { name: /post|share|what/i })).toHaveValue('Welcome to Tanker Professionals!')
+
+    act(() => requestComposerPrefill({ groupId: group.id, body: 'A second template' }))
+    expect(within(dialog).getByRole('textbox', { name: /post|share|what/i })).toHaveValue('Welcome to Tanker Professionals!')
   })
 })

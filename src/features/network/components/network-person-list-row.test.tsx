@@ -4,7 +4,9 @@ import type { NetworkProfile } from '../types'
 import { NetworkPersonListRow } from './network-person-list-row'
 
 vi.mock('./relationship-controls', () => ({
-  RelationshipControls: () => <div>Connection actions</div>,
+  RelationshipControls: ({ messageAllowed, connectInMenu }: { messageAllowed?: boolean; connectInMenu?: boolean }) => (
+    <div>Connection actions{connectInMenu ? ' (connect in menu)' : ''}{messageAllowed ? ' with Message' : ''}</div>
+  ),
 }))
 
 vi.mock('./follow-toggle-button', () => ({
@@ -47,9 +49,14 @@ describe('NetworkPersonListRow', () => {
     expect(screen.getByText('Connection actions')).toBeInTheDocument()
   })
 
-  it('renders following and follower rows with the relevant follow CTA', () => {
-    const { rerender } = render(<NetworkPersonListRow profile={profile} kind="following" />)
-    expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument()
+  it('renders following and follower rows with the relevant actions', () => {
+    // Round H (H7): Following rows get Message and "…" like Connections (Following/unfollow moves under "…").
+    const { rerender } = render(<NetworkPersonListRow profile={{ ...profile, canMessage: true }} kind="following" />)
+    expect(screen.getByText('Connection actions (connect in menu) with Message')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Following' })).not.toBeInTheDocument()
+
+    rerender(<NetworkPersonListRow profile={{ ...profile, canMessage: false }} kind="following" />)
+    expect(screen.getByText('Connection actions (connect in menu)')).toBeInTheDocument()
 
     rerender(
       <NetworkPersonListRow

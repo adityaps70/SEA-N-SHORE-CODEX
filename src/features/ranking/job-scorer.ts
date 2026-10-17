@@ -9,7 +9,8 @@ import {
   vesselTypeCodes,
 } from '@/features/taxonomy/maritime-taxonomy'
 import { candidatePersona, candidateRoleKeys, isSeaJob, jobAcceptedRoleKeys } from '@/features/jobs/matching'
-import type { JobCandidateProfile, JobCredential, JobListing, JobMatchBand, JobMatchResult, JobProfileGap } from '@/features/jobs/types'
+import { availabilityCheck, certificateCheck, experienceCheck, pushCheck, rankCheck, vesselCheck, visaCheck } from '@/features/jobs/match-checks'
+import type { JobCandidateProfile, JobCredential, JobListing, JobMatchBand, JobMatchCheck, JobMatchResult, JobProfileGap } from '@/features/jobs/types'
 import { JOB_WEIGHTS, JOB_WEIGHTS_VERSION, jobFreshness, specificityFactor } from './job-weights'
 
 /**
@@ -103,6 +104,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
   const missingRequirements: string[] = []
   const warnings: string[] = []
   const profileGaps: JobProfileGap[] = []
+  const checks: JobMatchCheck[] = []
   const hardFails: string[] = []
   const parts: Record<string, number> = {}
   const seaJob = isSeaJob(job)
@@ -140,6 +142,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
           : persona === 'seafarer' ? { key: 'rank', label: 'Your current or most recent rank' } : { key: 'role', label: 'Your department and role' })
       }
       pushUnique(missingRequirements, acceptedLabel)
+      pushCheck(checks, rankCheck(acceptedLabel, memberKeys))
     } else {
       const distances = memberKeys.flatMap((key) => accepted.flatMap((target) => {
         const distance = ladderDistance(key, target)
@@ -159,6 +162,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
         add('rank', W.rankExact, 0)
         hardFails.push(acceptedLabel)
         pushUnique(missingRequirements, acceptedLabel)
+        pushCheck(checks, rankCheck(acceptedLabel, memberKeys))
       }
     }
   }
@@ -182,6 +186,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
     } else {
       add('vessel', W.vessel, 0)
       for (const vessel of job.vesselTypes) pushUnique(missingRequirements, vessel)
+      if (job.vesselTypes.length) pushCheck(checks, vesselCheck(job.vesselTypes, [...new Set([...profile.vesselTypes, ...memberCodes.map((code) => vesselTypeByCode(code)?.name ?? code)])]))
     }
   }
 
@@ -197,12 +202,21 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
       const best = valid.find((credential) => credential.verified) ?? valid[0]
       if (best) {
         credit += best.verified ? JOB_WEIGHTS.credit.certificateVerified : JOB_WEIGHTS.credit.certificateSelfReported
-        if (!best.verified) warnings.push(`${requirement.name} is self-reported and not yet verified.`)
+        if (!best.verified) {
+          warnings.push(`${requirement.name} is self-reported and not yet verified.`)
+          pushCheck(checks, certificateCheck(requirement.name, { state: 'self_reported' }))
+        }
         continue
       }
       pushUnique(missingRequirements, requirement.name)
       const expired = matches.length > 0
       if (expired) warnings.push(`${requirement.name} is expired.`)
+      // What the member holds of the same kind ("Chief Officer CoC" against a Master CoC).
+      const category = code ? certificateTypeByCode(code)?.category : undefined
+      const related = category
+        ? profile.certificates.filter((credential) => certificateTypeByCode(certificateCode(credential))?.category === category).map((credential) => credential.name)
+        : []
+      pushCheck(checks, certificateCheck(requirement.name, expired ? { state: 'expired', expiresAt: matches[0]?.expiresAt ?? null } : { state: 'missing', related }))
       if (requirement.required && code && certificateTypeByCode(code)?.category === 'coc') {
         hardFails.push(expired ? `a valid ${requirement.name}` : requirement.name)
       }
@@ -231,10 +245,14 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
       add('seaTime', W.seaTime, 0)
       if (persona === 'seafarer') profileGaps.push({ key: 'sea_time', label: 'Your sea service (years)' })
       pushUnique(missingRequirements, `${job.experienceMinYears}+ years experience`)
+      pushCheck(checks, experienceCheck(job.experienceMinYears, null, seaJob))
     } else {
       add('seaTime', W.seaTime, years / job.experienceMinYears)
       if (years >= job.experienceMinYears) reasons.push(seaJob ? `Sea time meets the ${job.experienceMinYears}+ years asked` : `Experience meets the ${job.experienceMinYears}+ years asked`)
-      else pushUnique(missingRequirements, `${job.experienceMinYears}+ years experience`)
+      else {
+        pushUnique(missingRequirements, `${job.experienceMinYears}+ years experience`)
+        pushCheck(checks, experienceCheck(job.experienceMinYears, years, seaJob))
+      }
     }
   }
 
@@ -253,6 +271,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
     } else {
       add('availability', W.availability, 0)
       warnings.push('You are available after this job’s joining date.')
+      pushCheck(checks, availabilityCheck(until, available))
     }
   }
 
@@ -282,6 +301,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
     for (const visa of visas) {
       if (held.has(normaliseTaxonomyText(visa.name))) continue
       pushUnique(missingRequirements, visa.name)
+      pushCheck(checks, visaCheck(visa.name, profile.visas))
       if (visa.required) hardFails.push(`${visa.name} visa`)
     }
     if (matched.length === visas.length) reasons.push('Visa requirements match your profile')
@@ -314,7 +334,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
   const eligible = hardFails.length === 0
   const ineligibleReason = eligible ? null : `Not eligible: needs ${hardFails.join(', ')}`
   if (possible === 0) {
-    return { version: 2, score: null, band: null, reasons, missingRequirements, warnings: [...new Set(warnings)], profileGaps, eligible, ineligibleReason, criteria, parts }
+    return { version: 2, score: null, band: null, reasons, missingRequirements, warnings: [...new Set(warnings)], profileGaps, eligible, ineligibleReason, criteria, parts, checks }
   }
   const score = Math.max(0, Math.min(100, Math.round((earned / possible) * 100 * specificityFactor(criteria))))
   parts.specificity = specificityFactor(criteria)
@@ -330,6 +350,7 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
     ineligibleReason,
     criteria,
     parts,
+    checks,
   }
 }
 

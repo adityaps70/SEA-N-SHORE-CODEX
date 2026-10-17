@@ -10,10 +10,11 @@ import { configuredSocialLinks } from '@/components/navigation/social-links'
 import { BUSINESS, telHref } from '@/config/business'
 import { NewsletterFooterSignup } from '@/features/newsletter/components/newsletter-footer-signup'
 import type { PlanPriceSummary } from '@/features/billing/components/plan-cards'
-import { INTERVAL_LABELS, formatRupeesShort, trialBadge, type PaidPlanCode } from '@/features/billing/plans'
+import { INTERVAL_LABELS, trialBadge, type PaidPlanCode } from '@/features/billing/plans'
 import { LANDING_LINKS } from './landing-links'
 import { LogoLink } from './landing-logos'
 import { GLOBAL_PARTNERS, HIRING_COMPANIES, MORE_HIRING_PARTNERS, PARENT_GROUP_LOGO, PARTNERS } from './logos'
+import { formatMoney } from '@/features/payments/currency'
 
 /** Logos in the phone-only partners strip (the full grid stays one tap away). */
 const PHONE_STRIP_SIZE = 10
@@ -99,8 +100,8 @@ export type LandingPlanPrices = {
 /** "or ₹999 a year" / "or ₹10,000 per 6 months · ₹14,999 a year": the longer intervals with a price. */
 export function longerIntervalNote(prices: PlanPriceSummary) {
   const parts = [
-    prices.half_year !== null ? `${formatRupeesShort(prices.half_year)} ${INTERVAL_LABELS.half_year.per}` : null,
-    prices.year !== null ? `${formatRupeesShort(prices.year)} a year` : null,
+    prices.half_year !== null ? `${formatMoney(prices.half_year, 'INR')} ${INTERVAL_LABELS.half_year.per}` : null,
+    prices.year !== null ? `${formatMoney(prices.year, 'INR')} a year` : null,
   ].filter((part): part is string => part !== null)
   return parts.length ? `or ${parts.join(' · ')}` : null
 }
@@ -126,7 +127,7 @@ function PlanAmount({ plan, prices }: { plan: PaidPlanCode; prices: PlanPriceSum
     <>
       {badge}
       <div className="amt">
-        {formatRupeesShort(headline.amount)}<small>{headline.per}</small>
+        {formatMoney(headline.amount, 'INR')}<small>{headline.per}</small>
       </div>
       <p>{prices.month !== null && longer ? longer : 'Renews automatically'}</p>
     </>

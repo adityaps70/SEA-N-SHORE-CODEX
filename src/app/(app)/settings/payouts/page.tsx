@@ -31,7 +31,7 @@ export default async function PayoutSettingsPage() {
     : []
 
   return (
-    <main className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Payout details" />
       {/* Phones: title in the page bar; Earnings is its own row in Settings. */}
       <header className="max-md:hidden">
@@ -90,6 +90,6 @@ export default async function PayoutSettingsPage() {
           })}
         </div>
       )}
-    </main>
+    </div>
   )
 }

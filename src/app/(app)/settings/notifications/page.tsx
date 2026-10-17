@@ -28,7 +28,7 @@ export default async function EmailNotificationsPage() {
   ])
 
   return (
-    <main className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Email notifications" />
       <header className="max-md:hidden">
         <Link href="/settings" className={backLinkClass}>
@@ -78,6 +78,6 @@ export default async function EmailNotificationsPage() {
       <p className="text-sm leading-6 text-muted max-md:px-0">
         The newsletter has its own settings: <Link href="/newsletter" className="font-semibold text-ocean-700 hover:underline">Newsletter</Link>.
       </p>
-    </main>
+    </div>
   )
 }

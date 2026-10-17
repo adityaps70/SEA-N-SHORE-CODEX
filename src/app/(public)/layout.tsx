@@ -1,4 +1,5 @@
 import { getAppChromeData } from '@/components/navigation/app-chrome-data'
+import { MainLandmark, SkipLink } from '@/components/layout/main-landmark'
 import { MemberChrome } from '@/components/navigation/member-chrome'
 import { PublicHeader } from '@/components/navigation/public-header'
 import { SiteFooter } from '@/components/navigation/site-footer'
@@ -23,8 +24,10 @@ export default async function PublicProfileLayout({ children }: { children: Reac
   // `group/shell` lets the site footer hide where a right rail shows its own footer.
   return (
     <div className="group/shell min-h-screen bg-mist-50">
+      {/* Round H (H8): a skip link and the page's one main landmark, as in the member shell. */}
+      <SkipLink />
       <PublicHeader />
-      {children}
+      <MainLandmark>{children}</MainLandmark>
       <SiteFooter signedIn={false} />
     </div>
   )

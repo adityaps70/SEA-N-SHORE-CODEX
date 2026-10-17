@@ -367,7 +367,7 @@ export function MessageComposer({
       {replyTo ? (
         <div className="mb-2 flex items-start gap-3 rounded-2xl border-l-4 border-ocean-500 bg-ocean-50 px-3 py-2.5">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ocean-700">Replying to message</p>
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-ocean-700">Replying to message</p>
             <p className="mt-0.5 truncate text-xs text-navy-900">
               {replyTo.body || replyTo.attachment?.name || 'Attachment'}
             </p>
@@ -439,6 +439,7 @@ export function MessageComposer({
           ref={fileInputRef}
           type="file"
           tabIndex={-1}
+          aria-hidden="true"
           className="sr-only"
           accept={attachmentAccept()}
           onChange={onAttachmentChange}
@@ -495,7 +496,7 @@ export function MessageComposer({
           maxLength={5000}
           placeholder={dock ? 'Write a message…' : 'Message…'}
           className={cn(
-            'max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm leading-5 text-navy-950 outline-none placeholder:text-muted',
+            'max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm leading-5 text-navy-950 placeholder:text-muted',
             dock && `min-h-8 min-w-0 py-1.5 [field-sizing:content] ${DOCK_TEXTAREA_MAX_HEIGHT_CLASS}`,
           )}
         />
@@ -514,8 +515,8 @@ export function MessageComposer({
       </div>
       {!dock || composerError ? (
         <div className={cn('mt-1.5 flex items-center justify-between gap-3 px-1', dock && 'mt-1 justify-end')}>
-          {!dock ? <p className="text-[11px] text-muted max-md:hidden">Enter to send · Shift + Enter for a new line</p> : null}
-          {composerError ? <p role="alert" className="text-right text-[11px] font-medium text-red-700">{composerError}</p> : null}
+          {!dock ? <p className="text-xs text-muted max-md:hidden">Enter to send · Shift + Enter for a new line</p> : null}
+          {composerError ? <p role="alert" className="text-right text-xs font-medium text-red-700">{composerError}</p> : null}
         </div>
       ) : null}
     </form>

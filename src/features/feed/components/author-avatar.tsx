@@ -21,8 +21,6 @@ export function publishedAsHref(post: { author: Pick<FeedAuthor, 'slug'>; organi
   return post.organization ? organizationHref(post.organization.slug) : profileHref(post.author.slug)
 }
 
-const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/50 focus-visible:ring-offset-2'
-
 /** A member's profile photo (or initials) that opens their profile. */
 export function AuthorAvatarLink({ author, className, loading = 'lazy' }: {
   author: Pick<FeedAuthor, 'slug' | 'fullName' | 'avatarUrl'>
@@ -36,7 +34,7 @@ export function AuthorAvatarLink({ author, className, loading = 'lazy' }: {
     <Link
       href={profileHref(author.slug)}
       aria-label={`View ${author.fullName}'s profile`}
-      className={`relative grid shrink-0 place-items-center overflow-hidden bg-mist-100 font-semibold text-navy-950 ring-1 ring-mist-100 transition hover:opacity-90 ${focusRing} ${className}`}
+      className={`relative grid shrink-0 place-items-center overflow-hidden bg-mist-100 font-semibold text-navy-950 ring-1 ring-mist-100 transition hover:opacity-90 ${className}`}
     >
       {author.avatarUrl ? (
         <MediaImage
@@ -63,7 +61,7 @@ export function OrganizationLogoLink({ organization, className }: {
     <Link
       href={organizationHref(organization.slug)}
       aria-label={`View ${organization.name}'s page`}
-      className={`relative grid shrink-0 place-items-center overflow-hidden bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100 transition hover:opacity-90 ${focusRing} ${className}`}
+      className={`relative grid shrink-0 place-items-center overflow-hidden bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100 transition hover:opacity-90 ${className}`}
     >
       {organization.logoUrl ? (
         // Organization logos come from the signed-in first-party logo route, so they are shown as they are.

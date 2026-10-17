@@ -154,7 +154,7 @@ export function SharePostButton({
           title="Repost or share"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50"
         >
           {allowRepost ? <Repeat2 aria-hidden="true" className="size-5" /> : <Share2 aria-hidden="true" className="size-5" />}
           {iconOnly ? null : 'Share'}

@@ -131,7 +131,7 @@ export function CreateRequirementsBanner({
                 <span>{item.label}</span>
                 <Link
                   href={item.href}
-                  className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-ocean-200 bg-white px-2.5 text-xs font-bold text-ocean-700 transition hover:border-ocean-300 hover:bg-ocean-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+                  className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-ocean-200 bg-white px-2.5 text-xs font-bold text-ocean-700 transition hover:border-ocean-300 hover:bg-ocean-100"
                 >
                   {item.linkLabel} <ArrowRight aria-hidden="true" className="size-3.5" />
                 </Link>

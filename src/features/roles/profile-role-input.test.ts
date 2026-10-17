@@ -28,6 +28,13 @@ describe('structured profile role fields', () => {
       .toMatchObject({ ok: true, rankText: 'Ice Navigator', data: { roleOtherText: 'Ice Navigator' } })
   })
 
+  it('caps the "Other" text at 60 characters (Round H, H7)', () => {
+    const base = { roleDepartmentKey: 'deck_officers', roleKey: 'other_deck_officers' }
+    expect(parseProfileRoleFields({ ...base, roleOtherText: 'x'.repeat(60) }, 'seafarer')).toMatchObject({ ok: true })
+    expect(parseProfileRoleFields({ ...base, roleOtherText: 'x'.repeat(61) }, 'seafarer'))
+      .toEqual({ ok: false, fieldErrors: { roleOtherText: ['Keep this to 60 characters or fewer.'] } })
+  })
+
   it('keeps the role optional for shore professionals', () => {
     expect(parseProfileRoleFields({}, 'shore_professional')).toMatchObject({ ok: true, rankText: null, data: { roleKey: null } })
     expect(parseProfileRoleFields({ roleDepartmentKey: 'technical_fleet', roleKey: 'technical_superintendent' }, 'shore_professional'))

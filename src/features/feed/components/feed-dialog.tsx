@@ -106,7 +106,7 @@ export function FeedDialog({
             type="button"
             aria-label={closeLabel}
             onClick={onClose}
-            className="grid size-9 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+            className="grid size-9 shrink-0 place-items-center rounded-xl text-muted transition hover:bg-mist-50 hover:text-navy-950"
           >
             <X aria-hidden="true" className="size-4" />
           </button>

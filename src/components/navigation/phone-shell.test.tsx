@@ -29,8 +29,8 @@ function openDrawer(props: Parameters<typeof MobileAppHeader>[0] = {}) {
 }
 
 describe('phone top bar', () => {
-  it('shows the viewer photo button, a wide search link and Messages', () => {
-    render(<MobileAppHeader viewer={{ name: 'Prakhar Pathak', avatarUrl: '/avatar.jpg' }} messagingUnreadCount={2} />)
+  it('shows the viewer photo button, a wide search link and the Notifications bell (round H, H7: Messages is a bottom tab)', () => {
+    render(<MobileAppHeader viewer={{ name: 'Prakhar Pathak', avatarUrl: '/avatar.jpg' }} notificationUnreadCount={2} />)
 
     const banner = screen.getByRole('banner')
     expect(banner).toHaveClass('md:hidden', 'sticky', 'top-0')
@@ -39,10 +39,23 @@ describe('phone top bar', () => {
     expect(photo).toHaveAttribute('aria-expanded', 'false')
     expect(photo.querySelector('img')).toHaveAttribute('src', '/avatar.jpg')
     expect(screen.getByRole('link', { name: 'Search jobs, people, courses' })).toHaveAttribute('href', '/search')
-    expect(screen.getByRole('link', { name: 'Messages' })).toHaveAttribute('href', '/messages')
-    // Notifications and Create moved to the bottom tabs.
-    expect(within(banner).queryByRole('link', { name: /Notifications/ })).not.toBeInTheDocument()
+    expect(within(banner).getByRole('link', { name: 'Notifications, 2 unread' })).toHaveAttribute('href', '/notifications')
+    expect(screen.getByTestId('notifications-bell-badge')).toHaveTextContent('2')
+    // Messages moved to the bottom tabs (no duplicate in the top bar); Create is the Post tab.
+    expect(within(banner).queryByRole('link', { name: /Messages/ })).not.toBeInTheDocument()
     expect(within(banner).queryByRole('link', { name: 'Create' })).not.toBeInTheDocument()
+  })
+
+  it('caps the bell badge at 9+ and drops it at zero, marking the bell current on /notifications (round H, H7)', () => {
+    navigation.pathname = '/notifications'
+    render(<MobileAppHeader notificationUnreadCount={12} />)
+    const bell = screen.getByRole('link', { name: 'Notifications, 12 unread' })
+    expect(bell).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByTestId('notifications-bell-badge')).toHaveTextContent('9+')
+    cleanup()
+    render(<MobileAppHeader notificationUnreadCount={0} />)
+    expect(screen.getByRole('link', { name: 'Notifications' })).toBeInTheDocument()
+    expect(screen.queryByTestId('notifications-bell-badge')).not.toBeInTheDocument()
   })
 
   it('is not rendered on detail routes, which show their own MobilePageBar', () => {
@@ -172,32 +185,33 @@ describe('phone side drawer', () => {
 })
 
 describe('phone bottom tabs', () => {
-  it('shows Home, Network, Post, Notifications and Jobs with the active tab marked', () => {
+  it('shows Home, Network, Post, Messages and Jobs with the active tab marked (round H, H7: Messages replaces Notifications)', () => {
     navigation.pathname = '/network'
     render(<MobileNav />)
-    const nav = screen.getByRole('navigation', { name: 'Primary' })
+    const nav = screen.getByRole('navigation', { name: 'Mobile' })
     expect(within(nav).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/home')
     const network = within(nav).getByRole('link', { name: 'My Network' })
     expect(network).toHaveAttribute('href', '/network')
     expect(network).toHaveAttribute('aria-current', 'page')
     expect(network).toHaveClass('border-navy-950', 'text-navy-950', 'font-bold')
     expect(within(nav).getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current')
-    expect(within(nav).getByRole('link', { name: 'Notifications' })).toHaveAttribute('href', '/notifications')
+    expect(within(nav).getByRole('link', { name: 'Messages' })).toHaveAttribute('href', '/messages')
+    expect(within(nav).queryByRole('link', { name: /Notifications/ })).not.toBeInTheDocument()
+    expect(within(nav).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/home', '/network', '/messages', '/jobs'])
     expect(within(nav).getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/jobs')
     expect(within(nav).getByRole('button', { name: 'Post' })).toBeInTheDocument()
     expect(nav).toHaveClass('pb-[env(safe-area-inset-bottom)]')
   })
 
-  it('badges Network with pending requests and Notifications with unread, capped at 9+', () => {
-    render(<MobileNav pendingConnectionRequestCount={3} notificationUnreadCount={12} />)
-    expect(screen.getByRole('link', { name: 'My Network, 3 pending connection requests' })).toBeInTheDocument()
-    expect(screen.getByTestId('network-tab-badge')).toHaveTextContent('3')
-    expect(screen.getByRole('link', { name: 'Notifications, 12 unread' })).toBeInTheDocument()
-    expect(screen.getByTestId('notifications-tab-badge')).toHaveTextContent('9+')
+  it('badges Network with pending requests (capped at 9+) and Messages with the exact unread count (round H, H7)', () => {
+    render(<MobileNav pendingConnectionRequestCount={12} messagingUnreadCount={27} />)
+    expect(screen.getByRole('link', { name: 'My Network, 12 pending connection requests' })).toBeInTheDocument()
+    expect(screen.getByTestId('network-tab-badge')).toHaveTextContent('9+')
+    expect(within(screen.getByRole('link', { name: 'Messages' })).getByLabelText('27 unread messages')).toHaveTextContent('27')
     cleanup()
-    render(<MobileNav pendingConnectionRequestCount={1} notificationUnreadCount={0} />)
+    render(<MobileNav pendingConnectionRequestCount={1} messagingUnreadCount={0} />)
     expect(screen.getByRole('link', { name: 'My Network, 1 pending connection request' })).toBeInTheDocument()
-    expect(screen.queryByTestId('notifications-tab-badge')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/unread message/)).not.toBeInTheDocument()
     expect(tabBadgeText(9)).toBe('9')
     expect(tabBadgeText(10)).toBe('9+')
   })

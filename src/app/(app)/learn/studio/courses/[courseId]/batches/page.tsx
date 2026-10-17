@@ -8,6 +8,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { BatchError, batchRepository } from '@/features/learning/batches/batch-repository'
 import { batchStartLabel, batchStatusLabel, seatsLeft } from '@/features/learning/batches/batch-rules'
 import { BatchForm, BatchSettingsForm } from '@/features/learning/batches/components/batch-forms'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Batches' }
 
@@ -63,7 +64,7 @@ export default async function CourseBatchesPage({ params }: { params: Promise<{ 
                             <span className="block break-words font-bold text-navy-950">{batch.title}</span>
                             <span className="block text-sm text-muted">{batchStartLabel(batch)} · {batchStatusLabel(batch.status)}</span>
                             <span className="block text-sm text-muted">
-                              {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${batch.seatLimit} seats (${left} left)` : ' · no seat limit'}
+                              {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${pluralize(batch.seatLimit, 'seat')} (${left} left)` : ' · no seat limit'}
                               {batch.managerName ? ` · Manager: ${batch.managerName}` : ''}
                               {batch.enrolmentOpen ? '' : ' · Enrolment closed'}
                             </span>

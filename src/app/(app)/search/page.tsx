@@ -319,7 +319,7 @@ export default async function GlobalSearchPage({
                       <div className="flex flex-wrap items-center gap-1.5">
                         <h3 className="font-bold text-navy-950 transition group-hover:text-teal-800">{organization.name}</h3>
                         {organization.verified ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
                             <BadgeCheck aria-hidden="true" className="size-3" /> Verified
                           </span>
                         ) : null}

@@ -15,7 +15,7 @@ describe('primary navigation layout', () => {
   it('shows seven desktop destinations with Community in place of the old More menu', () => {
     render(<AppHeader unreadCount={0} />)
 
-    const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
+    const primaryNav = screen.getByRole('navigation', { name: 'Main' })
     const links = primaryNav.querySelectorAll('a')
     expect(Array.from(links).map((link) => link.getAttribute('href'))).toEqual([
       '/home', '/network', '/jobs', '/messages', '/learn', '/events', '/community',
@@ -62,7 +62,7 @@ describe('primary navigation layout', () => {
     render(<AppHeader unreadCount={0} />)
 
     expect(screen.getByRole('banner')).toHaveClass('fixed', 'top-0', 'z-50')
-    const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
+    const primaryNav = screen.getByRole('navigation', { name: 'Main' })
     expect(primaryNav).toHaveClass('justify-self-center', 'min-w-0')
     expect(primaryNav.parentElement).toHaveClass('grid', 'grid-cols-[auto_minmax(0,1fr)_auto]')
   })
@@ -82,14 +82,14 @@ describe('primary navigation layout', () => {
     expect(screen.getByRole('searchbox', { name: 'Search Sea N Shore' })).toHaveClass('min-h-10', 'w-44', 'xl:w-56', '2xl:w-[22rem]')
   })
 
-  it('uses five phone tabs — Home, Network, Post, Notifications, Jobs — on an opaque bar', () => {
+  it('uses five phone tabs — Home, Network, Post, Messages, Jobs — on an opaque bar (round H, H7)', () => {
     render(<MobileNav />)
 
-    const nav = screen.getByRole('navigation', { name: 'Primary' })
+    const nav = screen.getByRole('navigation', { name: 'Mobile' })
     expect(nav).toHaveClass('grid-cols-5', 'bg-white', 'md:hidden')
     expect(nav).not.toHaveClass('bg-white/95')
     expect(Array.from(nav.children).map((child) => child.getAttribute('href') ?? child.textContent)).toEqual([
-      '/home', '/network', 'Post', '/notifications', '/jobs',
+      '/home', '/network', 'Post', '/messages', '/jobs',
     ])
     expect(screen.getByRole('button', { name: 'Post' })).toHaveAttribute('aria-haspopup', 'dialog')
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()

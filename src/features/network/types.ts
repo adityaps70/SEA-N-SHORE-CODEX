@@ -23,6 +23,8 @@ export type NetworkProfile = PublicProfile & {
   relationshipSince?: string | null
   /** Round G: one plain line on a People you may know card ("12 mutual connections"). */
   suggestionReason?: string | null
+  /** Round H (H7): set on the Following list; the server still decides when Message is pressed. */
+  canMessage?: boolean
 }
 
 export type NetworkConnectionRow = {

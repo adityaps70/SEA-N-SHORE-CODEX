@@ -14,19 +14,20 @@ import {
   addInterval,
   autoRenewAccessUntil,
   firstChargeAccessUntil,
-  formatRupees,
   formatRupeesShort,
   pastDueAccessUntil,
   yearlySaving,
 } from './plans'
+import { formatMoney } from '@/features/payments/currency'
 import { isSubscriptionWebhookBody, parseSubscriptionWebhook } from './subscription-webhook'
 
 describe('plan money and dates', () => {
-  it('formats paise as rupees with 2 decimals and Indian grouping', () => {
-    expect(formatRupees(10000)).toBe('₹100.00')
-    expect(formatRupees(2000000)).toBe('₹20,000.00')
-    expect(formatRupees(12345678)).toBe('₹1,23,456.78')
-    expect(formatRupees(5)).toBe('₹0.05')
+  // Round H (H7): plan prices use the site-wide format, so whole rupees drop the ".00".
+  it('formats paise as rupees with Indian grouping, showing paise only when non-zero', () => {
+    expect(formatMoney(10000, 'INR')).toBe('₹100')
+    expect(formatMoney(2000000, 'INR')).toBe('₹20,000')
+    expect(formatMoney(12345678, 'INR')).toBe('₹1,23,456.78')
+    expect(formatMoney(5, 'INR')).toBe('₹0.05')
     expect(formatRupeesShort(100000)).toBe('₹1,000')
     expect(formatRupeesShort(99950)).toBe('₹999.50')
   })

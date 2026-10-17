@@ -85,7 +85,7 @@ export default async function AdminModerationPage({
   ]
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Moderation & reports"
         meta={pluralize(cases.length, 'case') + ' in this view'}
@@ -141,7 +141,7 @@ export default async function AdminModerationPage({
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-navy-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white">
+                    <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.08em] text-white">
                       {item.targetType.replaceAll('_', ' ')}
                     </span>
                     <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800">
@@ -217,6 +217,6 @@ export default async function AdminModerationPage({
           </AdminPanel>
         ) : null}
       </section>
-    </main>
+    </div>
   )
 }

@@ -104,7 +104,7 @@ async function reviewQueue({ adminId, status }: { adminId: string; status: Admin
   const applications = await adminRepository.listOrganizationApplications(adminId, status)
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Organization reviews"
         meta={`${applications.length} in this view`}
@@ -154,7 +154,7 @@ async function reviewQueue({ adminId, status }: { adminId: string; status: Admin
           ) : null}
         </div>
       </section>
-    </main>
+    </div>
   )
 }
 
@@ -191,7 +191,7 @@ async function organizationDirectory({
   }
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Organizations"
         meta={page > 1 || hasNextPage
@@ -358,7 +358,7 @@ async function organizationDirectory({
         hasNext={hasNextPage}
         hrefFor={(target) => directoryHref({ page: target })}
       />
-    </main>
+    </div>
   )
 }
 

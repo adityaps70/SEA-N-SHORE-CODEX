@@ -3,6 +3,7 @@ import Link from '@/components/navigation/intent-link'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import { cn } from '@/lib/cn'
+import { USER_WEBSITE_REL, userWebsiteHref } from '@/lib/user-website'
 import { organizationHeaderActions, type OrganizationHeaderAction } from '../organization-header-actions'
 import { OrganizationFollowButton } from './organization-follow-button'
 import { OrganizationPageMenu, type OrganizationMenuAction, type OrganizationMenuLink } from './organization-page-menu'
@@ -77,8 +78,8 @@ export function OrganizationActionRow({
           ? <StartConversationButton targetProfileId={messageProfileId} variant={emphasis === 'primary' ? 'default' : 'secondary'} className="whitespace-nowrap max-md:min-h-11 max-md:rounded-full max-md:px-3 max-md:text-[15px]" />
           : null
       case 'website':
-        return organization.website ? (
-          <a href={organization.website} target="_blank" rel="noreferrer" className={linkClass}>
+        return userWebsiteHref(organization.website) ? (
+          <a href={userWebsiteHref(organization.website)!} target="_blank" rel={USER_WEBSITE_REL} className={linkClass}>
             Visit website <ExternalLink aria-hidden="true" className="size-4 shrink-0" />
             <span className="sr-only">(opens in a new tab)</span>
           </a>

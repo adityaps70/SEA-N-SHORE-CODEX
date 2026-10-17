@@ -111,12 +111,15 @@ export function OrganizationProChooser({
   path,
   candidates,
   priceLine = null,
+  trialLine = null,
   highlight = false,
 }: {
   /** Null when the organizations could not be loaded. */
   path: OrganizationProPath | null
   candidates: OrganizationProCandidate[]
   priceLine?: string | null
+  /** Round H (H7): the free-trial offer, e.g. "Try Organization Pro free for 2 months. …". */
+  trialLine?: string | null
   highlight?: boolean
 }) {
   const upgradable = candidates.filter((candidate) => candidate.verified && candidate.plan !== 'organization_pro').length
@@ -141,6 +144,7 @@ export function OrganizationProChooser({
               : 'Organization Pro belongs to the organization and is paid for by its owner or an administrator. Members use it through their workspace role.'}
           </p>
           {priceLine ? <p className="mt-1 text-sm font-semibold text-navy-900">{priceLine}</p> : null}
+          {trialLine ? <p className="mt-1 text-sm text-teal-800">{trialLine}</p> : null}
         </div>
       </div>
 

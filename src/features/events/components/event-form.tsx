@@ -35,7 +35,7 @@ type Props =
   | { mode: 'create'; publisherOptions: EventPublisherOption[]; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; initial?: never; eventId?: never }
   | { mode: 'edit'; initial: CalendarEvent; eventId: string; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; publisherOptions?: never }
 
-const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-teal-500 aria-[invalid=true]:border-rose-300'
+const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-500 aria-[invalid=true]:border-rose-300'
 const selectClass = `${inputClass} appearance-none pr-10 font-semibold`
 const labelClass = 'space-y-2 text-sm font-semibold text-navy-900'
 const helperClass = 'block text-xs font-normal leading-5 text-muted'
@@ -484,7 +484,7 @@ export function EventForm(props: Props) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-navy-950">{option.name}</span>
-                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-muted">
                           {option.kind === 'personal' ? 'Personal' : 'Organization'}
                         </span>
                       </div>

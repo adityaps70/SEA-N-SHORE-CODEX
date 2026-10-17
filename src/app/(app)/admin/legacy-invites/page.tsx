@@ -188,7 +188,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
     const preview = legacyReminderEmail({ ...SAMPLE })
 
     return (
-      <main className="space-y-5">
+      <div className="space-y-5">
         {header}
         {tabs}
 
@@ -257,7 +257,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
         />
 
         <RecentTable title="Recent reminders" empty="No reminders have been prepared yet." rows={recent} />
-      </main>
+      </div>
     )
   }
 
@@ -269,7 +269,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
   const preview = legacyInviteEmail({ fullName: SAMPLE.fullName, claimToken: SAMPLE.claimToken })
 
   return (
-    <main className="space-y-5">
+    <div className="space-y-5">
       {header}
       {tabs}
 
@@ -307,6 +307,6 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
       <Preview title="Legacy invitation email preview" subject={preview.subject} html={preview.html} text={preview.text} />
 
       <RecentTable title="Recent invitations" empty="No legacy invitations have been prepared yet." rows={recent} />
-    </main>
+    </div>
   )
 }

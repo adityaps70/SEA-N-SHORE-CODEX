@@ -22,9 +22,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       chrome={chrome}
       banner={legacyConversion?.status === 'pending' ? <LegacyOrganizationConversionBanner /> : null}
     >
-      <main id="main-content" className="mx-auto w-full max-w-page-wide px-4 py-4 md:py-6">
+      {/* Round H (H8): MemberChrome draws the page's one <main id="main-content"> around this box. */}
+      <div className="mx-auto w-full max-w-page-wide px-4 py-4 md:py-6">
         {children}
-      </main>
+      </div>
       <SourceVisitBeacon />
     </MemberChrome>
   )

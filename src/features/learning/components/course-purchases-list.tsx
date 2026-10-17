@@ -34,14 +34,14 @@ function TaxDocumentLinks({ purchase }: { purchase: LearnerCoursePurchase }) {
         <a href={`/api/learn/invoices/${purchase.invoiceId}`} className={linkClass}>
           <FileText aria-hidden="true" className="size-4" />
           <span>Download invoice</span>
-          {purchase.invoiceNumber ? <span className="font-mono text-[11px] font-normal text-navy-700">{purchase.invoiceNumber}</span> : null}
+          {purchase.invoiceNumber ? <span className="font-mono text-xs font-normal text-navy-700">{purchase.invoiceNumber}</span> : null}
         </a>
       ) : null}
       {purchase.creditNoteId ? (
         <a href={`/api/learn/credit-notes/${purchase.creditNoteId}`} className={linkClass}>
           <FileText aria-hidden="true" className="size-4" />
           <span>Download credit note</span>
-          {purchase.creditNoteNumber ? <span className="font-mono text-[11px] font-normal text-navy-700">{purchase.creditNoteNumber}</span> : null}
+          {purchase.creditNoteNumber ? <span className="font-mono text-xs font-normal text-navy-700">{purchase.creditNoteNumber}</span> : null}
         </a>
       ) : null}
     </div>
@@ -98,7 +98,7 @@ export function CoursePurchasesList({ purchases, className = 'mt-10' }: { purcha
                           </>
                         ) : null}
                         <dt className="font-semibold text-navy-700">Order ID</dt>
-                        <dd className="break-all font-mono text-[11px] text-navy-900">{courseOrderReference(purchase)}</dd>
+                        <dd className="break-all font-mono text-xs text-navy-900">{courseOrderReference(purchase)}</dd>
                       </dl>
                     </div>
                   </div>

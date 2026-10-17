@@ -35,6 +35,16 @@ const profile: OwnProfile = {
 describe('FeedLayout', () => {
   afterEach(() => cleanup())
 
+  it('gives the Home feed a visually hidden page heading (Round H, H8)', () => {
+    render(
+      <FeedLayout profile={profile} portfolioCompletion={{ experienceCount: 0, credentialCount: 0 }} suggestions={[]}>
+        <div>Feed</div>
+      </FeedLayout>,
+    )
+    const heading = screen.getByRole('heading', { level: 1, name: 'Home feed' })
+    expect(heading).toHaveClass('sr-only')
+  })
+
   it('keeps the desktop left rail sticky and lets it scroll when it is taller than the window, so Quick actions stays reachable', () => {
     const { container } = render(
       <FeedLayout profile={profile} portfolioCompletion={{ experienceCount: 0, credentialCount: 0 }} suggestions={[]}>

@@ -4,6 +4,7 @@ import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { listableOrganizationSql } from '@/features/profiles/organization-link-repository'
 import { matchRank, matchVesselType } from '@/features/taxonomy/maritime-taxonomy'
 import { SEARCH_KINDS, SEARCH_WEIGHTS, SEARCH_WEIGHTS_VERSION, normaliseSearchQuery, type SearchKind } from './search-weights'
+import { displayName } from '@/features/profiles/display-name'
 
 /**
  * Round G (G4): one SQL statement per keystroke over public.search_documents.
@@ -51,6 +52,8 @@ export type SearchTerms = {
   fuzzy: boolean
   simpleQuery: string
   englishQuery: string
+  /** Round H (H7): the rank synonym tokens alone ("rkchiefengineer"), for the rank tier. */
+  rankQuery: string
 }
 
 function escapeLike(value: string) {
@@ -72,7 +75,8 @@ export function searchTerms(raw: string, options: { fullText?: boolean } = {}): 
   // Full text (and the synonym tokens) from 3 characters; 2 characters match names only.
   const fullText = options.fullText !== false && normalized.replace(/\s/g, '').length >= SEARCH_WEIGHTS.fullTextFromChars && tokens.length > 0
   const simpleQuery = fullText ? [`(${prefixed})`, ...new Set(synonyms)].join(' | ') : (synonyms.length ? [...new Set(synonyms)].join(' | ') : '')
-  return { normalized, prefixPattern: `${escapeLike(normalized)}%`, fuzzy, simpleQuery, englishQuery: fullText ? prefixed : '' }
+  const rankQuery = [...new Set(synonyms.filter((token) => token.startsWith('rk')))].join(' | ')
+  return { normalized, prefixPattern: `${escapeLike(normalized)}%`, fuzzy, simpleQuery, englishQuery: fullText ? prefixed : '', rankQuery }
 }
 
 const JOB_OPEN = `j.status = 'published' and j.deleted_at is null and ${planVisibleSql('job', 'j')} and (j.apply_until is null or j.apply_until >= current_date)`
@@ -103,7 +107,9 @@ export function searchSql(branches: { fuzzy: boolean; fullText: boolean }) {
 with terms as (
   select $2::text as norm, $3::text as prefix, $4::boolean as fuzzy,
          case when $5::text = '' then null else to_tsquery('simple', $5::text) end as q_simple,
-         case when $6::text = '' then null else to_tsquery('english', $6::text) end as q_english
+         case when $6::text = '' then null else to_tsquery('english', $6::text) end as q_english,
+         case when $21::text = '' then null else to_tsquery('simple', $21::text) end as q_rank,
+         $22::real as rank_tier
 ),
 limits as (select key as kind, value::int as n from jsonb_each_text($7::jsonb) where value::int > 0),
 blocked as (
@@ -156,15 +162,20 @@ matched as (
       and (d.normalized_name like t.prefix or (t.fuzzy and t.norm <% d.normalized_name))
     ${branches.fullText ? `union all
     -- Full text (headlines, descriptions, posts) and rank or vessel synonym tokens; newest first.
-    select d.kind, d.entity_id, d.owner_id, d.source_created_at, $12::real
+    -- Round H (H7): a rank or title match (the person's or job's rank is the one the query names, or the
+    -- person's headline starts with the query) takes the rank tier and is kept first in the candidate cap.
+    select d.kind, d.entity_id, d.owner_id, d.source_created_at, d.tier
     from limits l
     cross join terms t
     cross join lateral (
-      select d.kind, d.entity_id, d.owner_id, d.source_created_at
+      select d.kind, d.entity_id, d.owner_id, d.source_created_at,
+        case when (t.q_rank is not null and d.tsv @@ t.q_rank)
+               or (d.kind = 'person' and d.subtitle is not null and public.taxonomy_normalize(d.subtitle) like t.prefix)
+             then t.rank_tier else $12::real end as tier
       from public.search_documents d
       where (t.q_simple is not null or t.q_english is not null) and d.visibility <> 'hidden' and d.kind = l.kind
         and ((t.q_simple is not null and d.tsv @@ t.q_simple) or (t.q_english is not null and d.tsv @@ t.q_english))
-      order by d.source_created_at desc nulls last, d.entity_id
+      order by tier desc, d.source_created_at desc nulls last, d.entity_id
       limit l.n + $8::int + ${SEARCH_WEIGHTS.candidatesPerKind}
     ) d` : ''}
   ) branches
@@ -274,11 +285,13 @@ export function createSearchRepository(input: { transaction?: Transaction; state
           JSON.stringify(limits), Math.max(0, Math.trunc(request.offset ?? 0)),
           W.tiers.exact, W.tiers.prefix, W.tiers.trigram, W.tiers.fullText, W.trigramScale, W.fullTextScale,
           W.popularityCap, W.boosts.connection, W.boosts.secondDegree, W.boosts.verified, W.recentlyActiveDays, W.boosts.recentlyActive,
+          terms.rankQuery, W.tiers.rank,
         ], `search_${SEARCH_WEIGHTS_VERSION.replace(/[^a-z0-9]/gi, '_')}_${branches.fuzzy ? 'f' : 'n'}${branches.fullText ? 't' : 'n'}`)
         return rows.map((row) => ({
           kind: row.kind as SearchKind,
           id: String(row.entity_id),
-          name: String(row.display_name ?? ''),
+          // Round H (H7): people's names with smart capitalisation (stored as typed).
+          name: row.kind === 'person' ? displayName(String(row.display_name ?? '')) : String(row.display_name ?? ''),
           subtitle: (row.subtitle as string | null) ?? null,
           avatarPath: (row.avatar_path as string | null) ?? null,
           slug: (row.slug as string | null) ?? null,

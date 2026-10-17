@@ -3,6 +3,7 @@ import {
   CADET_COURSE_KEYS,
   CADET_STAGE_KEYS,
   departmentsFor,
+  OTHER_ROLE_TEXT_MAX,
   personaPicksRole,
   roleByKey,
   roleDisplayLabel,
@@ -104,8 +105,8 @@ function checkPick(
     if (!pick.other || pick.other.length < 2) {
       return { ok: false, fieldErrors: { roleOtherText: [`Type your ${rankWord(persona)}.`] } }
     }
-    if (pick.other.length > 100) {
-      return { ok: false, fieldErrors: { roleOtherText: ['Keep this to 100 characters or fewer.'] } }
+    if (pick.other.length > OTHER_ROLE_TEXT_MAX) {
+      return { ok: false, fieldErrors: { roleOtherText: [`Keep this to ${OTHER_ROLE_TEXT_MAX} characters or fewer.`] } }
     }
     return { ok: true, pick }
   }

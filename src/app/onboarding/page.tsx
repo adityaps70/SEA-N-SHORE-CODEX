@@ -33,7 +33,7 @@ export default async function OnboardingPage({
         <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100 max-md:min-h-14">
           <Wordmark compact />
           <div className="flex min-w-0 items-center gap-3">
-            <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm max-lg:hidden">
+            <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm max-lg:hidden">
               Professional onboarding
             </span>
             {/* Round 10: signed up with the wrong email? Sign out and start again from sign-up. */}

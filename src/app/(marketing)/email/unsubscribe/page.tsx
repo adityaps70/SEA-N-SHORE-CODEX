@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { MailX, TriangleAlert } from 'lucide-react'
@@ -39,7 +40,7 @@ export default async function RankingUnsubscribePage({ searchParams }: { searchP
   const copy = topic ? COPY[topic] : null
 
   return (
-    <main id="main-content" className="mx-auto grid w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
+    <MainLandmark className="mx-auto grid w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
       <section className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
         <span className="grid size-12 place-items-center rounded-2xl bg-ocean-50 text-ocean-700">
           <MailX aria-hidden="true" className="size-5" />
@@ -65,6 +66,6 @@ export default async function RankingUnsubscribePage({ searchParams }: { searchP
           </>
         )}
       </section>
-    </main>
+    </MainLandmark>
   )
 }

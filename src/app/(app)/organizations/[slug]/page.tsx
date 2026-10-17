@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Building2, CircleDashed } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { UserWebsiteLink } from '@/components/ui/user-website-link'
 import { canPostAsOrganization, canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { canUpgradeOrganization } from '@/features/billing/billing-access'
@@ -221,7 +222,7 @@ export default async function OrganizationPage({
     <dl className="space-y-3">
       {workspace.website ? (
         <Fact label="Website">
-          <a href={workspace.website} target="_blank" rel="noreferrer" className="font-semibold text-ocean-700 hover:underline">{websiteLabel(workspace.website)}</a>
+          <UserWebsiteLink href={workspace.website} className="font-semibold text-ocean-700 hover:underline">{websiteLabel(workspace.website)}</UserWebsiteLink>
         </Fact>
       ) : null}
       <Fact label="Industry">{typeLabel}</Fact>

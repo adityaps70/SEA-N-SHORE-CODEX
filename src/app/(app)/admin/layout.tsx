@@ -95,7 +95,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 {count > 0 ? (
                   <span
                     aria-label={`${count} waiting`}
-                    className="ml-auto rounded-full bg-red-600 px-1.5 text-[11px] font-bold leading-5 text-white"
+                    className="ml-auto rounded-full bg-red-600 px-1.5 text-xs font-bold leading-5 text-white"
                   >
                     {count > 99 ? '99+' : count}
                   </span>

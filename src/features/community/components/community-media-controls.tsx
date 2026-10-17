@@ -165,6 +165,9 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage, tile }: { grou
       type="file"
       name="image"
       accept="image/jpeg,image/png,image/webp"
+      // Round H (H8): the labelled button below opens the picker; the input itself stays out of the tab order.
+      tabIndex={-1}
+      aria-hidden="true"
       className="sr-only"
       onChange={(event) => {
         setRemoveError('')

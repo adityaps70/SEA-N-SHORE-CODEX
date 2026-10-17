@@ -6,6 +6,7 @@ import {
   MESSAGING_UNREAD_COUNT_EVENT,
   subscribeMessagingUnreadCount,
 } from '../unread-client'
+import { pluralize } from '@/lib/format'
 
 export { MESSAGING_UNREAD_COUNT_EVENT }
 
@@ -40,7 +41,7 @@ export function MessagingUnreadBadge({
 
   return (
     <span
-      aria-label={`${count} unread messages`}
+      aria-label={pluralize(count, 'unread message')}
       className={className}
     >
       {count}

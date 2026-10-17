@@ -81,7 +81,7 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
                       : null
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <Link href="/admin/payments/payouts" className={backLinkClass}>
         <ArrowLeft aria-hidden="true" className="size-4" /> Payouts queue
       </Link>
@@ -221,6 +221,6 @@ export default async function ReviewPayoutPage({ searchParams }: { searchParams:
           />
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

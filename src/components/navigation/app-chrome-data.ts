@@ -111,7 +111,8 @@ export function appHeaderProps(chrome: AppChromeData) {
 /** Props for the phone top bar (and its side drawer). */
 export function mobileAppHeaderProps(chrome: AppChromeData) {
   return {
-    messagingUnreadCount: chrome.messagingUnreadCount,
+    // Round H (H7): the phone top bar carries the Notifications bell; Messages is a bottom tab.
+    notificationUnreadCount: chrome.notificationUnreadCount,
     canAccessAdmin: chrome.canAccessAdmin,
     viewer: chrome.viewer,
     organizations: chrome.organizations,
@@ -122,7 +123,7 @@ export function mobileAppHeaderProps(chrome: AppChromeData) {
 /** Props for the phone bottom tabs. */
 export function mobileNavProps(chrome: AppChromeData) {
   return {
-    notificationUnreadCount: chrome.notificationUnreadCount,
+    messagingUnreadCount: chrome.messagingUnreadCount,
     pendingConnectionRequestCount: chrome.pendingConnectionRequestCount,
   }
 }

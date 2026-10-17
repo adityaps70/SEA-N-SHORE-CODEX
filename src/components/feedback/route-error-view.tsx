@@ -5,6 +5,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
 import { isStaleAssetError, recoverFromStaleAssets } from '@/lib/stale-assets'
 import { buttonClass } from '@/components/ui/interactive-styles'
+import { MainLandmark } from '@/components/layout/main-landmark'
 
 export type RouteErrorKind = 'stale' | 'offline' | 'general'
 
@@ -75,11 +76,11 @@ export function RouteErrorView({
   }, [error])
 
   const Icon = kind === 'offline' ? WifiOff : TriangleAlert
-  const Root = landmark ? 'main' : 'div'
-  const rootProps = landmark ? { id: 'main-content' } : {}
+  // Round H (H8): MainLandmark is a <div> when a layout already draws the page's <main>.
+  const Root = landmark ? MainLandmark : 'div'
 
   return (
-    <Root {...rootProps} className={`grid place-items-center ${landmark ? 'px-4' : ''} ${compact ? 'min-h-[55vh] py-8' : 'min-h-[65vh] py-10'}`}>
+    <Root className={`grid place-items-center ${landmark ? 'px-4' : ''} ${compact ? 'min-h-[55vh] py-8' : 'min-h-[65vh] py-10'}`}>
       <section role="alert" className="w-full max-w-lg rounded-[1.75rem] border border-mist-100 bg-white p-7 text-center shadow-[var(--shadow-card)] sm:p-9">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-red-50 text-red-700">
           <Icon aria-hidden="true" className="size-6" />

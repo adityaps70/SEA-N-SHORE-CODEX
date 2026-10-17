@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -70,19 +71,19 @@ export default async function PostPage({ params, searchParams }: PageProps) {
 
   if (page.kind === 'members_only') {
     return (
-      <main id="main-content" className="mx-auto w-full max-w-page-narrow px-4 py-6 sm:py-10">
+      <MainLandmark className="mx-auto w-full max-w-page-narrow px-4 py-6 sm:py-10">
         <MembersOnlyTeaser returnPath={returnPath} />
-      </main>
+      </MainLandmark>
     )
   }
 
   if (page.kind === 'public' && !viewer) {
     return (
-      <main id="main-content" className="mx-auto w-full max-w-page-narrow px-4 py-6 sm:py-10">
+      <MainLandmark className="mx-auto w-full max-w-page-narrow px-4 py-6 sm:py-10">
         <h1 className="sr-only">Post by {page.post.organization?.name ?? page.post.author.fullName}</h1>
         <JoinBanner returnPath={returnPath} />
         <PostCard post={page.post} detail readOnly signedOut />
-      </main>
+      </MainLandmark>
     )
   }
 
@@ -90,7 +91,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
   const photo = (await searchParams)?.photo
   const focusMediaId = typeof photo === 'string' && isPostId(photo) ? photo : null
   return (
-    <main id="main-content" className="mx-auto w-full max-w-page-wide px-4 py-4 md:py-6">
+    <MainLandmark className="mx-auto w-full max-w-page-wide px-4 py-4 md:py-6">
       <h1 className="sr-only">Post by {page.post.organization?.name ?? page.post.author.fullName}</h1>
       <MobilePageBar backHref="/home" title="Post" />
       {/* Phones: the post runs edge to edge under the page bar. */}
@@ -102,6 +103,6 @@ export default async function PostPage({ params, searchParams }: PageProps) {
           focusPhoto={focusMediaId && viewer ? { mediaId: focusMediaId, profileId: viewer.id } : null}
         />
       </section>
-    </main>
+    </MainLandmark>
   )
 }

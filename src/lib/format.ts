@@ -10,3 +10,8 @@ export function formatYears(value: number | string | null | undefined, fallback 
 export function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`
 }
+
+/** Round H (H7): a count, its noun and a verb that agree: "1 item needs attention", "3 items need attention". */
+export function pluralizeWithVerb(count: number, singular: string, singularVerb: string, pluralVerb: string, plural = `${singular}s`) {
+  return `${pluralize(count, singular, plural)} ${count === 1 ? singularVerb : pluralVerb}`
+}

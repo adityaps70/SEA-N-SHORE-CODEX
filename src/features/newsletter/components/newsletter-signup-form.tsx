@@ -111,7 +111,7 @@ export function NewsletterSignupForm({
           aria-invalid={Boolean(errors.email)}
           aria-describedby={describedBy('email') ?? (defaultEmail && !values ? `${id}-email-hint` : undefined)}
           placeholder="name@example.com"
-          className="min-h-11 w-full min-w-0 rounded-xl border border-mist-200 bg-white px-3.5 text-base text-ink placeholder:text-muted focus:border-ocean-600 focus:outline-none focus:ring-2 focus:ring-ocean-200 aria-[invalid=true]:border-red-500 sm:text-sm"
+          className="min-h-11 w-full min-w-0 rounded-xl border border-mist-200 bg-white px-3.5 text-base text-ink placeholder:text-muted focus:border-ocean-600 focus:ring-2 focus:ring-ocean-200 aria-[invalid=true]:border-red-500 sm:text-sm"
         />
         {errors.email ? (
           <p id={`${id}-email-error`} className="text-sm text-red-700">{errors.email}</p>

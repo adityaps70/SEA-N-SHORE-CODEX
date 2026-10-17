@@ -3,13 +3,13 @@ import { Building2, Check, Crown, UserRound } from 'lucide-react'
 import {
   BILLING_INTERVALS,
   INTERVAL_LABELS,
-  formatRupeesShort,
   intervalSaving,
   trialBadge,
   type BillingInterval,
   type PaidPlanCode,
 } from '@/features/billing/plans'
 import type { PlanPrice } from '@/features/billing/subscription-types'
+import { formatMoney } from '@/features/payments/currency'
 
 /**
  * The three Sea N Shore plans as cards. Shared by the signed-in /plans page and the
@@ -94,7 +94,7 @@ export function longerIntervalLines(prices: PlanPriceSummary) {
   return BILLING_INTERVALS.filter((interval) => interval !== 'month' && prices[interval] !== null).map((interval) => {
     const amount = prices[interval] as number
     const saving = prices.month !== null ? intervalSaving(prices.month, amount, interval) : null
-    const text = `${prices.month !== null ? 'or ' : ''}${formatRupeesShort(amount)} / ${INTERVAL_LABELS[interval].noun}${saving ? ` — save ${formatRupeesShort(saving.savingMinor)}` : ''}`
+    const text = `${prices.month !== null ? 'or ' : ''}${formatMoney(amount, 'INR')} / ${INTERVAL_LABELS[interval].noun}${saving ? ` — save ${formatMoney(saving.savingMinor, 'INR')}` : ''}`
     return { interval, amount, saving, text }
   })
 }
@@ -125,7 +125,7 @@ function PriceBlock({ plan, prices, dark = false, unavailableText, compact = fal
       <TrialBadge plan={plan} dark={dark} />
       {prices.month !== null ? (
         <p className={`mt-2 text-3xl font-bold ${compact ? 'max-md:text-2xl' : ''} ${dark ? 'text-white' : 'text-navy-950'}`}>
-          {formatRupeesShort(prices.month)}<span className={`text-base font-semibold ${dark ? 'text-white/70' : 'text-muted'}`}> / month</span>
+          {formatMoney(prices.month, 'INR')}<span className={`text-base font-semibold ${dark ? 'text-white/70' : 'text-muted'}`}> / month</span>
         </p>
       ) : null}
       {longer.map((line) => (

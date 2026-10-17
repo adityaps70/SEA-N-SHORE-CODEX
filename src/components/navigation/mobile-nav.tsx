@@ -1,32 +1,34 @@
 'use client'
 
-import { Bell, BriefcaseBusiness, House, SquarePlus, UsersRound, type LucideIcon } from 'lucide-react'
+import { BriefcaseBusiness, House, MessageCircleMore, SquarePlus, UsersRound, type LucideIcon } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { ActiveNavLink } from './active-nav-link'
 import { CreateSheet } from './create-sheet'
 import { isPhoneFullScreenRoute } from './mobile-routes'
 
 /**
- * Phone bottom tabs (round 8): Home · Network · Post · Notifications · Jobs. Post opens the
- * Create sheet. Messages and search are in the phone top bar; Learn, Events, Community, Saved
- * posts, organizations, Settings and the rest are in the side drawer behind the profile photo.
+ * Phone bottom tabs (round 8): Home · Network · Post · Messages · Jobs. Post opens the Create sheet.
+ * Round H (H7): Messages moved here from the top bar (with its live unread badge) and Notifications
+ * moved to the top bar's bell. Search is in the top bar; Learn, Events, Community, Saved posts,
+ * organizations, Settings and the rest are in the side drawer behind the profile photo.
  */
-type TabLink = { href: string; label: string; accessibleLabel: string; icon: LucideIcon; badge?: 'network' | 'notifications' }
+type TabLink = { href: string; label: string; accessibleLabel: string; icon: LucideIcon; badge?: 'network' | 'messages' }
 
 const leftTabs: TabLink[] = [
   { href: '/home', label: 'Home', accessibleLabel: 'Home', icon: House },
   { href: '/network', label: 'Network', accessibleLabel: 'My Network', icon: UsersRound, badge: 'network' },
 ]
 const rightTabs: TabLink[] = [
-  { href: '/notifications', label: 'Notifications', accessibleLabel: 'Notifications', icon: Bell, badge: 'notifications' },
+  { href: '/messages', label: 'Messages', accessibleLabel: 'Messages', icon: MessageCircleMore, badge: 'messages' },
   { href: '/jobs', label: 'Jobs', accessibleLabel: 'Jobs', icon: BriefcaseBusiness },
 ]
 
-const tabClass = 'group/tab relative flex min-h-16 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 border-t-2 border-transparent px-0.5 text-center text-[11px] font-medium leading-tight text-muted focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500'
+const tabClass = 'group/tab relative flex min-h-16 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 border-t-2 border-transparent px-0.5 text-center text-xs font-medium leading-tight text-muted focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500'
 const activeTabClass = 'border-navy-950 font-bold text-navy-950'
 const iconClass = 'size-6 shrink-0 stroke-[1.75] group-aria-[current=page]/tab:stroke-[2.5]'
-const badgeClass = 'absolute left-1/2 top-1.5 ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white'
+const badgeClass = 'absolute left-1/2 top-1.5 ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-xs font-bold leading-5 text-white ring-2 ring-white'
 
 /** "9+" once a count passes nine, as on the notification bell. */
 export function tabBadgeText(count: number) {
@@ -66,10 +68,10 @@ function useTyping() {
 }
 
 export function MobileNav({
-  notificationUnreadCount = 0,
+  messagingUnreadCount = 0,
   pendingConnectionRequestCount = 0,
 }: {
-  notificationUnreadCount?: number
+  messagingUnreadCount?: number
   pendingConnectionRequestCount?: number
 }) {
   const pathname = usePathname()
@@ -81,10 +83,8 @@ export function MobileNav({
   const fullScreen = pathname ? isPhoneFullScreenRoute(pathname) : false
 
   function tab({ href, label, accessibleLabel, icon: Icon, badge }: TabLink) {
-    const count = badge === 'network' ? pendingConnectionRequestCount : badge === 'notifications' ? notificationUnreadCount : 0
-    const countLabel = badge === 'network'
-      ? `${count} pending connection ${count === 1 ? 'request' : 'requests'}`
-      : `${count} unread`
+    const count = badge === 'network' ? pendingConnectionRequestCount : 0
+    const countLabel = `${count} pending connection ${count === 1 ? 'request' : 'requests'}`
     return (
       <ActiveNavLink
         key={href}
@@ -95,6 +95,8 @@ export function MobileNav({
       >
         <Icon aria-hidden="true" className={iconClass} />
         {count > 0 ? <span aria-hidden="true" data-testid={`${badge}-tab-badge`} className={badgeClass}>{tabBadgeText(count)}</span> : null}
+        {/* Messages: the exact unread count, kept current by unread-count events (as in the desktop header). */}
+        {badge === 'messages' ? <MessagingUnreadBadge initialCount={messagingUnreadCount} className={badgeClass} /> : null}
         <span className="max-w-full truncate">{label}</span>
       </ActiveNavLink>
     )
@@ -103,7 +105,7 @@ export function MobileNav({
   return (
     <>
       <nav
-        aria-label="Primary"
+        aria-label="Mobile"
         // Full-screen routes (composer, chat, course player, editors) have no tab bar; the app
         // shell drops its bottom padding for it via `has-[[data-phone-tabbar=off]]`.
         data-phone-tabbar={fullScreen ? 'off' : typing ? 'typing' : 'on'}

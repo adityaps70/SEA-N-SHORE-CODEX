@@ -104,6 +104,14 @@ export type JobMatchBand = 'low' | 'partial' | 'good' | 'strong'
 export type JobProfileGapKey = 'rank' | 'target_role' | 'role' | 'certificates' | 'sea_time' | 'vessel_types' | 'availability'
 export type JobProfileGap = { key: JobProfileGapKey; label: string }
 
+/** Round H (H7): one "Check before applying" item: what the job requires and what the profile has. */
+export type JobMatchCheck = {
+  key: 'rank' | 'experience' | 'vessel' | 'certificate' | 'visa' | 'availability'
+  label: string
+  required: string
+  yours: string
+}
+
 export type JobMatchResult = {
   /** 0..100 over the criteria the job specifies, or null when nothing is comparable. */
   score: number | null
@@ -126,6 +134,8 @@ export type JobMatchResult = {
   criteria?: number
   /** Points per criterion, for ?rankdebug=1. */
   parts?: Record<string, number>
+  /** Round H (H7): missingRequirements and warnings explained, for "Check before applying". */
+  checks?: JobMatchCheck[]
 }
 
 export type JobListing = {

@@ -13,6 +13,7 @@ import { CREATE_AS_SELF } from '../eligibility'
 import { COMMUNITY_MEDIA_FAILURE_NOTICE, communityMediaCancelDestination, uploadRemainingCreationImages } from '../creation-media-flow'
 import { COMMUNITY_IMAGE_CONTENT_TYPES, validateCommunityImage, type CommunityMediaKind } from '../media'
 import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type GroupJoinPolicy, type GroupVisibility } from '../types'
+import { pluralize } from '@/lib/format'
 
 /** One identity the member may create as: themselves (`me`) or an organization (its id). */
 export type CreateCommunityIdentity = { value: string; label: string; hint?: string }
@@ -217,7 +218,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
           placeholder="e.g. Tanker Cargo Officers"
           aria-describedby="community-name-hint"
         />
-        <span id="community-name-hint" className={hintClass}>{GROUP_NAME_MAX_LENGTH - name.length} characters left. The page address is made from the name.</span>
+        <span id="community-name-hint" className={hintClass}>{pluralize(GROUP_NAME_MAX_LENGTH - name.length, 'character')} left. The page address is made from the name.</span>
       </label>
 
       <label className={labelClass}>

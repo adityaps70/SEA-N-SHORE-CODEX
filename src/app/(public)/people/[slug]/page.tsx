@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import { postLoadingPriority } from '@/features/feed/post-loading-priority'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -73,7 +74,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     : ''
 
   const profileContent = (
-    <main className={`mx-auto grid w-full max-w-page-wide gap-4 px-4 py-4 max-md:gap-2 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1fr)_300px] ${viewer ? '' : 'max-md:pb-24 max-md:pt-0'}`}>
+    <MainLandmark className={`mx-auto grid w-full max-w-page-wide gap-4 px-4 py-4 max-md:gap-2 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1fr)_300px] ${viewer ? '' : 'max-md:pb-24 max-md:pt-0'}`}>
       <div className="grid min-w-0 gap-4 max-md:gap-2">
         {/* Round H (H5): Person structured data only for members who allow search engines. */}
         {allowIndexing ? (
@@ -175,7 +176,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           </Link>
         </div>
       )}
-    </main>
+    </MainLandmark>
   )
 
   // The (public) layout mounts the realtime provider for signed-in viewers.

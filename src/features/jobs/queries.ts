@@ -162,6 +162,18 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
     return { job, alreadyApplied: false, isSaved: false, match: null, gateMatch: null, profileReady: false }
   }
 
+  /**
+   * Round H (H7): public extras for the job page, for members and signed-out visitors alike: the applicant
+   * count (shown only as a range) and up to 4 similar live jobs. A failed read hides the section.
+   */
+  async function getJobPageExtras(job: JobListing) {
+    const [applicantCount, similarJobs] = await Promise.all([
+      input.repository.countJobApplicants(job.id).catch(() => null),
+      input.repository.listSimilarJobs(job, 4).catch(() => [] as JobListing[]),
+    ])
+    return { applicantCount, similarJobs }
+  }
+
   async function getMyJobApplications() {
     const user = await input.requireUser()
     return input.repository.listApplications(user.id)
@@ -210,6 +222,7 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
     getMyJobApplications,
     getJobDetailState,
     getSignedOutJobDetailState,
+    getJobPageExtras,
     getJobApplicationState,
     getSavedJobs,
     getJobAlerts,
@@ -225,6 +238,7 @@ export const getMyJobApplications = productionQueries.getMyJobApplications
 export const getJobDetailState = productionQueries.getJobDetailState
 export const getSignedOutJobsDiscovery = productionQueries.getSignedOutJobsDiscovery
 export const getSignedOutJobDetailState = productionQueries.getSignedOutJobDetailState
+export const getJobPageExtras = productionQueries.getJobPageExtras
 export const getJobApplicationState = productionQueries.getJobApplicationState
 export const getSavedJobs = productionQueries.getSavedJobs
 export const getJobAlerts = productionQueries.getJobAlerts

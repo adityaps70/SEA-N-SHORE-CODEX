@@ -24,7 +24,7 @@ const base = {
   target: { kind: 'personal' as const },
   planLabel: 'Creator Pro',
   prices: { month: 9900, half_year: null, year: 99900 },
-  yearlySavingLabel: 'Save ₹189.00 a year — 1 month free',
+  yearlySavingLabel: 'Save ₹189 a year — 1 month free',
   configured: true,
 }
 
@@ -40,13 +40,13 @@ describe('PlanCheckout', () => {
   it('shows a clear "not set up yet" state instead of a broken button', () => {
     render(<PlanCheckout {...base} configured={false} />)
     expect(screen.getByText('Online payment isn’t set up yet')).toBeInTheDocument()
-    expect(screen.getByText('Creator Pro: ₹99.00 per month or ₹999.00 per year')).toBeInTheDocument()
+    expect(screen.getByText('Creator Pro: ₹99 per month or ₹999 per year')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Auto-pay not available yet' })).toBeDisabled()
   })
 
   it('lists every available price, including half-yearly, when payment is not set up', () => {
     render(<PlanCheckout {...base} planLabel="Organization Pro" prices={{ month: 199900, half_year: 1000000, year: 1499900 }} configured={false} />)
-    expect(screen.getByText('Organization Pro: ₹1,999.00 per month, ₹10,000.00 per 6 months or ₹14,999.00 per year')).toBeInTheDocument()
+    expect(screen.getByText('Organization Pro: ₹1,999 per month, ₹10,000 per 6 months or ₹14,999 per year')).toBeInTheDocument()
   })
 
   it('says paid plans open soon, without a button, while a trial runs and payment is not set up', () => {
@@ -76,27 +76,27 @@ describe('PlanCheckout', () => {
   })
 
   it('offers monthly, half-yearly and yearly in that order when all three have a price', () => {
-    render(<PlanCheckout {...base} planLabel="Organization Pro" prices={{ month: 199900, half_year: 1000000, year: 1499900 }} yearlySavingLabel="Save ₹8,989.00 a year — 4 months free" />)
+    render(<PlanCheckout {...base} planLabel="Organization Pro" prices={{ month: 199900, half_year: 1000000, year: 1499900 }} yearlySavingLabel="Save ₹8,989 a year — 4 months free" />)
     expect(screen.getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['month', 'half_year', 'year'])
     const halfYearly = screen.getByRole('radio', { name: /Half-yearly/ })
-    expect(halfYearly).toHaveAccessibleName(/^Half-yearly\s*₹10,000\.00 per 6 months\s*Save ₹1,994\.00 every 6 months$/)
+    expect(halfYearly).toHaveAccessibleName(/^Half-yearly\s*₹10,000 per 6 months\s*Save ₹1,994 every 6 months$/)
     fireEvent.click(halfYearly)
     expect(halfYearly).toBeChecked()
-    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹10,000.00 per 6 months' })).toBeInTheDocument()
-    expect(screen.getByText(/₹10,000\.00 is charged every 6 months until you cancel/)).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /Yearly/ })).toHaveAccessibleName(/^Yearly\s*Best value\s*₹14,999\.00 per year\s*Save ₹8,989\.00 a year — 4 months free$/)
+    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹10,000 per 6 months' })).toBeInTheDocument()
+    expect(screen.getByText(/₹10,000 is charged every 6 months until you cancel/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Yearly/ })).toHaveAccessibleName(/^Yearly\s*Best value\s*₹14,999 per year\s*Save ₹8,989 a year — 4 months free$/)
   })
 
   it('lets the member choose monthly or yearly and shows the yearly saving', () => {
     render(<PlanCheckout {...base} defaultInterval="year" />)
     const yearly = screen.getByRole('radio', { name: /Yearly/ })
     expect(yearly).toBeChecked()
-    expect(screen.getByText('Save ₹189.00 a year — 1 month free')).toBeInTheDocument()
+    expect(screen.getByText('Save ₹189 a year — 1 month free')).toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: /Half-yearly/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹999.00 per year' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹999 per year' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /Monthly/ }))
-    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹99.00 per month' })).toBeInTheDocument()
-    expect(screen.getByText(/₹99\.00 is charged every month until you cancel/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹99 per month' })).toBeInTheDocument()
+    expect(screen.getByText(/₹99 is charged every month until you cancel/)).toBeInTheDocument()
   })
 
   it('asks for missing contact details, then opens Cashfree and waits for the server to confirm', async () => {
@@ -170,10 +170,10 @@ describe('PlanCheckout', () => {
   })
 
   it('says nothing is charged today for a plan that starts later', () => {
-    render(<PlanCheckout {...base} onlyInterval="year" startsOn="1 Nov 2026" submitLabel="Switch to yearly · ₹999.00 per year" />)
+    render(<PlanCheckout {...base} onlyInterval="year" startsOn="1 Nov 2026" submitLabel="Switch to yearly · ₹999 per year" />)
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing is charged today\. Your yearly plan starts on 1 Nov 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Switch to yearly · ₹999.00 per year' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Switch to yearly · ₹999 per year' })).toBeInTheDocument()
   })
 })
 

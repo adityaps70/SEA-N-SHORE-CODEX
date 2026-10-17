@@ -637,6 +637,58 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return Boolean(rows[0]?.accepting)
   }
 
+  /**
+   * Round H (H7): how many people applied to a job, for the public range on the job page
+   * ("10–25 applicants"). Read-only; withdrawn applications are left out.
+   */
+  async function countJobApplicants(jobId: string): Promise<number> {
+    const rows = await queryRows(
+      `select count(*)::int as applicant_count
+       from public.job_applications a
+       where a.job_id = $1
+         and a.status::text <> 'withdrawn'`,
+      [jobId],
+    ) as Array<QueryResultRow & { applicant_count: string | number | null }>
+    return numberOrNull(rows[0]?.applicant_count) ?? 0
+  }
+
+  /**
+   * Round H (H7): up to `limit` live jobs like this one for the job page: the same rank / role first,
+   * then the same department, then a shared vessel type, newest first. Only jobs still taking
+   * applications (LIVE_JOB_SQL), never the job itself, and only jobs related in at least one of those ways.
+   */
+  async function listSimilarJobs(job: Pick<JobListing, 'id' | 'acceptedRoleKeys' | 'rank' | 'departmentKey' | 'department' | 'vesselTypes'>, limit = 4): Promise<JobListing[]> {
+    const rows = await queryRows(
+      `with similar as (
+         select j.id,
+                (cardinality($2::text[]) > 0 and coalesce(j.accepted_role_keys, '{}'::text[]) && $2::text[])
+                  or coalesce(lower(j.rank) = lower($3::text), false) as same_role,
+                coalesce(j.department_key = $4::text, false)
+                  or coalesce(lower(j.department) = lower($5::text), false) as same_department,
+                coalesce(j.vessel_types, '{}'::text[]) && $6::text[] as same_vessel
+         from public.jobs j
+         where ${LIVE_JOB_SQL}
+           and j.id <> $1
+       )
+       ${JOB_SELECT}
+       join similar s on s.id = j.id
+       where s.same_role or s.same_department or s.same_vessel
+       order by s.same_role desc, s.same_department desc, s.same_vessel desc,
+                coalesce(j.published_at, j.created_at) desc, j.id desc
+       limit $7`,
+      [
+        job.id,
+        job.acceptedRoleKeys ?? [],
+        job.rank?.trim() || null,
+        job.departmentKey ?? null,
+        job.department?.trim() || null,
+        job.vesselTypes,
+        Math.min(Math.max(Math.trunc(limit), 1), 12),
+      ],
+    ) as JobRow[]
+    return rows.map(mapJob)
+  }
+
   async function getCandidateProfile(profileId: string): Promise<JobCandidateProfile | null> {
     const rows = await queryRows(
       `select
@@ -899,6 +951,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     getPublishedJob,
     listSitemapJobs,
     isAcceptingApplications,
+    countJobApplicants,
+    listSimilarJobs,
     getCandidateProfile,
     listApplications,
     hasApplied,

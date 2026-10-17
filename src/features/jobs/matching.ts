@@ -10,7 +10,8 @@ import {
   rankPersonaFor,
   roleByKey,
 } from '@/features/roles/taxonomy'
-import type { JobCandidateProfile, JobListing, JobMatchBand, JobMatchResult, JobProfileGap } from './types'
+import { certificateCheck, experienceCheck, pushCheck, rankCheck, roleExperienceCheck, vesselCheck, visaCheck } from './match-checks'
+import type { JobCandidateProfile, JobListing, JobMatchBand, JobMatchCheck, JobMatchResult, JobProfileGap } from './types'
 
 /**
  * Your Maritime Match (round 12).
@@ -151,6 +152,7 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
   const missingRequirements: string[] = []
   const warnings: string[] = []
   const profileGaps: JobProfileGap[] = []
+  const checks: JobMatchCheck[] = []
   const seaJob = isSeaJob(job)
 
   if (seaJob && !personaMatchesSeaJobs(persona)) {
@@ -183,8 +185,15 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
     earned += MATCH_WEIGHTS.rank * gate.credit
     cap = gate.cap
     if (gate.reason) reasons.push(gate.reason)
-    if (gate.warning) warnings.push(gate.warning)
-    if (gate.missing) pushUnique(missingRequirements, gate.missing)
+    const acceptedLabel = acceptedRolesLabel(accepted)
+    if (gate.warning) {
+      warnings.push(gate.warning)
+      pushCheck(checks, rankCheck(acceptedLabel ?? gate.warning, candidateKeys, 'more senior than asked'))
+    }
+    if (gate.missing) {
+      pushUnique(missingRequirements, gate.missing)
+      pushCheck(checks, rankCheck(acceptedLabel ?? gate.missing, candidateKeys))
+    }
   } else if (!seaJob) {
     // A shore job without accepted roles: its title against the member's shore / other experience,
     // skills and headline.
@@ -202,7 +211,10 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
       const share = matched.length / jobWords.length
       earned += MATCH_WEIGHTS.rank * (share >= 0.5 ? 1 : share > 0 ? 0.5 : 0)
       if (matched.length) reasons.push(`Your experience mentions ${matched.map((word) => `“${word}”`).join(', ')}`)
-      else pushUnique(missingRequirements, `Experience as ${job.title}`)
+      else {
+        pushUnique(missingRequirements, `Experience as ${job.title}`)
+        pushCheck(checks, roleExperienceCheck(job.title))
+      }
     }
   }
 
@@ -213,11 +225,13 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
       // Seafarers record sea time on their profile; a cadet without it simply does not meet the minimum.
       if (persona === 'seafarer') profileGaps.push({ key: 'sea_time', label: 'Your sea service (years)' })
       pushUnique(missingRequirements, `${job.experienceMinYears}+ years experience`)
+      pushCheck(checks, experienceCheck(job.experienceMinYears, null, seaJob))
     } else if (profile.sailingExperienceYears >= job.experienceMinYears) {
       earned += MATCH_WEIGHTS.experience
       reasons.push(`Experience meets the ${job.experienceMinYears}+ year requirement`)
     } else {
       pushUnique(missingRequirements, `${job.experienceMinYears}+ years experience`)
+      pushCheck(checks, experienceCheck(job.experienceMinYears, profile.sailingExperienceYears, seaJob))
     }
   }
 
@@ -231,6 +245,7 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
       reasons.push(`${matchedVessel} vessel experience matches`)
     } else {
       job.vesselTypes.forEach((vessel) => pushUnique(missingRequirements, vessel))
+      pushCheck(checks, vesselCheck(job.vesselTypes, profile.vesselTypes))
     }
   }
 
@@ -245,10 +260,14 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
       const expired = Boolean(expiry && expiry.getTime() < today.getTime())
       if (credential && !expired) {
         matchedCertificates += credential.verified ? 1 : 0.75
-        if (!credential.verified) warnings.push(`${required} is self-reported and not yet verified.`)
+        if (!credential.verified) {
+          warnings.push(`${required} is self-reported and not yet verified.`)
+          pushCheck(checks, certificateCheck(required, { state: 'self_reported' }))
+        }
       } else {
         pushUnique(missingRequirements, required)
         if (credential && expired) warnings.push(`${required} is expired.`)
+        pushCheck(checks, certificateCheck(required, credential && expired ? { state: 'expired', expiresAt: credential.expiresAt } : { state: 'missing' }))
       }
     }
     earned += MATCH_WEIGHTS.certificates * (matchedCertificates / job.certificateRequirements.length)
@@ -264,6 +283,7 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
       if (!includesCI(profile.visas, visa)) {
         pushUnique(missingRequirements, visa)
         warnings.push(`${visa} visa requirement is not present on your profile.`)
+        pushCheck(checks, visaCheck(visa, profile.visas))
       }
     }
     if (matchedVisas.length === job.visaRequirements.length) reasons.push('Visa requirements match your profile')
@@ -282,7 +302,7 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
   if (job.domain === 'shore' && profile.shoreCareerPreference) reasons.push('Matches your shore-career preference')
 
   if (possible === 0) {
-    return { score: null, band: null, reasons, missingRequirements, warnings: [...new Set(warnings)], profileGaps }
+    return { score: null, band: null, reasons, missingRequirements, warnings: [...new Set(warnings)], profileGaps, checks }
   }
 
   let score = Math.round((earned / possible) * 100)
@@ -295,5 +315,6 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
     missingRequirements,
     warnings: [...new Set(warnings)],
     profileGaps,
+    checks,
   }
 }

@@ -80,7 +80,7 @@ export default async function AdminUserDetailPage({
   const isTest = looksLikeTestAccount(user)
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <Link href="/admin/users" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
         <ArrowLeft aria-hidden="true" className="size-4" /> User accounts
       </Link>
@@ -248,6 +248,6 @@ export default async function AdminUserDetailPage({
           />
         </div>
       </div>
-    </main>
+    </div>
   )
 }

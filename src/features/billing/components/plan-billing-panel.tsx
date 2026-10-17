@@ -1,12 +1,13 @@
 import { AlertTriangle, CheckCircle2, Clock3, Crown, Building2, ReceiptText, XCircle } from 'lucide-react'
 import type { BillingHistoryRow, PlanBillingView } from '../billing-view'
 import type { CheckPlanCheckoutResult, PlanCheckoutTarget } from '../checkout-messages'
-import { BILLING_INTERVALS, formatRupees } from '../plans'
+import { BILLING_INTERVALS } from '../plans'
 import { CancelAutoRenewButton } from './cancel-auto-renew'
 import type { PlanPriceSummary } from './plan-cards'
 import { CheckoutStatusButton, PlanChangeButton } from './plan-change'
 import { PlanCheckout } from './plan-checkout'
 import { TrialStartButton } from './trial-start-button'
+import { formatMoney } from '@/features/payments/currency'
 
 const STATE_TONES: Record<PlanBillingView['state'], string> = {
   free: 'bg-mist-100 text-navy-800',
@@ -97,12 +98,15 @@ export function PlanBillingPanel({ view, target, eyebrow, description, highlight
           </span>
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">{eyebrow}</p>
-            <h2 id={anchorId ? `${anchorId}-title` : undefined} className="mt-0.5 text-xl font-bold text-navy-950">{view.planLabel}</h2>
+            {/* Round H (H7): the plan the account is on ("Free plan", "Creator Pro · Free trial until …"), not the plan on offer. */}
+            <h2 id={anchorId ? `${anchorId}-title` : undefined} className="mt-0.5 text-xl font-bold text-navy-950">{view.headline}</h2>
           </div>
         </div>
-        <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-bold ${STATE_TONES[view.state]}`}>
-          {view.statusLabel}
-        </span>
+        {view.statusLabel !== view.headline ? (
+          <span className={`inline-flex w-fit shrink-0 items-center rounded-full px-3 py-1.5 text-xs font-bold ${STATE_TONES[view.state]}`}>
+            {view.statusLabel}
+          </span>
+        ) : null}
       </div>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-muted sm:pl-13">{description}</p>
 
@@ -157,7 +161,7 @@ export function PlanBillingPanel({ view, target, eyebrow, description, highlight
               intro={`Your monthly plan runs until ${actions.chooseStartsOn ?? 'the end of this month'}. Approve a yearly mandate now and the yearly plan${view.yearlySavingLabel ? ` (${view.yearlySavingLabel.toLowerCase()})` : ''} starts on that date. Monthly auto-renew stops as soon as the yearly mandate is approved.`}
               onlyInterval="year"
               startsOn={actions.chooseStartsOn}
-              submitLabel={prices.year !== null ? `Switch to yearly · ${formatRupees(prices.year)} per year` : 'Switch to yearly'}
+              submitLabel={prices.year !== null ? `Switch to yearly · ${formatMoney(prices.year, 'INR')} per year` : 'Switch to yearly'}
             />
           ) : null}
           {actions.updatePaymentMethod ? (

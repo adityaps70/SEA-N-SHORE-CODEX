@@ -58,7 +58,7 @@ export default async function AdminPayoutDetailPage({ params }: { params: Promis
   ]
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <Link href="/admin/payments/payouts" className={backLinkClass}>
         <ArrowLeft aria-hidden="true" className="size-4" /> Payouts queue
       </Link>
@@ -126,6 +126,6 @@ export default async function AdminPayoutDetailPage({ params }: { params: Promis
           </ul>
         ) : <p className="px-5 py-4 text-sm text-muted">No history recorded.</p>}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

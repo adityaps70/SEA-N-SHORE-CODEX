@@ -48,6 +48,24 @@ describe('RelationshipControls', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('Following list rows: Message when the member allows it, with Connect and Accept under "…" (round H, H7)', async () => {
+    const { sendConnectionRequest, acceptConnectionRequest } = await import('../actions')
+    const { rerender } = render(<RelationshipControls profileId={profileId} compact menuIconOnly connectInMenu messageAllowed initialRelationship={{ following: true, connection: { kind: 'none', connectionId: null } }} />)
+    expect(screen.getByRole('button', { name: 'Message' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Following' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Connect' }))
+    await waitFor(() => expect(sendConnectionRequest).toHaveBeenCalledWith(profileId))
+
+    rerender(<RelationshipControls profileId={profileId} compact menuIconOnly connectInMenu messageAllowed={false} initialRelationship={{ following: true, connection: { kind: 'incoming_pending', connectionId } }} />)
+    expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Accept' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Accept request' }))
+    await waitFor(() => expect(acceptConnectionRequest).toHaveBeenCalledWith(connectionId))
+  })
+
   it('shows Following independently of connection state', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: true, connection: { kind: 'none', connectionId: null } }} />)
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()

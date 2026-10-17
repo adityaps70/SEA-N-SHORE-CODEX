@@ -69,7 +69,7 @@ export function HiddenPostCard({ post }: { post: HiddenPost }) {
           <Link
             href={`/posts/${post.id}`}
             aria-label={`Open the post by ${name}`}
-            className="relative block size-16 shrink-0 overflow-hidden rounded-xl bg-mist-100 ring-1 ring-mist-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/50 sm:size-20"
+            className="relative block size-16 shrink-0 overflow-hidden rounded-xl bg-mist-100 ring-1 ring-mist-100 sm:size-20"
           >
             {post.thumbnail.mimeType.startsWith('video/') ? (
               <>
@@ -89,7 +89,7 @@ export function HiddenPostCard({ post }: { post: HiddenPost }) {
           type="button"
           onClick={unhide}
           disabled={pending}
-          className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 transition hover:border-ocean-300 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 transition hover:border-ocean-300 hover:bg-mist-50 disabled:cursor-wait disabled:opacity-60"
         >
           <Eye aria-hidden="true" className="size-4" />
           {pending ? 'Unhiding…' : 'Unhide'}

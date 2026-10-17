@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   SquarePlus,
   Wallet,
+  type LucideIcon,
 } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { getAccessContext } from '@/features/access/server'
@@ -24,6 +25,46 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PhoneSettingsList, settingsGroups } from './settings-groups'
 
 export const metadata: Metadata = { title: 'Settings' }
+
+/** The desktop Account & privacy cards. */
+const SETTINGS_CARDS: Array<{ href: string; title: string; description: string; icon?: LucideIcon }> = [
+  { href: '/activities', title: 'My Activities', icon: History, description: 'Your posts, comments, job applications, events and learning.' },
+  { href: '/settings/billing', title: 'Membership & billing', icon: CreditCard, description: 'Review Free, Creator Pro and Organization Pro access.' },
+  { href: '/settings/earnings', title: 'Earnings', icon: Wallet, description: 'See ticket and course sales, the platform fee, your balance and payouts.' },
+  { href: '/settings/payouts', title: 'Payout details', icon: Landmark, description: 'Add the bank account or UPI ID where Sea N Shore pays your earnings.' },
+  { href: '/settings/verifications', title: 'Professional verifications', icon: BadgeCheck, description: 'Apply for or review Recruiter, Trainer and Event Host verification.' },
+  { href: '/organizations', title: 'Organizations', icon: Building2, description: 'Create, claim or manage organization workspaces and roles.' },
+  { href: '/creator', title: 'Creator access', icon: SquarePlus, description: 'See publishing readiness for Jobs, Events and LMS in one place.' },
+  { href: '/settings/notifications', title: 'Email notifications', icon: BellRing, description: 'Choose whether course and learning updates also come by email.' },
+  { href: '/newsletter', title: 'Newsletter', icon: Mail, description: 'Subscribe, choose topics or unsubscribe from Sea N Shore emails.' },
+  { href: '/settings/blocked', title: 'Blocked & muted', icon: Ban, description: 'See the people you blocked or muted, and undo either.' },
+  { href: '/settings/privacy', title: 'Privacy settings', description: 'Choose who can find you, message you and see your connections.' },
+  { href: '/privacy', title: 'Privacy policy', description: 'Read how profile, community, jobs, learning, and messaging data is used.' },
+  { href: '/settings/security', title: 'Two-step verification', icon: KeyRound, description: 'Add an authenticator app code to your password sign-in.' },
+]
+
+/**
+ * Round H (H8): a card link named by its title alone ("Earnings"), with the line under it as its description,
+ * instead of one long name made of the title and the whole description.
+ */
+function SettingsCard({ href, title, description, icon: Icon }: (typeof SETTINGS_CARDS)[number]) {
+  const id = `settings-card-${href.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`
+  return (
+    <Link
+      href={href}
+      aria-labelledby={`${id}-title`}
+      aria-describedby={`${id}-description`}
+      className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
+    >
+      <div className="flex items-center gap-2">
+        {Icon ? <Icon aria-hidden="true" className="size-4 text-ocean-700" /> : null}
+        <p id={`${id}-title`} className="font-semibold text-navy-950">{title}</p>
+      </div>
+      <p id={`${id}-description`} className="mt-1 text-sm leading-5 text-muted">{description}</p>
+      <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
+    </Link>
+  )
+}
 
 export default async function SettingsPage() {
   const user = await requireAwsUser()
@@ -59,143 +100,7 @@ export default async function SettingsPage() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <Link
-            href="/activities"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <History aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">My Activities</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Your posts, comments, job applications, events and learning.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/billing"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <CreditCard aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Membership & billing</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Review Free, Creator Pro and Organization Pro access.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/earnings"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <Wallet aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Earnings</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">See ticket and course sales, the platform fee, your balance and payouts.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/payouts"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <Landmark aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Payout details</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Add the bank account or UPI ID where Sea N Shore pays your earnings.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/verifications"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <BadgeCheck aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Professional verifications</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Apply for or review Recruiter, Trainer and Event Host verification.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/organizations"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <Building2 aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Organizations</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Create, claim or manage organization workspaces and roles.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/creator"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <SquarePlus aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Creator access</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">See publishing readiness for Jobs, Events and LMS in one place.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/notifications"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <BellRing aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Email notifications</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Choose whether course and learning updates also come by email.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/newsletter"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <Mail aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Newsletter</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Subscribe, choose topics or unsubscribe from Sea N Shore emails.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/blocked"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <Ban aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Blocked &amp; muted</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">See the people you blocked or muted, and undo either.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/privacy"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <p className="font-semibold text-navy-950">Privacy settings</p>
-            <p className="mt-1 text-sm leading-5 text-muted">Choose who can find you, message you and see your connections.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/privacy"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <p className="font-semibold text-navy-950">Privacy policy</p>
-            <p className="mt-1 text-sm leading-5 text-muted">Read how profile, community, jobs, learning, and messaging data is used.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
-          <Link
-            href="/settings/security"
-            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <KeyRound aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Two-step verification</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Add an authenticator app code to your password sign-in.</p>
-            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-          </Link>
+          {SETTINGS_CARDS.map((card) => <SettingsCard key={card.href} {...card} />)}
         </div>
         <p className="mt-4 flex items-start gap-2 text-sm leading-5 text-muted">
           <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ocean-700" />

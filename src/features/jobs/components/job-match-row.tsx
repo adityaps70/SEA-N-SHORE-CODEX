@@ -1,11 +1,13 @@
 'use client'
 
-import { CheckCircle2, ChevronRight, Target, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, ChevronRight, Target } from 'lucide-react'
 import { useState } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
 import type { JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
 import { SheetPortal } from './sheet-portal'
+import { JobMatchChecks, matchCheckItems } from './job-match-checks'
+import { pluralize } from '@/lib/format'
 
 /**
  * Phone Maritime Match (round 8): one dark row "82% Maritime Match · 3 things match · 2 to check"
@@ -15,9 +17,9 @@ export function JobMatchRow({ match }: { match: JobMatchResult }) {
   const [open, setOpen] = useState(false)
   const display = jobMatchDisplay(match)
   const title = !display ? 'Maritime Match' : display.text
-  const gaps = [...match.missingRequirements, ...match.warnings]
+  const gaps = matchCheckItems(match)
   const summary = [
-    `${match.reasons.length} thing${match.reasons.length === 1 ? '' : 's'} match`,
+    `${pluralize(match.reasons.length, 'thing')} match${match.reasons.length === 1 ? 'es' : ''}`,
     gaps.length ? `${gaps.length} to check` : 'no gaps',
   ].join(' · ')
 
@@ -49,11 +51,8 @@ export function JobMatchRow({ match }: { match: JobMatchResult }) {
           </section>
           <section>
             <h3 className="text-sm font-bold text-navy-950">Check before applying</h3>
-            {gaps.length ? (
-              <ul className="mt-2 space-y-2">
-                {gaps.map((gap) => <li key={gap} className="flex items-start gap-2 text-[15px] leading-6 text-amber-900"><TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" />{gap}</li>)}
-              </ul>
-            ) : <p className="mt-2 text-sm font-medium text-ocean-800">No major profile gaps detected.</p>}
+            {/* Round H (H7): each check says what is required and what the profile has. */}
+            <JobMatchChecks match={match} textClassName="text-[15px] leading-6" />
           </section>
         </div>
       </BottomSheet>

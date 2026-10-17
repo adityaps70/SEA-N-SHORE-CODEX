@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchesNetworkSearch, relationshipFromRows } from './queries'
+import { matchesNetworkSearch, relationshipFromRows, withMessageAccess } from './queries'
 import type { NetworkConnectionRow, NetworkProfile } from './types'
 
 const viewerId = '11111111-1111-4111-8111-111111111111'
@@ -98,5 +98,36 @@ describe('matchesNetworkSearch', () => {
   it('rejects profiles that do not contain every search token', () => {
     expect(matchesNetworkSearch(profile(), 'master tanker')).toBe(true)
     expect(matchesNetworkSearch(profile(), 'master lng')).toBe(false)
+  })
+})
+
+describe('withMessageAccess (round H, H7)', () => {
+  const connected = { following: true, connection: { kind: 'connected', connectionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } } as const
+  const following = { following: true, connection: { kind: 'none', connectionId: null } } as const
+
+  it('applies the member\'s "Who can message me" choice and blocks, like the messaging service', () => {
+    const [everyone, connectionsOnly, connectedOnly, nobody, blocked] = withMessageAccess(
+      [
+        profile({ id: 'a', relationship: following }),
+        profile({ id: 'b', relationship: following }),
+        profile({ id: 'c', relationship: connected }),
+        profile({ id: 'd', relationship: connected }),
+        profile({ id: 'e', relationship: connected }),
+      ],
+      new Map([
+        ['a', { permission: 'everyone', blocked: false }],
+        ['b', { permission: 'connections', blocked: false }],
+        ['c', { permission: 'connections', blocked: false }],
+        ['d', { permission: 'nobody', blocked: false }],
+        ['e', { permission: 'everyone', blocked: true }],
+      ] as const),
+    )
+    expect([everyone, connectionsOnly, connectedOnly, nobody, blocked].map((item) => item!.canMessage)).toEqual([true, false, true, false, false])
+  })
+
+  it('falls back to connections only when the choice could not be loaded', () => {
+    const [notConnected, isConnected] = withMessageAccess([profile({ id: 'a', relationship: following }), profile({ id: 'b', relationship: connected })], new Map())
+    expect(notConnected!.canMessage).toBe(false)
+    expect(isConnected!.canMessage).toBe(true)
   })
 })

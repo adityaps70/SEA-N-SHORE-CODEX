@@ -75,6 +75,22 @@ describe('JobCard', () => {
     expect(screen.getByText('Employer based in Dubai')).toBeVisible()
   })
 
+  it('says "Remote employer" instead of "Employer based in Remote" (Round H, H7)', () => {
+    render(<JobCard job={{ ...job, companyLocation: 'Remote' }} />)
+
+    expect(screen.getByText('Remote employer')).toBeVisible()
+    expect(screen.queryByText(/Employer based in/)).toBeNull()
+  })
+
+  it('shows INR salaries in LPA and a single value when min equals max (Round H, H7)', () => {
+    const { unmount } = render(<JobCard job={{ ...job, salaryMin: 3_900_000, salaryMax: 5_000_000, salaryCurrency: 'INR', salaryPeriod: 'year' }} />)
+    expect(screen.getByText('₹39–50 LPA')).toBeVisible()
+    unmount()
+
+    render(<JobCard job={{ ...job, salaryMin: 240, salaryMax: 240, salaryCurrency: 'USD', salaryPeriod: 'day' }} />)
+    expect(screen.getByText('$240/day')).toBeVisible()
+  })
+
   it('says applications are closed instead of offering Easy Apply once the apply-by date has passed', () => {
     render(<JobCard job={{ ...job, applyUntil: '2020-01-01' }} />)
 

@@ -164,7 +164,7 @@ export function ImageCropDialog({ file, shape, aspect, title, initialError = '',
           </div>
           <div className="shrink-0 text-center">
             <span aria-hidden="true" className={`block overflow-hidden bg-mist-100 ring-1 ring-mist-200 ${previewClass}`} style={imageUrl ? cropPreviewStyle(imageUrl, area) : undefined} data-testid="crop-preview" />
-            <span className="mt-1 block text-[11px] font-medium text-muted">Preview</span>
+            <span className="mt-1 block text-xs font-medium text-muted">Preview</span>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ import { Field } from "@/components/ui/field";
 import { PasswordField } from "@/features/auth/components/password-field";
 import type { AuthActionState } from "@/features/auth/actions";
 import { PASSWORD_RULES } from "@/features/auth/password-rules";
+import { NameCaseSuggestion } from "@/features/profiles/components/name-case-suggestion";
 
 type AuthAction = (
   state: AuthActionState,
@@ -70,6 +71,8 @@ export function AuthForm({ mode, action, flow, initialEmail, lead }: AuthFormPro
       <form action={formAction} onSubmit={validateConfirmation} className="mt-7 grid gap-5 max-md:mt-5 max-md:gap-4" noValidate>
         {flow && <input type="hidden" name="mode" value={flow} />}
         {showName && <Field label="Full name" name="fullName" autoComplete="name" required />}
+        {/* Round H (H7): offer to fix a name typed in ALL CAPS or all lowercase. */}
+        {showName && <NameCaseSuggestion inputId="fullName" />}
         {showEmail && (
           <Field
             label="Email"

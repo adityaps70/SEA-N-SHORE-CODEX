@@ -216,7 +216,7 @@ export function FeeOverrideManager({ overrides, defaultPercentLabel }: { overrid
                     <button
                       type="button"
                       onClick={() => choose(result)}
-                      className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2.5 text-left text-sm transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none"
+                      className="flex w-full cursor-pointer items-center gap-2.5 px-3 py-2.5 text-left text-sm transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:-outline-offset-2"
                     >
                       <KindIcon kind={result.kind} />
                       <span className="min-w-0 flex-1">

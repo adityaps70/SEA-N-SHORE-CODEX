@@ -20,7 +20,7 @@ export function NetworkTabs({ active, incomingRequestCount }: { active: NetworkT
         >
           {labels[tab]}
           {tab === 'requests' && incomingRequestCount > 0 ? (
-            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-100 px-1.5 text-[11px] font-bold text-ocean-800 aria-[current=page]:bg-white/15 aria-[current=page]:text-white">
+            <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-100 px-1.5 text-xs font-bold text-ocean-800 aria-[current=page]:bg-white/15 aria-[current=page]:text-white">
               {incomingRequestCount > 99 ? '99+' : incomingRequestCount}
             </span>
           ) : null}

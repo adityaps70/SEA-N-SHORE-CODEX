@@ -33,3 +33,37 @@ describe('audit formatting', () => {
     expect(auditDetails({})).toEqual([])
   })
 })
+
+describe('learning audit actions (round H, H7)', () => {
+  // Every learning.course.* and learning.mentor_application.* action the code writes (admin-repository.ts,
+  // migration 0086), plus the two-part learning actions recorded against a course.
+  const actions: Array<[targetType: string, action: string, summary: string]> = [
+    ['learning_course', 'learning.course.approved', 'Course approved'],
+    ['learning_course', 'learning.course.changes_requested', 'Course changes requested'],
+    ['learning_course', 'learning.course.published', 'Course published'],
+    ['learning_course', 'learning.course.archived', 'Course archived'],
+    ['learning_course', 'learning.course.revision_approved', 'Course revision approved'],
+    ['learning_course', 'learning.course.publisher_transferred', 'Course publisher transferred'],
+    ['learning_mentor_application', 'learning.mentor_application.approved', 'Trainer application approved'],
+    ['learning_mentor_application', 'learning.mentor_application.changes_requested', 'Trainer application changes requested'],
+    ['learning_mentor_application', 'learning.mentor_application.rejected', 'Trainer application rejected'],
+    ['learning_course', 'learning.course_community_linked', 'Course community linked'],
+    ['learning_course', 'learning.course_community_unlinked', 'Course community unlinked'],
+    ['learning_course', 'learning.roster_enrolled', 'Course roster enrolled'],
+    ['learning_course', 'learning.session_created', 'Course session created'],
+    ['course_review', 'moderation.course_review_approved', 'Course review approved'],
+  ]
+
+  it.each(actions)('%s %s reads "%s" without a repeated word', (targetType, action, summary) => {
+    expect(auditSummary(targetType, action)).toBe(summary)
+    expect(auditSummary(targetType, action)).not.toMatch(/\b(\w+) \1\b/i)
+  })
+
+  it('names learning targets and keeps the verb free of the object', () => {
+    expect(auditTargetLabel('learning_course')).toBe('Course')
+    expect(auditTargetLabel('learning_mentor_application')).toBe('Trainer application')
+    expect(auditVerb('learning.course.revision_approved')).toBe('Revision approved')
+    expect(auditVerb('learning.mentor_application.approved')).toBe('Approved')
+    expect(auditActionLabel('learning.course.revision_approved')).toBe('Learning · Course · Revision approved')
+  })
+})

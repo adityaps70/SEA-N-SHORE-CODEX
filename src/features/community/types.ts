@@ -45,6 +45,22 @@ export function isCommunityCategory(value: unknown): value is CommunityCategory 
   return typeof value === 'string' && (COMMUNITY_CATEGORIES as readonly string[]).includes(value)
 }
 
+/**
+ * Round H (H7): communities saved with "No category" get their own tile and directory filter, so the
+ * "Browse by category" counts add up to every live community.
+ */
+export const UNCATEGORISED_COMMUNITIES = 'other' as const
+export type CommunityCategoryFilter = CommunityCategory | typeof UNCATEGORISED_COMMUNITIES
+export const UNCATEGORISED_COMMUNITIES_LABEL = 'Other topics'
+
+export function isCommunityCategoryFilter(value: unknown): value is CommunityCategoryFilter {
+  return value === UNCATEGORISED_COMMUNITIES || isCommunityCategory(value)
+}
+
+export function communityCategoryFilterLabel(value: CommunityCategoryFilter) {
+  return value === UNCATEGORISED_COMMUNITIES ? UNCATEGORISED_COMMUNITIES_LABEL : COMMUNITY_CATEGORY_LABELS[value]
+}
+
 /** How the full directory is ordered (round 10). */
 export const DIRECTORY_SORTS = ['active', 'members', 'name', 'newest'] as const
 export type DirectorySort = (typeof DIRECTORY_SORTS)[number]

@@ -10,15 +10,27 @@ export function auditActionLabel(action: string) {
   return action.split('.').map(sentenceCase).filter(Boolean).join(' · ')
 }
 
-/** The verb part only: "account.permanently_deleted" → "Permanently deleted". */
+/**
+ * The verb part only: "account.permanently_deleted" → "Permanently deleted". Round H (H7): a three-part action
+ * names its object in the middle ("learning.course.revision_approved"); the target label already says that, so the
+ * verb is the last part ("Revision approved").
+ */
 export function auditVerb(action: string) {
   const parts = action.split('.').filter(Boolean)
-  return sentenceCase((parts.length > 1 ? parts.slice(1) : parts).join(' '))
+  return sentenceCase((parts.length > 2 ? parts.slice(2) : parts.length > 1 ? parts.slice(1) : parts).join(' '))
 }
 
-/** One readable phrase: ("user_account", "account.suspended") → "Account suspended". */
+/**
+ * One readable phrase: ("user_account", "account.suspended") → "Account suspended". Round H (H7): words the verb
+ * repeats from the end of the target label are dropped ("Course" + "course community linked" → "Course community linked").
+ */
 export function auditSummary(targetType: string, action: string) {
-  return `${auditTargetLabel(targetType)} ${auditVerb(action).toLowerCase()}`
+  const label = auditTargetLabel(targetType)
+  const labelWords = label.toLowerCase().split(/\s+/).filter(Boolean)
+  const verbWords = auditVerb(action).toLowerCase().split(/\s+/).filter(Boolean)
+  let overlap = Math.min(labelWords.length, verbWords.length)
+  while (overlap > 0 && labelWords.slice(-overlap).join(' ') !== verbWords.slice(0, overlap).join(' ')) overlap -= 1
+  return [label, ...verbWords.slice(overlap)].join(' ')
 }
 
 const TARGET_LABELS: Record<string, string> = {
@@ -31,6 +43,9 @@ const TARGET_LABELS: Record<string, string> = {
   event: 'Event',
   group: 'Group',
   course_review: 'Course review',
+  // Round H (H7): learning audit targets.
+  learning_course: 'Course',
+  learning_mentor_application: 'Trainer application',
 }
 
 export function auditTargetLabel(targetType: string) {

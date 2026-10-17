@@ -77,7 +77,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
         </p>
       ) : null}
 
-      <dl className="grid gap-3 sm:grid-cols-3 max-md:grid-cols-3 max-md:gap-2 max-md:[&>div]:p-3 max-md:[&_dd]:text-lg max-md:[&_dt]:text-[10px] max-md:[&_dt]:tracking-wide">
+      <dl className="grid gap-3 sm:grid-cols-3 max-md:grid-cols-3 max-md:gap-2 max-md:[&>div]:p-3 max-md:[&_dd]:text-lg max-md:[&_dt]:text-xs max-md:[&_dt]:tracking-wide">
         <div className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm">
           <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Confirmed paid seats</dt>
           <dd className="mt-1 text-2xl font-bold text-navy-950">{confirmed.length}{event.capacity ? <span className="text-base font-semibold text-muted"> / {event.capacity}</span> : null}</dd>

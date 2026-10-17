@@ -37,7 +37,7 @@ export function ConnectionRequestCard({
             <Link href={`/people/${profile.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
               {profile.fullName}
             </Link>
-            <span className="inline-flex items-center gap-1 rounded-full bg-mist-50 px-2 py-1 text-[11px] font-semibold text-ocean-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-mist-50 px-2 py-1 text-xs font-semibold text-ocean-700">
               <Clock3 aria-hidden="true" className="size-3" />
               {direction === 'incoming' ? 'Wants to connect' : 'Request sent'}
             </span>

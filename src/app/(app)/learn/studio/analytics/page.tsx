@@ -20,6 +20,7 @@ import { mentorAnalyticsRepository } from '@/features/learning/mentor-analytics-
 import { mentorCourseInsightsRepository } from '@/features/learning/mentor-course-insights-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Learning Studio analytics' }
 
@@ -83,7 +84,7 @@ export default async function MentorLearningAnalyticsPage({ searchParams }: { se
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-bold text-white/80">
-            <span className="rounded-full bg-white/10 px-3 py-1.5">{summary.courseCount} courses</span>
+            <span className="rounded-full bg-white/10 px-3 py-1.5">{pluralize(summary.courseCount, 'course')}</span>
             <span className="rounded-full bg-white/10 px-3 py-1.5">{summary.publishedCourseCount} published</span>
           </div>
         </div>
@@ -146,7 +147,7 @@ export default async function MentorLearningAnalyticsPage({ searchParams }: { se
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-teal-700">{statusLabel(course.status)}</p>
                     <h3 className="mt-1 text-lg font-bold text-navy-950">{course.title}</h3>
                   </div>
-                  <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-bold text-muted">{course.enrollmentCount} enrollments</span>
+                  <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-bold text-muted">{pluralize(course.enrollmentCount, 'enrollment')}</span>
                 </div>
 
                 <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -164,7 +165,7 @@ export default async function MentorLearningAnalyticsPage({ searchParams }: { se
                   </div>
                   <div className="rounded-xl bg-mist-50 p-3">
                     <p className="text-xs font-semibold text-muted">To review</p>
-                    <p className="mt-1 font-bold text-navy-950">{course.pendingAssignmentCount} attempts</p>
+                    <p className="mt-1 font-bold text-navy-950">{pluralize(course.pendingAssignmentCount, 'attempt')}</p>
                   </div>
                 </div>
 

@@ -108,7 +108,7 @@ describe('RailFooter (compact right-rail footer)', () => {
     expect(footer).toHaveClass('hidden', 'lg:block')
 
     expect(railKeyLinks().map((link) => link.label)).toEqual(['Help', 'Terms', 'Privacy Policy', 'Contact us', 'Pricing'])
-    const nav = within(footer).getByRole('navigation', { name: 'Footer' })
+    const nav = within(footer).getByRole('navigation', { name: 'Footer links' })
     const keyList = nav.querySelector('ul') as HTMLElement
     expect(within(keyList).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/help', '/terms', '/privacy', '/contact', '/pricing'])
 

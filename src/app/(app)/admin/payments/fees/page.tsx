@@ -22,7 +22,7 @@ export default async function AdminPaymentFeesPage() {
   ])
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader title="Payments" meta="Platform fee and payout rules" />
       <PaymentsAdminTabs />
 
@@ -55,6 +55,6 @@ export default async function AdminPaymentFeesPage() {
           }))}
         />
       </AdminPanel>
-    </main>
+    </div>
   )
 }

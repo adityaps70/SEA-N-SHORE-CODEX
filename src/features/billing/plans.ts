@@ -11,6 +11,8 @@
  * - Auto-renew off = access until paid through, then the plan ends.
  */
 
+import { formatMoney } from '@/features/payments/currency'
+
 export const PAID_PLAN_CODES = ['creator_pro', 'organization_pro'] as const
 export type PaidPlanCode = typeof PAID_PLAN_CODES[number]
 
@@ -96,19 +98,12 @@ export function addDays(date: Date, days: number) {
   return new Date(date.getTime() + days * DAY_MS)
 }
 
-/** Money from integer paise with 2 decimals, e.g. 100000 -> "₹1,000.00". */
-export function formatRupees(amountMinor: number) {
-  const negative = amountMinor < 0
-  const absolute = Math.abs(Math.trunc(amountMinor))
-  const whole = Math.floor(absolute / 100)
-  const paise = String(absolute % 100).padStart(2, '0')
-  const grouped = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(whole)
-  return `${negative ? '-' : ''}₹${grouped}.${paise}`
-}
-
-/** Short form for price lists: whole rupees drop the ".00" ("₹1,000"), otherwise 2 decimals. */
+/**
+ * Round H (H7): plan prices use the site-wide money format ("₹99", "₹999.50", "₹1,23,456"), the same as
+ * Pricing. Kept as a named helper for the FAQ copy, which imports it.
+ */
 export function formatRupeesShort(amountMinor: number) {
-  return amountMinor % 100 === 0 ? formatRupees(amountMinor).replace(/\.00$/, '') : formatRupees(amountMinor)
+  return formatMoney(amountMinor, 'INR')
 }
 
 /**

@@ -34,13 +34,13 @@ function TileFace({ preview }: { preview: SavedPostPreview }) {
     return (
       <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-navy-50 to-mist-100 p-2 text-center text-navy-900">
         <FileText aria-hidden="true" className="size-7 text-ocean-700 sm:size-9" />
-        <span className="line-clamp-2 break-words text-[11px] font-semibold leading-4 sm:text-sm sm:leading-5">{preview.documentName}</span>
+        <span className="line-clamp-2 break-words text-xs font-semibold leading-4 sm:text-sm sm:leading-5">{preview.documentName}</span>
       </span>
     )
   }
   return (
     <span className="absolute inset-0 bg-gradient-to-br from-ocean-50 to-mist-100 p-2.5 pr-6 text-left sm:p-4 sm:pr-8">
-      <span className="line-clamp-5 break-words text-[11px] font-medium leading-4 text-navy-900 sm:line-clamp-6 sm:text-sm sm:leading-5">
+      <span className="line-clamp-5 break-words text-xs font-medium leading-4 text-navy-900 sm:line-clamp-6 sm:text-sm sm:leading-5">
         {preview.text || (preview.hasPoll ? 'Poll' : 'Post')}
       </span>
     </span>
@@ -118,7 +118,7 @@ function SavedPostDialog({ post, onClose }: { post: FeedPost; onClose(): void })
             data-dialog-close
             aria-label="Close saved post"
             onClick={onClose}
-            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-xl border border-mist-200 text-navy-700 transition hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-xl border border-mist-200 text-navy-700 transition hover:bg-mist-50 hover:text-navy-950"
           >
             <X aria-hidden="true" className="size-4" />
           </button>

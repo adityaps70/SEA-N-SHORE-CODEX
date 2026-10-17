@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import Link from 'next/link'
 import { MailX, MailCheck, TriangleAlert } from 'lucide-react'
 import { createNewsletterService, tokenMessages } from '../service'
@@ -10,7 +11,7 @@ type Kind = 'confirm' | 'unsubscribe'
 function Shell({ kind, children }: { kind: Kind; children: React.ReactNode }) {
   const Icon = kind === 'unsubscribe' ? MailX : MailCheck
   return (
-    <main id="main-content" className="mx-auto grid w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
+    <MainLandmark className="mx-auto grid w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
       <section className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
         <span className="grid size-12 place-items-center rounded-2xl bg-ocean-50 text-ocean-700">
           <Icon aria-hidden="true" className="size-5" />
@@ -18,7 +19,7 @@ function Shell({ kind, children }: { kind: Kind; children: React.ReactNode }) {
         <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Newsletter</p>
         {children}
       </section>
-    </main>
+    </MainLandmark>
   )
 }
 

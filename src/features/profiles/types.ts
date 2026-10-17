@@ -41,6 +41,8 @@ export type PublicProfile = {
   /** Display-only occupation for people without a maritime rank (never scores against jobs). */
   occupationText?: string | null
   fullName: string
+  /** Round H (H7): the name exactly as the member typed it (fullName is the display form); edit forms use this. */
+  typedFullName?: string
   avatarPath: string | null
   avatarUrl?: string | null
   coverPath?: string | null

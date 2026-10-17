@@ -4,10 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { withTransaction } from '@/lib/db/client'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
-import { parsePriceToMinor } from '@/features/payments/currency'
+import { formatMoney, parsePriceToMinor } from '@/features/payments/currency'
 import { formatBillingDate } from './billing-view'
 import { revalidatePlanPrices } from './plan-price-cache'
-import { addDays, BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS, formatRupees } from './plans'
+import { addDays, BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS } from './plans'
 import { trialService } from './trial-service'
 import { TrialNotRunningError } from './trials'
 import { endManualSubscription, PlanPriceError, replacePlanPrice, subscriptionRepository } from './subscription-repository'
@@ -55,7 +55,7 @@ export async function updatePlanPriceAction(input: { plan: string; interval: str
     revalidatePlanPrices()
     return {
       ok: true,
-      message: `${PLAN_LABELS[price.planCode]} ${INTERVAL_LABELS[price.interval].adjective.toLowerCase()} is now ${formatRupees(price.amountMinor)} for new subscribers. Existing subscribers keep their current price.`,
+      message: `${PLAN_LABELS[price.planCode]} ${INTERVAL_LABELS[price.interval].adjective.toLowerCase()} is now ${formatMoney(price.amountMinor, 'INR')} for new subscribers. Existing subscribers keep their current price.`,
     }
   } catch (error) {
     if (error instanceof PlanPriceError && error.code === 'price_unchanged') return { ok: false, error: 'That is already the current price. Nothing was changed.' }

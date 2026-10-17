@@ -25,7 +25,7 @@ export default async function AdminPaymentTaxPage() {
   const currentLut = luts.find((lut) => lut.financialYear === currentYear) ?? null
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader title="Payments" meta="GST invoices, LUT and TDS" />
       <PaymentsAdminTabs />
 
@@ -96,6 +96,6 @@ export default async function AdminPaymentTaxPage() {
           <TdsExportPanel defaultMonth={previousMonth(indiaMonth(new Date()))} />
         </div>
       </AdminPanel>
-    </main>
+    </div>
   )
 }

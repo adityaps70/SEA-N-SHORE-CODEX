@@ -108,7 +108,7 @@ function normalizedList(value: string) {
 }
 
 function inputClassName() {
-  return 'mt-2 min-h-12 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm font-normal text-navy-950 outline-none transition placeholder:text-muted/60 focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
+  return 'mt-2 min-h-12 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm font-normal text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
 }
 
 function rupeesToMinor(value: string) {

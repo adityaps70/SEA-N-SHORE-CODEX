@@ -87,7 +87,7 @@ export function PostActionsMenu({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={() => setMenuOpen((value) => !value)}
-        className="inline-flex size-9 max-md:size-11 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted transition hover:border-mist-100 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        className="inline-flex size-9 max-md:size-11 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted transition hover:border-mist-100 hover:bg-mist-50 hover:text-navy-950"
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </button>

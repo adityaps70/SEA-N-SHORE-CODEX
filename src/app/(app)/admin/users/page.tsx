@@ -122,7 +122,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   }))
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title={viewingDeletionRecords ? 'Deleted account records' : 'User accounts'}
         meta={(
@@ -308,6 +308,6 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           ) : null}
         </div>
       </div>
-    </main>
+    </div>
   )
 }

@@ -99,6 +99,41 @@ describe('community repository: directory and groups', () => {
     await expect(createCommunityRepository({ query }).countByCategory()).resolves.toEqual({ learning: 3 })
   })
 
+  it('counts communities without a category as Other topics so the tiles add up to every live community (round H, H7)', async () => {
+    const { query, calls } = fakeQuery([{ category: 'learning', total: '3' }, { category: null, total: 2 }])
+    await expect(createCommunityRepository({ query }).countByCategory()).resolves.toEqual({ learning: 3, other: 2 })
+    const [sql] = calls()[0]
+    expect(sql).toContain('g.archived_at is null')
+    expect(sql).not.toContain('g.category is not null')
+  })
+
+  it('browses communities without a category for the Other topics filter (round H, H7)', async () => {
+    const calls: Call[] = []
+    const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
+      calls.push([text, values] as unknown as Call)
+      return text.includes('count(*)::int as total') ? [{ total: 0 }] : []
+    })
+    await createCommunityRepository({ query }).browseDirectory(viewerId, { category: 'other' })
+    const [sql, values] = calls[0] as unknown as [string, unknown[]]
+    expect(sql).toContain('g.category is null')
+    expect(values).toEqual([viewerId, 24, 0])
+  })
+
+  it('counts members by the members-list rule: active membership and active account (round H, H7)', async () => {
+    const { query, calls } = fakeQuery([])
+    const repository = createCommunityRepository({ query })
+    await repository.listViewerGroups(viewerId)
+    await repository.listAdminGroups()
+    await repository.countPendingRequests(groupId)
+    const [groupSql] = calls()[0]
+    const [adminSql] = calls()[1]
+    const [pendingSql, pendingValues] = calls()[2]
+    for (const sql of [groupSql, adminSql, pendingSql]) expect(sql).toContain("counted_profile.account_status = 'active'")
+    expect(groupSql).toMatch(/c\.status = 'active' and counted_profile\.account_status = 'active'\)\s+as member_count/)
+    expect(adminSql).toMatch(/c\.status = 'pending' and counted_profile\.account_status = 'active'\)\s+as pending_count/)
+    expect(pendingValues).toEqual([groupId])
+  })
+
   it('lists the viewer groups: active first, then pending, live groups only', async () => {
     const { query, calls } = fakeQuery([])
     await createCommunityRepository({ query }).listViewerGroups(viewerId)

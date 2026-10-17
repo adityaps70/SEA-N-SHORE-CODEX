@@ -54,7 +54,7 @@ export default async function AdminAuditPage({
   ]
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Audit log"
         meta={`${pluralize(events.length, 'event')} · newest first · read-only`}
@@ -149,6 +149,6 @@ export default async function AdminAuditPage({
           </>
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

@@ -193,6 +193,8 @@ const ROLE_SEEDS: Record<string, readonly RoleSeed[]> = {
 }
 
 export const OTHER_ROLE_LABEL = 'Other (type your own)'
+/** Round H (H7): the longest "Other" rank / role a profile may type (the database allows 100). */
+export const OTHER_ROLE_TEXT_MAX = 60
 export const OTHER_ROLE_PREFIX = 'other_'
 
 function departmentsOf(source: readonly { key: string; label: string }[], domain: RoleDomain): RoleDepartment[] {

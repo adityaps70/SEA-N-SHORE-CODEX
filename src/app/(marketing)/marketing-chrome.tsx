@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
+import { MainLandmark, SkipLink } from '@/components/layout/main-landmark'
 
 /** Routes in the marketing group that draw their own header and footer for signed-out visitors. */
 const OWN_CHROME_PATHS = new Set(['/'])
@@ -17,8 +18,10 @@ export function MarketingChrome({ header, footer, children }: { header: ReactNod
   // `group/shell` lets the site footer hide where a right rail shows its own footer.
   return (
     <div className="group/shell min-h-screen bg-mist-50">
+      {/* Round H (H8): a skip link and the page's one main landmark, as in the member shell. */}
+      <SkipLink />
       {header}
-      {children}
+      <MainLandmark>{children}</MainLandmark>
       {footer}
     </div>
   )

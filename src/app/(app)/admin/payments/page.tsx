@@ -34,7 +34,7 @@ export default async function AdminPaymentsOverviewPage() {
   const attention = overview.payouts.unconfirmedCount + overview.payouts.failedCount
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader
         title="Payments"
         meta="Money collected, fees earned and what Sea N Shore owes sellers"
@@ -136,6 +136,6 @@ export default async function AdminPaymentsOverviewPage() {
           {overview.unavailable.map((type) => TYPE_LABELS[type]).join(' and ')}: no payments table is available yet, so they show as zero here.
         </p>
       ) : null}
-    </main>
+    </div>
   )
 }

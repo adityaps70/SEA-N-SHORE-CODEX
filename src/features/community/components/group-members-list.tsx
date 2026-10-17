@@ -36,9 +36,9 @@ export function GroupMembersList({
                 {member.slug
                   ? <Link href={`/people/${member.slug}`} className="truncate font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{member.fullName}</Link>
                   : <span className="truncate font-semibold text-navy-950">{member.fullName}</span>}
-                {roleLabel ? <span className="shrink-0 rounded-md border border-ocean-200 bg-ocean-50 px-1.5 py-0.5 text-[11px] font-bold text-ocean-800">{roleLabel}</span> : null}
+                {roleLabel ? <span className="shrink-0 rounded-md border border-ocean-200 bg-ocean-50 px-1.5 py-0.5 text-xs font-bold text-ocean-800">{roleLabel}</span> : null}
                 {member.isPlatformAdmin ? (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[11px] font-bold text-teal-900">
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-xs font-bold text-teal-900">
                     <ShieldCheck aria-hidden="true" className="size-3" /> Sea N Shore admin
                   </span>
                 ) : null}

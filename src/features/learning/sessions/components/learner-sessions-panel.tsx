@@ -61,7 +61,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
                   <div className="min-w-0">
                     <p className="break-words font-semibold text-slate-950">{session.title}</p>
                     <p className="text-sm text-slate-600"><LocalSessionTime startsAt={session.startsAt} durationMinutes={session.durationMinutes} fallbackZone={zone} /></p>
-                    <p className="text-xs text-slate-500">{learnerSessionStatus(session, session.mark, session.joined, now)}{state === 'no_link' ? ' · meeting link coming soon' : ''}</p>
+                    <p className="text-xs text-slate-600">{learnerSessionStatus(session, session.mark, session.joined, now)}{state === 'no_link' ? ' · meeting link coming soon' : ''}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {state === 'open' ? (
@@ -69,7 +69,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
                         <Video aria-hidden="true" className="size-4" /> Join
                       </a>
                     ) : (
-                      <span className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-500">Join opens 15 min before</span>
+                      <span className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600">Join opens 15 min before</span>
                     )}
                     <a href={`/api/learn/sessions/${session.id}/calendar`} className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'min-h-11 px-3')}>
                       <CalendarPlus aria-hidden="true" className="size-4" /> Add to calendar
@@ -116,7 +116,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
                   <PlayCircle aria-hidden="true" className="size-5 shrink-0 text-teal-700" />
                   <span className="min-w-0">
                     <span className="block break-words font-semibold text-slate-950">{session.title}</span>
-                    <span className="block text-xs text-slate-500"><LocalSessionTime startsAt={session.startsAt} fallbackZone={zone} withYear /></span>
+                    <span className="block text-xs text-slate-600"><LocalSessionTime startsAt={session.startsAt} fallbackZone={zone} withYear /></span>
                   </span>
                 </a>
               </li>
