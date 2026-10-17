@@ -209,7 +209,7 @@ describe('messaging server actions', () => {
   })
 
   it.each([
-    ['messaging_not_allowed', 'You can message accepted connections only.'],
+    ['messaging_not_allowed', 'This member isn’t accepting messages from you.'],
     ['messaging_self_conversation', 'You cannot message yourself.'],
     ['messaging_not_participant', 'This conversation is not available.'],
     ['messaging_message_not_found', 'This conversation is not available.'],

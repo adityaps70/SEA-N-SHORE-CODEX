@@ -202,6 +202,31 @@ describe('MessageThread rich interactions', () => {
     )
   })
 
+  it('labels day separators with the one messaging date style and keeps a time of day on each message (Round H, H2)', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-17T12:00:00.000Z').getTime())
+    render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Member A"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[
+          message({ id: '66666666-6666-4666-8666-666666666661', clientMessageId: '77777777-7777-4777-8777-777777777771', body: 'Older', createdAt: '2026-10-01T09:00:00.000Z' }),
+          message({ id: '66666666-6666-4666-8666-666666666662', clientMessageId: '77777777-7777-4777-8777-777777777772', body: 'This week', createdAt: '2026-10-15T12:00:00.000Z' }),
+          message({ id: '66666666-6666-4666-8666-666666666663', clientMessageId: '77777777-7777-4777-8777-777777777773', body: 'Today', createdAt: '2026-10-17T09:00:00.000Z' }),
+        ]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    expect(screen.getByLabelText('Messages from 1 Oct')).toBeInTheDocument()
+    expect(screen.getByLabelText('Messages from 2d')).toBeInTheDocument()
+    expect(screen.getByLabelText('Messages from 3h')).toBeInTheDocument()
+    expect(screen.getByText('1 Oct').tagName).toBe('TIME')
+  })
+
   it('lets the sender edit text within five minutes and hides edit after the window expires', async () => {
     const user = userEvent.setup()
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-21T05:04:00.000Z').getTime())

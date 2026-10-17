@@ -1,4 +1,12 @@
 import { query as databaseQuery } from '@/lib/db/client'
+import {
+  DEFAULT_CONNECTIONS_VISIBILITY,
+  DEFAULT_MESSAGE_PERMISSION,
+  connectionsVisibilityFrom,
+  messagePermissionFrom,
+  type ConnectionsVisibility,
+  type MessagePermission,
+} from './privacy-choices'
 
 /**
  * Round G (G2): two privacy switches in Settings › Privacy.
@@ -44,7 +52,35 @@ export function createPrivacyPreferences(input: { query?: Query } = {}) {
     }
   }
 
-  return { get, set }
+  /** Round H (H2): "Who can message me" and "Who can see my connections". */
+  async function getChoices(profileId: string): Promise<PrivacyChoices> {
+    const rows = await queryRows(
+      `select message_permission, connections_visibility from public.member_preferences where profile_id = $1`,
+      [profileId],
+    )
+    return {
+      messagePermission: messagePermissionFrom(rows[0]?.message_permission),
+      connectionsVisibility: connectionsVisibilityFrom(rows[0]?.connections_visibility),
+    }
+  }
+
+  async function setChoice<K extends PrivacyChoiceKey>(profileId: string, key: K, value: PrivacyChoices[K]) {
+    const column = key === 'messagePermission' ? 'message_permission' : 'connections_visibility'
+    await queryRows(
+      `insert into public.member_preferences (profile_id, ${column}, updated_at) values ($1, $2, now())
+       on conflict (profile_id) do update set ${column} = excluded.${column}, updated_at = now()`,
+      [profileId, value],
+    )
+  }
+
+  return { get, set, getChoices, setChoice }
+}
+
+export type PrivacyChoices = { messagePermission: MessagePermission; connectionsVisibility: ConnectionsVisibility }
+export type PrivacyChoiceKey = keyof PrivacyChoices
+export const DEFAULT_PRIVACY_CHOICES: PrivacyChoices = {
+  messagePermission: DEFAULT_MESSAGE_PERMISSION,
+  connectionsVisibility: DEFAULT_CONNECTIONS_VISIBILITY,
 }
 
 export const privacyPreferences = createPrivacyPreferences()

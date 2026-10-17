@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ComposerProfile } from '../types'
@@ -43,7 +43,10 @@ describe('PostComposer scoped to a community group (round 9B)', () => {
     // Round F: a community post stays in its community; there is no audience to send.
     expect(audience).toBeDisabled()
     expect(dialog.querySelector('[name="audience"]')).toBeNull()
-    expect(screen.getByText('Audience: Members of Tanker Professionals')).toBeInTheDocument()
+    // Round H (H2): the labelled select is the only place the audience shows; no "Audience: …" footer repeat.
+    expect(audience).toHaveDisplayValue('Members of Tanker Professionals')
+    expect(screen.queryByText(/^Audience:/)).not.toBeInTheDocument()
+    expect(within(dialog).getAllByText('Audience')).toHaveLength(1)
   })
 
   it('keeps the open-feed audience and no group field otherwise', async () => {
@@ -61,6 +64,10 @@ describe('PostComposer scoped to a community group (round 9B)', () => {
     await user.selectOptions(audience, 'members')
     expect(audience).toHaveValue('members')
     expect(audience).toHaveAccessibleDescription('Only people signed in to Sea N Shore can see it.')
-    expect(screen.getByText('Audience: Members only')).toBeInTheDocument()
+    // Round H (H2): the select itself shows the choice, once.
+    expect(audience).toHaveDisplayValue('Members only')
+    expect(screen.queryByText(/^Audience:/)).not.toBeInTheDocument()
+    expect(within(dialog).getAllByText(/Members only/)).toHaveLength(1)
+    expect(within(dialog).getAllByText('Audience')).toHaveLength(1)
   })
 })

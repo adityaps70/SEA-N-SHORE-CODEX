@@ -461,13 +461,16 @@ export function MessageShell({
       </header>
 
       <div className={`overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-0 max-md:shadow-none ${activeConversation ? 'max-md:-mx-4' : 'max-md:overflow-visible max-md:bg-transparent'}`}>
+        {/* Round H (H2): sized to the dynamic viewport with a small floor, so on a short laptop
+            screen (~700px) the composer and its “Enter to send” hint stay on screen. */}
         <div
           data-testid="message-shell-grid"
-          className={`grid min-h-[38rem] grid-cols-[minmax(0,1fr)] md:h-[calc(100vh-13rem)] md:min-h-[38rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] max-md:min-h-0 ${activeConversation ? PHONE_THREAD_HEIGHT : ''}`}
+          className={`grid min-h-[38rem] grid-cols-[minmax(0,1fr)] md:h-[calc(100dvh-13rem)] md:min-h-[24rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] max-md:min-h-0 ${activeConversation ? PHONE_THREAD_HEIGHT : ''}`}
         >
           <div className={activeConversation ? 'hidden min-h-0 md:block' : 'min-h-0'}>
             <ConversationList
               inbox={displayedInbox}
+              viewerId={viewerId}
               activeConversationId={activeConversationId}
               onConversationDeleted={handleConversationDeleted}
             />

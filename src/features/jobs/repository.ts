@@ -331,6 +331,17 @@ const OPEN_JOB_WHERE = `j.status = 'published'
          and j.deleted_at is null
          and ${JOB_PLAN_VISIBLE}`
 
+/**
+ * Round H (H2): still taking applications. The apply-by date has not passed, and the joining window
+ * (joining-until, else the joining date) has not passed either: such jobs close by themselves.
+ */
+export const JOB_ACCEPTING_SQL = `(j.apply_until is null or j.apply_until >= current_date)
+         and (coalesce(j.joining_until, j.joining_from) is null or coalesce(j.joining_until, j.joining_from) >= current_date)`
+
+/** Round H (H2): what members can find and apply to; the admin overview counts the same jobs. */
+export const LIVE_JOB_SQL = `${OPEN_JOB_WHERE}
+         and ${JOB_ACCEPTING_SQL}`
+
 /** Lower-case labels and synonyms of these rank keys, to match older jobs that only have rank text. */
 function legacyRankTexts(keys: readonly string[]): string[] {
   return [...new Set(keys.flatMap((key) => {
@@ -536,7 +547,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     }
 
     if (pool) {
-      where.push('(j.apply_until is null or j.apply_until >= current_date)')
+      where.push(JOB_ACCEPTING_SQL)
       where.push(`not exists (
         select 1 from public.suggestion_dismissals sd
         where sd.viewer_id = ${bind(pool.viewerId)}::uuid and sd.kind = 'job' and sd.target_id = j.id
@@ -599,8 +610,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          select 1
          from public.jobs j
          where j.id = $1
-           and ${OPEN_JOB_WHERE}
-           and (j.apply_until is null or j.apply_until >= current_date)
+           and ${LIVE_JOB_SQL}
        ) as accepting`,
       [jobId],
     ) as Array<QueryResultRow & { accepting: boolean }>
@@ -644,7 +654,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          j.created_by_user_id as recruiter_profile_id,
          case
            when j.deleted_at is not null then 'removed'
-           when j.status = 'published' and (j.apply_until is null or j.apply_until >= current_date) then 'open'
+           when j.status = 'published' and ${JOB_ACCEPTING_SQL} then 'open'
            else 'closed'
          end as job_state,
          coalesce((

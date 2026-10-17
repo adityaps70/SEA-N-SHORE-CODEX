@@ -15,10 +15,13 @@ const TRIGGER_STYLES = {
   post: `min-h-9 gap-1.5 px-2 text-sm @min-[26rem]:px-2.5 ${POST_ACTION_PHONE_CLASS}`,
   comment: 'min-h-8 gap-1 px-2 text-xs',
 } as const
+/** Round H (H2): a reacted post Like keeps its ocean fill on phones too; the phone hover must not swap it for mist. */
+const REACTED_POST_TRIGGER_STYLE = TRIGGER_STYLES.post.replace('max-md:hover:bg-mist-50', 'max-md:hover:bg-ocean-100')
 
 /**
  * The Like button of the post and comment action rows.
- * - Not reacted: outline thumbs-up + "Like". Reacted: the chosen emoji + its label in the accent colour.
+ * - Not reacted: outline thumbs-up + "Like". Reacted: the chosen emoji (a filled thumbs-up for Like)
+ *   + its label in the accent colour on an ocean fill, on every width (Round H, H2).
  * - The total reaction count sits inside the button, after the label.
  * - Click toggles Like (or removes the current reaction). Hover (mouse), long-press (touch) or
  *   keyboard focus opens the reaction choices.
@@ -128,9 +131,12 @@ export function ReactionPicker({
     }
   }
 
+  // Round H (H2): the liked state used to drop its fill on phones (max-md:bg-white), so Like and
+  // Liked looked the same there. It now keeps the ocean fill, accent text and a bold label everywhere.
   const reactedStyles = value
-    ? `border-ocean-200 bg-ocean-50 text-ocean-700 hover:border-ocean-300 hover:bg-ocean-100 ${variant === 'post' ? 'max-md:bg-white' : ''}`
-    : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950'
+    ? 'border-ocean-300 bg-ocean-50 font-bold text-ocean-700 hover:border-ocean-400 hover:bg-ocean-100'
+    : 'border-mist-200 bg-white font-semibold text-navy-900 hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950'
+  const triggerStyle = value && variant === 'post' ? REACTED_POST_TRIGGER_STYLE : TRIGGER_STYLES[variant]
 
   return (
     <div
@@ -159,9 +165,11 @@ export function ReactionPicker({
         onTouchMove={endTouch}
         onTouchCancel={endTouch}
         onContextMenu={(event) => { if (recentlyTouched()) event.preventDefault() }}
-        className={`inline-flex min-w-0 cursor-pointer select-none items-center justify-center rounded-full border font-semibold transition [-webkit-touch-callout:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${TRIGGER_STYLES[variant]} ${reactedStyles}`}
+        className={`inline-flex min-w-0 cursor-pointer select-none items-center justify-center rounded-full border transition [-webkit-touch-callout:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-not-allowed disabled:opacity-50 ${triggerStyle} ${reactedStyles}`}
       >
-        {value ? (
+        {value === 'like' ? (
+          <ThumbsUp aria-hidden="true" data-reacted="true" className={`fill-current ${variant === 'post' ? 'size-5' : 'size-4'}`} />
+        ) : value ? (
           <span aria-hidden="true" className={variant === 'post' ? 'text-base leading-none' : 'text-sm leading-none'}>{current.emoji}</span>
         ) : (
           <ThumbsUp aria-hidden="true" className={variant === 'post' ? 'size-5' : 'size-4'} />

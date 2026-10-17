@@ -1,5 +1,6 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { BadgeCheck, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, Info, ShieldCheck } from 'lucide-react'
 import { certificateRepository } from '@/features/learning/certificate-repository'
 import { certificateDisplayNumber, certificateValidity } from '@/features/learning/certificate-settings'
 import { CertificateNotVerified, isVerificationCode, isVisitor, JoinBar } from './certificate-verification-view'
@@ -29,6 +30,8 @@ export default async function CertificateVerificationPage({
   const validity = certificateValidity(certificate?.expiresAt ?? null)
 
   if (!certificate) return <CertificateNotVerified joinBar={joinBar} />
+  // Round H (H2): issued to the course's own mentor or a member of the publishing organization's team.
+  const selfIssued = certificate.issuerRelation === 'self_issued'
 
   return (
     <>
@@ -39,10 +42,16 @@ export default async function CertificateVerificationPage({
               <ShieldCheck className="size-4" aria-hidden="true" /> Sea N Shore Learning verification
             </div>
             <div className="mt-5 flex items-start gap-4">
-              <BadgeCheck className="mt-1 size-9 shrink-0 text-teal-300" aria-hidden="true" />
+              {selfIssued
+                ? <Info className="mt-1 size-9 shrink-0 text-white/80" aria-hidden="true" />
+                : <BadgeCheck className="mt-1 size-9 shrink-0 text-teal-300" aria-hidden="true" />}
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">Certificate verified</h1>
-                <p className="mt-2 text-sm leading-6 text-white/70">This completion record matches an immutable Sea N Shore Learning certificate.</p>
+                <h1 className="text-3xl font-bold tracking-tight">{selfIssued ? 'Self-issued certificate' : 'Certificate verified'}</h1>
+                <p className="mt-2 text-sm leading-6 text-white/80">
+                  {selfIssued
+                    ? 'This completion record is genuine, but it was issued by the holder’s own course or organization. Sea N Shore does not verify it.'
+                    : 'This completion record matches an immutable Sea N Shore Learning certificate.'}
+                </p>
                 <p
                   className={`mt-4 inline-flex rounded-full px-3 py-1 text-sm font-bold ${validity.status === 'valid' ? 'bg-emerald-400/15 text-emerald-200' : 'bg-rose-400/15 text-rose-200'}`}
                   data-certificate-status={validity.status}
@@ -60,10 +69,14 @@ export default async function CertificateVerificationPage({
             </section>
             <section>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Course</p>
-              <p className="mt-2 text-xl font-bold text-navy-950">{certificate.courseTitle}</p>
+              <p className="mt-2 text-xl font-bold text-navy-950">
+                {certificate.courseSlug
+                  ? <Link href={`/learn/courses/${certificate.courseSlug}`} className="text-ocean-700 underline-offset-2 hover:underline">{certificate.courseTitle}</Link>
+                  : certificate.courseTitle}
+              </p>
             </section>
             <section>
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Mentor</p>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Issued by</p>
               <p className="mt-2 font-bold text-navy-950">{certificate.mentorName}</p>
             </section>
             <section>

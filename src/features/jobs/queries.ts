@@ -25,6 +25,15 @@ export type JobDiscoveryItem = {
 
 const PAGE_SIZE = JOB_WEIGHTS.pool.pageSize
 
+/**
+ * Round H (H2): For You is the default list with no search words. It leaves out jobs the member is
+ * not eligible for ("Not eligible: this role is for seafarers", below the employer's minimum match).
+ * A search, or any other tab, still shows them with the label.
+ */
+export function isForYouList(filters: { mode: string; query: string }) {
+  return filters.mode === 'for-you' && !filters.query.trim()
+}
+
 function pageNumber(raw: string | string[] | undefined) {
   const value = Number(Array.isArray(raw) ? raw[0] : raw)
   return Number.isInteger(value) && value >= 1 && value <= 50 ? value : 1
@@ -65,12 +74,15 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
     ])
     const savedIds = new Set(savedIdsRaw)
     const appliedIds = new Set(appliedIdsRaw)
-    const items: JobDiscoveryItem[] = jobs.map((job) => ({
-      job,
-      isSaved: savedIds.has(job.id),
-      alreadyApplied: appliedIds.has(job.id),
-      ...matchesFor(job, profile, false),
-    }))
+    const forYou = isForYouList(filters)
+    const items: JobDiscoveryItem[] = jobs
+      .filter((job) => !(forYou && profile && scoreJobForMember(job, profile).match.eligible === false))
+      .map((job) => ({
+        job,
+        isSaved: savedIds.has(job.id),
+        alreadyApplied: appliedIds.has(job.id),
+        ...matchesFor(job, profile, false),
+      }))
 
     // "Best match" and For You order by the match score, jobs without a score (null) last.
     if (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you') {
@@ -91,6 +103,7 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
    * prefilter pool (up to 300), scored with matching v2, eligible first then match × freshness,
    * applied jobs moved to an "Applied" section, "Not interested" jobs left out, 20 per page.
    * Other sorts page in SQL. Search never hides a job for eligibility; it only orders it lower.
+   * Round H (H2): For You (no search words) leaves ineligible jobs out.
    */
   async function getJobsDiscoveryV2(userId: string, filters: ReturnType<typeof parseJobSearchParams>, page: number) {
     const profile = await input.repository.getCandidateProfile(userId)
@@ -116,7 +129,10 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
       return { ...base, items: all.slice(0, PAGE_SIZE), hasMore: all.length > PAGE_SIZE, applied: [] as JobDiscoveryItem[] }
     }
     const now = new Date()
-    const open = all.filter((item) => !item.alreadyApplied).sort((left, right) => compareRankedJobs(left, right, now))
+    const forYou = isForYouList(filters)
+    const open = all
+      .filter((item) => !item.alreadyApplied && !(forYou && item.match?.eligible === false))
+      .sort((left, right) => compareRankedJobs(left, right, now))
     const start = (page - 1) * PAGE_SIZE
     return {
       ...base,

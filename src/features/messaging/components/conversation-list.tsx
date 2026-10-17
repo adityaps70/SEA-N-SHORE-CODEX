@@ -4,6 +4,7 @@ import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { MailOpen, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { relativeTimeFrom } from '@/lib/relative-time'
 import type { MessagingInboxItem } from '../queries'
 import { ConversationActionsMenu, type DeletedConversationResult } from './conversation-actions'
 
@@ -17,28 +18,22 @@ function initials(name: string | null) {
     .join('')
 }
 
-function relativeTime(value: string | null) {
-  if (!value) return ''
-  const date = new Date(value)
-  const now = new Date()
-  const diffMinutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60000))
-  if (diffMinutes < 1) return 'Now'
-  if (diffMinutes < 60) return `${diffMinutes}m`
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return `${diffHours}h`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d`
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+/** Round H (H2): the one messaging date style (relative under 7 days, then "1 Oct"), shared with the dock and thread. */
+function lastMessageTime(value: string | null) {
+  return value ? relativeTimeFrom(value) : ''
 }
 
 const ROW_MENU_TRIGGER_CLASS = 'grid size-8 cursor-pointer place-items-center rounded-full border border-mist-100 bg-white text-navy-900 shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 aria-expanded:opacity-100 aria-expanded:bg-ocean-50 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
 
 export function ConversationList({
   inbox,
+  viewerId,
   activeConversationId,
   onConversationDeleted,
 }: {
   inbox: MessagingInboxItem[]
+  /** Round H (H2): the viewer's own last message is previewed as “You: …”. */
+  viewerId: string
   activeConversationId?: string | null
   onConversationDeleted?: (result: DeletedConversationResult) => void
 }) {
@@ -129,14 +124,14 @@ export function ConversationList({
                       <span className={`truncate text-sm max-md:text-base ${item.unread ? 'font-bold text-navy-950' : 'font-semibold text-navy-900'}`}>
                         {name}{item.unread ? <span className="max-md:sr-only"> · New</span> : null}
                       </span>
-                      <span className={`shrink-0 text-[11px] text-muted ${onConversationDeleted ? 'md:group-focus-within:invisible md:group-hover:invisible' : ''}`}>{relativeTime(item.lastMessageAt)}</span>
+                      <span className={`shrink-0 text-[11px] text-muted ${onConversationDeleted ? 'md:group-focus-within:invisible md:group-hover:invisible' : ''}`}>{lastMessageTime(item.lastMessageAt)}</span>
                     </span>
                     {item.otherHeadline ? (
                       <span className="mt-0.5 block truncate text-xs text-muted max-md:hidden">{item.otherHeadline}</span>
                     ) : null}
                     <span className={`mt-1 block truncate text-xs max-md:mt-0.5 max-md:text-sm ${item.unread ? 'font-semibold text-navy-900' : 'text-muted'}`}>
-                      {/* Phones show the message alone (the round 8 inbox); desktop keeps the “Last:” label. */}
-                      {item.lastMessageBody ? <><span className="max-md:hidden">Last: </span>{item.lastMessageBody}</> : 'Start the conversation'}
+                      {/* Round H (H2): the message alone, prefixed “You: ” when the viewer sent it (no “Last:” label). */}
+                      {item.lastMessageBody ? <>{item.lastMessageSenderId === viewerId ? <span>You: </span> : null}{item.lastMessageBody}</> : 'Start the conversation'}
                     </span>
                   </span>
                   {item.unread ? (

@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/cn'
+import { relativeTimeFrom } from '@/lib/relative-time'
 import { avatarPx, avatarSizes } from '@/lib/images/media-image-source'
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
@@ -56,8 +57,15 @@ export function isMessagingDockHiddenPath(pathname: string) {
 export const DOCK_COLLAPSED_WIDTH_CLASS = 'w-[300px]'
 /** An open conversation widens leftwards over the page (LinkedIn-style), still anchored to the right edge. */
 export const DOCK_CONVERSATION_WIDTH_CLASS = 'w-[416px]'
-const DOCK_LIST_HEIGHT_CLASS = 'h-[min(36rem,calc(100vh-7rem))]'
-const DOCK_CONVERSATION_HEIGHT_CLASS = 'h-[min(42rem,calc(100vh-6rem))]'
+/**
+ * Round H (H2): the collapsed bar's height. The same class sizes the bar and the in-flow spacer
+ * the dock leaves at the end of the page (md and up), so the last cards, the footer links and
+ * the copyright line always scroll clear of the bar; the two cannot drift apart.
+ */
+export const DOCK_BAR_HEIGHT_CLASS = 'h-12'
+/** Round H (H2): dynamic viewport units, so the open panel fits short laptop screens (~700px) below the 4.5rem header. */
+const DOCK_LIST_HEIGHT_CLASS = 'h-[min(36rem,calc(100dvh-7rem))]'
+const DOCK_CONVERSATION_HEIGHT_CLASS = 'h-[min(42rem,calc(100dvh-6rem))]'
 /** Width/height changes animate only for people who have not asked for reduced motion. */
 const DOCK_MOTION_CLASS = 'motion-safe:transition-[width,height] motion-safe:duration-200 motion-safe:ease-out'
 
@@ -71,13 +79,6 @@ function initials(name: string | null) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('')
-}
-
-function clock(value: string) {
-  return new Date(value).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  })
 }
 
 function deliveryState(message: DockMessage) {
@@ -196,6 +197,8 @@ export function MessagingDock({
   const closeLightbox = useCallback(() => setLightboxImageId(null), [])
   const closeNewMessage = useCallback(() => setNewMessageOpen(false), [])
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const barButtonRef = useRef<HTMLButtonElement | null>(null)
+  const focusBarOnCollapseRef = useRef(false)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastReadMessageIdRef = useRef<string | null>(null)
 
@@ -323,6 +326,13 @@ export function MessagingDock({
     }
   }, [active, markLatestReceivedRead, subscribe, viewerId])
 
+  // Round H (H2): Minimize/Close unmount the focused button, so keyboard focus returns to the bar.
+  useEffect(() => {
+    if (open || !focusBarOnCollapseRef.current) return
+    focusBarOnCollapseRef.current = false
+    barButtonRef.current?.focus()
+  }, [open])
+
   const lightboxOpenRef = useRef(false)
   useEffect(() => {
     lightboxOpenRef.current = lightboxImageId !== null
@@ -422,9 +432,14 @@ export function MessagingDock({
   const dockState: MessagingDockState = !open ? 'bar' : active ? 'conversation' : 'list'
 
   return (
-    // The dock sits in a container that mirrors the app shell's (max-w-7xl, px-4), right-aligned,
-    // so it is exactly the right rail's 300px column and lines up with its left and right edges.
-    // An open conversation widens to 416px; the extra width grows leftwards over the page.
+    <>
+    {/* Round H (H2): reserves the collapsed bar's height at the end of the page flow (after the
+        footer), so nothing is left under the bar once scrolled to the bottom. The open panel
+        floats over the page: the member opened it. */}
+    <div aria-hidden="true" data-testid="messaging-dock-spacer" className={cn('hidden md:block', DOCK_BAR_HEIGHT_CLASS)} />
+    {/* The dock sits in a container that mirrors the app shell's (max-w-7xl, px-4), right-aligned,
+        so it is exactly the right rail's 300px column and lines up with its left and right edges.
+        An open conversation widens to 416px; the extra width grows leftwards over the page. */}
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] hidden md:block" data-testid="messaging-dock-anchor">
       <div className="mx-auto flex w-full max-w-7xl items-end justify-end gap-3 px-4">
       {/* Only one conversation opens at a time today. The wrapper is a flex item in this
@@ -524,7 +539,10 @@ export function MessagingDock({
             <button
               type="button"
               aria-label="Minimize messaging dock"
-              onClick={() => setOpen(false)}
+              onClick={() => {
+                focusBarOnCollapseRef.current = true
+                setOpen(false)
+              }}
               className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
             >
               <Minus aria-hidden="true" className="size-4" />
@@ -534,6 +552,7 @@ export function MessagingDock({
               aria-label="Close messaging dock"
               onClick={() => {
                 lastReadMessageIdRef.current = null
+                focusBarOnCollapseRef.current = true
                 setOpen(false)
                 setActive(null)
               }}
@@ -623,7 +642,8 @@ export function MessagingDock({
                               {message.body ? <p className="whitespace-pre-wrap break-words"><LinkifiedText text={message.body} /></p> : null}
                             </div>
                             <span className={`mt-0.5 px-1 text-[9px] ${state === 'failed' ? 'font-semibold text-red-700' : 'text-muted'}`}>
-                              {clock(message.createdAt)}
+                              {/* Round H (H2): the one messaging date style; the dock has no day separators to date a bare clock time. */}
+                              <time dateTime={message.createdAt}>{relativeTimeFrom(message.createdAt)}</time>
                               {message.editedAt ? ' · Edited' : ''}
                               {mine && deliveryLabel ? ` · ${deliveryLabel}` : ''}
                             </span>
@@ -686,7 +706,10 @@ export function MessagingDock({
                             {item.unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-600" /> : null}
                           </span>
                           <span className="mt-0.5 block truncate text-[11px] text-muted">
-                            {item.lastMessageBody ?? item.otherHeadline ?? 'Start the conversation'}
+                            {/* Round H (H2): same preview rule as the inbox, “You: ” when the viewer sent it. */}
+                            {item.lastMessageBody
+                              ? <>{item.lastMessageSenderId === viewerId ? <span>You: </span> : null}{item.lastMessageBody}</>
+                              : item.otherHeadline ?? 'Start the conversation'}
                           </span>
                         </span>
                       </button>
@@ -715,13 +738,18 @@ export function MessagingDock({
         </section>
       ) : (
         <button
+          ref={barButtonRef}
           type="button"
           aria-label="Open messaging dock"
+          aria-expanded={false}
           onClick={() => {
             setLoading(true)
             setOpen(true)
           }}
-          className="flex min-h-12 w-full cursor-pointer items-center gap-2 rounded-t-2xl border border-b-0 border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50"
+          className={cn(
+            'flex w-full cursor-pointer items-center gap-2 rounded-t-2xl border border-b-0 border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600',
+            DOCK_BAR_HEIGHT_CLASS,
+          )}
         >
           <MessageCircleMore aria-hidden="true" className="size-5 text-ocean-700" />
           <span className="flex-1 text-left">Messaging</span>
@@ -747,5 +775,6 @@ export function MessagingDock({
       </div>
       </div>
     </div>
+    </>
   )
 }

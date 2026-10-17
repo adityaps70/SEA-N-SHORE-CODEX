@@ -66,3 +66,17 @@ describe('ExpandableText', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })
+
+describe('ExpandableText Markdown (Round H)', () => {
+  it('keeps bold formatted when the collapsed cut lands inside it', () => {
+    const body = `**${'Bridge watch notes and lessons. '.repeat(12).trim()}** Closing line.`
+    const { container } = render(<ExpandableText body={body} />)
+
+    const strong = container.querySelector('strong')
+    expect(strong).not.toBeNull()
+    expect(container).not.toHaveTextContent('**')
+    fireEvent.click(screen.getByRole('button', { name: 'more' }))
+    expect(container).toHaveTextContent('Closing line.')
+    expect(container).not.toHaveTextContent('**')
+  })
+})

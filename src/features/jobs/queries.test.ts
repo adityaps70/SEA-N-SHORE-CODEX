@@ -110,9 +110,11 @@ describe('jobs for you v2 (round G, behind the jobs switch)', () => {
     expect(result.applied.map((item) => item.job.id)).toEqual(['job-01'])
   })
 
-  it('puts not-eligible jobs below eligible ones, with the reason, and keeps the apply gate on round 12', async () => {
+  it('puts not-eligible jobs below eligible ones in a search, with the reason, and keeps the apply gate on round 12', async () => {
+    // Round H (H2): a search still shows not-eligible jobs, labelled and ordered lower; For You leaves them out.
     const { queries } = v2Queries()
-    const all = [...(await queries.getJobsDiscovery({ mode: 'for-you' })).items, ...(await queries.getJobsDiscovery({ mode: 'for-you', page: '2' })).items, ...(await queries.getJobsDiscovery({ mode: 'for-you', page: '3' })).items]
+    const search = { mode: 'for-you', q: 'officer' }
+    const all = [...(await queries.getJobsDiscovery(search)).items, ...(await queries.getJobsDiscovery({ ...search, page: '2' })).items, ...(await queries.getJobsDiscovery({ ...search, page: '3' })).items]
     const firstIneligible = all.findIndex((item) => item.match?.eligible === false)
     expect(firstIneligible).toBeGreaterThan(0)
     expect(all.slice(firstIneligible).every((item) => item.match?.eligible === false)).toBe(true)
@@ -122,15 +124,41 @@ describe('jobs for you v2 (round G, behind the jobs switch)', () => {
 
   it('paginates: pages do not overlap and together cover every job', async () => {
     const { queries } = v2Queries()
-    const pages = await Promise.all(['1', '2', '3'].map((page) => queries.getJobsDiscovery({ mode: 'for-you', page })))
+    const pages = await Promise.all(['1', '2', '3'].map((page) => queries.getJobsDiscovery({ mode: 'for-you', q: 'officer', page })))
     expect(pages.map((page) => page.items.length)).toEqual([20, 20, 5])
     expect(pages.map((page) => page.hasMore)).toEqual([true, true, false])
     expect(new Set(pages.flatMap((page) => page.items.map((item) => item.job.id))).size).toBe(45)
+  })
+
+  it('leaves jobs the member is not eligible for out of For You (Round H, H2)', async () => {
+    const { queries } = v2Queries()
+    const pages = await Promise.all(['1', '2', '3'].map((page) => queries.getJobsDiscovery({ mode: 'for-you', page })))
+    const items = pages.flatMap((page) => page.items)
+    // 15 of the 45 jobs are for a Third Officer: not eligible for this Chief Officer.
+    expect(items).toHaveLength(30)
+    expect(items.every((item) => item.match?.eligible !== false)).toBe(true)
+    expect(pages.map((page) => page.hasMore)).toEqual([true, false, false])
   })
 
   it('pages other sorts in SQL', async () => {
     const { repository, queries } = v2Queries()
     await queries.getJobsDiscovery({ mode: 'sea', sort: 'recent', page: '2' })
     expect(repository.searchJobs).toHaveBeenCalledWith(expect.anything(), 21, 20)
+  })
+})
+
+describe('jobs for you without the ranking switch (Round H, H2)', () => {
+  it('leaves seafarer-only jobs out of For You for a shore member, and keeps them in a search', async () => {
+    const repository = makeRepository()
+    const shoreProfile: JobCandidateProfile = { ...profile, persona: 'shore_professional' }
+    repository.getCandidateProfile.mockResolvedValue(shoreProfile)
+    repository.searchJobs.mockResolvedValue([{ ...job, id: 'sea-job' }])
+    repository.getSavedJobIds.mockResolvedValue([])
+    repository.getAppliedJobIds.mockResolvedValue([])
+    const queries = createJobsQueries({ requireUser: async () => ({ id: 'viewer-1' } as never), repository: repository as never, ranking: { isEnabled: async () => false } })
+    const forYou = await queries.getJobsDiscovery({ mode: 'for-you' })
+    const search = await queries.getJobsDiscovery({ mode: 'for-you', q: 'officer' })
+    expect(forYou.items.map((item) => item.job.id)).toEqual([])
+    expect(search.items.map((item) => item.job.id)).toEqual(['sea-job'])
   })
 })

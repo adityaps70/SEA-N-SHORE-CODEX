@@ -6,6 +6,7 @@ import {
   type ProfileNetworkList,
   type ProfileNetworkSummary,
 } from './profile-network-links'
+import { canSeeConnections, connectionsVisibilityFrom, type ConnectionsVisibility } from './privacy-choices'
 
 type StatsQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -97,14 +98,29 @@ export function createProfileNetworkStatsRepository(input: { query?: StatsQuery 
     return rows.map((row) => row.id)
   }
 
-  return { getCounts, areConnected, listIds }
+  /** Round H (H2): the member's "Who can see my connections" choice; members who never chose get the default. */
+  async function getConnectionsVisibility(profileId: string): Promise<ConnectionsVisibility> {
+    const rows = await queryRows(
+      `select connections_visibility from public.member_preferences where profile_id = $1`,
+      [profileId],
+    ) as Array<QueryResultRow & { connections_visibility?: string | null }>
+    return connectionsVisibilityFrom(rows[0]?.connections_visibility)
+  }
+
+  return { getCounts, areConnected, listIds, getConnectionsVisibility }
 }
 
 export type ProfileNetworkStatsRepository = ReturnType<typeof createProfileNetworkStatsRepository>
 
-export function createProfileNetworkStatsService(repository: Pick<ProfileNetworkStatsRepository, 'getCounts' | 'areConnected' | 'listIds'>) {
+export function createProfileNetworkStatsService(repository: Pick<ProfileNetworkStatsRepository, 'getCounts' | 'areConnected' | 'listIds' | 'getConnectionsVisibility'>) {
+  /** Round H (H2): the member's "Who can see my connections" choice decides (connections only by default). */
   async function canViewLists(viewerId: string, profileId: string) {
-    return viewerId === profileId || await repository.areConnected(viewerId, profileId)
+    if (viewerId === profileId) return true
+    const [visibility, connected] = await Promise.all([
+      repository.getConnectionsVisibility(profileId),
+      repository.areConnected(viewerId, profileId),
+    ])
+    return canSeeConnections({ visibility, isOwner: false, connected })
   }
 
   async function getSummary(viewerId: string | null, profileId: string): Promise<ProfileNetworkSummary | null> {

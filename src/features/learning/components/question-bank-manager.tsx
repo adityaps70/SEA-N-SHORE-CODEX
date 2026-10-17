@@ -164,6 +164,8 @@ export function QuestionBankManager({
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => { setEditing('new'); setMessage(null) }} className={`${buttonClass} bg-navy-950 text-white hover:bg-navy-900`}><Plus className="size-4" aria-hidden="true" /> New question</button>
         <button type="button" onClick={() => setImporting((value) => !value)} aria-expanded={importing} className={`${buttonClass} border border-mist-200 bg-white text-navy-950 hover:bg-mist-50`}><FileUp className="size-4" aria-hidden="true" /> Import CSV</button>
+        {/* A CSV download from an API route, not a page. The /api/[...slug] catch-all (round H) makes the rule read /api/* as pages. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a href="/api/learn/question-bank/template" className={`${buttonClass} border border-mist-200 bg-white text-navy-950 hover:bg-mist-50`}><Download className="size-4" aria-hidden="true" /> CSV template</a>
         <a href={`/api/learn/question-bank/export${trainerQuery}`} className={`${buttonClass} border border-mist-200 bg-white text-navy-950 hover:bg-mist-50`}><Download className="size-4" aria-hidden="true" /> Export CSV</a>
       </div>

@@ -22,7 +22,18 @@ export type LearningCertificate = {
   mentorName: string
   completedAt: string
   issuedAt: string
+  /**
+   * Round H (H2): 'self_issued' when the learner was the course's own mentor or a member of the
+   * publishing organization's team at the time. Such a certificate is a completion record, not one
+   * Sea N Shore verifies.
+   */
+  issuerRelation?: CertificateIssuerRelation
+  /** Round H (H2): the course page, while the course is still published. */
+  courseSlug?: string | null
 } & Partial<CertificateDesign>
+
+export const CERTIFICATE_ISSUER_RELATIONS = ['independent', 'self_issued'] as const
+export type CertificateIssuerRelation = (typeof CERTIFICATE_ISSUER_RELATIONS)[number]
 
 /** Learning round B (B4): copied from the course when issued. Certificates issued before have no template key. */
 export type CertificateDesign = {
@@ -49,6 +60,8 @@ export type ProfileLearningCertificate = {
   hidden: boolean
   /** Worked out on the server when the profile was read. */
   expired: boolean
+  /** Round H (H2): issued by the learner's own course or organization; not shown as verified. */
+  selfIssued: boolean
 }
 
 /** A certificate on the learner's own My Learning page (learning round C, C6). */
@@ -96,6 +109,8 @@ type CertificateRow = QueryResultRow & {
   signatory_name?: string | null
   signatory_title?: string | null
   hidden_from_profile?: boolean | null
+  issuer_relation?: string | null
+  course_slug?: string | null
   /** True when this call inserted the certificate (it did not exist yet). */
   inserted?: boolean
 }
@@ -126,6 +141,10 @@ function mapCertificate(row: CertificateRow): LearningCertificate {
     mentorName: row.mentor_name,
     completedAt: isoDateTime(row.completed_at),
     issuedAt: isoDateTime(row.issued_at),
+    ...(row.issuer_relation !== undefined
+      ? { issuerRelation: row.issuer_relation === 'self_issued' ? 'self_issued' as const : 'independent' as const }
+      : {}),
+    ...(row.course_slug !== undefined ? { courseSlug: row.course_slug ?? null } : {}),
     ...(row.template_key !== undefined
       ? {
           templateKey: (CERTIFICATE_TEMPLATES as readonly string[]).includes(row.template_key ?? '') ? row.template_key as CertificateTemplate : null,
@@ -151,6 +170,8 @@ function publicCertificate(certificate: LearningCertificate): PublicLearningCert
     mentorName: certificate.mentorName,
     completedAt: certificate.completedAt,
     issuedAt: certificate.issuedAt,
+    issuerRelation: certificate.issuerRelation ?? 'independent',
+    courseSlug: certificate.courseSlug ?? null,
     ...(certificate.templateKey !== undefined
       ? {
           templateKey: certificate.templateKey,
@@ -181,7 +202,8 @@ const CERTIFICATE_COLUMNS = `id,
        signature_path,
        signatory_name,
        signatory_title,
-       hidden_from_profile`
+       hidden_from_profile,
+       issuer_relation`
 
 const CERTIFICATE_SELECT = `
   select
@@ -203,8 +225,11 @@ const CERTIFICATE_SELECT = `
     certificate.signature_path,
     certificate.signatory_name,
     certificate.signatory_title,
-    certificate.hidden_from_profile
+    certificate.hidden_from_profile,
+    certificate.issuer_relation,
+    case when course_link.status = 'published' and course_link.removed_at is null then course_link.slug end as course_slug
   from public.learning_certificates certificate
+  left join public.learning_courses course_link on course_link.id = certificate.course_id
 ` as const
 
 type IssueContextRow = EligibleEnrollmentRow & {
@@ -216,6 +241,7 @@ type IssueContextRow = EligibleEnrollmentRow & {
   certificate_serial_prefix?: string | null
   certificate_validity_months?: string | number | null
   certificate_issue_trigger?: string | null
+  self_issued?: boolean | null
 }
 
 const ISSUE_CONTEXT_SELECT = `select
@@ -233,7 +259,8 @@ const ISSUE_CONTEXT_SELECT = `select
        course.certificate_signatory_title,
        course.certificate_serial_prefix,
        course.certificate_validity_months,
-       course.certificate_issue_trigger
+       course.certificate_issue_trigger,
+       ${certificateSelfIssuedSql()} as self_issued
      from public.learning_enrollments enrollment
      inner join public.learning_courses course
        on course.id = enrollment.course_id
@@ -245,6 +272,25 @@ const ISSUE_CONTEXT_SELECT = `select
        on application.id = mentor.application_id
      left join public.companies company
        on company.id = course.company_id`
+
+/**
+ * Round H (H2): the learner is the course's own mentor, or a member of the organization that publishes
+ * it (any approved role). Written in terms of the ISSUE_CONTEXT_SELECT aliases (enrollment, course).
+ */
+export function certificateSelfIssuedSql(enrollment = 'enrollment', course = 'course') {
+  return `(
+         exists (
+           select 1 from public.learning_mentors own_mentor
+           where own_mentor.id = ${course}.mentor_id and own_mentor.user_id = ${enrollment}.learner_id
+         )
+         or exists (
+           select 1 from public.company_members own_team
+           where own_team.company_id = ${course}.company_id
+             and own_team.user_id = ${enrollment}.learner_id
+             and own_team.approved_at is not null
+         )
+       )`
+}
 
 /**
  * Writes the certificate once per enrolment, copying the course's design, serial prefix and validity as they are
@@ -267,14 +313,15 @@ async function insertCertificate(query: CertificateQuery, eligible: IssueContext
        signature_path,
        signatory_name,
        signatory_title,
-       issued_for
+       issued_for,
+       issuer_relation
      )
      values (
        $1, $2, $3, $4, $5, $6, $7, $8,
        case when $9::text is null then null
             else $9::text || to_char(now(), 'YYYY') || '-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)) end,
        case when $10::integer is null then null else now() + make_interval(months => $10::integer) end,
-       $11, $12, $13, $14, $15
+       $11, $12, $13, $14, $15, $16
      )
      on conflict (enrollment_id) do update
      set enrollment_id = excluded.enrollment_id
@@ -297,6 +344,7 @@ async function insertCertificate(query: CertificateQuery, eligible: IssueContext
       eligible.certificate_signatory_name ?? null,
       eligible.certificate_signatory_title ?? null,
       issuedFor,
+      eligible.self_issued === true ? 'self_issued' : 'independent',
     ],
   ) as CertificateRow[]
 
@@ -454,6 +502,7 @@ export function createCertificateRepository(input: {
         verificationCode: certificate.verificationCode,
         hidden: certificate.hiddenFromProfile ?? false,
         expired: certificate.expiresAt ? new Date(certificate.expiresAt).getTime() <= Date.now() : false,
+        selfIssued: certificate.issuerRelation === 'self_issued',
       }
     })
   }

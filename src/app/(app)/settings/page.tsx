@@ -174,7 +174,7 @@ export default async function SettingsPage() {
             className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <p className="font-semibold text-navy-950">Privacy settings</p>
-            <p className="mt-1 text-sm leading-5 text-muted">Choose whether you appear in People you may know, and to recruiters.</p>
+            <p className="mt-1 text-sm leading-5 text-muted">Choose who can find you, message you and see your connections.</p>
             <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link

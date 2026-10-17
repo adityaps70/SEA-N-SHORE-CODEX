@@ -30,6 +30,7 @@ export default async function AdminPage() {
 
   const stats = [
     { label: 'Active posts', value: metrics.activePosts },
+    // Round H (H2): counted like the Jobs page (live, not past the apply-by or joining date).
     { label: 'Published jobs', value: metrics.publishedJobs },
     { label: 'Published events', value: metrics.publishedEvents },
     { label: 'Approved organizations', value: metrics.approvedOrganizations },

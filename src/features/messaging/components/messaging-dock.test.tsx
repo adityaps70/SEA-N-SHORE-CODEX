@@ -49,6 +49,7 @@ vi.mock('../actions', () => actions)
 vi.mock('../unread-client', () => unread)
 
 import {
+  DOCK_BAR_HEIGHT_CLASS,
   DOCK_COLLAPSED_WIDTH_CLASS,
   DOCK_CONVERSATION_WIDTH_CLASS,
   MessagingDock,
@@ -513,14 +514,14 @@ describe('MessagingDock', () => {
     expect(dockWrapper()).not.toHaveClass('w-[416px]')
     expect(dockWrapper()).toHaveAttribute('data-dock-state', 'list')
     const listSection = screen.getByRole('region', { name: 'Messaging dock' })
-    expect(listSection).toHaveClass('h-[min(36rem,calc(100vh-7rem))]')
+    expect(listSection).toHaveClass('h-[min(36rem,calc(100dvh-7rem))]')
 
     await user.click(screen.getByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
     await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
     expect(dockWrapper()).toHaveClass(DOCK_CONVERSATION_WIDTH_CLASS, 'w-[416px]')
     expect(dockWrapper()).not.toHaveClass('w-[300px]')
     expect(dockWrapper()).toHaveAttribute('data-dock-state', 'conversation')
-    expect(screen.getByRole('region', { name: 'Messaging dock' })).toHaveClass('h-[min(42rem,calc(100vh-6rem))]')
+    expect(screen.getByRole('region', { name: 'Messaging dock' })).toHaveClass('h-[min(42rem,calc(100dvh-6rem))]')
 
     await user.click(screen.getByRole('button', { name: 'Back to conversations' }))
     expect(dockWrapper()).toHaveClass('w-[300px]')
@@ -602,5 +603,112 @@ describe('MessagingDock', () => {
     // Anchored to the composer's input row (relative), not the size-8 trigger.
     expect(menu.parentElement).toHaveClass('static')
     expect(menu.parentElement?.parentElement).toHaveClass('relative')
+  })
+
+  it('reserves the collapsed bar height at the end of the page with the same class as the bar (Round H, H2)', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    const spacer = screen.getByTestId('messaging-dock-spacer')
+    const bar = screen.getByRole('button', { name: 'Open messaging dock' })
+    expect(DOCK_BAR_HEIGHT_CLASS).toBe('h-12')
+    expect(spacer).toHaveClass(DOCK_BAR_HEIGHT_CLASS, 'hidden', 'md:block')
+    expect(spacer).toHaveAttribute('aria-hidden', 'true')
+    expect(bar).toHaveClass(DOCK_BAR_HEIGHT_CLASS)
+    expect(bar).not.toHaveClass('min-h-12')
+    expect(bar).toHaveAttribute('aria-expanded', 'false')
+    // The spacer is in the page flow, not inside the fixed anchor.
+    expect(screen.getByTestId('messaging-dock-anchor')).not.toContainElement(spacer)
+
+    // Opening floats the panel over the page; the reserved space stays so the page does not jump.
+    await user.click(bar)
+    await screen.findByRole('region', { name: 'Messaging dock' })
+    expect(screen.getByTestId('messaging-dock-spacer')).toHaveClass(DOCK_BAR_HEIGHT_CLASS)
+
+    unmount()
+    navigation.pathname = '/messages'
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+    expect(screen.queryByTestId('messaging-dock-spacer')).not.toBeInTheDocument()
+  })
+
+  it('returns keyboard focus to the collapsed bar after minimizing or closing (Round H, H2)', async () => {
+    const user = userEvent.setup()
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Minimize messaging dock' }))
+    expect(screen.getByRole('button', { name: 'Open messaging dock' })).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    await user.click(await screen.findByRole('button', { name: 'Close messaging dock' }))
+    expect(screen.getByRole('button', { name: 'Open messaging dock' })).toHaveFocus()
+  })
+
+  it('previews the viewer\'s own last message as “You: …” without a “Last:” label (Round H, H2)', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/realtime/messaging-state') {
+        return new Response(JSON.stringify({
+          unreadCount: 0,
+          inbox: [
+            {
+              conversationId: CONVERSATION_ID,
+              otherProfileId: OTHER_ID,
+              otherName: 'Member A',
+              otherHeadline: null,
+              otherAvatarUrl: null,
+              lastMessageId: '44444444-4444-4444-8444-444444444444',
+              lastMessageBody: 'See you on board',
+              lastMessageSenderId: VIEWER_ID,
+              lastMessageAt: '2026-09-21T05:00:00.000Z',
+              otherLastReadMessageId: null,
+              otherLastReadAt: null,
+              unread: false,
+            },
+            {
+              conversationId: '77777777-7777-4777-8777-777777777777',
+              otherProfileId: '88888888-8888-4888-8888-888888888888',
+              otherName: 'Member B',
+              otherHeadline: null,
+              otherAvatarUrl: null,
+              lastMessageId: '99999999-9999-4999-8999-999999999999',
+              lastMessageBody: 'Thanks for the update',
+              lastMessageSenderId: '88888888-8888-4888-8888-888888888888',
+              lastMessageAt: '2026-09-21T05:00:00.000Z',
+              otherLastReadMessageId: null,
+              otherLastReadAt: null,
+              unread: false,
+            },
+          ],
+        }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch ${url}`)
+    })
+
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={0} />)
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+
+    expect(await screen.findByRole('button', { name: 'Open compact chat with Member A' })).toHaveTextContent('You: See you on board')
+    expect(screen.getByRole('button', { name: 'Open compact chat with Member B' })).toHaveTextContent('Thanks for the update')
+    expect(screen.getByRole('button', { name: 'Open compact chat with Member B' })).not.toHaveTextContent('You:')
+    expect(screen.queryByText(/Last:/)).not.toBeInTheDocument()
+  })
+
+  it('dates dock messages with the one messaging style instead of a bare clock time (Round H, H2)', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-21T05:03:00.000Z'))
+    try {
+      render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+      await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+      await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+      await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
+
+      const time = screen.getByText('3m')
+      expect(time.tagName).toBe('TIME')
+      expect(time).toHaveAttribute('dateTime', '2026-09-21T05:00:00.000Z')
+    } finally {
+      vi.mocked(Date.now).mockRestore()
+    }
   })
 })
