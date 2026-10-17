@@ -1,7 +1,7 @@
 'use client'
 
 import { postLoadingPriority } from '../post-loading-priority'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { CheckCircle2 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import type { NetworkProfile } from '@/features/network/types'

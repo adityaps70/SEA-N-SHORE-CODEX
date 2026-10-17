@@ -1,7 +1,7 @@
 'use client'
 
 import { ChevronDown, ChevronUp, CornerDownRight, Ellipsis, Flag, MessageCircle, PencilLine, Trash2 } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from 'react'
 import { ActionMenu, ActionMenuItem } from '@/components/ui/action-menu'
 import * as feedActions from '../actions'

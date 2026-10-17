@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { CircleCheck, X } from 'lucide-react'
 import { useState, useSyncExternalStore } from 'react'
 

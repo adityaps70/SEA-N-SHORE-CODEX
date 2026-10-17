@@ -1,7 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { UsersRound } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { FeedPhotoTag } from '../types'

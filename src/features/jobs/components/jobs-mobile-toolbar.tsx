@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { MapPin, Search, SlidersHorizontal, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition, type ReactNode } from 'react'

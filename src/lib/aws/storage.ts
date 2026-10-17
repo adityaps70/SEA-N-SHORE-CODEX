@@ -202,3 +202,32 @@ export async function deleteMediaObject(key: string): Promise<void> {
     Key: key,
   }))
 }
+
+/**
+ * Round H (H1): streams one object (or one byte range of it) without buffering it in the web task.
+ * Used only for the same-origin copy a browser needs to capture a video poster frame.
+ */
+export async function streamMediaObject(input: { key: string; range?: string | null }): Promise<{
+  body: ReadableStream
+  status: 200 | 206
+  contentType: string | null
+  contentLength: number | null
+  contentRange: string | null
+  acceptRanges: string | null
+}> {
+  const range = input.range && /^bytes=\d*-\d*$/.test(input.range) ? input.range : undefined
+  const response = await getS3Client().send(new GetObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: input.key,
+    ...(range ? { Range: range } : {}),
+  }))
+  if (!response.Body) throw new Error('media_object_body_missing')
+  return {
+    body: response.Body.transformToWebStream(),
+    status: response.ContentRange ? 206 : 200,
+    contentType: response.ContentType ?? null,
+    contentLength: typeof response.ContentLength === 'number' ? response.ContentLength : null,
+    contentRange: response.ContentRange ?? null,
+    acceptRanges: response.AcceptRanges ?? 'bytes',
+  }
+}

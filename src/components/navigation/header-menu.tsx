@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { usePathname } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'

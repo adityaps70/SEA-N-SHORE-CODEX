@@ -2,7 +2,7 @@
 
 import type { PostLoadingPriority } from '../post-loading-priority'
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Globe, MessageCircle, Plus, UsersRound, X } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
@@ -666,6 +666,7 @@ export function PostCard({
                   {...(readOnly || signedOut ? {} : { postId: post.id })}
                   photoTags={post.photoTags}
                   focus={focusPhoto}
+                  canMakePoster={isOwner && !readOnly}
                 />
               ) : null}
               {post.photoTags?.length ? <PhotoTagsLine tags={post.photoTags} highlightProfileId={focusPhoto?.profileId ?? null} /> : null}

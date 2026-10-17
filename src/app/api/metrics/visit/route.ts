@@ -1,6 +1,7 @@
 import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
 import { incrementRankingMetric } from '@/features/signals/repository'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
+import { isSameSiteRequest } from '@/lib/http/same-origin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,10 +15,7 @@ const allow = createPublicPageRateLimiter({ windowMs: 60_000, maxPerWindow: 20, 
  * daily count per source is kept (ranking_metrics_daily); nothing about the member.
  */
 export async function POST(request: Request) {
-  const origin = request.headers.get('origin')
-  if (origin && new URL(origin).host !== (request.headers.get('x-forwarded-host') ?? request.headers.get('host'))) {
-    return new Response(null, { status: 403, headers: NO_STORE })
-  }
+  if (!isSameSiteRequest(request)) return new Response(null, { status: 403, headers: NO_STORE })
   const source = new URL(request.url).searchParams.get('src') ?? ''
   if (!(VISIT_SOURCES as readonly string[]).includes(source)) return new Response(null, { status: 400, headers: NO_STORE })
   try {

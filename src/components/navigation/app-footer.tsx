@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import type { ReactElement, SVGProps } from 'react'
 import { BUSINESS, OPERATOR_LINE, type BusinessDetails } from '@/config/business'
 import { configuredSocialLinks, type SocialLink } from './social-links'

@@ -58,3 +58,26 @@ test('web resilience workflow waits for exact-head CI and runs the pinned commit
   assert.match(workflow, /bash scripts\/aws\/web-resilience-infra\.sh/)
   assert.match(workflow, /apply-once is allowed only from an exact branch push/)
 })
+
+test('Round H (H1) adds operations alerts: app 5xx rate, CPU, per-API server errors and site health', () => {
+  assert.match(terraform, /variable "operations_alert_email"[\s\S]*?default\s*=\s*"operations@beaufortmarine\.in"/)
+  assert.match(terraform, /resource "aws_sns_topic_subscription" "alerts_operations_email"/)
+  assert.match(terraform, /HTTPCode_Target_5XX_Count/)
+  assert.match(terraform, /metric_name\s*=\s*"CPUUtilization"/)
+  assert.match(terraform, /namespace\s*=\s*"SeaNShore\/App"[\s\S]*?metric_name\s*=\s*"ServerErrors"/)
+  assert.match(terraform, /metric_name\s*=\s*"SiteUp"[\s\S]*?treat_missing_data\s*=\s*"breaching"/)
+  for (const area of ['feed', 'impressions', 'messaging', 'jobs', 'learning', 'payments-webhooks']) {
+    assert.match(terraform, new RegExp(`"${area}"`), area)
+    assert.match(script, new RegExp(`api-${area}-server-errors`), area)
+  }
+  for (const alarm of ['alb_target_5xx_rate', 'web_cpu_high', 'api_server_errors', 'site_health']) {
+    const block = terraform.slice(terraform.indexOf(`"aws_cloudwatch_metric_alarm" "${alarm}"`))
+    assert.match(block.slice(0, 2500), /alarm_actions\s*=\s*\[aws_sns_topic\.alerts\.arn\]/, alarm)
+    assert.match(script, new RegExp(`aws_cloudwatch_metric_alarm\\.${alarm}`), alarm)
+  }
+  // Instances of the per-area alarms may only be created, and only for the known areas and checks.
+  assert.match(script, /allowed_instances = \{/)
+  assert.match(script, /r\.get\('index'\) not in allowed_instances\[base\] or actions != \('create',\)/)
+  assert.match(script, /site-home-down site-api-health-down/)
+})
+

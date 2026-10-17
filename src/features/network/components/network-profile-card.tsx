@@ -2,7 +2,7 @@
 
 import { MediaImage } from '@/components/ui/media-image'
 import { useState } from 'react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { MapPin, Ship, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { NetworkProfile } from '../types'

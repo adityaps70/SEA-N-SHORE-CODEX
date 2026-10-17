@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createHiringJob, updateHiringJob, type HiringJobSaveIntent } from '../hiring-actions'

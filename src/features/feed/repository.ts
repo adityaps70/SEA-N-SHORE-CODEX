@@ -1386,6 +1386,21 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     )
   }
 
+  /** Round H (H1): videos on live posts, newest first, for the admin poster backfill. */
+  async function listPostedVideoStoragePaths(limit = 200) {
+    const rows = await queryRows(
+      `select media.storage_path
+         from public.post_media media
+         join public.posts post on post.id = media.post_id
+        where media.mime_type in ('video/mp4', 'video/webm')
+          and post.deleted_at is null
+        order by media.created_at desc
+        limit $1`,
+      [Math.max(1, Math.min(limit, 500))],
+    ) as Array<QueryResultRow & { storage_path: string }>
+    return rows.map((row) => row.storage_path)
+  }
+
   async function isPostMediaAttached(storagePath: string) {
     const rows = await queryRows(`select exists (select 1 from public.post_media where storage_path = $1) as attached`, [storagePath]) as Array<QueryResultRow & { attached: boolean }>
     return Boolean(rows[0]?.attached)
@@ -1685,6 +1700,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     deletePhotoTag,
     insertPostMedia,
     isPostMediaAttached,
+    listPostedVideoStoragePaths,
     insertPollPost,
     insertPollOption,
     insertRepost,

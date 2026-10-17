@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ArrowRight, TriangleAlert } from 'lucide-react'
 import type { ApplyGate } from '../apply-gate'
 

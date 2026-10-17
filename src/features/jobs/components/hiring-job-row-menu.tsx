@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Eye, MoreHorizontal, PencilLine, Users } from 'lucide-react'
 import { useState } from 'react'
 import { BottomSheet, MobileSheetCancel } from '@/components/ui/mobile-sheet'

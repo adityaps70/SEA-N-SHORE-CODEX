@@ -1,7 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useId } from 'react'
 import { X } from 'lucide-react'
 import { ConnectionPrimaryAction } from '@/features/network/components/connection-primary-action'

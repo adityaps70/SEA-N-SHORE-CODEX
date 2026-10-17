@@ -110,6 +110,107 @@ async function loadGlobalMessagingState() {
   }
 }
 
+/**
+ * Round H (H1): one socket per signed-in browser tab, not per provider. The (app) and (public)
+ * layouts each mount a provider, and moving between them (Home → Learn → a profile) used to close
+ * the socket and open a new one, with a new ticket and a new messaging-state fetch each time. Now
+ * the providers share the connection below. When the last one unmounts, the socket stays open for
+ * REALTIME_RELEASE_GRACE_MS, so the next layout picks it up instead of reconnecting.
+ */
+export const REALTIME_RELEASE_GRACE_MS = 30_000
+let releaseGraceMs = REALTIME_RELEASE_GRACE_MS
+
+type SharedRealtime = {
+  viewerProfileId: string
+  connection: MessagingRealtimeConnection
+  status: MessagingRealtimeConnectionStatus
+  signalListeners: Set<RealtimeListener>
+  statusListeners: Set<(status: MessagingRealtimeConnectionStatus) => void>
+  connectedListeners: Set<() => void>
+  /** A (re)connect happened while no provider was listening: the next one reconciles unread. */
+  missedConnect: boolean
+  holders: number
+  releaseTimer: ReturnType<typeof setTimeout> | null
+  removeOnlineListener: () => void
+}
+
+let shared: SharedRealtime | null = null
+
+function destroySharedRealtime(state: SharedRealtime) {
+  if (state.releaseTimer) clearTimeout(state.releaseTimer)
+  state.releaseTimer = null
+  state.removeOnlineListener()
+  state.connection.stop()
+  if (shared === state) shared = null
+}
+
+function acquireSharedRealtime(viewerProfileId: string) {
+  // A different member signed in on this tab: never reuse the previous member's socket.
+  if (shared && shared.viewerProfileId !== viewerProfileId) destroySharedRealtime(shared)
+  if (!shared) {
+    const state: SharedRealtime = {
+      viewerProfileId,
+      connection: null as unknown as MessagingRealtimeConnection,
+      status: 'disconnected',
+      signalListeners: new Set(),
+      statusListeners: new Set(),
+      connectedListeners: new Set(),
+      missedConnect: false,
+      holders: 0,
+      releaseTimer: null,
+      removeOnlineListener: () => undefined,
+    }
+    state.connection = createMessagingRealtimeConnection({
+      requestTicket: requestRealtimeTicket,
+      requestTypingToken,
+      createSocket: (url) => new WebSocket(url),
+      onConnected: () => {
+        if (!state.connectedListeners.size) {
+          state.missedConnect = true
+          return
+        }
+        for (const listener of state.connectedListeners) listener()
+      },
+      onStatusChange: (status) => {
+        state.status = status
+        for (const listener of state.statusListeners) listener(status)
+      },
+    })
+    state.connection.subscribe((signal) => {
+      for (const listener of state.signalListeners) listener(signal)
+    })
+    const reconnectWhenOnline = () => state.connection.reconnectNow()
+    window.addEventListener('online', reconnectWhenOnline)
+    state.removeOnlineListener = () => window.removeEventListener('online', reconnectWhenOnline)
+    shared = state
+    void state.connection.start()
+  }
+  if (shared.releaseTimer) {
+    clearTimeout(shared.releaseTimer)
+    shared.releaseTimer = null
+  }
+  shared.holders += 1
+  return shared
+}
+
+function releaseSharedRealtime(state: SharedRealtime) {
+  state.holders = Math.max(0, state.holders - 1)
+  if (state.holders > 0 || shared !== state) return
+  if (releaseGraceMs <= 0) {
+    destroySharedRealtime(state)
+    return
+  }
+  state.releaseTimer = setTimeout(() => {
+    if (state.holders === 0) destroySharedRealtime(state)
+  }, releaseGraceMs)
+}
+
+/** Tests: close the shared socket now and set how long an unused socket stays open. */
+export function resetSharedRealtimeForTests(graceMs = REALTIME_RELEASE_GRACE_MS) {
+  if (shared) destroySharedRealtime(shared)
+  releaseGraceMs = graceMs
+}
+
 export function MessagingRealtimeProvider({
   children,
   viewerProfileId,
@@ -119,7 +220,10 @@ export function MessagingRealtimeProvider({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [status, setStatus] = useState<MessagingRealtimeConnectionStatus>('disconnected')
+  // A provider mounted after a layout change starts from the shared socket's current status.
+  const [status, setStatus] = useState<MessagingRealtimeConnectionStatus>(
+    () => (shared?.viewerProfileId === viewerProfileId ? shared.status : 'disconnected'),
+  )
   const [newMessageAlert, setNewMessageAlert] = useState<NewMessageAlert | null>(null)
   const listenersRef = useRef(new Set<RealtimeListener>())
   const connectionRef = useRef<MessagingRealtimeConnection | null>(null)
@@ -217,17 +321,13 @@ export function MessagingRealtimeProvider({
       }
     }
 
-    const connection = createMessagingRealtimeConnection({
-      requestTicket: requestRealtimeTicket,
-      requestTypingToken,
-      createSocket: (url) => new WebSocket(url),
-      onConnected: () => {
-        void reconcileUnreadOnConnected()
-      },
-      onStatusChange: setStatus,
+    const realtime = acquireSharedRealtime(viewerProfileId)
+    connectionRef.current = realtime.connection
+    queueMicrotask(() => {
+      if (active) setStatus(realtime.status)
     })
-    connectionRef.current = connection
-    const unsubscribe = connection.subscribe((signal) => {
+
+    const onSignal: RealtimeListener = (signal) => {
       for (const listener of listenersRef.current) listener(signal)
 
       if (signal.eventType === 'conversation.typing') return
@@ -247,18 +347,25 @@ export function MessagingRealtimeProvider({
 
       // Feed/network invalidations still need canonical server-component refreshes.
       scheduleRefresh()
-    })
-    const reconnectWhenOnline = () => connection.reconnectNow()
-
-    window.addEventListener('online', reconnectWhenOnline)
-    void connection.start()
+    }
+    const onConnected = () => {
+      void reconcileUnreadOnConnected()
+    }
+    realtime.signalListeners.add(onSignal)
+    realtime.statusListeners.add(setStatus)
+    realtime.connectedListeners.add(onConnected)
+    if (realtime.missedConnect) {
+      realtime.missedConnect = false
+      onConnected()
+    }
 
     return () => {
       active = false
-      window.removeEventListener('online', reconnectWhenOnline)
-      unsubscribe()
-      connection.stop()
-      if (connectionRef.current === connection) connectionRef.current = null
+      realtime.signalListeners.delete(onSignal)
+      realtime.statusListeners.delete(setStatus)
+      realtime.connectedListeners.delete(onConnected)
+      releaseSharedRealtime(realtime)
+      if (connectionRef.current === realtime.connection) connectionRef.current = null
       if (refreshTimer) clearTimeout(refreshTimer)
       if (alertTimerRef.current) {
         clearTimeout(alertTimerRef.current)

@@ -1,7 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useState, useTransition } from 'react'
 import { Check, X } from 'lucide-react'
 import { acceptConnectionRequest, declineConnectionRequest } from '../actions'

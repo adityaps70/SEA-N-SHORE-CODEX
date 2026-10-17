@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { NETWORK_TABS, type NetworkTab } from '../types'
 
 const labels: Record<NetworkTab, string> = {

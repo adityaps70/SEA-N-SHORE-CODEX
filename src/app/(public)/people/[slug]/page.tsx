@@ -25,7 +25,6 @@ import { getViewableDgProfileDocument } from '@/features/profiles/profile-docume
 import { getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getProfileOrganizations, getPublicProfileBySlug } from '@/features/profiles/queries'
-import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -166,7 +165,6 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     </main>
   )
 
-  return viewer ? (
-    <MessagingRealtimeProvider viewerProfileId={viewer.id}>{profileContent}</MessagingRealtimeProvider>
-  ) : profileContent
+  // The (public) layout mounts the realtime provider for signed-in viewers.
+  return profileContent
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { loadReactionDetails } from '../actions'

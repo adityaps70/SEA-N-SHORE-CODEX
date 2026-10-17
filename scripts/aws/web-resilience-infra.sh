@@ -3,6 +3,8 @@
 # and alert the owner (SNS email) on web memory, running task count, ALB 5xx / connection errors,
 # ephemeral storage and OOM task stops. Targeted plan; only creates and in-place updates of these
 # resources are accepted. The action file holds "plan" or "apply-once".
+# Round H (H1): adds the operations@beaufortmarine.in subscription, the app 5xx rate, web CPU, the
+# per-area server error alarms (SeaNShore/App ServerErrors) and the site health alarms (SiteUp).
 set -euo pipefail
 umask 077
 export PATH="$HOME/bin:$PATH"
@@ -91,6 +93,11 @@ TARGETS=(
   aws_cloudwatch_metric_alarm.web_ephemeral_storage_high
   aws_cloudwatch_event_rule.ecs_out_of_memory
   aws_cloudwatch_event_target.ecs_out_of_memory
+  aws_sns_topic_subscription.alerts_operations_email
+  aws_cloudwatch_metric_alarm.alb_target_5xx_rate
+  aws_cloudwatch_metric_alarm.web_cpu_high
+  aws_cloudwatch_metric_alarm.api_server_errors
+  aws_cloudwatch_metric_alarm.site_health
 )
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
@@ -115,11 +122,25 @@ allowed = {
   'aws_cloudwatch_metric_alarm.web_ephemeral_storage_high': {('create',)},
   'aws_cloudwatch_event_rule.ecs_out_of_memory': {('create',)},
   'aws_cloudwatch_event_target.ecs_out_of_memory': {('create',)},
+  # Round H (H1)
+  'aws_sns_topic_subscription.alerts_operations_email': {('create',)},
+  'aws_cloudwatch_metric_alarm.alb_target_5xx_rate': {('create',)},
+  'aws_cloudwatch_metric_alarm.web_cpu_high': {('create',)},
+}
+# Round H (H1): one alarm per key API area and per site check, each only created.
+allowed_instances = {
+  'aws_cloudwatch_metric_alarm.api_server_errors': {'feed', 'impressions', 'messaging', 'jobs', 'learning', 'payments-webhooks'},
+  'aws_cloudwatch_metric_alarm.site_health': {'home', 'api-health'},
 }
 plan = json.load(open(sys.argv[1]))
 changes = [r for r in plan.get('resource_changes', []) if r.get('mode') != 'data' and r['change']['actions'] != ['no-op']]
 for r in changes:
     actions = tuple(r['change']['actions'])
+    base = r['address'].split('[', 1)[0]
+    if base in allowed_instances:
+        if r.get('index') not in allowed_instances[base] or actions != ('create',):
+            raise SystemExit(f"unexpected web resilience change refused: {r['address']} {list(actions)}")
+        continue
     if r['address'] not in allowed or actions not in allowed[r['address']]:
         raise SystemExit(f"unexpected web resilience change refused: {r['address']} {list(actions)}")
 print('WEB_RESILIENCE_PLAN_CHANGES=' + str(len(changes)))
@@ -171,7 +192,10 @@ TOPIC_ARN="arn:aws:sns:$AWS_REGION:$EXPECTED_ACCOUNT:sea-n-shore-staging-alerts"
 aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$TOPIC_ARN" --output json \
   | jq -r '.Subscriptions[] | "ALERT_SUBSCRIPTION protocol=\(.Protocol) status=\(if (.SubscriptionArn | startswith("arn:")) then "confirmed" else .SubscriptionArn end)"'
 aws cloudwatch describe-alarms --region "$AWS_REGION" --alarm-name-prefix sea-n-shore-staging- --output json > "$WORK_DIR/alarms.json"
-for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-connection-errors web-ephemeral-storage-high; do
+for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-connection-errors web-ephemeral-storage-high \
+  alb-target-5xx-rate web-cpu-high \
+  api-feed-server-errors api-impressions-server-errors api-messaging-server-errors api-jobs-server-errors \
+  api-learning-server-errors api-payments-webhooks-server-errors site-home-down site-api-health-down; do
   jq -e --arg name "sea-n-shore-staging-$alarm" --arg topic "$TOPIC_ARN" \
     '[.MetricAlarms[] | select(.AlarmName == $name) | select(.AlarmActions | index($topic))] | length == 1' "$WORK_DIR/alarms.json" >/dev/null
   echo "ALARM_VERIFIED=sea-n-shore-staging-$alarm state=$(jq -r --arg name "sea-n-shore-staging-$alarm" '.MetricAlarms[] | select(.AlarmName == $name) | .StateValue' "$WORK_DIR/alarms.json")"

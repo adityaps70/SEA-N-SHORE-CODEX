@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -76,7 +76,10 @@ class FakeWebSocket {
 }
 
 describe('MessagingRealtimeProvider', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Most tests want a socket that closes as soon as its provider unmounts.
+    const { resetSharedRealtimeForTests } = await import('./provider')
+    resetSharedRealtimeForTests(0)
     vi.clearAllMocks()
     unread.reset()
     FakeWebSocket.instances = []
@@ -114,7 +117,10 @@ describe('MessagingRealtimeProvider', () => {
     }))
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    const { resetSharedRealtimeForTests } = await import('./provider')
+    resetSharedRealtimeForTests()
+    cleanup()
     vi.unstubAllGlobals()
   })
 
@@ -227,6 +233,61 @@ describe('MessagingRealtimeProvider', () => {
 
     expect(FakeWebSocket.instances).toHaveLength(1)
     expect(FakeWebSocket.instances[0]?.close).not.toHaveBeenCalled()
+  })
+
+  it('keeps one socket, one ticket and one state fetch when navigation moves to another layout (Round H, H1)', async () => {
+    const { MessagingRealtimeProvider, resetSharedRealtimeForTests } = await import('./provider')
+    resetSharedRealtimeForTests(30_000)
+    const viewer = '22222222-2222-4222-8222-222222222222'
+    const callsTo = (path: string) => vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === path).length
+
+    // Home, in the (app) layout.
+    const app = render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Home</div></MessagingRealtimeProvider>)
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+    await waitFor(() => expect(callsTo('/api/realtime/messaging-state')).toBe(1))
+
+    // Learn, in the (public) layout: the (app) provider unmounts and another one mounts.
+    app.unmount()
+    const learn = render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Learn</div></MessagingRealtimeProvider>)
+    // And back to Events in the (app) layout.
+    learn.unmount()
+    render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Events</div></MessagingRealtimeProvider>)
+    await act(async () => { await Promise.resolve() })
+
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(FakeWebSocket.instances[0]?.close).not.toHaveBeenCalled()
+    expect(callsTo('/api/realtime/ticket')).toBe(1)
+    expect(callsTo('/api/realtime/messaging-state')).toBe(1)
+  })
+
+  it('closes the shared socket once no page has used it for the grace period', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { MessagingRealtimeProvider, REALTIME_RELEASE_GRACE_MS, resetSharedRealtimeForTests } = await import('./provider')
+      resetSharedRealtimeForTests(REALTIME_RELEASE_GRACE_MS)
+      const view = render(<MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222"><div>Home</div></MessagingRealtimeProvider>)
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+      act(() => FakeWebSocket.instances[0]?.open())
+      view.unmount()
+      act(() => { vi.advanceTimersByTime(REALTIME_RELEASE_GRACE_MS - 1) })
+      expect(FakeWebSocket.instances[0]?.close).not.toHaveBeenCalled()
+      act(() => { vi.advanceTimersByTime(1) })
+      expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never reuses a socket for a different member', async () => {
+    const { MessagingRealtimeProvider, resetSharedRealtimeForTests } = await import('./provider')
+    resetSharedRealtimeForTests(30_000)
+    const first = render(<MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222"><div>A</div></MessagingRealtimeProvider>)
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    first.unmount()
+    render(<MessagingRealtimeProvider viewerProfileId="44444444-4444-4444-8444-444444444444"><div>B</div></MessagingRealtimeProvider>)
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2))
+    expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled()
   })
 
   it('updates the global unread badge and shows an in-app new-message alert even outside Messages', async () => {

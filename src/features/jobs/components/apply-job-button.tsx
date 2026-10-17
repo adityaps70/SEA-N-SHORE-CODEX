@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useEffect, useId, useState, useTransition } from 'react'
 import { CheckCircle2, FileText, Send, Upload, X, Zap } from 'lucide-react'
 import { applyToJob, prepareJobApplicationCvUpload } from '../actions'

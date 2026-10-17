@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { findHashtags, hashtagHref, isStorableHashtag } from '@/features/hashtags/parse'
 import type { FeedMention, FeedOrganizationMention } from '../types'
 

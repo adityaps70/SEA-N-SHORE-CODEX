@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ArrowRight, BadgeCheck, CalendarClock, MapPin, Ship, WalletCards } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
