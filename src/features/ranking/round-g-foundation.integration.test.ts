@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createTestDatabase, type TestDatabase } from '@/lib/db/test-database'
 import { CERTIFICATE_TYPE_SEEDS, MARITIME_RANKS, VESSEL_TYPE_SEEDS } from '@/features/taxonomy/maritime-taxonomy'
+import { ROLE_KEYS_ADDED_IN_ROUND_H } from '@/features/roles/taxonomy'
 import { listUnmappedTaxonomyValues, runTaxonomyBackfill } from '@/features/taxonomy/backfill'
 import { createSignalsRepository } from '@/features/signals/repository'
 import { purgeExpiredSignals } from '@/features/signals/retention'
@@ -51,8 +52,14 @@ async function stats(postId: string) {
 describe('taxonomy seed (migration 0083)', () => {
   it('holds exactly the ranks, vessel types and certificates in the code', async () => {
     const ranks = await db.query(`select code, name, department, ladder, ladder_level, synonyms, same_as from public.maritime_ranks order by sort_order`)
+    // Round H: 0089 appends the ranks added in round H after the 0083 seed (sort order 101 on).
+    const added = new Set<string>(ROLE_KEYS_ADDED_IN_ROUND_H)
+    const seedOrder = [
+      ...MARITIME_RANKS.filter((rank) => !added.has(rank.code)),
+      ...ROLE_KEYS_ADDED_IN_ROUND_H.map((code) => MARITIME_RANKS.find((rank) => rank.code === code)!),
+    ]
     expect(ranks.map((row) => [row.code, row.name, row.department, row.ladder, row.ladder_level, row.synonyms, row.same_as]))
-      .toEqual(MARITIME_RANKS.map((rank) => [rank.code, rank.name, rank.department, rank.ladder, rank.ladderLevel, [...rank.synonyms], rank.sameAs]))
+      .toEqual(seedOrder.map((rank) => [rank.code, rank.name, rank.department, rank.ladder, rank.ladderLevel, [...rank.synonyms], rank.sameAs]))
     const vessels = await db.query(`select code, name, vessel_group, synonyms from public.vessel_types order by sort_order`)
     expect(vessels.map((row) => [row.code, row.name, row.vessel_group, row.synonyms]))
       .toEqual(VESSEL_TYPE_SEEDS.map((vessel) => [vessel.code, vessel.name, vessel.group, [...vessel.synonyms]]))
@@ -66,6 +73,22 @@ describe('taxonomy seed (migration 0083)', () => {
     expect(conflicts).toEqual([])
     const [row] = await db.query(`select public.taxonomy_code('rank', '2/O') as a, public.taxonomy_code('rank', ' c.e ') as b, public.taxonomy_code('vessel', 'Oil/Chemical Tanker') as c`)
     expect(row).toEqual({ a: 'second_officer', b: 'chief_engineer', c: 'chemical_tanker' })
+  })
+
+  it('seeds the round H ranks in their departments, after the round G ranks, and maps their names (0089)', async () => {
+    const rows = await db.query(
+      `select code, department_key, sort_order from public.maritime_ranks where code = any($1::text[]) order by sort_order`,
+      [[...ROLE_KEYS_ADDED_IN_ROUND_H]],
+    )
+    expect(rows).toEqual(ROLE_KEYS_ADDED_IN_ROUND_H.map((code, index) => ({
+      code,
+      department_key: MARITIME_RANKS.find((rank) => rank.code === code)!.departmentKey,
+      sort_order: 101 + index,
+    })))
+    const [mapped] = await db.query(
+      `select public.taxonomy_code('rank', 'Operations Coordinator') as a, public.taxonomy_code('rank', 'ship chandler') as b, public.taxonomy_code('rank', 'Ship Supplier') as c`,
+    )
+    expect(mapped).toEqual({ a: 'operations_coordinator', b: 'ship_chandler', c: 'ship_chandler' })
   })
 })
 

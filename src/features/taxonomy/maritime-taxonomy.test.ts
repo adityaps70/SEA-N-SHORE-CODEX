@@ -42,6 +42,13 @@ describe('maritime taxonomy', () => {
     expect(rankDistance('master', 'third_officer')).toBe(3)
     expect(rankDistance('second_officer', 'second_engineer')).toBeNull()
     expect(rankDistance('second_officer', 'unknown')).toBeNull()
+    // Round H: the ranks added in 0089.
+    expect(rankDepartmentGroup('mooring_master')).toBe('deck')
+    expect(rankDepartmentGroup('ship_chandler')).toBe('shore')
+    expect(matchRank('Ship Chandler')).toBe('ship_chandler')
+    expect(matchRank('ops coordinator')).toBe('operations_coordinator')
+    // Marine Manager stays a synonym of Marine Superintendent, not a rank of its own.
+    expect(MARITIME_RANKS.some((rank) => rank.code === 'marine_manager')).toBe(false)
   })
 
   it('maps vessel types and certificates from free text', () => {

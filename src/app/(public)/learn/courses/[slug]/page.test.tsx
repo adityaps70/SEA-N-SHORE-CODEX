@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   createMediaReadUrl: vi.fn(),
   // Learning round C: approved reviews (default: none).
   getPublicReviews: vi.fn(async () => ({ averageRating: null as number | null, reviewCount: 0, reviews: [] as unknown[] })),
+  // Round H: the course owner's reply controls (default: not the owner).
+  getOwnerReplyView: vi.fn(async () => null as unknown),
   // Round H (H7): list-price evidence, the publisher card and the certificate preview (default: none).
   listRecentListPriceSales: vi.fn(async () => [] as unknown[]),
   getPublisherCard: vi.fn(async () => null as unknown),
@@ -30,7 +32,8 @@ vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMembe
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/public-course-repository', () => ({ publicCourseRepository: { getPublicCurriculum: mocks.getPublicCurriculum } }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
-vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getPublicReviews: mocks.getPublicReviews } }))
+vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getPublicReviews: mocks.getPublicReviews, getOwnerReplyView: mocks.getOwnerReplyView } }))
+vi.mock('@/features/learning/course-review-reply-actions', () => ({ saveCourseReviewReply: vi.fn(), deleteCourseReviewReply: vi.fn() }))
 vi.mock('@/features/moderation/actions', () => ({ reportContent: vi.fn() }))
 vi.mock('@/features/learning/course-page-repository', () => ({
   coursePageRepository: {
@@ -526,6 +529,31 @@ describe('/learn/courses/[slug]', () => {
 
     const jsonLd = JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!)
     expect(jsonLd.aggregateRating).toEqual({ '@type': 'AggregateRating', ratingValue: '4.5', ratingCount: 2, reviewCount: 2, bestRating: 5, worstRating: 1 })
+  })
+
+  it('shows the owner’s reply as "Reply from <publisher>", and gives the course owner Reply (round H)', async () => {
+    const reviews = {
+      averageRating: 4.5,
+      reviewCount: 2,
+      reviews: [
+        { id: 'r1', rating: 5, body: 'Clear and practical.', reviewedAt: '2026-10-05T10:00:00.000Z', reviewer: { id: 'fixture-a', name: 'Fixture Reviewer Ana', slug: null }, reply: { body: 'Thank you, Ana.', repliedAt: '2026-10-06T10:00:00.000Z' } },
+        { id: 'r2', rating: 4, body: 'Good.', reviewedAt: '2026-10-04T10:00:00.000Z', reviewer: { id: 'fixture-b', name: 'Fixture Reviewer Bo', slug: null }, reply: null },
+      ],
+    }
+    mocks.getPublicReviews.mockResolvedValueOnce(reviews)
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    expect(mocks.getOwnerReplyView).toHaveBeenCalledWith('learner-1', freeCourse.id)
+    let section = screen.getByRole('region', { name: 'Ratings and reviews' })
+    expect(within(section).getByRole('group', { name: 'Reply from Capt. Maya Singh' })).toHaveTextContent('Thank you, Ana.')
+    expect(within(section).queryByRole('button', { name: 'Reply' })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.getPublicReviews.mockResolvedValueOnce(reviews)
+    mocks.getOwnerReplyView.mockResolvedValueOnce({ replies: { r1: { body: 'Thank you, Ana.', repliedAt: '2026-10-06T10:00:00.000Z', status: 'visible' } } })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    section = screen.getByRole('region', { name: 'Ratings and reviews' })
+    expect(within(within(section).getByRole('article', { name: 'Review by Fixture Reviewer Ana' })).getByRole('button', { name: 'Edit reply' })).toBeInTheDocument()
+    expect(within(within(section).getByRole('article', { name: 'Review by Fixture Reviewer Bo' })).getByRole('button', { name: 'Reply' })).toBeInTheDocument()
   })
 
   it('leaves the reviews section and aggregateRating out while no review is approved (round C)', async () => {

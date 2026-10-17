@@ -3,6 +3,8 @@ import Link from '@/components/navigation/intent-link'
 import { FaqSearch } from '@/components/marketing/faq/faq-search'
 import { JumpToChips } from '@/components/marketing/jump-to-chips'
 import { MainLandmark } from '@/components/layout/main-landmark'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 import { faqGroups, faqJsonLd, jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { SUPPORT_EMAIL } from '@/components/navigation/social-links'
 import { BUSINESS, OPERATOR_LINE, telHref } from '@/config/business'
@@ -110,10 +112,10 @@ export default function HelpPage() {
           )}
           {/* Round H (H7): the Contact page form, and the signed-in list of requests sent with it. */}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/contact#contact-form" className="inline-flex min-h-10 cursor-pointer items-center rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white transition-colors hover:bg-navy-900 max-md:min-h-11">
+            <Link href="/contact#contact-form" className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'rounded-lg px-3 max-md:min-h-11')}>
               Contact support
             </Link>
-            <Link href="/help/requests" className="inline-flex min-h-10 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50 max-md:min-h-11">
+            <Link href="/help/requests" className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'rounded-lg px-3 max-md:min-h-11')}>
               My requests
             </Link>
             <Link href="/contact" className="inline-flex min-h-10 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50 max-md:min-h-11">

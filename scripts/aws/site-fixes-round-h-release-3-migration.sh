@@ -206,7 +206,7 @@ for migration in "${MIGRATIONS[@]}"; do
   already_applied "$name" || { echo "Ledger is missing $name after apply." >&2; exit 1; }
 done
 
-# Round H release 3 checks after apply (schema and job counts only; no ticket rows are read).
+# Round H release 3 checks after apply (schema, job counts and rank codes only; no ticket or review rows are read).
 for table in site_settings support_tickets support_ticket_messages support_ticket_emails; do
   [[ "$(read_count "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '$table'")" == "1" ]] \
     || { echo "public.$table is missing after apply." >&2; exit 1; }
@@ -217,6 +217,14 @@ done
   || { echo "Some urgent jobs still have no urgent_since after apply." >&2; exit 1; }
 [[ "$(read_count "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'jobs_company_urgent_idx'")" == "1" ]] \
   || { echo "jobs_company_urgent_idx is missing after apply." >&2; exit 1; }
+for column in owner_reply owner_replied_at owner_replied_by owner_reply_status; do
+  [[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'learning_course_reviews' AND column_name = '$column'")" == "1" ]] \
+    || { echo "learning_course_reviews.$column is missing after apply." >&2; exit 1; }
+done
+[[ "$(read_count "SELECT count(*)::bigint FROM pg_constraint WHERE conrelid = 'public.learning_course_reviews'::regclass AND conname IN ('learning_course_reviews_owner_reply_check', 'learning_course_reviews_owner_reply_status_check', 'learning_course_reviews_owner_replied_at_check')")" == "3" ]] \
+  || { echo "A learning_course_reviews owner reply check is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM public.maritime_ranks WHERE code IN ('operations_coordinator', 'ship_chandler', 'mooring_master', 'procurement_manager', 'business_development_manager')")" == "5" ]] \
+  || { echo "A round H rank is missing from public.maritime_ranks after apply." >&2; exit 1; }
 echo "H_RELEASE_3_SCHEMA_VERIFIED=true"
 
 echo "SITE_FIXES_ROUND_H_RELEASE_3_MIGRATION_APPLY_VERIFIED=true"

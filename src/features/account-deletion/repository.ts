@@ -479,6 +479,13 @@ async function cleanupAccount(query: Query, profileId: string, currentSub: strin
      where moderated_by = $1`,
     [profileId],
   )
+  // Round H: owner replies they wrote for a course stay (they speak for the publisher), without their name.
+  await query(
+    `update public.learning_course_reviews
+     set owner_replied_by = null
+     where owner_replied_by = $1`,
+    [profileId],
+  )
   await query(
     `update public.learning_course_announcements
      set author_id = null

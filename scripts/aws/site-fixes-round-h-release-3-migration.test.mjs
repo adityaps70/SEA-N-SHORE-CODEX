@@ -104,3 +104,28 @@ for (const table of ['site_settings', 'support_tickets', 'support_ticket_message
 assert.match(afterApply, /urgent_since IS NULL/)
 assert.match(afterApply, /jobs_company_urgent_idx/)
 assert.doesNotMatch(afterApply, /FROM public\.support_ticket/i, 'the checks never read ticket rows')
+
+// Round H release 3: the apply path also checks the owner reply columns and checks on learning_course_reviews, and
+// that every rank key the taxonomy added in round H is in public.maritime_ranks (and seeded by 0089), reading no
+// review rows.
+const releaseSql = fs.readFileSync('infra/aws/database/migrations/0089_site_fixes_round_h_release_3.sql', 'utf8')
+for (const column of ['owner_reply', 'owner_replied_at', 'owner_replied_by', 'owner_reply_status']) {
+  assert.match(releaseSql, new RegExp(`add column if not exists ${column} `), `0089 adds ${column}`)
+  assert.ok(afterApply.includes(column), `the runner checks ${column}`)
+}
+for (const constraint of ['learning_course_reviews_owner_reply_check', 'learning_course_reviews_owner_reply_status_check', 'learning_course_reviews_owner_replied_at_check']) {
+  assert.ok(afterApply.includes(constraint), `the runner checks ${constraint}`)
+}
+const taxonomy = fs.readFileSync('src/features/roles/taxonomy.ts', 'utf8')
+const addedBlock = taxonomy.slice(taxonomy.indexOf('export const ROLE_KEYS_ADDED_IN_ROUND_H'), taxonomy.indexOf('] as const', taxonomy.indexOf('export const ROLE_KEYS_ADDED_IN_ROUND_H')))
+const addedRanks = [...addedBlock.matchAll(/'([a-z][a-z0-9_]*)'/g)].map((match) => match[1])
+assert.ok(addedRanks.length >= 2, 'the taxonomy lists the round H ranks')
+for (const code of ['operations_coordinator', 'ship_chandler']) assert.ok(addedRanks.includes(code), `the taxonomy adds ${code}`)
+const rankSeed = releaseSql.slice(releaseSql.indexOf('insert into public.maritime_ranks'))
+assert.match(rankSeed, /on conflict \(code\) do nothing;/, 'the rank seed is idempotent')
+for (const code of addedRanks) {
+  assert.ok(rankSeed.includes(`('${code}',`), `0089 seeds ${code}`)
+  assert.ok(afterApply.includes(`'${code}'`), `the runner checks ${code}`)
+}
+assert.match(afterApply, new RegExp(`== "${addedRanks.length}" \\]\\]`), 'the runner expects every round H rank')
+assert.doesNotMatch(afterApply, /FROM public\.learning_course_reviews/i, 'the checks never read review rows')

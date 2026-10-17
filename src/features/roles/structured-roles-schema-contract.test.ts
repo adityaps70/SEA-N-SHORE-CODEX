@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { ROLES, ROLE_DEPARTMENTS, departmentsFor, legacyRankEntries, roleByKey } from './taxonomy'
+import { ROLES, ROLE_DEPARTMENTS, ROLE_KEYS_ADDED_IN_ROUND_H, departmentsFor, legacyRankEntries, roleByKey } from './taxonomy'
 
 const sql = readFileSync('infra/aws/database/migrations/0062_structured_roles.sql', 'utf8')
 const statements = sql.split(/^\s*-- statement-breakpoint\s*$/m).map((part) => part.trim()).filter(Boolean)
+// Round H: 0062 is applied and frozen; ranks added after it are not in its backfill lists.
+const addedLater = new Set<string>(ROLE_KEYS_ADDED_IN_ROUND_H)
 
 /** The rows of one `name(columns) as (values ...)` block. */
 function valuesOf(statement: string, name: string): string[][] {
@@ -21,14 +23,14 @@ describe('migration 0062: structured roles (round 12)', () => {
   })
 
   it('backfills profiles and jobs from exactly the texts normaliseLegacyRank recognises', () => {
-    const expected = legacyRankEntries().map(([text, key]) => [text, key, roleByKey(key)!.department])
+    const expected = legacyRankEntries().filter(([, key]) => !addedLater.has(key)).map(([text, key]) => [text, key, roleByKey(key)!.department])
     expect(valuesOf(statements[8], 'role_map')).toEqual(expected)
     expect(valuesOf(statements[9], 'role_map')).toEqual(expected)
   })
 
   it('resolves profile ranks inside the departments the persona picks from', () => {
     expect(valuesOf(statements[8], 'role_catalog')).toEqual(
-      ROLES.filter((role) => !role.other).map((role) => [role.key, role.department, role.sameAs ?? role.key]))
+      ROLES.filter((role) => !role.other && !addedLater.has(role.key)).map((role) => [role.key, role.department, role.sameAs ?? role.key]))
     expect(valuesOf(statements[8], 'persona_departments')).toEqual(
       (['seafarer', 'shore_professional', 'recruiter_hr', 'trainer_instructor'] as const)
         .flatMap((persona) => departmentsFor(persona).map((department) => [persona, department.key])))

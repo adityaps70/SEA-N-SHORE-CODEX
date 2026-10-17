@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 import { requireUser } from '@/features/auth/queries'
 import { TicketStatusBadge } from '@/features/support/components/ticket-status-badge'
 import { formatSupportDate } from '@/features/support/components/ticket-thread'
@@ -53,7 +55,7 @@ export default async function MyRequestsPage() {
         </div>
       )}
 
-      <Link href="/contact#contact-form" className="inline-flex min-h-11 items-center rounded-xl bg-ocean-700 px-4 text-sm font-semibold text-white hover:bg-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500">
+      <Link href="/contact#contact-form" className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'min-h-11')}>
         Send a new message
       </Link>
     </div>

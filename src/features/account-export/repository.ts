@@ -395,10 +395,10 @@ select jsonb_build_object(
     from public.learning_certificates certificate
     where certificate.learner_id = $1
   ), '[]'::jsonb),
-  -- Learning round C: the member's own course ratings and reviews (not who moderated them), and the
-  -- announcements they posted to their courses' learners.
+  -- Learning round C: the member's own course ratings and reviews (not who moderated them or, round H, who wrote the
+  -- course owner's reply), and the announcements they posted to their courses' learners.
   'learningCourseReviews', coalesce((
-    select jsonb_agg(to_jsonb(review) - 'moderated_by')
+    select jsonb_agg(to_jsonb(review) - 'moderated_by' - 'owner_replied_by')
     from public.learning_course_reviews review
     where review.learner_id = $1
   ), '[]'::jsonb),

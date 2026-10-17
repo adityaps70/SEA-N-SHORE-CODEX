@@ -51,6 +51,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   // Round H (H7): Admin › Support (answer, close, reopen Contact page requests) and Admin › Site settings.
   ['src/features/support/admin-actions.ts', ['replyToTicketAsAdmin', 'closeTicketAsAdmin', 'reopenTicketAsAdmin']],
   ['src/features/site-settings/admin-actions.ts', ['saveGrievanceOfficerAction', 'saveAboutPageAction', 'createSiteImageUploadAction']],
+  // Round H: administrators hide or restore a course owner's reply to a review (the owner's own actions are not admin).
+  ['src/features/learning/course-review-reply-actions.ts', ['setCourseReviewReplyStatus']],
 ]
 
 /** Bodies of the top-level functions in a module, by name. */

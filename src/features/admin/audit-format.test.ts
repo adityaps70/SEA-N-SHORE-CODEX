@@ -57,6 +57,12 @@ describe('learning audit actions (round H, H7)', () => {
     ['learning_course', 'learning.roster_enrolled', 'Course roster enrolled'],
     ['learning_course', 'learning.session_created', 'Course session created'],
     ['course_review', 'moderation.course_review_approved', 'Course review approved'],
+    // Round H: course owners' replies to reviews and their moderation (course-rating-repository.ts).
+    ['course_review', 'learning.course_review_reply_added', 'Course review reply added'],
+    ['course_review', 'learning.course_review_reply_edited', 'Course review reply edited'],
+    ['course_review', 'learning.course_review_reply_deleted', 'Course review reply deleted'],
+    ['course_review', 'moderation.course_review_reply_hidden', 'Course review reply hidden'],
+    ['course_review', 'moderation.course_review_reply_restored', 'Course review reply restored'],
   ]
 
   it.each(actions)('%s %s reads "%s" without a repeated word', (targetType, action, summary) => {

@@ -48,7 +48,7 @@ import { CoursePublisherAvatar } from '@/features/learning/components/course-pub
 import { splitDescription } from '@/features/learning/description'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 import { CurriculumAccordion, type CurriculumModuleView } from '@/features/learning/components/curriculum-accordion'
-import { courseRatingRepository, type PublicCourseReviews } from '@/features/learning/course-rating-repository'
+import { courseRatingRepository, type OwnerReplyView, type PublicCourseReviews } from '@/features/learning/course-rating-repository'
 import { CourseReviewsSection, formatAverageRating } from '@/features/learning/components/course-reviews-section'
 
 type PublishedCoursePageProps = {
@@ -341,6 +341,15 @@ function SignInToEnrol({ isFree, returnPath }: { isFree: boolean; returnPath: st
   )
 }
 
+/** Round H: the owner's reply controls are a convenience; the page renders without them if the lookup fails. */
+async function loadReplyOwnerView(userId: string, courseId: string): Promise<OwnerReplyView | null> {
+  try {
+    return await courseRatingRepository.getOwnerReplyView(userId, courseId)
+  } catch {
+    return null
+  }
+}
+
 const loadPublishedCourse = cache((slug: string) => marketplaceRepository.getPublishedCourseBySlug(slug))
 
 export async function generateMetadata({ params }: PublishedCoursePageProps): Promise<Metadata> {
@@ -359,7 +368,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
 
   // Public page: signed-out visitors see the course and its free previews; enrolling needs an account.
   const user = await getVerifiedUser()
-  const [enrollment, overview, curriculum, trailerUrl, reviews, alsoTook, listPriceSales, publisher, certificateSettings] = await Promise.all([
+  const [enrollment, overview, curriculum, trailerUrl, reviews, alsoTook, listPriceSales, publisher, certificateSettings, replyOwnerView] = await Promise.all([
     user ? enrollmentRepository.getLearnerEnrollment(user.id, course.id) : Promise.resolve(null),
     // The summary and outline are conveniences: the course page must still render without them.
     marketplaceRepository.getPublishedCourseOverview(course.id).catch(() => EMPTY_OVERVIEW),
@@ -372,6 +381,8 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
     isPaidCourse(course) ? coursePageRepository.listRecentListPriceSales([course.id]).catch(() => [] as ListPriceSale[]) : Promise.resolve([] as ListPriceSale[]),
     coursePageRepository.getPublisherCard(course.id).catch(() => null as CoursePublisherCardData | null),
     course.certificateEnabled ? coursePageRepository.getCertificatePreviewSettings(course.id).catch(() => null) : Promise.resolve(null),
+    // Round H: the course owner replies to reviews (null for everyone else).
+    user ? loadReplyOwnerView(user.id, course.id) : Promise.resolve(null),
   ])
   const listPriceRecentlyCharged = wasListPriceCharged(listPriceSales, { courseId: course.id, listPriceMinor: course.priceMinor, currency: course.currency })
   const publisherPhotoUrl = publisher?.photoPath ? await createMediaImageSrc(publisher.photoPath).catch(() => null) : null
@@ -587,6 +598,8 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
         <CourseReviewsSection
           data={reviews}
           viewerId={user?.id ?? null}
+          publisherName={course.mentorName}
+          ownerView={replyOwnerView}
           className={`${PHONE_FLAT_SECTION} scroll-mt-20 lg:order-6 lg:col-span-2`}
         />
 
