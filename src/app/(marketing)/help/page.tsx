@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { FaqAccordion } from '@/components/marketing/faq/faq-accordion'
 import { JumpToChips } from '@/components/marketing/jump-to-chips'
 import { faqGroups, faqJsonLd, jsonLdScript } from '@/components/marketing/faq/faq-data'

@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Reveal } from '@/components/marketing/motion'
 import { FeedPostPreview, OrganizationPagePreview } from './app-cards'
 import { LANDING_LINKS } from './landing-links'

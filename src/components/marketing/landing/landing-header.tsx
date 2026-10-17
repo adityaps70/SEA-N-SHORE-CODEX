@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { BRAND_ASSETS, BRAND_NAME } from '@/components/brand/brand-assets'
 import { ScrollHeader } from '@/components/marketing/motion'
 import { LANDING_LINKS, LANDING_SECTIONS } from './landing-links'

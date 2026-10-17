@@ -9,7 +9,12 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
-  use: { baseURL: 'http://127.0.0.1:3000', trace: 'on-first-retry' },
+  use: {
+    baseURL: 'http://127.0.0.1:3000',
+    trace: 'on-first-retry',
+    // A preinstalled browser whose build differs from this Playwright version (e.g. /opt/pw-browsers/chromium).
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } } : {}),
+  },
   webServer: {
     command: production ? 'npm run start -- --hostname 127.0.0.1 --port 3000' : 'npm run dev',
     url: 'http://127.0.0.1:3000',

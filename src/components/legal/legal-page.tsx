@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import type { ReactNode } from 'react'
 import { JumpToChips, type JumpLink } from '@/components/marketing/jump-to-chips'
 

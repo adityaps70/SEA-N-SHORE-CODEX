@@ -35,7 +35,9 @@ async function recordRsc(page: Page, action: () => Promise<void>) {
 }
 
 async function settle(page: Page) {
-  await page.waitForLoadState('networkidle')
+  // 'networkidle' never comes on pages that poll; the page's load event plus the pauses below is enough.
+  await page.waitForLoadState('load')
+  await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => undefined)
   // Scroll so every link on the page has entered the viewport once (viewport prefetch would fire now).
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += Math.max(200, window.innerHeight / 2)) {

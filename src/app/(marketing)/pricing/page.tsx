@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { CalendarDays, GraduationCap, Info, ShieldCheck } from 'lucide-react'
 import { TextLink } from '@/components/legal/legal-page'
 import { BUSINESS, OPERATOR_LINE } from '@/config/business'

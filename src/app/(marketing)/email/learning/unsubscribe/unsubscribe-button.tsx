@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useState, useTransition } from 'react'
 import { unsubscribeFromLearningEmails } from '@/features/learning/learning-email-actions'
 

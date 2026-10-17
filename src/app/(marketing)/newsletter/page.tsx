@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Inbox, LockKeyhole, MailCheck } from 'lucide-react'
 import { NewsletterPreferencesForm } from '@/features/newsletter/components/newsletter-preferences-form'
 import { NewsletterSignupForm } from '@/features/newsletter/components/newsletter-signup-form'
