@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { FooterSocialIcons, footerBottomLine, footerLinkGroups, footerLinks } from './app-footer'
 import { RailFooterMore } from './rail-footer-more'
 

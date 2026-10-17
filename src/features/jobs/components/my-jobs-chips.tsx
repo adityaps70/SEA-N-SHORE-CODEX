@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { CHIP_ROW_CLASS, chipClass } from './mobile-chip'
 
 const ITEMS = [

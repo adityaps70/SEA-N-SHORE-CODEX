@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Award, Mail, UserRoundPlus } from 'lucide-react'
 import { GoogleMark } from '@/features/auth/components/google-mark'
 import { Enter, Parallax, ParallaxLayer, RotatingWords, ScrollDrift } from '@/components/marketing/motion'

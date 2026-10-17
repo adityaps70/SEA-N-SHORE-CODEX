@@ -11,6 +11,7 @@ import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import {
   createPost,
   createPostMediaUploads,
+  createPostVideoPosterUpload,
   discardPendingPostMedia,
   type PostComposerState,
 } from '../actions'
@@ -29,6 +30,7 @@ import { EmojiPicker } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
 import { PHOTO_TAG_LIMIT, TagPeopleDialog, type TaggedPerson } from './tag-people-dialog'
 import { uploadPostMediaFile } from './upload-post-media'
+import { uploadVideoPoster } from '../video-poster'
 
 const initialState: PostComposerState = {}
 const POST_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm'
@@ -577,6 +579,15 @@ export function PostComposer({
           return
         }
         updateMediaByUrl(item.localUrl, (current) => ({ ...current, progress: 100, status: 'ready', error: undefined }))
+        // Round H (H1): a poster frame captured from the local file, stored next to the video.
+        // Best effort, in the background: a post never waits for it.
+        if (isVideoPostMediaMime(item.mimeType) && item.storagePath) {
+          void uploadVideoPoster({
+            videoStoragePath: item.storagePath,
+            source: item.file,
+            createUpload: (input) => createPostVideoPosterUpload(input),
+          })
+        }
       }))
     } catch {
       if (uploadSequenceRef.current !== sequence) return

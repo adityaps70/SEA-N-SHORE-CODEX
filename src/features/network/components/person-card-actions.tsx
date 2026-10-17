@@ -1,7 +1,7 @@
 'use client'
 
 import { Ban, Check, Clock3, Ellipsis, Flag, UserMinus, UserPlus, UserRound, UserRoundCheck, UserRoundPlus, X } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useRef, useState, useTransition } from 'react'
 import { ActionMenu, ActionMenuItem, ActionMenuSeparator } from '@/components/ui/action-menu'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'

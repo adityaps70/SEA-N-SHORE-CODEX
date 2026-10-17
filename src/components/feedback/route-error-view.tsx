@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useEffect, useSyncExternalStore } from 'react'
 import { RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
 import { isStaleAssetError, recoverFromStaleAssets } from '@/lib/stale-assets'

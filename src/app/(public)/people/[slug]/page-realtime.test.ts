@@ -3,12 +3,18 @@ import { describe, expect, it } from 'vitest'
 
 describe('Public profile realtime boundary', () => {
   it('mounts realtime only for authenticated public profile viewers so network invalidations can refresh canonical relationship state', () => {
-    const source = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
+    // Round H (H1): the provider moved from the profile page to the (public) layout, so moving
+    // between Home, Learn and a profile keeps one socket. It is still mounted for signed-in viewers only.
+    const layout = readFileSync('src/app/(public)/layout.tsx', 'utf8')
+    const signedIn = layout.slice(layout.indexOf('if (viewer) {'), layout.indexOf('return (\n    <div className="min-h-screen bg-mist-50">'))
 
-    expect(source).toContain("import { MessagingRealtimeProvider } from '@/features/realtime/provider'")
-    expect(source).toContain('const profileContent = (')
-    expect(source).toContain('return viewer ? (')
-    expect(source).toContain('<MessagingRealtimeProvider viewerProfileId={viewer.id}>{profileContent}</MessagingRealtimeProvider>')
-    expect(source).toContain(') : profileContent')
+    expect(layout).toContain("import { MessagingRealtimeProvider } from '@/features/realtime/provider'")
+    expect(signedIn).toContain('<MessagingRealtimeProvider viewerProfileId={viewer.id}>')
+    const signedOut = layout.slice(layout.indexOf('return (\n    <div className="min-h-screen bg-mist-50">'))
+    expect(signedOut).toContain('<PublicHeader />')
+    expect(signedOut).not.toContain('MessagingRealtimeProvider')
+
+    const page = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
+    expect(page).not.toContain('<MessagingRealtimeProvider')
   })
 })

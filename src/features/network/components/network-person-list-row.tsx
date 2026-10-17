@@ -1,5 +1,5 @@
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import type { NetworkProfile } from '../types'
 import { FollowToggleButton } from './follow-toggle-button'
 import { RelationshipControls } from './relationship-controls'

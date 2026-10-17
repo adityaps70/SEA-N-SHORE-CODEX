@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useState } from 'react'
 import { Search, Share2 } from 'lucide-react'
 

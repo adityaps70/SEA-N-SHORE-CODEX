@@ -1,7 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import { IMPRESSION_VISIBLE_RATIO, ImpressionTracker, browserImpressionTransport } from './impression-tracker'
+import { IMPRESSION_RETRY_MAX_MS, IMPRESSION_VISIBLE_RATIO, ImpressionTracker, browserImpressionTransport } from './impression-tracker'
+
+/**
+ * Round H (H1): shared by every feed on the page and across client navigations. When a tracker
+ * gives up (signed out, refused, or failing), the next feed waits instead of starting over.
+ */
+let pausedUntil = 0
+
+export function impressionsPaused(now = Date.now()) {
+  return now < pausedUntil
+}
+
+export function resetImpressionPauseForTests() {
+  pausedUntil = 0
+}
 
 /**
  * Round G: gives each feed post a ref callback; the post counts as seen after ≥50% of it is
@@ -14,8 +28,10 @@ export function usePostImpressions(enabled = true) {
   const refCallbacks = useRef(new Map<string, (element: Element | null) => void>())
 
   useEffect(() => {
-    if (!enabled || typeof IntersectionObserver === 'undefined') return
-    const tracker = new ImpressionTracker(browserImpressionTransport())
+    if (!enabled || typeof IntersectionObserver === 'undefined' || impressionsPaused()) return
+    const tracker = new ImpressionTracker(browserImpressionTransport(), undefined, (reason) => {
+      pausedUntil = Date.now() + (reason === 'refused' ? 60 * 60_000 : IMPRESSION_RETRY_MAX_MS)
+    })
     trackerRef.current = tracker
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {

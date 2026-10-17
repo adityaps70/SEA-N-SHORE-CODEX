@@ -17,6 +17,7 @@ import { withTransaction } from '../../src/lib/db/client'
 import { batchRepository } from '../../src/features/learning/batches/batch-repository'
 import { SESSION_REMINDER_SWEEP_MS, sweepSessionReminders } from '../../src/features/learning/sessions/session-reminders'
 import { createRankingSweeps } from '../../src/features/ranking/worker'
+import { SITE_HEALTH_PROBE_MS, runSiteHealthProbe } from '../../src/features/ops/site-health-probe'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -83,6 +84,8 @@ let nextBatchStatusSweepAt = 0
 let nextSessionReminderSweepAt = 0
 // Round G: ranking jobs (signal retention hourly, taxonomy backfill daily; each idempotent and time-gated).
 const rankingSweeps = createRankingSweeps()
+// Round H (H1): the outside-in site check (home page and /api/health) once a minute, as CloudWatch metrics.
+let nextSiteHealthProbeAt = 0
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -315,6 +318,19 @@ async function runSessionReminderSweepIfDue() {
   }
 }
 
+async function runSiteHealthProbeIfDue() {
+  const now = Date.now()
+  if (now < nextSiteHealthProbeAt) return
+  nextSiteHealthProbeAt = now + SITE_HEALTH_PROBE_MS
+  try {
+    const results = await runSiteHealthProbe()
+    const down = results.filter((result) => !result.up)
+    if (down.length) console.error('[site_health_probe_down]', down.map((result) => ({ check: result.check, status: result.status, ms: result.ms })))
+  } catch (error) {
+    console.error('[site_health_probe_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -339,6 +355,7 @@ async function main() {
       await runBatchStatusSweepIfDue()
       await runSessionReminderSweepIfDue()
       await rankingSweeps.runDue()
+      await runSiteHealthProbeIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

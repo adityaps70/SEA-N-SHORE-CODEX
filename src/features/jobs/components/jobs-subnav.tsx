@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { BellRing, Bookmark, BriefcaseBusiness, ClipboardCheck } from 'lucide-react'
 
 const items = [

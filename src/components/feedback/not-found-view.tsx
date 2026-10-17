@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Anchor } from 'lucide-react'
 
 export type NotFoundLink = { href: string; label: string }

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from '@/components/navigation/intent-link'
 import { Wordmark } from "@/components/brand/wordmark";
 import { getPublicVisitorActions } from "@/components/navigation/public-visitor-actions";
 import { getVerifiedUser } from "@/features/auth/queries";

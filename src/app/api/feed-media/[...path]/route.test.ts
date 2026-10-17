@@ -1,15 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getVerifiedUser, getMediaObject, createMediaDownloadUrl, isPostVisibleTo, isPostPublic } = vi.hoisted(() => ({
+const { getVerifiedUser, getMediaObject, createMediaDownloadUrl, headMediaObject, streamMediaObject, canUsePlatformAdminAuthority, isPostVisibleTo, isPostPublic } = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
   getMediaObject: vi.fn(),
   createMediaDownloadUrl: vi.fn(),
+  headMediaObject: vi.fn(),
+  streamMediaObject: vi.fn(),
+  canUsePlatformAdminAuthority: vi.fn(),
   isPostVisibleTo: vi.fn(),
   isPostPublic: vi.fn(),
 }))
 
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser }))
-vi.mock('@/lib/aws/storage', () => ({ getMediaObject, createMediaDownloadUrl }))
+vi.mock('@/features/admin/mfa-gate', () => ({ canUsePlatformAdminAuthority }))
+vi.mock('@/lib/aws/storage', () => ({ getMediaObject, createMediaDownloadUrl, headMediaObject, streamMediaObject }))
 vi.mock('@/features/feed/repository', () => ({ feedRepository: { isPostVisibleTo, isPostPublic } }))
 
 const viewerId = '44444444-4444-4444-8444-444444444444'
@@ -18,9 +22,9 @@ const postId = '22222222-2222-4222-8222-222222222222'
 const objectId = '33333333-3333-4333-8333-333333333333'
 const path = [profileId, postId, `${objectId}.mp4`]
 
-async function get(parts: string[]) {
+async function get(parts: string[], query = '', headers: Record<string, string> = {}) {
   const { GET } = await import('./route')
-  return GET(new Request(`https://seaandshore.example/api/feed-media/${parts.join('/')}`), { params: Promise.resolve({ path: parts }) })
+  return GET(new Request(`https://seaandshore.example/api/feed-media/${parts.join('/')}${query}`, { headers }), { params: Promise.resolve({ path: parts }) })
 }
 
 describe('GET /api/feed-media/[...path]', () => {
@@ -93,5 +97,59 @@ describe('GET /api/feed-media/[...path]', () => {
     expect((await get(path)).status).toBe(404)
     getMediaObject.mockRejectedValueOnce(new Error('NoSuchKey'))
     expect((await get([profileId, postId, `${objectId}.pdf`])).status).toBe(404)
+  })
+
+  describe('video posters (Round H, H1)', () => {
+    const posterPath = [profileId, postId, `${objectId}.poster.jpg`]
+
+    it('redirects to a stored poster with the same visibility rules as the video', async () => {
+      headMediaObject.mockResolvedValueOnce({ contentType: 'image/jpeg', contentLength: 2000 })
+      const response = await get(posterPath)
+      expect(response.status).toBe(302)
+      expect(isPostVisibleTo).toHaveBeenCalledWith(viewerId, postId, profileId)
+      expect(createMediaDownloadUrl).toHaveBeenCalledWith(expect.objectContaining({ key: posterPath.join('/'), contentType: 'image/jpeg' }))
+    })
+
+    it('answers 404 for a video that has no poster yet, without a redirect to a missing object', async () => {
+      headMediaObject.mockRejectedValueOnce(new Error('NotFound'))
+      const response = await get(posterPath)
+      expect(response.status).toBe(404)
+      expect(createMediaDownloadUrl).not.toHaveBeenCalled()
+    })
+
+    it('hides the poster of a post the viewer cannot see', async () => {
+      isPostVisibleTo.mockResolvedValueOnce(false)
+      const response = await get(posterPath)
+      expect(response.status).toBe(404)
+      expect(headMediaObject).not.toHaveBeenCalled()
+    })
+
+    it('streams the video from this origin for the author, passing the Range through', async () => {
+      getVerifiedUser.mockResolvedValueOnce({ id: profileId, email: 'author@example.com' })
+      streamMediaObject.mockResolvedValueOnce({ body: new Blob(['abc']).stream(), status: 206, contentType: 'video/mp4', contentLength: 3, contentRange: 'bytes 0-2/10', acceptRanges: 'bytes' })
+      const response = await get(path, '?source=poster', { range: 'bytes=0-2' })
+      expect(response.status).toBe(206)
+      expect(response.headers.get('content-range')).toBe('bytes 0-2/10')
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(streamMediaObject).toHaveBeenCalledWith({ key: path.join('/'), range: 'bytes=0-2' })
+      expect(createMediaDownloadUrl).not.toHaveBeenCalled()
+    })
+
+    it('streams it for a platform administrator too', async () => {
+      canUsePlatformAdminAuthority.mockResolvedValueOnce(true)
+      streamMediaObject.mockResolvedValueOnce({ body: new Blob(['abc']).stream(), status: 200, contentType: 'video/mp4', contentLength: 3, contentRange: null, acceptRanges: 'bytes' })
+      const response = await get(path, '?source=poster')
+      expect(response.status).toBe(200)
+      expect(canUsePlatformAdminAuthority).toHaveBeenCalledWith(viewerId)
+    })
+
+    it('never streams it for other members or signed-out visitors', async () => {
+      canUsePlatformAdminAuthority.mockResolvedValueOnce(false)
+      expect((await get(path, '?source=poster')).status).toBe(404)
+      getVerifiedUser.mockResolvedValueOnce(null)
+      isPostPublic.mockResolvedValueOnce(true)
+      expect((await get(path, '?source=poster')).status).toBe(404)
+      expect(streamMediaObject).not.toHaveBeenCalled()
+    })
   })
 })

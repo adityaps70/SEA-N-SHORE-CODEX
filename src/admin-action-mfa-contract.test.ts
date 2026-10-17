@@ -44,6 +44,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/learning/batches/batch-actions.ts', ['saveBatchSettingsAction', 'createBatchAction', 'updateBatchAction', 'setBatchManagerAction', 'addBatchInstructorAction', 'removeBatchInstructorAction', 'moveLearnerToBatchAction']],
   // Learning round D (D2): an administrator may run any batch's sessions, attendance and recordings.
   ['src/features/learning/sessions/session-actions.ts', ['createSessionAction', 'createSessionSeriesAction', 'updateSessionAction', 'cancelSessionAction', 'markAttendanceAction', 'attachRecordingLinkAction', 'startRecordingUploadAction', 'saveUploadedRecordingAction', 'removeRecordingAction']],
+  // Round H (H1): an administrator may add a missing poster to a posted video (admin authority is one branch).
+  ['src/features/feed/actions.ts', ['createPostVideoPosterUpload']],
   // Algorithms round G: Admin › Ranking switches.
   ['src/features/ranking/admin-actions.ts', ['setRankingModeAction', 'sendTestJobAlertAction', 'sendTestDigestAction']],
 ]

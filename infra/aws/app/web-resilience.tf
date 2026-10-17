@@ -251,3 +251,124 @@ resource "aws_cloudwatch_event_target" "ecs_out_of_memory" {
     input_template = "\"Sea N Shore: an ECS task in <group> was stopped for running out of memory at <stopped> (<reason>).\""
   }
 }
+
+# Round H (H1): operations monitoring. Alarms go to the same SNS topic, now also emailed to
+# operations@beaufortmarine.in (that inbox must confirm the subscription once).
+variable "operations_alert_email" {
+  description = "Operations inbox that receives the web alarms (the SNS subscription must be confirmed from that inbox)."
+  type        = string
+  default     = "operations@beaufortmarine.in"
+}
+
+resource "aws_sns_topic_subscription" "alerts_operations_email" {
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email"
+  endpoint  = var.operations_alert_email
+}
+
+# App 5xx rate: responses the web tasks themselves answered with 5xx, as a share of all requests.
+# Only judged when there were at least 50 requests in the 5 minutes.
+resource "aws_cloudwatch_metric_alarm" "alb_target_5xx_rate" {
+  alarm_name          = "${local.name_prefix}-alb-target-5xx-rate"
+  alarm_description   = "More than 2% of requests answered 5xx by the web app in two 5-minute periods in a row."
+  evaluation_periods  = 2
+  threshold           = 2
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+
+  metric_query {
+    id          = "target_5xx_rate"
+    expression  = "IF(FILL(requests, 0) >= 50, 100 * FILL(errors, 0) / requests, 0)"
+    label       = "Target 5xx %"
+    return_data = true
+  }
+
+  metric_query {
+    id = "errors"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_Target_5XX_Count"
+      dimensions  = { LoadBalancer = local.alb_dimension }
+      stat        = "Sum"
+      period      = 300
+    }
+  }
+
+  metric_query {
+    id = "requests"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "RequestCount"
+      dimensions  = { LoadBalancer = local.alb_dimension }
+      stat        = "Sum"
+      period      = 300
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "web_cpu_high" {
+  alarm_name          = "${local.name_prefix}-web-cpu-high"
+  alarm_description   = "Web service CPU (average) above 80% for 15 minutes."
+  namespace           = "AWS/ECS"
+  metric_name         = "CPUUtilization"
+  dimensions          = local.web_service_dimensions
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = 80
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "missing"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+}
+
+# Server errors by area, from the app's own metric lines (src/instrumentation.ts, namespace
+# SeaNShore/App). ALB metrics cannot tell the APIs apart.
+locals {
+  key_api_areas      = toset(["feed", "impressions", "messaging", "jobs", "learning", "payments-webhooks"])
+  site_health_checks = toset(["home", "api-health"])
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_server_errors" {
+  for_each = local.key_api_areas
+
+  alarm_name          = "${local.name_prefix}-api-${each.key}-server-errors"
+  alarm_description   = "At least 5 server errors in ${each.key} in 5 minutes."
+  namespace           = "SeaNShore/App"
+  metric_name         = "ServerErrors"
+  dimensions          = { Area = each.key }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 5
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+}
+
+# Outside-in check from the outbox worker once a minute (src/features/ops/site-health-probe.ts).
+# Missing data counts as down, so a stopped probe also alerts.
+resource "aws_cloudwatch_metric_alarm" "site_health" {
+  for_each = local.site_health_checks
+
+  alarm_name          = "${local.name_prefix}-site-${each.key}-down"
+  alarm_description   = "The ${each.key} check on the public site failed for 3 minutes in a row."
+  namespace           = "SeaNShore/App"
+  metric_name         = "SiteUp"
+  dimensions          = { Check = each.key }
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 3
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+}

@@ -87,3 +87,29 @@ export function isOwnedPostMediaStoragePath(input: {
   const objectId = filename.slice(0, -suffix.length)
   return UUID_PATTERN.test(objectId)
 }
+
+/**
+ * Round H (H1): a video's poster is a JPEG frame captured in the browser and stored next to the
+ * video as `<videoObjectId>.poster.jpg`. The name is derived from the video's, so no database
+ * column is needed: the player always asks for it, and a video without one simply has no poster.
+ */
+export const POST_VIDEO_POSTER_MAX_BYTES = 512 * 1024
+export const POST_VIDEO_POSTER_MIME = 'image/jpeg'
+const VIDEO_EXTENSIONS = new Set(['mp4', 'webm'])
+
+export function parsePostVideoStoragePath(storagePath: string): { profileId: string; postId: string; objectId: string } | null {
+  const parts = storagePath.split('/')
+  if (parts.length !== 3) return null
+  const [profileId, postId, filename] = parts
+  const match = (filename ?? '').match(/^([0-9a-f-]+)\.([a-z0-9]+)$/i)
+  if (!profileId || !postId || !match) return null
+  const [, objectId, extension] = match
+  if (!objectId || !extension || !VIDEO_EXTENSIONS.has(extension.toLowerCase())) return null
+  if (![profileId, postId, objectId].every((value) => UUID_PATTERN.test(value))) return null
+  return { profileId, postId, objectId }
+}
+
+export function postVideoPosterStoragePath(videoStoragePath: string): string | null {
+  const video = parsePostVideoStoragePath(videoStoragePath)
+  return video ? `${video.profileId}/${video.postId}/${video.objectId}.poster.jpg` : null
+}

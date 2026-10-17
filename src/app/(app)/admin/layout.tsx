@@ -4,6 +4,7 @@ import {
   BadgeCheck,
   Building2,
   CreditCard,
+  Film,
   GraduationCap,
   KeyRound,
   LayoutDashboard,
@@ -44,6 +45,7 @@ const sections: Section[] = [
   { href: '/admin/ranking', label: 'Ranking', icon: SlidersHorizontal },
   { href: '/admin/ranking/health', label: 'Ranking health', icon: Activity },
   { href: '/admin/deleted-content', label: 'Deleted content', icon: Trash2 },
+  { href: '/admin/media', label: 'Video posters', icon: Film },
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]
 

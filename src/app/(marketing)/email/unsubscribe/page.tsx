@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { MailX, TriangleAlert } from 'lucide-react'
 import { createRankingEmailPreferences } from '@/features/ranking/ranking-email-sending'
 import { RankingUnsubscribeButton } from './unsubscribe-button'

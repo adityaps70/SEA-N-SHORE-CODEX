@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { BRAND_ASSETS, BRAND_NAME } from '@/components/brand/brand-assets'
 import { FaqAccordion } from '@/components/marketing/faq/faq-accordion'

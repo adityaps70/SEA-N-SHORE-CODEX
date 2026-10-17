@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   ArrowRight,

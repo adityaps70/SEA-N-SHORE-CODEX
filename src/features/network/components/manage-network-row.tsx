@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useState } from 'react'
 import { Building2, ChevronRight, MailPlus, UserRoundCheck, UsersRound } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'

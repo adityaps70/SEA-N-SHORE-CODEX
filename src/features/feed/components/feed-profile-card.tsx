@@ -1,5 +1,5 @@
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Anchor, BadgeCheck, BookOpen, BriefcaseBusiness, GraduationCap, HeartHandshake, MapPin, Ship, Waves } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Card } from '@/components/ui/card'

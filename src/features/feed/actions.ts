@@ -14,9 +14,16 @@ import {
 import {
   POST_DOCUMENT_MAX_PAGES,
   POST_IMAGE_MAX_COUNT,
+  POST_VIDEO_POSTER_MAX_BYTES,
+  POST_VIDEO_POSTER_MIME,
   isOwnedPostMediaStoragePath,
+  parsePostVideoStoragePath,
+  postVideoPosterStoragePath,
   validatePostMediaMetadata,
 } from './media-policy'
+import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
+import { feedRepository } from './repository'
+import { createMediaUploadUrl } from '@/lib/aws/storage'
 import { getAllPostComments, getFeedPage, getMyActivityPosts, getMyCommentActivity, getPostById, getRecentFeedPage, getTopFeedPage } from './queries'
 import { feedPreferences } from './preferences'
 import { feedCandidateRepository } from '@/features/ranking/feed-candidates'
@@ -298,6 +305,38 @@ export async function discardPendingPostMedia(input: { postId: string; storagePa
     return { ok: true }
   } catch {
     return { ok: false, error: 'We could not remove this media.' }
+  }
+}
+
+const postVideoPosterUploadSchema = z.object({
+  videoStoragePath: z.string().min(1).max(500),
+  size: z.number().int().positive().max(POST_VIDEO_POSTER_MAX_BYTES),
+})
+
+export type PostVideoPosterUploadResult = { ok: true; uploadUrl: string; posterPath: string } | { ok: false; error: string }
+
+/**
+ * Round H (H1): a signed PUT for a video's poster frame (a JPEG the browser captured), stored next
+ * to the video. The video's author may add one while composing or later; a platform administrator
+ * may add one to a posted video that has none (the backfill). Nothing is written to the database.
+ */
+export async function createPostVideoPosterUpload(input: { videoStoragePath: string; size: number }): Promise<PostVideoPosterUploadResult> {
+  const parsed = postVideoPosterUploadSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Invalid poster.' }
+  const video = parsePostVideoStoragePath(parsed.data.videoStoragePath)
+  const posterPath = postVideoPosterStoragePath(parsed.data.videoStoragePath)
+  if (!video || !posterPath) return { ok: false, error: 'Invalid poster.' }
+
+  const user = await requireAwsUser()
+  try {
+    const allowed = video.profileId === user.id
+      || (await canUsePlatformAdminAuthority(user.id) && await feedRepository.isPostMediaAttached(parsed.data.videoStoragePath))
+    if (!allowed) return { ok: false, error: 'Invalid poster.' }
+    const uploadUrl = await createMediaUploadUrl({ key: posterPath, contentType: POST_VIDEO_POSTER_MIME, contentLength: parsed.data.size })
+    return { ok: true, uploadUrl, posterPath }
+  } catch (error) {
+    console.error('[feed_video_poster_presign_failed]', { errorCode: safeErrorCode(error) })
+    return { ok: false, error: 'We could not prepare the poster upload.' }
   }
 }
 

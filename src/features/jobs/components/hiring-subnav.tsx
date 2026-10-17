@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 
 type HiringSubnavProps = {
   active: 'overview' | 'jobs' | 'company'

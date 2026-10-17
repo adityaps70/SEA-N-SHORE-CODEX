@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ArrowRight, Info } from 'lucide-react'
 import { canUseCapability, type AccessContext, type Capability, type VerificationType } from '@/features/access/policy'
 import { canUpgradeOrganization } from '@/features/billing/billing-access'

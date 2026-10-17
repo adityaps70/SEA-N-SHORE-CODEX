@@ -29,7 +29,9 @@ describe('social profile and feed upgrade contract', () => {
   })
 
   it('autoplays feed video muted while visible', () => {
-    const media = source('src/features/feed/components/post-media.tsx')
+    // Round H (H1): the feed's video player moved from post-media.tsx into feed-video.tsx.
+    expect(source('src/features/feed/components/post-media.tsx')).toContain('<FeedVideo')
+    const media = source('src/features/feed/components/feed-video.tsx')
     expect(media).toContain("'use client'")
     expect(media).toContain('IntersectionObserver')
     expect(media).toContain('muted')

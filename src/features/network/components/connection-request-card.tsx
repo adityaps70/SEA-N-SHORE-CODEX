@@ -1,5 +1,5 @@
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Clock3, MapPin, Ship } from 'lucide-react'
 import type { NetworkProfile } from '../types'
 import { RelationshipControls } from './relationship-controls'

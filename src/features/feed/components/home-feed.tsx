@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { CheckCircle2, Compass, Loader2 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import type { NetworkProfile } from '@/features/network/types'

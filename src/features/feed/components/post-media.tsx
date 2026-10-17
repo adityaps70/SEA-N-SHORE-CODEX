@@ -1,13 +1,14 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, UsersRound, X } from 'lucide-react'
 import { renderPdfPage } from '../pdf-page-renderer'
 import { removeMyPhotoTag } from '../photo-tag-actions'
 import type { FeedMedia, FeedPhotoTag } from '../types'
 import { initials, profileHref } from './author-avatar'
+import { FeedVideo } from './feed-video'
 
 function orderedMedia(value: FeedMedia | FeedMedia[]) {
   return (Array.isArray(value) ? value : [value])
@@ -482,9 +483,12 @@ export function PostMedia({
   postId,
   photoTags,
   focus,
+  canMakePoster = false,
 }: {
   media: FeedMedia | FeedMedia[]
   authorName: string
+  /** Round H (H1): the viewer wrote this post, so their browser may add a missing video poster. */
+  canMakePoster?: boolean
   /** Edge to edge on phones (Home feed and post page). */
   flush?: boolean
   /** Lets the lightbox remove the viewer's own photo tag (round 9B). */
@@ -495,29 +499,8 @@ export function PostMedia({
   focus?: FocusPhoto | null
 } & PhotoLoading) {
   const items = useMemo(() => orderedMedia(media), [media])
-  const videoRef = useRef<HTMLVideoElement | null>(null)
   const first = items[0]
   const isVideo = first?.mimeType === 'video/mp4' || first?.mimeType === 'video/webm'
-
-  useEffect(() => {
-    if (!isVideo) return
-    const video = videoRef.current
-    if (!video || typeof IntersectionObserver === 'undefined') return
-
-    video.muted = true
-    const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-        void video.play().catch(() => undefined)
-      } else {
-        video.pause()
-      }
-    }, { threshold: [0, 0.6, 1] })
-
-    observer.observe(video)
-    return () => observer.disconnect()
-  }, [isVideo, first?.signedUrl])
 
   if (!first?.signedUrl) return null
 
@@ -527,21 +510,12 @@ export function PostMedia({
 
   if (isVideo) {
     return (
-      <div className={`mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-black ${flush ? FLUSH_CLASS : ''}`}>
-        <video
-          ref={videoRef}
-          controls
-          muted
-          playsInline
-          loop
-          preload="metadata"
-          src={first.signedUrl}
-          className="block max-h-[80vh] w-full bg-black"
-          aria-label={first.altText ?? `Video attached to ${authorName}'s post`}
-        >
-          Your browser does not support this video.
-        </video>
-      </div>
+      <FeedVideo
+        src={first.signedUrl}
+        label={first.altText ?? `Video attached to ${authorName}'s post`}
+        canMakePoster={canMakePoster}
+        className={`mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-black ${flush ? FLUSH_CLASS : ''}`}
+      />
     )
   }
 

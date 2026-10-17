@@ -10,7 +10,7 @@ import {
   SquarePlus,
   UsersRound,
 } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'

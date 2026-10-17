@@ -1,7 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useMemo } from 'react'
 import { ArrowUpRight, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'

@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { MessageCircleMore, Search } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useState } from 'react'

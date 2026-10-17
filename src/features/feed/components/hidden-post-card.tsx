@@ -1,7 +1,7 @@
 'use client'
 
 import { Eye, Play } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useState, useTransition } from 'react'
 import { unhidePost } from '../actions'
 import type { HiddenPost } from '../types'
