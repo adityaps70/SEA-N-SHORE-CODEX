@@ -11,6 +11,7 @@ import { matchPersonaSql } from '@/features/roles/sql'
 import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
 import type { JobLifecycleSnapshot } from './job-lifecycle'
+import { URGENT_LIMIT_PER_COMPANY, urgentActiveSql } from './urgent'
 import type {
   JobApplicationEvent,
   JobApplicationStatus,
@@ -122,6 +123,8 @@ export type ManagedHiringJobSummary = HiringJobSummary & {
   /** Round 12: null until the recruiter picks a department and accepted ranks. */
   departmentKey?: string | null
   minMatchToApply?: number
+  /** Round H (H7): when Urgent was last set (it lasts 14 days); null when the job is not urgent. */
+  urgentSince?: string | null
 }
 
 export type HiringJobStateChange = {
@@ -238,6 +241,7 @@ type ManagedJobRow = HiringJobSummaryRow & {
   hidden_for_plan?: boolean | null
   department_key?: string | null
   min_match_to_apply?: string | number | null
+  urgent_since?: string | Date | null
 }
 
 type PersonalPublisherRow = QueryResultRow & {
@@ -448,6 +452,7 @@ function managedJobSelect(userParam: string, rolesParam: string) {
          j.vessel_types,
          j.location,
          j.urgent,
+         j.urgent_since,
          j.apply_until,
          j.joining_until,
          j.published_at,
@@ -678,6 +683,7 @@ function mapManagedJob(row: ManagedJobRow): ManagedHiringJobSummary {
     moderationRemoved: Boolean(row.moderation_removed),
     canDelete: Boolean(row.can_delete),
     hiddenForPlan: row.hidden_for_plan === true,
+    urgentSince: row.urgent ? nullableTimestampValue(row.urgent_since) : null,
   }
 }
 
@@ -912,6 +918,29 @@ async function replaceJobRequirements(query: HiringQuery, jobId: string, certifi
       [jobId, visa],
     )
   }
+}
+
+/** Round H (H7): thrown when an organization already has its maximum of live urgent jobs. */
+export const URGENT_LIMIT_ERROR = 'job_urgent_limit_reached'
+
+/**
+ * Refuses a new live urgent job when the organization already has URGENT_LIMIT_PER_COMPANY of them (published,
+ * not deleted, urgent for less than 14 days). Serialized per organization for the rest of the transaction, so two
+ * quick saves cannot both slip under the limit.
+ */
+async function assertUrgentAllowance(query: HiringQuery, companyId: string, excludeJobId: string | null) {
+  await query(`select pg_advisory_xact_lock(hashtext('job-urgent:' || $1::text)::bigint)`, [companyId])
+  const rows = await query(
+    `select count(*)::int as count
+     from public.jobs j
+     where j.company_id = $1
+       and j.status = 'published'::public.job_listing_status
+       and j.deleted_at is null
+       and ${urgentActiveSql('j')}
+       and ($2::uuid is null or j.id <> $2::uuid)`,
+    [companyId, excludeJobId],
+  )
+  if (Number(rows[0]?.count ?? 0) >= URGENT_LIMIT_PER_COMPANY) throw new Error(URGENT_LIMIT_ERROR)
 }
 
 export function createHiringRepository(input: { query?: HiringQuery; transaction?: HiringTransaction } = {}) {
@@ -1231,6 +1260,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
         if (!company) throw new Error('hiring_forbidden')
         publisherName = company.name
         publisherCompanyId = company.id
+        if (job.urgent && job.status === 'published') await assertUrgentAllowance(txQuery, company.id, null)
       } else {
         if (job.companyId !== null) throw new Error('hiring_forbidden')
         const publisher = await getPersonalRecruiterPublisherWithQuery(txQuery, userId)
@@ -1244,13 +1274,15 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
            title, company_name, company_id, created_by_user_id, location, summary, description, requirements,
            apply_until, status, job_domain, department, rank, vessel_types, experience_min_years, experience_max_years,
            joining_from, joining_until, salary_min, salary_max, salary_currency, salary_period, sailing_regions,
-           urgent, easy_apply, published_at, department_key, accepted_role_keys, role_other_text, min_match_to_apply
+           urgent, easy_apply, published_at, department_key, accepted_role_keys, role_other_text, min_match_to_apply,
+           urgent_since
          ) values (
            $1, $2, $3, $4, $5, $6, $7, $8,
            $9, $10::public.job_listing_status, $11, $12, $13, $14::text[], $15, $16,
            $17, $18, $19, $20, $21, $22, $23::text[],
            $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end,
-           $26, $27::text[], $28, $29::smallint
+           $26, $27::text[], $28, $29::smallint,
+           case when $24::boolean then now() else null end
          ) returning id`,
         [
           job.title, publisherName, publisherCompanyId, userId, job.location, job.summary, job.description, job.requirements,
@@ -1285,7 +1317,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   async function requireAuthorizedJob(query: HiringQuery, userId: string, jobId: string) {
     const rows = await query(
-      `select j.id, j.company_id, j.created_by_user_id, j.status::text as status
+      `select j.id, j.company_id, j.created_by_user_id, j.status::text as status, j.urgent
        from public.jobs j
        left join public.company_members cm
          on cm.company_id = j.company_id and cm.user_id = $2
@@ -1313,7 +1345,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     change: { expectedStatus: HiringJobStatus; nextStatus: HiringJobStatus },
   ) {
     return transaction(async (txQuery) => {
-      await requireAuthorizedJob(txQuery, userId, jobId)
+      const current = await requireAuthorizedJob(txQuery, userId, jobId)
+      // Round H (H7): setting Urgent, or publishing a job that is urgent, starts a new 14-day urgent window
+      // (urgent_since = now() below) and counts toward the organization's limit of live urgent jobs.
+      const startsUrgentWindow = job.urgent && (!current.urgent || (change.nextStatus === 'published' && current.status !== 'published'))
+      if (startsUrgentWindow && change.nextStatus === 'published' && current.company_id) {
+        await assertUrgentAllowance(txQuery, String(current.company_id), jobId)
+      }
       const updated = await txQuery(
         `update public.jobs
          set title = $2,
@@ -1337,6 +1375,12 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
              salary_period = $20,
              sailing_regions = $21::text[],
              urgent = $22,
+             urgent_since = case
+               when not $22::boolean then null
+               when not urgent or urgent_since is null then now()
+               when $8::public.job_listing_status = 'published'::public.job_listing_status and status <> 'published'::public.job_listing_status then now()
+               else urgent_since
+             end,
              easy_apply = $23,
              published_at = case
                when $8::public.job_listing_status = 'published'::public.job_listing_status and (status <> 'published'::public.job_listing_status or published_at is null) then now()
@@ -1372,11 +1416,20 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
   /** Moves a job along the lifecycle. The caller validates the transition with job-lifecycle.ts. */
   async function changeJobStatus(userId: string, jobId: string, change: HiringJobStateChange) {
     return transaction(async (txQuery) => {
-      await requireAuthorizedJob(txQuery, userId, jobId)
+      const current = await requireAuthorizedJob(txQuery, userId, jobId)
+      // Round H (H7): publishing or republishing an urgent job starts a new 14-day urgent window and
+      // counts toward the organization's limit.
+      if (change.to === 'published' && current.urgent && current.company_id) {
+        await assertUrgentAllowance(txQuery, String(current.company_id), jobId)
+      }
       const updated = await txQuery(
         `update public.jobs
          set status = $3::public.job_listing_status,
              apply_until = $4::date,
+             urgent_since = case
+               when urgent and $3::public.job_listing_status = 'published'::public.job_listing_status then now()
+               else urgent_since
+             end,
              published_at = case
                when $3::public.job_listing_status = 'published'::public.job_listing_status then now()
                else published_at

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
-import { FaqAccordion } from '@/components/marketing/faq/faq-accordion'
+import { FaqSearch } from '@/components/marketing/faq/faq-search'
 import { JumpToChips } from '@/components/marketing/jump-to-chips'
 import { faqGroups, faqJsonLd, jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { SUPPORT_EMAIL } from '@/components/navigation/social-links'
@@ -88,16 +88,8 @@ export default function HelpPage() {
               ))}
             </ul>
           </nav>
-          <div className="mt-6 grid gap-8">
-            {groups.map((group) => (
-              <div key={group.id} id={`faq-${group.id}`} className="scroll-mt-24">
-                <h3 className="text-lg font-semibold text-navy-950">{group.title}</h3>
-                <div className="mt-3">
-                  <FaqAccordion items={group.items} idPrefix={`faq-${group.id}`} />
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* Round H (H7): search the questions in the browser; every question is listed without JavaScript. */}
+          <FaqSearch groups={groups} />
         </section>
 
         <div id="contact" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-5">
@@ -115,9 +107,18 @@ export default function HelpPage() {
               A dedicated support inbox is being set up and will be listed here. Until then, use the Report option on the affected content for safety or content issues, and check the topics above for account tasks.
             </p>
           )}
-          <Link href="/contact" className="mt-3 inline-flex min-h-10 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50">
-            Contact us
-          </Link>
+          {/* Round H (H7): the Contact page form, and the signed-in list of requests sent with it. */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href="/contact#contact-form" className="inline-flex min-h-10 cursor-pointer items-center rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white transition-colors hover:bg-navy-900 max-md:min-h-11">
+              Contact support
+            </Link>
+            <Link href="/help/requests" className="inline-flex min-h-10 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50 max-md:min-h-11">
+              My requests
+            </Link>
+            <Link href="/contact" className="inline-flex min-h-10 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50 max-md:min-h-11">
+              Contact us
+            </Link>
+          </div>
           <p className="mt-4 text-xs text-muted">{OPERATOR_LINE}</p>
         </div>
       </section>

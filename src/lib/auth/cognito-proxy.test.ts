@@ -129,6 +129,8 @@ describe('Cognito protected route proxy', () => {
     '/community',
     '/events',
     '/hashtags/sire',
+    '/help/requests',
+    '/help/requests/11111111-1111-4111-8111-111111111111',
     '/hiring',
     '/home',
     '/jobs/saved',

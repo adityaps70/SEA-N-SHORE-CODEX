@@ -8,8 +8,10 @@ import {
   GraduationCap,
   KeyRound,
   LayoutDashboard,
+  LifeBuoy,
   Mail,
   MailPlus,
+  Settings,
   SlidersHorizontal,
   ShieldAlert,
   ShieldCheck,
@@ -37,6 +39,8 @@ const sections: Section[] = [
   { href: '/admin/communities', label: 'Communities', icon: UsersRound },
   { href: '/admin/verifications', label: 'Verifications', icon: BadgeCheck },
   { href: '/admin/access', label: 'Access requests', icon: KeyRound, count: (m) => m.pendingAccessRequests },
+  // Round H (H7): Contact page requests, and the owner-edited Contact and About page content.
+  { href: '/admin/support', label: 'Support', icon: LifeBuoy },
   { href: '/admin/learning', label: 'Learning', icon: GraduationCap },
   { href: '/admin/billing', label: 'Billing', icon: CreditCard },
   { href: '/admin/payments', label: 'Payments', icon: Wallet },
@@ -46,6 +50,7 @@ const sections: Section[] = [
   { href: '/admin/ranking/health', label: 'Ranking health', icon: Activity },
   { href: '/admin/deleted-content', label: 'Deleted content', icon: Trash2 },
   { href: '/admin/media', label: 'Video posters', icon: Film },
+  { href: '/admin/settings', label: 'Site settings', icon: Settings },
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]
 

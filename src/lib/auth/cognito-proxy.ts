@@ -16,6 +16,8 @@ const PROTECTED_PREFIXES = [
   '/community',
   '/events',
   '/hashtags',
+  // Round H (H7): Help › My requests (the member's Contact page tickets). /help itself stays public.
+  '/help/requests',
   '/hiring',
   '/home',
   '/jobs',

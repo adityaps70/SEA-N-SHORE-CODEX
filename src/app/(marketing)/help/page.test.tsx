@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import HelpPage from './page'
 
@@ -66,5 +66,48 @@ describe('/help on phones', () => {
     expect(within(jump).getByRole('link', { name: 'Payments & plans' })).toHaveAttribute('href', '#faq-payments')
     // The in-card topic chips stay for desktop.
     expect(screen.getByRole('navigation', { name: 'FAQ topics' })).toHaveClass('max-md:hidden')
+  })
+})
+
+describe('/help search and support (round H, H7)', () => {
+  it('filters the questions as you type and reads the number of matches', () => {
+    const { container } = render(<HelpPage />)
+    const faq = screen.getByRole('region', { name: 'Frequently asked questions' })
+    const search = within(faq).getByRole('searchbox', { name: 'Search the questions' })
+    const status = within(faq).getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(search).toHaveAttribute('aria-describedby', status.id)
+    expect(status).toHaveTextContent('')
+
+    fireEvent.change(search, { target: { value: 'password' } })
+    const visible = [...faq.querySelectorAll('details')].filter((details) => !details.closest('[hidden]'))
+    expect(visible.length).toBeGreaterThan(0)
+    expect(status).toHaveTextContent(new RegExp(`^${visible.length} questions? match`))
+    expect(within(faq).getByText('I forgot my password. How do I reset it?')).toBeVisible()
+    expect(container.querySelector('#faq-payments')).toHaveAttribute('hidden')
+
+    fireEvent.change(search, { target: { value: 'zzqxv' } })
+    expect(status).toHaveTextContent('No questions match “zzqxv”.')
+    expect(within(faq).getByRole('link', { name: 'contact support' })).toHaveAttribute('href', '/contact#contact-form')
+
+    fireEvent.change(search, { target: { value: '' } })
+    expect(faq.querySelectorAll('details:not([hidden] details)').length).toBe(faq.querySelectorAll('details').length)
+  })
+
+  it('answers messaging, connections, communities, password reset and a lost two-step device', () => {
+    render(<HelpPage />)
+    const faq = screen.getByRole('region', { name: 'Frequently asked questions' })
+    expect(within(faq).getByRole('heading', { level: 3, name: 'Messages, connections & communities' })).toBeInTheDocument()
+    for (const question of ['Who can message me, and how do messages work?', 'How do connections work?', 'How do communities work, and can I start one?', 'I forgot my password. How do I reset it?', 'I lost the phone or app I use for two-step verification. What can I do?']) {
+      expect(within(faq).getByText(question)).toBeInTheDocument()
+    }
+    expect(within(faq).getByRole('link', { name: 'Contact support about a lost device' })).toHaveAttribute('href', '/contact?topic=account#contact-form')
+  })
+
+  it('links the Contact page form and My requests', () => {
+    render(<HelpPage />)
+    const contact = within(screen.getByRole('heading', { name: 'Contact support' }).parentElement!)
+    expect(contact.getByRole('link', { name: 'Contact support' })).toHaveAttribute('href', '/contact#contact-form')
+    expect(contact.getByRole('link', { name: 'My requests' })).toHaveAttribute('href', '/help/requests')
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { GST_SUPPLIER } from '@/features/tax/gst'
 import {
   BUSINESS,
   OPERATOR_LINE,
@@ -6,6 +7,7 @@ import {
   businessRegistrations,
   grievanceContact,
   operatorLine,
+  registeredAddressLine,
   telHref,
   type BusinessDetails,
 } from './business'
@@ -29,15 +31,22 @@ describe('business details (the one source of truth for policy pages and footers
     expect(BUSINESS.supportHours).toBe('Monday to Saturday, 10:00–18:00 IST')
   })
 
-  it('never invents the address or registration numbers that are not known yet', () => {
-    expect(BUSINESS.registeredAddress).toBe('')
+  it('never invents registration numbers that are not known yet', () => {
     expect(BUSINESS.llpin).toBe('')
     expect(BUSINESS.gstin).toBe('')
     expect(businessRegistrations()).toEqual([])
   })
 
+  it('takes the registered address from the GST supplier address printed on invoices, and invents nothing (round H, H7)', () => {
+    expect(BUSINESS.registeredAddress).toBe(registeredAddressLine(GST_SUPPLIER.address))
+    expect(BUSINESS.registeredAddress).toBe('0502, Hermes Hiranandani Fortune City, Bhokarpada, Panvel, Raigad, Maharashtra 410206, India')
+    for (const line of GST_SUPPLIER.address) expect(BUSINESS.registeredAddress).toContain(line)
+    expect(businessAddressLine()).toBe(BUSINESS.registeredAddress)
+    expect(registeredAddressLine([' Line 1 ', ''], 'India')).toBe('Line 1, India')
+  })
+
   it('shows the city line while the registered address is empty, and the address once filled', () => {
-    expect(businessAddressLine()).toBe('Navi Mumbai, Maharashtra, India')
+    expect(businessAddressLine({ ...BUSINESS, registeredAddress: '' })).toBe('Navi Mumbai, Maharashtra, India')
     expect(businessAddressLine({ ...BUSINESS, registeredAddress: '   ' })).toBe('Navi Mumbai, Maharashtra, India')
     expect(businessAddressLine(filled)).toBe(filled.registeredAddress)
     expect(businessRegistrations(filled)).toEqual([{ label: 'LLPIN', value: 'AAA-0000' }, { label: 'GSTIN', value: '27AAAAA0000A1Z5' }])

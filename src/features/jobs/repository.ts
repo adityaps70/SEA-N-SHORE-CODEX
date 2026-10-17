@@ -7,6 +7,7 @@ import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
 import { jobDepartmentDisplay, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { PERSONAS } from '@/features/profiles/persona'
 import { matchPersonaSql } from '@/features/roles/sql'
+import { urgentActiveSql } from './urgent'
 import type {
   JobAlert,
   JobApplication,
@@ -277,7 +278,7 @@ const JOB_COLUMNS = `
     j.salary_currency,
     j.salary_period,
     j.sailing_regions,
-    j.urgent,
+    ${urgentActiveSql('j')} as urgent,
     j.easy_apply,
     j.department_key,
     j.accepted_role_keys,
@@ -540,7 +541,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       )`)
     }
     if (filters.verifiedOnly) where.push('coalesce(c.is_verified, false) = true')
-    if (filters.urgentOnly) where.push('j.urgent = true')
+    // Round H (H7): urgent lasts 14 days from urgent_since.
+    if (filters.urgentOnly) where.push(`j.urgent = true and ${urgentActiveSql('j')}`)
     if (filters.easyApplyOnly) where.push('j.easy_apply = true')
     if (filters.postedWithinDays !== null) {
       where.push(`coalesce(j.published_at, j.created_at) >= now() - (${bind(filters.postedWithinDays)}::int * interval '1 day')`)
@@ -570,7 +572,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         ? 'coalesce(j.salary_max, j.salary_min) desc nulls last, coalesce(j.published_at, j.created_at) desc, j.id desc'
         : filters.sort === 'recent'
           ? 'coalesce(j.published_at, j.created_at) desc, j.id desc'
-          : 'j.urgent desc, coalesce(c.is_verified, false) desc, coalesce(j.published_at, j.created_at) desc, j.id desc'
+          : `${urgentActiveSql('j')} desc, coalesce(c.is_verified, false) desc, coalesce(j.published_at, j.created_at) desc, j.id desc`
 
     const limitParam = bind(Math.min(Math.max(Math.trunc(limit), 1), pool ? 300 : 100))
     const offsetParam = bind(Math.max(Math.trunc(offset), 0))
