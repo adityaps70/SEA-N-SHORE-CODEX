@@ -670,6 +670,12 @@ async function cleanupAccount(query: Query, profileId: string, currentSub: strin
      where learner_id = $1`,
     [profileId],
   )
+  // Round H (H7): support requests hold the sender's name and email; their messages and queued emails cascade.
+  await query(
+    `delete from public.support_tickets
+     where sender_profile_id = $1`,
+    [profileId],
+  )
   await query(
     `delete from public.company_access_requests
      where user_id = $1`,

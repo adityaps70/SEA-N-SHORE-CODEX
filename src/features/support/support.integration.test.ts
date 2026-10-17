@@ -93,6 +93,23 @@ describe('Contact page tickets', () => {
     expect(detail?.messages.map((message) => message.authorRole)).toEqual(['member'])
   })
 
+  it('account deletion removes the member’s tickets, with their messages and queued emails (cascade)', async () => {
+    const member = await profile('Placeholder Leaving Member')
+    const other = await profile('Placeholder Staying Member')
+    const repo = repository()
+    const mine = await repo.createTicket(ticketInput({ senderProfileId: member }))
+    const theirs = await repo.createTicket(ticketInput({ senderProfileId: other }))
+    if (!mine.ok || !theirs.ok) throw new Error('tickets were not created')
+    expect(await emailsFor(mine.ticketId)).not.toHaveLength(0)
+
+    // The statement src/features/account-deletion/repository.ts runs.
+    await db.query(`delete from public.support_tickets where sender_profile_id = $1`, [member])
+
+    expect(await db.query(`select id from public.support_ticket_messages where ticket_id = $1`, [mine.ticketId])).toHaveLength(0)
+    expect(await emailsFor(mine.ticketId)).toHaveLength(0)
+    expect(await repo.getTicketForMember(other, theirs.ticketId)).not.toBeNull()
+  })
+
   it('limits new tickets per email address, per hashed IP and per member', async () => {
     const repo = repository()
     const email = 'limited@example.com'
