@@ -531,6 +531,9 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     if (filters.postedWithinDays !== null) {
       where.push(`coalesce(j.published_at, j.created_at) >= now() - (${bind(filters.postedWithinDays)}::int * interval '1 day')`)
     }
+    if (filters.postedSince) {
+      where.push(`coalesce(j.published_at, j.created_at) > ${bind(filters.postedSince)}::timestamptz`)
+    }
 
     if (pool) {
       where.push('(j.apply_until is null or j.apply_until >= current_date)')
