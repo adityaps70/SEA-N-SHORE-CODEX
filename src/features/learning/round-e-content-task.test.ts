@@ -103,7 +103,7 @@ describe('round E content task: apply-once', () => {
 
   it('fails when plain-text articles remain in the draft', async () => {
     const { value } = deps({ revisionPlainLeft: 1 })
-    await expect(runRoundEContentApply(value, ROUND_E_APPLY_CONFIRMATION)).rejects.toThrow('remain in the draft')
+    await expect(runRoundEContentApply(value, ROUND_E_APPLY_CONFIRMATION)).rejects.toThrow(/remains? in the draft/)
   })
 
   it('targets the live SIRE slug and refuses a course at that slug that is not the SIRE course', async () => {

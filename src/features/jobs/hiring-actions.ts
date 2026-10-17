@@ -24,6 +24,7 @@ import {
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from './types'
 import { validateJobRoles } from '@/features/roles/job-role-input'
 import { URGENT_LIMIT_MESSAGE } from './urgent'
+import { validateJobForm } from './job-form-rules'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
@@ -249,6 +250,10 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
   const jobInput = withRoles.data
 
   const today = todayIsoDate()
+  // Round H (H7): the form's rules (description, salary, joining date, location) also hold on the server.
+  // Warnings (rank vs experience) never block.
+  const rules = validateJobForm(jobInput, { today, savedJoiningFrom: null })
+  if (rules.errors.length) return { ok: false, error: rules.errors[0]!.message }
   if (parsed.data.status === 'published') {
     const publish = validateJobTransition({
       status: 'draft',
@@ -304,6 +309,9 @@ export async function updateHiringJob(
     const user = await requireAwsUser()
     const job = await requireManagedJob(user.id, parsedJobId.data)
     const today = todayIsoDate()
+    // Round H (H7): an unchanged joining date that has since passed stays valid, so older jobs remain editable.
+    const rules = validateJobForm(jobInput, { today, savedJoiningFrom: job.joiningFrom ?? null })
+    if (rules.errors.length) throw new HiringValidationError(rules.errors[0]!.message)
 
     let nextStatus: HiringJobStatus = job.status
     if (parsedIntent.data === 'publish' && job.status !== 'published') {

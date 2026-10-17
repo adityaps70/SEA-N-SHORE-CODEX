@@ -112,6 +112,8 @@ export type ManagedHiringJobSummary = HiringJobSummary & {
   companyLogoPath: string | null
   companyLocation: string | null
   companyVerified: boolean
+  /** Round H (H7): the saved joining date, so an unchanged past date doesn't block an edit. */
+  joiningFrom?: string | null
   joiningUntil: string | null
   createdAt: string | null
   archivedAt: string | null
@@ -232,6 +234,7 @@ type ManagedJobRow = HiringJobSummaryRow & {
   company_logo_path?: string | null
   company_location?: string | null
   company_verified?: boolean | null
+  joining_from?: string | Date | null
   joining_until?: string | Date | null
   created_at?: string | Date | null
   archived_at?: string | Date | null
@@ -454,6 +457,7 @@ function managedJobSelect(userParam: string, rolesParam: string) {
          j.urgent,
          j.urgent_since,
          j.apply_until,
+         j.joining_from,
          j.joining_until,
          j.published_at,
          j.created_at,
@@ -676,6 +680,7 @@ function mapManagedJob(row: ManagedJobRow): ManagedHiringJobSummary {
     companyLogoPath: row.company_logo_path ?? null,
     companyLocation: row.company_location ?? null,
     companyVerified: Boolean(row.company_verified),
+    joiningFrom: dateInputValue(row.joining_from),
     joiningUntil: dateInputValue(row.joining_until),
     createdAt: nullableTimestampValue(row.created_at),
     archivedAt: nullableTimestampValue(row.archived_at),

@@ -42,7 +42,9 @@ describe('premium candidate jobs experience contract', () => {
     const page = source('src/app/(public)/jobs/[id]/page.tsx')
     expect(page).toContain('getJobDetailState')
     expect(page).toContain('Your Maritime Match')
-    expect(page).toContain('missingRequirements')
+    // Round H (H7): the explained checks (built from missingRequirements when a match has no structured checks).
+    expect(page).toContain('<JobMatchChecks')
+    expect(source('src/features/jobs/components/job-match-checks.tsx')).toContain('missingRequirements')
     expect(page).toContain('SaveJobButton')
     expect(page).toContain('ReportJobButton')
     // The mobile apply bar sticks just above the fixed bottom navigation.

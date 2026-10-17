@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { FaqSearch } from '@/components/marketing/faq/faq-search'
 import { JumpToChips } from '@/components/marketing/jump-to-chips'
+import { MainLandmark } from '@/components/layout/main-landmark'
 import { faqGroups, faqJsonLd, jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { SUPPORT_EMAIL } from '@/components/navigation/social-links'
 import { BUSINESS, OPERATOR_LINE, telHref } from '@/config/business'
@@ -43,7 +44,7 @@ export default function HelpPage() {
   const groups = faqGroups({ googleEnabled: isGoogleSignInEnabled() })
 
   return (
-    <main className="px-4 py-8 sm:px-6 sm:py-12 max-md:py-4">
+    <MainLandmark className="px-4 py-8 sm:px-6 sm:py-12 max-md:py-4">
       <JumpToChips
         links={[
           { href: '#topics', label: 'Topics' },
@@ -122,6 +123,6 @@ export default function HelpPage() {
           <p className="mt-4 text-xs text-muted">{OPERATOR_LINE}</p>
         </div>
       </section>
-    </main>
+    </MainLandmark>
   )
 }
