@@ -676,8 +676,8 @@ export function createOrganizationWorkspaceRepository(input: {
       `with this_groups as (
          select distinct vt.vessel_group
          from public.companies this_company
-         cross join lateral unnest(public.taxonomy_codes('vessel', this_company.vessel_types)) as code
-         join public.vessel_types vt on vt.code = code
+         cross join lateral unnest(public.taxonomy_codes('vessel', this_company.vessel_types)) as this_code
+         join public.vessel_types vt on vt.code = this_code
          where this_company.id = $2
        )
        select ${CARD_COLUMNS},
