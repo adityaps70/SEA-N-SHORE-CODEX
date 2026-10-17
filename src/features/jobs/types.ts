@@ -47,6 +47,8 @@ export type JobSearchFilters = {
   urgentOnly: boolean
   easyApplyOnly: boolean
   postedWithinDays: number | null
+  /** Internal (job alerts): only jobs posted after this instant (ISO), on the caller's clock. */
+  postedSince?: string | null
   sort: JobSort
 }
 

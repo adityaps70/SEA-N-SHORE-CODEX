@@ -119,7 +119,9 @@ export function createJobAlertSender(input: {
     if (!profile) return []
     const floor = new Date(at.getTime() - LOOKBACK_DAYS * DAY_MS)
     const since = options.ignoreHistory ? floor : new Date(Math.max((alert.lastSentAt ?? alert.createdAt).getTime(), floor.getTime()))
-    const filters = { ...alertFilters(alert.filters), postedWithinDays: Math.min(LOOKBACK_DAYS, Math.ceil((at.getTime() - since.getTime()) / DAY_MS) + 1) }
+    // The window is bound to the sender's clock (`at`), not the database's now(), so a run judges "new since" the same
+    // way the in-memory filter below does.
+    const filters = { ...alertFilters(alert.filters), postedWithinDays: null, postedSince: since.toISOString() }
     const found = (await jobs.searchJobs(filters, 100, 0))
       .filter((job) => Date.parse(job.publishedAt ?? job.createdAt) > since.getTime() && !isJobClosed(job, at))
     if (!found.length) return []
