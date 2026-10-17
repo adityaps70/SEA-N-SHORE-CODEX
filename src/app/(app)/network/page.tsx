@@ -13,6 +13,7 @@ import { getNetworkHub, getPeopleSuggestions, isPeopleRankingEnabled } from '@/f
 import { PEOPLE_SECTIONS, PEOPLE_SECTION_LABELS, type PeopleSection } from '@/features/ranking/people-scorer'
 import { parseNetworkTab } from '@/features/network/schemas'
 import type { NetworkFollowView, NetworkProfile } from '@/features/network/types'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const metadata: Metadata = { title: 'My Network' }
 
@@ -82,7 +83,7 @@ function SearchField({
           className="min-h-11 w-full rounded-xl border border-mist-100 bg-white py-2.5 pl-10 pr-3 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-400"
         />
       </div>
-      <button type="submit" className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700">Search</button>
+      <button type="submit" className={buttonClass()}>Search</button>
     </form>
   )
 }
@@ -176,7 +177,7 @@ export default async function NetworkPage({
               {query ? <Link href="/network?tab=discover" className="text-sm font-semibold text-ocean-700 hover:text-navy-950">Clear search</Link> : null}
             </div>
             {query ? (
-              <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div data-testid="network-suggestion-grid" className="grid auto-rows-fr gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
               </div>
             ) : section ? (

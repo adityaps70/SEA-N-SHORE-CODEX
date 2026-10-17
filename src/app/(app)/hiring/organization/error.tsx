@@ -9,7 +9,7 @@ export default function OrganizationVerificationError({
   reset: () => void
 }) {
   return (
-    <div className="mx-auto w-full max-w-3xl py-10 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-narrow py-10 sm:px-6 lg:px-8">
       <section
         role="alert"
         className="rounded-[1.5rem] border border-red-200 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8"

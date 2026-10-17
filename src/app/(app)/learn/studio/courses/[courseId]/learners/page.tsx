@@ -82,7 +82,7 @@ export default async function CourseLearnersPage({ params, searchParams }: {
   const certified = learners.filter((learner) => learner.certificate === 'issued').length
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref={backHref} title="Learners" />
       <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> {course.canManage ? 'Back to the course' : 'Back to the batch'}

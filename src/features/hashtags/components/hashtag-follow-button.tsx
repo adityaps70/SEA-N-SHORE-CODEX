@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { Check, Loader2, Plus } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { followHashtag, unfollowHashtag } from '../actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 /**
  * Follow / Following toggle for a hashtag page (round 9B). Optimistic: the label and the
@@ -58,10 +59,8 @@ export function HashtagFollowButton({
           aria-pressed={following}
           aria-label={`${following ? 'Following' : 'Follow'} #${tag}`}
           className={cn(
-            'inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 max-md:min-h-11 max-md:rounded-full max-md:text-[15px]',
-            following
-              ? 'border border-mist-200 bg-white text-navy-950 hover:bg-mist-50'
-              : 'bg-navy-950 text-white hover:bg-navy-900 max-md:bg-ocean-700 max-md:hover:bg-ocean-800',
+            buttonClass({ variant: following ? 'secondary' : 'primary', size: 'sm' }),
+            'font-bold disabled:cursor-wait max-md:min-h-11 max-md:rounded-full max-md:text-[15px]',
           )}
         >
           {pending

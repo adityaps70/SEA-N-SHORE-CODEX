@@ -36,7 +36,7 @@ export default async function RegisterOrganizationPage({
   const canRegister = state.kind === 'none' || state.status === 'approved'
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-narrow space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
       <MobilePageBar backHref={back.href} title="Register an organization" />
       <Link href={back.href} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-ocean-700 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> {back.label}

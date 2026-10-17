@@ -28,7 +28,7 @@ export default async function CourseBatchesPage({ params }: { params: Promise<{ 
   const batchCourse = course.settings.batchMode === 'batches'
 
   return (
-    <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref={`/learn/studio/courses/${course.id}/edit`} title="Batches" />
       <Link href={`/learn/studio/courses/${course.id}/edit`} className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> Back to the course

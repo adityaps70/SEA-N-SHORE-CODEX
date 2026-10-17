@@ -18,12 +18,12 @@ import {
 } from '../actions'
 import type { RelationshipState } from '../types'
 
-/** Public profile header on phones: one wide filled pill, an outline pill and a round "…". */
+/** Public profile header on phones: one wide filled pill, an outline pill and a round "…". Round H (H6): the filled pill is navy. */
 /** Phones, list rows (compact + icon-only menu): Message becomes a 44px outline icon button so the name keeps its width. */
 const PHONE_MESSAGE_ICON = 'max-md:size-11 max-md:min-h-11 max-md:gap-0 max-md:rounded-full max-md:border max-md:border-ocean-700 max-md:bg-white max-md:p-0 max-md:text-[0px] max-md:text-ocean-700 max-md:hover:bg-ocean-50 max-md:[&>svg]:size-5'
-const PHONE_PRIMARY_PILL = 'max-md:inline-flex max-md:min-h-11 max-md:flex-1 max-md:items-center max-md:justify-center max-md:gap-2 max-md:rounded-full max-md:border-ocean-700 max-md:bg-ocean-700 max-md:px-4 max-md:text-[15px] max-md:hover:bg-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+const PHONE_PRIMARY_PILL = 'max-md:inline-flex max-md:min-h-11 max-md:flex-1 max-md:items-center max-md:justify-center max-md:gap-2 max-md:rounded-full max-md:border-navy-950 max-md:bg-navy-950 max-md:px-4 max-md:text-[15px] max-md:hover:bg-navy-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
 const PHONE_PENDING_PILL = 'max-md:min-h-11 max-md:flex-1 max-md:justify-center max-md:gap-2 max-md:rounded-full max-md:border max-md:border-mist-300 max-md:bg-white max-md:text-[15px] max-md:text-navy-700'
-const PHONE_MESSAGE_PILL = 'max-md:min-h-11 max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px] max-md:hover:bg-ocean-800'
+const PHONE_MESSAGE_PILL = 'max-md:min-h-11 max-md:rounded-full max-md:bg-navy-950 max-md:text-[15px] max-md:hover:bg-navy-800'
 const PHONE_MORE_ROUND = 'max-md:size-11 max-md:min-h-0 max-md:justify-center max-md:rounded-full max-md:border-ocean-700 max-md:px-0 max-md:text-ocean-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
 
 function relationshipStateKey(relationship: RelationshipState) {

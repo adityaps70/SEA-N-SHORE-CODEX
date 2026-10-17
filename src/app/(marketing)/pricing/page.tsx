@@ -67,7 +67,7 @@ export default async function PricingPage() {
   )
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+    <main className="mx-auto w-full max-w-page-wide space-y-8 px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
       <header className="mx-auto max-w-3xl text-center">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Pricing</p>
         <h1 className="mt-2 text-4xl font-bold tracking-tight text-navy-950 sm:text-5xl">Plans and prices</h1>

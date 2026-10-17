@@ -36,6 +36,11 @@ function person(index: number): NetworkProfile {
 }
 
 describe('NetworkSuggestionGrid (/network Discover)', () => {
+  it('gives every row the same height, so long names never make one card taller (round H, H6)', () => {
+    render(<NetworkSuggestionGrid profiles={[person(1), { ...person(2), fullName: 'Placeholder Member With An Unusually Long Family Name' }]} />)
+    expect(screen.getByTestId('network-suggestion-grid')).toHaveClass('grid', 'auto-rows-fr')
+  })
+
   it(`shows ${NETWORK_DISCOVER_VISIBLE} cards and slides a spare in after Connect or X`, async () => {
     render(<NetworkSuggestionGrid profiles={Array.from({ length: NETWORK_DISCOVER_VISIBLE + 2 }, (_, index) => person(index + 1))} />)
     expect(screen.getAllByTestId('network-profile-card')).toHaveLength(NETWORK_DISCOVER_VISIBLE)

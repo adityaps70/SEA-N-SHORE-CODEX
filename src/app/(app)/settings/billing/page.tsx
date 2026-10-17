@@ -103,7 +103,7 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
   const history = view.history.length ? <BillingHistory rows={view.history} /> : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+    <main className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Plan & billing" />
       {/* Phones: the page bar is the title; your plan and its status are the first card below. */}
       <header className="max-md:hidden">

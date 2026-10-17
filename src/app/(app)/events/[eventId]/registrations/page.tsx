@@ -50,7 +50,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
   const totals = totalsByCurrency(rows)
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
       <MobilePageBar backHref={`/events/${event.id}`} title="Paid registrations" />
       <EventNav active="hosting" className="max-md:hidden" />
       <div>

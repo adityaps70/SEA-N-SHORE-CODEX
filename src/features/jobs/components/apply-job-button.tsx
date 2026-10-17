@@ -7,6 +7,8 @@ import { applyToJob, prepareJobApplicationCvUpload } from '../actions'
 import type { ApplyGate } from '../apply-gate'
 import { MAX_JOB_APPLICATION_CV_BYTES } from '../application-media-policy'
 import { ApplyGateNotice } from './apply-gate-notice'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export function ApplyJobButton({
   jobId,
@@ -54,10 +56,10 @@ export function ApplyJobButton({
   }, [open, pending])
 
   const triggerClass = bar
-    ? 'inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-wait disabled:opacity-60'
+    ? cn(buttonClass(), 'min-h-11 flex-1 rounded-full text-[15px] disabled:cursor-wait')
     : compact
-    ? 'inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'
-    : 'inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'
+    ? cn(buttonClass({ variant: 'primary', size: 'sm' }), 'disabled:cursor-wait')
+    : cn(buttonClass(), 'disabled:cursor-wait')
   const triggerContent = <>{bar ? <Zap aria-hidden="true" className="size-4" /> : <Send aria-hidden="true" className="size-4" />} {label ?? (compact || bar ? 'Easy Apply' : 'Apply now')}</>
 
   if (signInHref) return <Link href={signInHref} className={triggerClass}>{triggerContent}</Link>

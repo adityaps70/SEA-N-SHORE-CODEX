@@ -63,7 +63,7 @@ describe('ImageCropDialog', () => {
     expect(screen.getByTestId('mock-cropper')).toHaveAttribute('data-aspect', '1')
     expect(mocks.cropperProps[0]?.showGrid).toBe(false)
     expect(screen.getByLabelText(CROP_AREA_LABEL)).toHaveAttribute('tabindex', '0')
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('bg-navy-950', 'text-white', 'hover:bg-ocean-700')
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('bg-navy-950', 'text-white', 'hover:bg-navy-800')
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     expect(screen.getByRole('slider', { name: 'Zoom' })).toHaveFocus()
   })

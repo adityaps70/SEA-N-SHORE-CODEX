@@ -69,7 +69,7 @@ export default async function HiringJobsPage({
   const visible = filter === 'all' ? withStatus : withStatus.filter((item) => filterFor(item.presentation.key) === filter)
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar
         backHref="/hiring"
         title="Your jobs"

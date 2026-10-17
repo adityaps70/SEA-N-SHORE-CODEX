@@ -51,7 +51,7 @@ export default function HelpPage() {
           { href: '#contact', label: 'Contact support' },
         ]}
       />
-      <section className="mx-auto grid max-w-3xl gap-5">
+      <section className="mx-auto grid max-w-page-narrow gap-5">
         <div className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8 max-md:p-5">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700 max-md:hidden">Help</p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-2xl">Get help with your Sea N Shore account and professional activity.</h1>

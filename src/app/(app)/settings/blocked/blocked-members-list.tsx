@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { Ban, Loader2 } from 'lucide-react'
 import { unblockProfile } from '@/features/network/actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export type BlockedMemberItem = {
   id: string
@@ -87,7 +88,7 @@ export function BlockedMembersList({ members }: { members: BlockedMemberItem[] }
         <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted">
           When you block someone from their profile, they appear here and you can unblock them at any time.
         </p>
-        <Link href="/network" className="mt-4 inline-flex min-h-11 items-center rounded-full bg-ocean-700 px-5 text-sm font-semibold text-white hover:bg-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500">
+        <Link href="/network" className={`mt-4 ${buttonClass()}`}>
           Go to My Network
         </Link>
       </div>

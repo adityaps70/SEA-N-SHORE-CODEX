@@ -1,9 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
-import { AppFooter, FOOTER_LINK_GROUPS, FooterSocialIcons, footerBottomLine, footerLinks } from './app-footer'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/components/brand/wordmark', () => ({ Wordmark: () => <span>Sea N Shore</span> }))
+vi.mock('@/features/newsletter/components/newsletter-footer-signup', () => ({
+  NewsletterFooterSignup: () => <form aria-label="Newsletter sign-up" />,
+}))
+
+import { FOOTER_LINK_GROUPS, FooterSocialIcons, footerBottomLine, footerLinks } from './app-footer'
 import { RailFooter, railKeyLinks } from './rail-footer'
+import { SiteFooter } from './site-footer'
 
 afterEach(() => cleanup())
 
@@ -57,9 +64,10 @@ describe('footer building blocks', () => {
   })
 })
 
-describe('AppFooter (compact end-of-content footer)', () => {
-  it('shows the three link groups with every footer link, the social icons and the bottom line', () => {
-    render(<AppFooter />)
+// Round H (H6): the compact AppFooter was replaced by the one full SiteFooter; members keep the same rules.
+describe('SiteFooter for members (end-of-content footer)', () => {
+  it('shows the three link groups with every footer link, the social icons, the newsletter box and the bottom line', () => {
+    render(<SiteFooter signedIn />)
 
     const nav = screen.getByRole('navigation', { name: 'Footer' })
     expect(within(nav).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
@@ -70,6 +78,7 @@ describe('AppFooter (compact end-of-content footer)', () => {
     expect(within(nav).getByRole('link', { name: 'Your data & privacy' })).toHaveAttribute('href', '/settings#your-data')
 
     expectSocialIcons(screen.getByRole('contentinfo'))
+    expect(within(screen.getByRole('contentinfo')).getByRole('form', { name: 'Newsletter sign-up' })).toBeInTheDocument()
     expect(screen.getByText(BOTTOM_LINE)).toBeVisible()
     expect(screen.queryByText(/all rights reserved/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/is operated by/)).not.toBeInTheDocument()
@@ -77,13 +86,13 @@ describe('AppFooter (compact end-of-content footer)', () => {
   })
 
   it('hides itself at the rail breakpoint when the page renders a rail footer', () => {
-    const { container } = render(<AppFooter />)
+    const { container } = render(<SiteFooter signedIn />)
     const footer = container.querySelector('footer')
     expect(footer).toHaveClass('lg:group-has-data-[rail-footer=lg]/shell:hidden', 'xl:group-has-data-[rail-footer=xl]/shell:hidden')
   })
 
   it('is hidden on phones, where the same links sit at the bottom of the side drawer', () => {
-    const { container } = render(<AppFooter />)
+    const { container } = render(<SiteFooter signedIn />)
     expect(container.querySelector('footer')).toHaveClass('max-md:hidden')
     expect(source('src/components/navigation/side-drawer.tsx')).toContain('drawerFooterLinks()')
     expect(source('src/components/navigation/side-drawer.tsx')).toContain('footerBottomLine()')
@@ -160,20 +169,26 @@ describe('RailFooter (compact right-rail footer)', () => {
     expect(source('src/app/(public)/jobs/[id]/page.tsx')).toContain('<RailFooter visibleFrom="lg" />')
   })
 
-  it('keeps the compact footer in both signed-in shells, which provide the group/shell hook', () => {
-    for (const layout of ['src/app/(app)/layout.tsx', 'src/app/(public)/layout.tsx']) {
-      const text = source(layout)
-      expect(text).toContain('group/shell')
-      expect(text).toContain('<AppFooter />')
-      // Clears the fixed mobile bottom navigation, including the iPhone home indicator,
-      // and drops that padding on full-screen routes, where the tab bar is not shown.
-      expect(text).toContain('pb-[calc(4.5rem+env(safe-area-inset-bottom))]')
-      expect(text).toContain('has-[[data-phone-tabbar=off]]:pb-0')
-      // Both shells pass the same chrome props (so organizations reach the account menu everywhere).
-      for (const helper of ['appHeaderProps(chrome)', 'mobileAppHeaderProps(chrome)', 'mobileNavProps(chrome)']) {
-        expect(text).toContain(helper)
-      }
+  // Round H (H6): the (app), (public) and (marketing) layouts share one MemberChrome, which holds the
+  // site footer, the group/shell hook, the phone padding and the chrome props once for all three.
+  it('keeps the site footer in the one signed-in shell, which provides the group/shell hook', () => {
+    const chrome = source('src/components/navigation/member-chrome.tsx')
+    expect(chrome).toContain('group/shell')
+    expect(chrome).toContain('<SiteFooter signedIn />')
+    // Clears the fixed mobile bottom navigation, including the iPhone home indicator,
+    // and drops that padding on full-screen routes, where the tab bar is not shown.
+    expect(chrome).toContain('pb-[calc(4.5rem+env(safe-area-inset-bottom))]')
+    expect(chrome).toContain('has-[[data-phone-tabbar=off]]:pb-0')
+    // One set of chrome props (so organizations reach the account menu everywhere).
+    for (const helper of ['appHeaderProps(chrome)', 'mobileAppHeaderProps(chrome)', 'mobileNavProps(chrome)']) {
+      expect(chrome).toContain(helper)
     }
+    for (const layout of ['src/app/(app)/layout.tsx', 'src/app/(public)/layout.tsx', 'src/app/(marketing)/layout.tsx']) {
+      expect(source(layout)).toMatch(/<MemberChrome\s+viewerId=/)
+    }
+    // Signed-out shells keep the hook too, so the site footer never repeats a rail footer's links.
+    expect(source('src/app/(public)/layout.tsx')).toContain('<div className="group/shell min-h-screen bg-mist-50">')
+    expect(source('src/app/(marketing)/marketing-chrome.tsx')).toContain('<div className="group/shell min-h-screen bg-mist-50">')
     // Phones: 16px page padding all round; md and wider keep py-6.
     expect(source('src/app/(app)/layout.tsx')).toContain('px-4 py-4 md:py-6')
   })

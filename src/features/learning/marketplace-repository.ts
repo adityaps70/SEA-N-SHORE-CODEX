@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { query as databaseQuery } from '@/lib/db/client'
 import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
+import { organizationLogoUrl } from '@/features/organizations/organization-page-profile'
 
 type MarketplaceQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -28,6 +29,9 @@ type MarketplaceCourseRow = QueryResultRow & {
   discount_price_minor?: string | number | null
   currency: string
   published_at: string | Date
+  /** Round H (H6): the publishing organization and its logo (null for a trainer's own course). */
+  publisher_company_id?: string | null
+  publisher_logo_path?: string | null
 }
 
 export type MarketplaceCourse = {
@@ -54,6 +58,8 @@ export type MarketplaceCourse = {
   discountPriceMinor?: number | null
   currency: string
   publishedAt: string
+  /** Round H (H6): logo of the organization that publishes the course, when it has one. */
+  publisherLogoUrl?: string
 }
 
 /** Public facts shown on a course page: section/lesson counts, length, learners and the publisher link. */
@@ -89,6 +95,8 @@ const marketplaceSelect = `select
     when course.company_id is null then application.applicant_name
     else company.name
   end as mentor_name,
+  course.company_id as publisher_company_id,
+  company.logo_path as publisher_logo_path,
   course.slug,
   course.title,
   course.subtitle,
@@ -167,6 +175,10 @@ function mapCourse(row: MarketplaceCourseRow): MarketplaceCourse {
     discountPriceMinor: row.discount_price_minor === null || row.discount_price_minor === undefined ? null : Number(row.discount_price_minor),
     currency: row.currency,
     publishedAt: isoDateTime(row.published_at),
+    // Left out (not null) for trainers' courses and organizations without a logo.
+    ...(row.publisher_company_id && row.publisher_logo_path?.trim()
+      ? { publisherLogoUrl: organizationLogoUrl({ id: row.publisher_company_id, logoPath: row.publisher_logo_path }) ?? undefined }
+      : {}),
   }
 }
 

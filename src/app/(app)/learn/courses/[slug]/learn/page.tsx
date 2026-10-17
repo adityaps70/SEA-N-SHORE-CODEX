@@ -219,7 +219,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   ) : <span className="flex-1 max-md:hidden" />
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-2 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 max-md:pb-32 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide px-4 py-2 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 max-md:pb-32 sm:px-6 lg:px-8">
       <MobilePageBar
         backHref={`/learn/courses/${course.slug}`}
         title={course.title}

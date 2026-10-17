@@ -18,7 +18,7 @@ export default async function EditProfilePage({
   const registeredOrganization = await getOwnRegisteredOrganization((await searchParams)?.registered)
 
   return (
-    <section className="grid gap-5 py-2 max-md:gap-4 max-md:py-0 sm:py-5">
+    <section className="mx-auto grid w-full max-w-page-narrow gap-5 py-2 max-md:gap-4 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/profile" title="Edit profile" className="!mb-0" />
       <div>
         <p className="text-sm font-semibold uppercase tracking-[.14em] text-ocean-700 max-md:hidden">Your Sea N Shore identity</p>

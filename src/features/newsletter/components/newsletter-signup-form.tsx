@@ -6,6 +6,8 @@ import { CheckCircle2, Mail } from 'lucide-react'
 import { focusFirstFormError } from '@/components/ui/form-error-summary'
 import { subscribeToNewsletter, type NewsletterFormState } from '../actions'
 import { NEWSLETTER_CONSENT_TEXT, NEWSLETTER_TOPICS } from '../topics'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 const DEFAULT_TOPICS = ['product_updates']
 
@@ -166,7 +168,7 @@ export function NewsletterSignupForm({
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white transition hover:bg-navy-900 disabled:cursor-wait disabled:opacity-70"
+          className={cn(buttonClass(), 'disabled:cursor-wait')}
         >
           {pending ? 'Subscribing…' : 'Subscribe'}
         </button>

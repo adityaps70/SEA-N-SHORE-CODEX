@@ -39,7 +39,7 @@ vi.mock('../media-actions', () => ({
   removeCommunityCoverAction: mocks.removeCommunityCoverAction,
 }))
 
-import { CommunityMediaControls } from './community-media-controls'
+import { CommunityIconEditor, CommunityMediaControls } from './community-media-controls'
 
 const groupId = '22222222-2222-4222-8222-222222222222'
 
@@ -130,5 +130,58 @@ describe('CommunityMediaControls', () => {
     expect((mocks.removeCommunityCoverAction.mock.calls[0]?.[0] as FormData).get('groupId')).toBe(groupId)
     // The action revalidates the community pages, so no extra router.refresh() (redundant-router-refresh contract).
     expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
+  describe('CommunityIconEditor (round H, H6)', () => {
+    const tile = <span data-testid="tile">Logo text</span>
+
+    it('shows only the photo to members who cannot manage the community', () => {
+      render(<CommunityIconEditor groupId={groupId} hasImage canManage={false}>{tile}</CommunityIconEditor>)
+      expect(screen.getByTestId('tile')).toBeInTheDocument()
+      expect(screen.queryByTestId('community-icon-editor')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    })
+
+    it('puts Change and Remove in an overlay that appears on hover or keyboard focus, not over the photo at rest', () => {
+      render(<CommunityIconEditor groupId={groupId} hasImage canManage>{tile}</CommunityIconEditor>)
+      const overlay = screen.getByRole('group', { name: 'Edit community photo' })
+      expect(overlay).toContainElement(screen.getByRole('button', { name: 'Change community photo' }))
+      expect(overlay).toContainElement(screen.getByRole('button', { name: 'Remove community photo' }))
+      // Hidden and click-through at rest, shown with hover and with focus inside the editor.
+      expect(overlay).toHaveClass('opacity-0', 'pointer-events-none')
+      expect(overlay).toHaveClass('group-hover/icon:opacity-100', 'group-focus-within/icon:opacity-100', 'group-focus-within/icon:pointer-events-auto')
+      expect(screen.getByTestId('community-icon-editor')).toHaveClass('group/icon')
+      expect(screen.getByTestId('community-icon-editor')).toContainElement(screen.getByTestId('tile'))
+      // The buttons stay in the tab order so keyboard focus can reveal them.
+      expect(screen.getByRole('button', { name: 'Change community photo' })).not.toHaveAttribute('tabindex', '-1')
+    })
+
+    it('offers an always-visible Edit button on phones and touch screens that opens and closes the overlay', () => {
+      render(<CommunityIconEditor groupId={groupId} hasImage={false} canManage>{tile}</CommunityIconEditor>)
+      const edit = screen.getByRole('button', { name: 'Edit community photo' })
+      expect(edit).toHaveClass('hidden', 'max-md:inline-flex', 'pointer-coarse:inline-flex')
+      expect(edit).toHaveAttribute('aria-expanded', 'false')
+      const overlay = screen.getByRole('group', { name: 'Edit community photo' })
+      expect(overlay).toHaveAttribute('data-open', 'false')
+
+      fireEvent.click(edit)
+      expect(edit).toHaveAttribute('aria-expanded', 'true')
+      expect(overlay).toHaveAttribute('data-open', 'true')
+      expect(overlay).toHaveClass('opacity-100', 'pointer-events-auto')
+      // No photo yet: Add, and no Remove.
+      expect(screen.getByRole('button', { name: 'Add community photo' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Remove community photo' })).not.toBeInTheDocument()
+
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Add community photo' }), { key: 'Escape' })
+      expect(edit).toHaveAttribute('aria-expanded', 'false')
+      expect(overlay).toHaveAttribute('data-open', 'false')
+    })
+
+    it('removes the photo through the same server action', async () => {
+      render(<CommunityIconEditor groupId={groupId} hasImage canManage>{tile}</CommunityIconEditor>)
+      fireEvent.click(screen.getByRole('button', { name: 'Remove community photo' }))
+      await waitFor(() => expect(mocks.removeCommunityIconAction).toHaveBeenCalledTimes(1))
+      expect((mocks.removeCommunityIconAction.mock.calls[0]?.[0] as FormData).get('groupId')).toBe(groupId)
+    })
   })
 })

@@ -2,6 +2,7 @@
 
 import { Building2, Hash } from 'lucide-react'
 import { MediaImage } from '@/components/ui/media-image'
+import { viewerInitials } from '@/components/navigation/viewer-avatar'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { searchHashtags } from '@/features/hashtags/actions'
 import { activeHashtagQuery } from '@/features/hashtags/parse'
@@ -224,10 +225,11 @@ export function MentionInput({
                 </>
               ) : (
                 <>
-                  <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
+                  {/* Round H (H6): initials (as in the header and on cards) when there is no photo. */}
+                  <span aria-hidden="true" data-testid="mention-avatar" className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
                     {candidate.avatarUrl ? (
-                      <MediaImage avatar src={candidate.avatarUrl} alt="" fill sizes="32px" className="object-cover" fallback={candidate.fullName.slice(0, 1).toUpperCase()} />
-                    ) : candidate.fullName.slice(0, 1).toUpperCase()}
+                      <MediaImage avatar src={candidate.avatarUrl} alt="" fill sizes="32px" className="object-cover" fallback={viewerInitials(candidate.fullName)} />
+                    ) : viewerInitials(candidate.fullName)}
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-navy-950">{candidate.fullName}</span>

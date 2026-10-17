@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { CalendarPlus, CheckCircle2, Settings2, Video } from 'lucide-react'
 import { AttendanceControl } from './attendance-control'
 import { EventBarCheckout } from './event-bar-checkout'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export type EventStickyAction = 'manage' | 'join' | 'attending' | 'register' | 'pay' | 'unavailable'
 
@@ -29,7 +31,7 @@ export function eventStickyAction(input: {
   return input.isPaid ? 'pay' : 'register'
 }
 
-const primaryClass = 'inline-flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-bold text-white transition hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+const primaryClass = cn(buttonClass(), 'min-w-0 flex-1 rounded-full text-[15px] font-bold')
 
 /**
  * Phone-only sticky bottom bar on an event page: the main action as one filled pill, with an

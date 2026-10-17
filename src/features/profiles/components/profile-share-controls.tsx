@@ -13,7 +13,7 @@ export function getPublicProfileUrl(slug: string, siteUrl?: string) {
 }
 
 /** Phones: Share is the filled ocean pill and QR the outline pill of the profile header. */
-const PHONE_FILLED_PILL = 'max-md:min-h-11 max-md:flex-1 max-md:rounded-full max-md:border-ocean-700 max-md:bg-ocean-700 max-md:text-[15px] max-md:text-white max-md:hover:bg-ocean-800 max-md:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+const PHONE_FILLED_PILL = 'max-md:min-h-11 max-md:flex-1 max-md:rounded-full max-md:border-navy-950 max-md:bg-navy-950 max-md:text-[15px] max-md:text-white max-md:hover:border-navy-800 max-md:hover:bg-navy-800 max-md:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
 const PHONE_OUTLINE_PILL = 'max-md:min-h-11 max-md:flex-1 max-md:rounded-full max-md:border-ocean-700 max-md:text-[15px] max-md:text-ocean-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
 
 export function ProfileShareControls({

@@ -11,6 +11,8 @@ import { postLoadingPriority } from '../post-loading-priority'
 import type { FeedCursor, FeedMode, FeedPage, FeedPost, PostCategory, TopFeedState } from '../types'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 /** "N new posts" asks the server for a count this often, only while the tab is visible. */
 export const NEW_POSTS_POLL_MS = 60_000
@@ -76,9 +78,9 @@ function ColdStartCard() {
           <h2 id="cold-start-title" className="text-sm font-semibold text-navy-950">Follow pages and join communities to improve your feed</h2>
           <p className="mt-1 text-sm leading-6 text-muted">Top for you learns from the people, pages and communities you follow and the posts you react to. Until then it shows the best recent posts from your part of the industry.</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/organizations" className="inline-flex min-h-10 items-center rounded-full bg-ocean-700 px-4 text-sm font-semibold text-white hover:bg-ocean-800">Find pages to follow</Link>
-            <Link href="/community" className="inline-flex min-h-10 items-center rounded-full border border-ocean-700 px-4 text-sm font-semibold text-ocean-700 hover:bg-white">Join communities</Link>
-            <Link href="/network" className="inline-flex min-h-10 items-center rounded-full border border-ocean-700 px-4 text-sm font-semibold text-ocean-700 hover:bg-white">Grow your network</Link>
+            <Link href="/organizations" className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'rounded-full')}>Find pages to follow</Link>
+            <Link href="/community" className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'rounded-full')}>Join communities</Link>
+            <Link href="/network" className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'rounded-full')}>Grow your network</Link>
           </div>
         </div>
       </div>

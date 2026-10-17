@@ -31,7 +31,7 @@ export default async function SuggestedCandidatesPage({ params }: { params: Prom
   const photos = new Map(await Promise.all(candidates.map(async (candidate) => [candidate.id, await applicantPhotoUrl(candidate.avatarPath)] as const)))
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar backHref={`/hiring/jobs/${jobId}/applicants`} title="Suggested candidates" />
       <div className="max-md:hidden">
         <Link href={`/hiring/jobs/${jobId}/applicants`} className="text-sm font-semibold text-ocean-700 hover:underline">Back to applicants</Link>

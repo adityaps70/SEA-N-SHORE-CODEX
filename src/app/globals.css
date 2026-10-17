@@ -84,11 +84,20 @@
   --text-meta--line-height: 1.25rem;
   --text-eyebrow: 0.75rem;
   --text-eyebrow--line-height: 1rem;
+
+  /* Round H (H6): the two content widths. Wide: feeds, lists, org and community pages, Learn, Events, job detail.
+     Narrow: reading and forms: Settings, articles, legal. Use max-w-page-wide / max-w-page-narrow (or the
+     PAGE_WIDE / PAGE_NARROW classes in src/components/layout/page-width.ts) on a page's outer content box. */
+  --container-page-wide: 80rem;
+  --container-page-narrow: 56rem;
 }
 
 * { box-sizing: border-box; }
 html { background: var(--mist-50); color: var(--ink); }
 body { min-height: 100vh; margin: 0; font-family: var(--font-body), Inter, ui-sans-serif, system-ui, sans-serif; }
+/* Round H (H6): always reserve the scrollbar's space, so locking scroll for a dialog (the post
+   composer, drawers, sheets, the lightbox: overflow hidden on body or html) never shifts the page. */
+html { scrollbar-gutter: stable; }
 
 /* Learning pages (round E): headings use the heading face and balanced line breaks. */
 /* Course player (round E): no site footer inside the player; focus mode also hides the top navigation. */

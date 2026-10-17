@@ -10,6 +10,7 @@ import { OrganizationPicker, type PickerOrganization } from './organization-pick
 import { UsernameField } from './username-field'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 import { VesselTypesInput } from '@/features/taxonomy/components/vessel-types-input'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 const initialState: ProfileActionState = {}
 
@@ -197,10 +198,10 @@ export function ProfileEditForm({
         {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
 
         <div className="flex flex-wrap justify-end gap-3 border-t border-mist-100 pt-4">
-          <Link href="/profile" className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-500">
+          <Link href="/profile" className={buttonClass('secondary')}>
             Cancel
           </Link>
-          <button type="submit" disabled={pending || !usernameReady} className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={pending || !usernameReady} className={buttonClass('primary')}>
             {pending ? 'Saving…' : 'Save changes'}
           </button>
         </div>

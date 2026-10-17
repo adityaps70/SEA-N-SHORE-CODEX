@@ -12,7 +12,7 @@ export default async function SavedPostsPage() {
   const posts = await getSavedPosts()
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="mx-auto max-w-page-wide space-y-4">
       <MobilePageBar backHref="/home" title="Saved posts" />
       {/* Phones: the page bar title replaces the intro. */}
       <header className="flex flex-wrap max-md:hidden items-end justify-between gap-x-4 gap-y-1">

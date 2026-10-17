@@ -32,7 +32,8 @@ describe('payment-gateway policy pages', () => {
 
   it('uses the marketing layout, whose header and footer work without a session', () => {
     const layout = readFileSync(join(process.cwd(), 'src/app/(marketing)/layout.tsx'), 'utf8')
-    expect(layout).toContain('<PublicFooter />')
+    // Round H (H6): the one site footer; sign-in is optional (members get the app chrome).
+    expect(layout).toContain('<SiteFooter signedIn={false} />')
     expect(layout).not.toMatch(/require(Aws)?User/)
   })
 })

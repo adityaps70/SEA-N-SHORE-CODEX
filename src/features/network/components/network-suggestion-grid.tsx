@@ -28,7 +28,7 @@ export function NetworkSuggestionGrid({
   return (
     <div ref={containerRef}>
       {visible.length ? (
-        <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div data-testid="network-suggestion-grid" className="grid auto-rows-fr gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {visible.map((profile) => (
             <NetworkProfileCard
               key={profile.id}

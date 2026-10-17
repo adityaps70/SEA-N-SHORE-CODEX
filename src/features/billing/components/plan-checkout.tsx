@@ -13,6 +13,7 @@ import {
 import { BILLING_INTERVALS, INTERVAL_LABELS, formatRupees, intervalSaving, type BillingInterval } from '../plans'
 import type { PlanPriceSummary } from './plan-cards'
 import { openSubscriptionCheckout, type SubscriptionRedirectTarget } from './subscription-sdk'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 /**
  * Choose monthly, half-yearly or yearly, then approve an auto-pay mandate in Cashfree's window.
@@ -54,8 +55,8 @@ const POLL_MS = 5_000
 const POLL_LIMIT = 120
 
 const inputClass = 'min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/30 aria-[invalid=true]:border-rose-400'
-const primaryButton = 'inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60'
-const secondaryButton = 'inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60'
+const primaryButton = `${buttonClass({ variant: 'primary' })} w-full`
+const secondaryButton = buttonClass({ variant: 'secondary' })
 
 const SCRIPT_BLOCKED = 'The secure Cashfree window could not load. Check your connection or turn off content blockers for this site, then try again. No money was taken.'
 

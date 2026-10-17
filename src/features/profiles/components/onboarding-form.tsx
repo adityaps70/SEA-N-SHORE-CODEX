@@ -20,6 +20,8 @@ import { DgProfileUpload } from './dg-profile-upload'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 function firstError(state: ProfileActionState, field: string) {
   return state.fieldErrors?.[field]?.[0]
@@ -159,7 +161,7 @@ function phoneStepForErrors(fieldErrors: ProfileActionState['fieldErrors']): Pho
   return Object.values(fieldErrors).some((messages) => messages?.length) ? 3 : null
 }
 
-const phoneNextClass = 'sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 mt-6 inline-flex min-h-12 w-full shadow-[0_10px_24px_-12px_rgb(7_27_45/0.55)] cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-base font-semibold text-white transition-colors hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60 md:hidden'
+const phoneNextClass = cn(buttonClass(), 'sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 mt-6 w-full rounded-full text-base shadow-[0_10px_24px_-12px_rgb(7_27_45/0.55)] md:hidden')
 
 function OnboardingFields({
   initialFullName,

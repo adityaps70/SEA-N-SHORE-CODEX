@@ -13,6 +13,7 @@ import {
   stopUnsentLegacyReminders,
 } from '@/features/legacy-invites/admin-actions'
 import type { LegacyReminderTestResult } from '@/features/legacy-invites/reminder-test'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 const MODES = {
   invite: {
@@ -87,7 +88,7 @@ export function LegacyInviteControls(props: {
             `Start sending ${props.prepared} prepared ${mode.noun}(s)? Once a message is handed to Resend it cannot be recalled.`,
             `Prepared ${mode.noun}s moved to the send queue.`,
           )}
-          className="min-h-10 rounded-xl bg-ocean-700 px-4 text-sm font-bold text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:opacity-40"
+          className={buttonClass({ variant: 'primary', size: 'sm' })}
         >
           Start sending {props.prepared > 0 ? props.prepared : ''}
         </button>

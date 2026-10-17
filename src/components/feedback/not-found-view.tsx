@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { Anchor } from 'lucide-react'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 /**
  * Round H (H5): the tab title and robots tag of every not-found.tsx (`export const metadata = NOT_FOUND_METADATA`).
@@ -47,11 +48,11 @@ export function NotFoundView({
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-navy-950 sm:text-3xl">{title}</h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted">{body}</p>
         <div className="mt-7 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Link href={primary.href} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700">
+          <Link href={primary.href} className={buttonClass()}>
             {primary.label}
           </Link>
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+            <Link key={link.href} href={link.href} className={buttonClass('secondary')}>
               {link.label}
             </Link>
           ))}

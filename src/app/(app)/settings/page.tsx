@@ -33,7 +33,7 @@ export default async function SettingsPage() {
   const groups = settingsGroups({ planLabel })
 
   return (
-    <section className="mx-auto grid max-w-4xl gap-5 py-2 max-md:gap-0 max-md:py-0 sm:py-5">
+    <section className="mx-auto grid max-w-page-narrow gap-5 py-2 max-md:gap-0 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/home" title="Settings" />
       <PhoneSettingsList groups={groups} />
 

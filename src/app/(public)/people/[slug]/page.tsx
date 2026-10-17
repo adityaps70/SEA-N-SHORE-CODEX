@@ -31,6 +31,8 @@ import { personJsonLd, profileMetadata } from '@/features/profiles/profile-seo'
 import { siteOrigin } from '@/features/learning/course-seo'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
 import { jsonLd } from '@/lib/seo/meta'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 // Round H (H5): one read per request for metadata and the page; a failed read counts as "not allowed".
 const allowsSearchIndexing = cache((profileId: string) => privacyPreferences.allowsSearchIndexing(profileId).catch(() => false))
@@ -71,7 +73,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     : ''
 
   const profileContent = (
-    <main className={`mx-auto grid w-full max-w-6xl gap-4 px-4 py-4 max-md:gap-2 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1fr)_300px] ${viewer ? '' : 'max-md:pb-24 max-md:pt-0'}`}>
+    <main className={`mx-auto grid w-full max-w-page-wide gap-4 px-4 py-4 max-md:gap-2 sm:px-6 sm:py-8 lg:grid-cols-[minmax(0,1fr)_300px] ${viewer ? '' : 'max-md:pb-24 max-md:pt-0'}`}>
       <div className="grid min-w-0 gap-4 max-md:gap-2">
         {/* Round H (H5): Person structured data only for members who allow search engines. */}
         {allowIndexing ? (
@@ -167,7 +169,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           </p>
           <Link
             href={authHrefWithReturn('/auth/sign-up', `/people/${profile.slug}`)}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+            className={cn(buttonClass(), 'min-h-11 shrink-0 rounded-full text-[15px]')}
           >
             Join Sea N Shore
           </Link>

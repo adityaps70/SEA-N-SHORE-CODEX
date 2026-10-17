@@ -9,6 +9,8 @@ import { PostCard } from '@/features/feed/components/post-card'
 import { genericPostMetadata, postPath, publicPostMetadata } from '@/features/feed/post-seo'
 import { getPostPage, isPostId } from '@/features/feed/queries'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -30,8 +32,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return genericPostMetadata()
 }
 
-const primaryButton = 'inline-flex min-h-11 items-center justify-center rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
-const secondaryButton = 'inline-flex min-h-11 items-center justify-center rounded-full border border-ocean-700 bg-white px-5 text-[15px] font-semibold text-ocean-700 hover:bg-ocean-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+const primaryButton = cn(buttonClass({ variant: 'primary' }), 'min-h-11 rounded-full text-[15px]')
+const secondaryButton = cn(buttonClass({ variant: 'secondary' }), 'min-h-11 rounded-full text-[15px]')
 
 function JoinBanner({ returnPath }: { returnPath: string }) {
   return (
@@ -68,7 +70,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
 
   if (page.kind === 'members_only') {
     return (
-      <main id="main-content" className="mx-auto w-full max-w-3xl px-4 py-6 sm:py-10">
+      <main id="main-content" className="mx-auto w-full max-w-page-narrow px-4 py-6 sm:py-10">
         <MembersOnlyTeaser returnPath={returnPath} />
       </main>
     )
@@ -76,7 +78,7 @@ export default async function PostPage({ params, searchParams }: PageProps) {
 
   if (page.kind === 'public' && !viewer) {
     return (
-      <main id="main-content" className="mx-auto w-full max-w-3xl px-4 py-6 sm:py-10">
+      <main id="main-content" className="mx-auto w-full max-w-page-narrow px-4 py-6 sm:py-10">
         <h1 className="sr-only">Post by {page.post.organization?.name ?? page.post.author.fullName}</h1>
         <JoinBanner returnPath={returnPath} />
         <PostCard post={page.post} detail readOnly signedOut />
@@ -88,11 +90,11 @@ export default async function PostPage({ params, searchParams }: PageProps) {
   const photo = (await searchParams)?.photo
   const focusMediaId = typeof photo === 'string' && isPostId(photo) ? photo : null
   return (
-    <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-4 md:py-6">
+    <main id="main-content" className="mx-auto w-full max-w-page-wide px-4 py-4 md:py-6">
       <h1 className="sr-only">Post by {page.post.organization?.name ?? page.post.author.fullName}</h1>
       <MobilePageBar backHref="/home" title="Post" />
       {/* Phones: the post runs edge to edge under the page bar. */}
-      <section className="mx-auto w-full max-w-3xl py-2 sm:py-5 max-md:-mx-4 max-md:w-auto max-md:py-0">
+      <section className="mx-auto w-full max-w-page-narrow py-2 sm:py-5 max-md:-mx-4 max-md:w-auto max-md:py-0">
         <PostCard
           post={page.post}
           detail

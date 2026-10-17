@@ -38,6 +38,7 @@ import { batchClosedReason, type CourseBatch } from '@/features/learning/batches
 import { CourseBatchPicker } from '@/features/learning/batches/components/course-batch-picker'
 import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse, type PublishedCourseOverview } from '@/features/learning/marketplace-repository'
+import { CoursePublisherAvatar } from '@/features/learning/components/course-publisher-avatar'
 import { splitDescription } from '@/features/learning/description'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 import { CurriculumAccordion, type CurriculumModuleView } from '@/features/learning/components/curriculum-accordion'
@@ -359,7 +360,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
   const coursePath = `/learn/courses/${course.slug}`
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(courseJsonLd(course, overview.publisher, reviews)) }} />
       <MobilePageBar
         backHref="/learn"
@@ -459,9 +460,8 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
             {/* Phones show the trainer in the course header instead. */}
             <div className="mt-6 rounded-[1.3rem] border border-white/10 bg-navy-950/45 p-4 max-md:hidden">
               <div className="flex items-center gap-3">
-                <span className="grid size-11 shrink-0 place-items-center rounded-full bg-white text-sm font-extrabold text-navy-950">
-                  {course.mentorName.charAt(0).toUpperCase()}
-                </span>
+                {/* Round H (H6): the organization's logo when it publishes the course. */}
+                <CoursePublisherAvatar course={course} className="size-11 bg-white text-sm text-navy-950" />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-white">{course.mentorName}</p>
                   <p className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-teal-200">
@@ -478,8 +478,9 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
         </div>
       </section>
 
-      {/* Two columns on desktop with the full-width curriculum after the first row (lg:order); phones keep source order. */}
-      <div className="mt-6 grid gap-6 max-md:order-2 max-md:mt-2 max-md:gap-2 lg:grid-cols-[1.15fr_0.85fr]">
+      {/* Two columns on desktop with the full-width curriculum after the first row (lg:order); phones keep source order.
+          Round H (H6): items-start, so a short box (Who this course is for) is as tall as its content, not its row. */}
+      <div data-testid="course-detail-sections" className="mt-6 grid gap-6 max-md:order-2 max-md:mt-2 max-md:gap-2 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
         <section
           aria-label="What you will learn"
           className={`${PHONE_FLAT_SECTION} lg:order-1`}
@@ -494,7 +495,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
 
         <section
           aria-label="Who this course is for"
-          className={`${PHONE_FLAT_SECTION} lg:order-2`}
+          className={`${PHONE_FLAT_SECTION} self-start lg:order-2`}
         >
           <h2 className="flex items-center gap-2 text-section-title font-bold text-navy-950">
             <Users aria-hidden="true" className="size-5 text-teal-700" /> Who this course is for

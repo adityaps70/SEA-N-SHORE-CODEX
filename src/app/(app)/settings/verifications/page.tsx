@@ -152,7 +152,7 @@ export default async function VerificationSettingsPage() {
   ])
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-page-narrow space-y-6 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/settings" title="Verifications" />
       <div className="max-md:hidden">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Trust & professional capabilities</p>

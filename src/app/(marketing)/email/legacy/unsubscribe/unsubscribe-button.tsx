@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { unsubscribeFromLegacyReminder } from '@/features/legacy-invites/unsubscribe-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export function LegacyUnsubscribeButton({ token }: { token: string }) {
   const [state, setState] = useState<'idle' | 'done' | 'failed'>('idle')
@@ -24,7 +25,7 @@ export function LegacyUnsubscribeButton({ token }: { token: string }) {
           const result = await unsubscribeFromLegacyReminder(token)
           setState(result.ok ? 'done' : 'failed')
         })}
-        className="inline-flex min-h-11 cursor-pointer items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-wait disabled:opacity-70"
+        className={`${buttonClass()} disabled:cursor-wait`}
       >
         {pending ? 'Unsubscribing…' : 'Unsubscribe'}
       </button>

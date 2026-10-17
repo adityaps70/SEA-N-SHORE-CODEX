@@ -200,6 +200,24 @@ describe('/learn/courses/[slug]', () => {
     expect(screen.getByText(/Trainer credentials and this course were reviewed/).closest('div.rounded-\\[1\\.3rem\\]')).toHaveClass('max-md:hidden')
   })
 
+  it('sizes "Who this course is for" to its content instead of stretching it to its row (round H, H6)', async () => {
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    const audience = screen.getByRole('region', { name: 'Who this course is for' })
+    expect(audience).toHaveClass('self-start')
+    expect(audience.className).not.toMatch(/(^|\s)(lg:|md:)?(min-h-|h-full|self-stretch|flex-1)/)
+    const grid = screen.getByTestId('course-detail-sections')
+    expect(grid).toContainElement(audience)
+    expect(grid).toHaveClass('lg:items-start')
+    expect(grid.className).not.toMatch(/items-stretch/)
+  })
+
+  it('shows the publishing organization\'s logo beside the trainer name when it has one (round H, H6)', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...freeCourse, mentorName: 'Placeholder Academy', publisherLogoUrl: '/api/company-logo/c1?v=logo.png' })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    const avatar = screen.getByTestId('course-publisher-avatar')
+    expect(avatar.querySelector('img')).toHaveAttribute('src', '/api/company-logo/c1?v=logo.png')
+  })
+
   it('still renders the course page when the phone overview cannot load', async () => {
     mocks.getPublishedCourseOverview.mockRejectedValueOnce(new Error('db down'))
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))

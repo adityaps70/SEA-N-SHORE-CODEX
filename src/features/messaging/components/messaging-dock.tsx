@@ -437,11 +437,11 @@ export function MessagingDock({
         footer), so nothing is left under the bar once scrolled to the bottom. The open panel
         floats over the page: the member opened it. */}
     <div aria-hidden="true" data-testid="messaging-dock-spacer" className={cn('hidden md:block', DOCK_BAR_HEIGHT_CLASS)} />
-    {/* The dock sits in a container that mirrors the app shell's (max-w-7xl, px-4), right-aligned,
+    {/* The dock sits in a container that mirrors the app shell's (max-w-page-wide, px-4), right-aligned,
         so it is exactly the right rail's 300px column and lines up with its left and right edges.
         An open conversation widens to 416px; the extra width grows leftwards over the page. */}
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] hidden md:block" data-testid="messaging-dock-anchor">
-      <div className="mx-auto flex w-full max-w-7xl items-end justify-end gap-3 px-4">
+      <div className="mx-auto flex w-full max-w-page-wide items-end justify-end gap-3 px-4">
       {/* Only one conversation opens at a time today. The wrapper is a flex item in this
           right-aligned, bottom-aligned row, so extra windows (or a separate bar) could be added
           as siblings without overlapping: they would line up leftwards like LinkedIn's. */}

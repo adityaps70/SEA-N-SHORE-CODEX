@@ -9,8 +9,8 @@ import type { JobApplicationStatus } from '../types'
 const actions: Array<{ label: string; status: OwnerSettableApplicationStatus; tone: string }> = [
   { label: 'Mark reviewed', status: 'under_review', tone: 'border border-mist-200 bg-white text-navy-950 hover:bg-mist-50' },
   { label: 'Shortlist', status: 'shortlisted', tone: 'bg-emerald-600 text-white hover:bg-emerald-700' },
-  { label: 'Interview', status: 'interview', tone: 'bg-teal-700 text-white hover:bg-teal-800' },
-  { label: 'Hire', status: 'selected', tone: 'bg-navy-950 text-white hover:bg-navy-900' },
+  { label: 'Interview', status: 'interview', tone: 'border border-mist-200 bg-white text-navy-950 hover:border-ocean-300 hover:bg-mist-50' },
+  { label: 'Hire', status: 'selected', tone: 'bg-navy-950 text-white hover:bg-navy-800' },
   { label: 'Reject', status: 'rejected', tone: 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50' },
 ]
 

@@ -241,7 +241,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
   )
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/learn" title="My learning" />
       {/* Phones: the page bar is the title, so the intro card is desktop-only. */}
       <section className="overflow-hidden rounded-[1.9rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:hidden sm:p-8 lg:p-10">

@@ -28,7 +28,7 @@ const linkClass = 'inline-flex min-h-6 items-center hover:text-ocean-700 hover:u
  * has the page background and leaves room at the bottom for the Messaging dock,
  * which is fixed over the right-rail column. `visibleFrom`
  * must match the breakpoint at which the rail itself is visible beside the content;
- * the full-width compact footer hides at that breakpoint so links never repeat.
+ * the full-width site footer hides at that breakpoint so links never repeat.
  */
 export function RailFooter({ visibleFrom = 'xl' }: { visibleFrom?: RailBreakpoint }) {
   return (

@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function CopyrightPage() {
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+    <main className="mx-auto w-full max-w-page-narrow px-4 py-10 sm:px-6 sm:py-14">
       <section className="rounded-[2rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Trust, rights &amp; safety</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-navy-950 sm:text-4xl">Copyright &amp; Intellectual Property Policy</h1>

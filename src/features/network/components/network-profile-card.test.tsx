@@ -82,4 +82,17 @@ describe('NetworkProfileCard', () => {
     expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
     expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
   })
+
+  it('keeps every card the same height: the name is cut to one line (two on phones) with the full name in a tooltip and the accessible name (round H, H6)', () => {
+    const longName = 'Placeholder Firstname Middlename Longfamilyname Secondfamilyname'
+    render(<NetworkProfileCard profile={{ ...profile, fullName: longName, headline: null, summary: null }} />)
+    const name = screen.getByRole('link', { name: longName })
+    expect(name).toHaveAttribute('title', longName)
+    expect(name).toHaveTextContent(longName)
+    expect(name).toHaveClass('block', 'truncate', 'max-md:line-clamp-2', 'max-md:h-10')
+    // The headline always takes two lines' room, so a short or missing headline does not shorten the card.
+    expect(screen.getByText('Maritime professional', { selector: 'p' })).toHaveClass('h-10', 'line-clamp-2')
+    expect(screen.getByTestId('network-profile-card')).toHaveClass('h-full', 'flex-col')
+  })
 })
+

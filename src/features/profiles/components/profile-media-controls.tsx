@@ -122,7 +122,7 @@ export function ProfileMediaControls({
           onClick={() => inputRef.current?.click()}
           aria-label={`${imagePresent ? 'Change' : 'Add'} ${label}`}
           className={kind === 'avatar'
-            ? 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white bg-navy-950 text-white shadow-md hover:bg-ocean-700 disabled:opacity-60'
+            ? 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white bg-navy-950 text-white shadow-md hover:bg-navy-800 disabled:opacity-60'
             : 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/70 bg-white/95 px-3 text-sm font-semibold text-navy-950 shadow-sm hover:bg-white disabled:opacity-60'}
         >
           <Camera aria-hidden="true" className="size-4" />

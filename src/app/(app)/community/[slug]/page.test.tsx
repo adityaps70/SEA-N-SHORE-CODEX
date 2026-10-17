@@ -229,6 +229,24 @@ describe('/community/[slug]', () => {
     expect(screen.getByRole('button', { name: 'Add community photo' })).toBeInTheDocument()
   })
 
+  it('puts the photo controls in an edit overlay for people who manage the community, never for plain members (round H, H6)', async () => {
+    mocks.getBySlug.mockResolvedValue(group({ iconUrl: '/api/community-media/g/icon?v=i.webp', viewerMembership: { role: 'member', status: 'active' } }))
+    render(await CommunityGroupPage({ params, searchParams: search({}) }))
+    expect(screen.queryByRole('group', { name: 'Edit community photo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit community photo' })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.getBySlug.mockResolvedValue(group({ iconUrl: '/api/community-media/g/icon?v=i.webp', viewerMembership: { role: 'owner', status: 'active' } }))
+    render(await CommunityGroupPage({ params, searchParams: search({}) }))
+    const overlay = screen.getByRole('group', { name: 'Edit community photo' })
+    expect(overlay).toContainElement(screen.getByRole('button', { name: 'Change community photo' }))
+    expect(overlay).toContainElement(screen.getByRole('button', { name: 'Remove community photo' }))
+    expect(overlay).toHaveClass('opacity-0', 'group-focus-within/icon:opacity-100')
+    expect(screen.getByRole('button', { name: 'Edit community photo' })).toHaveAttribute('aria-expanded', 'false')
+    // The photo itself is not covered by the buttons at rest.
+    expect(screen.getByTestId('community-icon-editor')).toContainElement(screen.getByTestId('group-icon-tile'))
+  })
+
   it('labels the join button by the join setting and shows it on the About tab, with "By <organization>" for organization-owned communities (round 9C)', async () => {
     mocks.getBySlug.mockResolvedValue(group({ joinPolicy: 'approval', ownerOrganization: { id: 'c1', slug: 'harbour-minds', name: 'Harbour Minds' } }))
     render(await CommunityGroupPage({ params, searchParams: search({}) }))

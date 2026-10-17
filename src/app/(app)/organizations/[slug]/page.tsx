@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Building2, CircleDashed, ExternalLink, MessagesSquare, Settings2 } from 'lucide-react'
+import { Building2, CircleDashed } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canPostAsOrganization, canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
@@ -13,16 +13,15 @@ import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { JobCard } from '@/features/jobs/components/job-card'
 import { jobsRepository } from '@/features/jobs/repository'
 import { marketplaceRepository } from '@/features/learning/marketplace-repository'
-import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { organizationAccessRequestRepository } from '@/features/organizations/access-request-repository'
 import { LegacyRequestsHashRedirect } from '@/features/organizations/components/legacy-requests-hash-redirect'
 import { StatusChip } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationSuggestionRow, VerifiedMark } from '@/features/organizations/components/organization-card'
-import { OrganizationFollowButton } from '@/features/organizations/components/organization-follow-button'
 import { LeaveOrganizationButton, LeaveOrganizationMenuHost } from '@/features/organizations/components/leave-organization'
 import { OrganizationCover, OrganizationLogo } from '@/features/organizations/components/organization-logo'
-import { OrganizationPageMenu, OrganizationPageMenuBarButton } from '@/features/organizations/components/organization-page-menu'
+import { OrganizationPageMenuBarButton } from '@/features/organizations/components/organization-page-menu'
+import { OrganizationActionRow } from '@/features/organizations/components/organization-action-row'
 import { PhoneDisclosure } from '@/features/organizations/components/phone-disclosure'
 import { OrganizationPageTabs } from '@/features/organizations/components/organization-page-tabs'
 import {
@@ -276,14 +275,11 @@ export default async function OrganizationPage({
   }
 
   const manageLinkClass = 'inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50'
-  // Phones: header buttons are pills that share the row (Follow + Message, or Manage page + Follow).
-  const phonePrimaryClass = 'max-md:min-h-11 max-md:flex-1 max-md:justify-center max-md:rounded-full max-md:border-ocean-700 max-md:bg-ocean-700 max-md:text-[15px] max-md:text-white max-md:hover:bg-ocean-800'
-  const phoneOutlineClass = 'max-md:min-h-11 max-md:flex-1 max-md:justify-center max-md:rounded-full max-md:border-ocean-700 max-md:text-[15px] max-md:text-ocean-700'
   const upgradeHref = canUpgrade ? organizationPlanBillingHref(workspace.slug) : null
   const showMessage = Boolean(contactProfileId && contactProfileId !== user.id)
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-2 sm:py-4 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide py-2 sm:py-4 max-md:py-0">
       {/* Round H (H5): schema.org Organization data (public page fields only). */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(organizationJsonLd(workspace, siteOrigin())) }} />
       <MobilePageBar
@@ -326,67 +322,20 @@ export default async function OrganizationPage({
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-start gap-2 max-md:flex-nowrap max-md:items-center">
-                {/* Phones: Visit website is in the "…" sheet. */}
-                {workspace.website ? (
-                  <a
-                    href={workspace.website}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900 max-md:hidden"
-                  >
-                    Visit website <ExternalLink aria-hidden="true" className="size-4" />
-                    <span className="sr-only">(opens in a new tab)</span>
-                  </a>
-                ) : null}
-                <OrganizationFollowButton
-                  companyId={workspace.id}
-                  initialFollowing={followState.following}
-                  initialFollowerCount={followState.followerCount}
-                  appearance="page"
-                  phoneTone={canManagePage ? 'outline' : 'primary'}
-                />
-                {showMessage && contactProfileId ? (
-                  // Phones: Message sits beside Follow for visitors; managers reach the team from Manage page.
-                  <div className={`w-auto max-md:min-w-0 max-md:flex-1 ${canManagePage ? 'max-md:hidden' : ''}`}>
-                    <StartConversationButton
-                      targetProfileId={contactProfileId}
-                      className="max-md:min-h-11 max-md:rounded-full max-md:border max-md:border-ocean-700 max-md:bg-white max-md:text-[15px] max-md:text-ocean-700 max-md:hover:bg-ocean-50"
-                    />
-                  </div>
-                ) : null}
-                {/* Phones: people who manage the page get Manage page first, then Follow. */}
-                {canManagePage ? (
-                  <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} gap-2 max-md:order-first ${phonePrimaryClass}`}>
-                    <Settings2 aria-hidden="true" className="size-4" /> Manage page
-                  </Link>
-                ) : null}
-                {/* Round 9C: owners and administrators create the organization's community (Organization Pro). Phones: in Manage page › Community. */}
-                {membership && (membership.role === 'owner' || membership.role === 'administrator') ? (
-                  <Link href={`/community/new?as=${workspace.id}`} className={`${manageLinkClass} gap-2 max-md:hidden`}>
-                    <MessagesSquare aria-hidden="true" className="size-4" /> Create a community
-                  </Link>
-                ) : null}
-                {unclaimed && !ownApplication && !membership ? (
-                  <Link href={claimHref} className={`${manageLinkClass} gap-2 ${phoneOutlineClass}`}>
-                    Claim this page
-                  </Link>
-                ) : null}
-                {/* Phones: Upgrade to Organization Pro is in the "…" sheet. */}
-                {canUpgrade ? (
-                  <Link href={organizationPlanBillingHref(workspace.slug)} className="inline-flex min-h-10 cursor-pointer items-center px-1 text-sm font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline max-md:hidden">
-                    Upgrade to Organization Pro
-                  </Link>
-                ) : null}
-                <OrganizationPageMenu
-                  organizationName={workspace.name}
-                  pagePath={`/organizations/${workspace.slug}`}
-                  joinLink={joinLink}
-                  websiteHref={workspace.website}
-                  upgradeHref={upgradeHref}
-                  leaveCompanyId={membership ? workspace.id : null}
-                />
-              </div>
+              {/* Round H (H6): one primary, at most two secondary actions and "…" with the rest, on one line. */}
+              <OrganizationActionRow
+                organization={workspace}
+                following={followState.following}
+                followerCount={followState.followerCount}
+                canManagePage={canManagePage}
+                manageHref={organizationManageHref(workspace.slug)}
+                messageProfileId={showMessage ? contactProfileId : null}
+                claimHref={unclaimed && !ownApplication && !membership ? claimHref : null}
+                createCommunityHref={membership && (membership.role === 'owner' || membership.role === 'administrator') ? `/community/new?as=${workspace.id}` : null}
+                upgradeHref={upgradeHref}
+                joinLink={joinLink}
+                leaveCompanyId={membership ? workspace.id : null}
+              />
 
               <div className="mt-4 border-t border-mist-100 max-md:-mx-4 max-md:mt-3 max-md:px-1">
                 <OrganizationPageTabs tabs={tabs} active={tab} label={`${workspace.name} page sections`} />

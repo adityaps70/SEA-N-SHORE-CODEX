@@ -57,7 +57,7 @@ export default async function OrganizationBillingPage({
       : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+    <main className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
       <MobilePageBar backHref="/settings/billing" title={billing.company.name} />
       <header>
         <Link href="/settings/billing" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">

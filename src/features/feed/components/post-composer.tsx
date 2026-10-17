@@ -32,11 +32,15 @@ import { MentionInput, type SelectedMention } from './mention-input'
 import { PHOTO_TAG_LIMIT, TagPeopleDialog, type TaggedPerson } from './tag-people-dialog'
 import { uploadPostMediaFile } from './upload-post-media'
 import { uploadVideoPoster } from '../video-poster'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 const initialState: PostComposerState = {}
 const POST_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm'
 const POST_DOCUMENT_ACCEPT = 'application/pdf'
 const POST_CHARACTER_LIMIT = 5000
+/** Post buttons go flat grey until there is something to post. */
+const composerSubmitDisabledClass = 'disabled:bg-mist-100 disabled:text-muted disabled:opacity-100'
 
 type ComposerMode = 'update' | 'question' | 'poll'
 type PollField = { id: string; value: string }
@@ -765,7 +769,7 @@ export function PostComposer({
                 <button
                   type="submit"
                   disabled={pending || !canSubmit}
-                  className="mr-1 inline-flex min-h-10 cursor-pointer items-center rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white transition hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted"
+                  className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'mr-1 rounded-full px-5 text-[15px]', composerSubmitDisabledClass)}
                 >
                   {pending ? 'Posting…' : 'Post'}
                 </button>
@@ -1076,8 +1080,8 @@ export function PostComposer({
               ) : null}
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-mist-100 px-5 py-4 max-md:hidden">
-                <button type="button" onClick={() => resetComposer({ discardMedia: true, clearDraft: true })} className="min-h-10 rounded-full px-4 text-sm font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">Discard draft</button>
-                <button type="submit" disabled={pending || !canSubmit} className="inline-flex min-h-10 items-center rounded-full bg-navy-950 px-6 text-sm font-semibold text-white transition hover:bg-ocean-700 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted">
+                <button type="button" onClick={() => resetComposer({ discardMedia: true, clearDraft: true })} className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'rounded-full')}>Discard draft</button>
+                <button type="submit" disabled={pending || !canSubmit} className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'rounded-full px-6', composerSubmitDisabledClass)}>
                   {pending ? 'Posting…' : submitLabel}
                 </button>
               </div>

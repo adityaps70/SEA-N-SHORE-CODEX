@@ -73,10 +73,16 @@ export function NetworkProfileCard({
       </div>
 
       <div className="flex flex-1 flex-col px-5 pb-5 pt-3 text-center max-md:px-3 max-md:pb-3 max-md:pt-2">
-        <Link href={`/people/${profile.slug}`} className="text-lg font-semibold text-navy-950 hover:text-ocean-700 hover:underline max-md:line-clamp-2 max-md:text-[15px] max-md:leading-5">
+        {/* Round H (H6): one line on desktop, two at most on phones, with the same height whatever the name's length; the full name stays in the link text and the tooltip. */}
+        <Link
+          href={`/people/${profile.slug}`}
+          title={profile.fullName}
+          data-testid="network-profile-name"
+          className="block truncate text-lg font-semibold leading-7 text-navy-950 hover:text-ocean-700 hover:underline max-md:line-clamp-2 max-md:h-10 max-md:whitespace-normal max-md:text-[15px] max-md:leading-5"
+        >
           {profile.fullName}
         </Link>
-        <p className="mt-1 min-h-10 line-clamp-2 text-sm leading-5 text-muted max-md:min-h-0 max-md:text-[13px] max-md:leading-[1.125rem]">
+        <p className="mt-1 h-10 line-clamp-2 text-sm leading-5 text-muted max-md:h-9 max-md:text-[13px] max-md:leading-[1.125rem]">
           {profile.headline ?? profile.summary ?? 'Maritime professional'}
         </p>
         {profile.suggestionReason ? <p className="mt-1 line-clamp-1 text-xs font-semibold text-ocean-700">{profile.suggestionReason}</p> : null}

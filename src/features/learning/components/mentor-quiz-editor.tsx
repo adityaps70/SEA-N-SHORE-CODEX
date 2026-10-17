@@ -17,6 +17,7 @@ import type { MentorQuizDefinition, MentorQuizDefinitionInput } from '../mentor-
 import type { MentorMaterial } from '../mentor-material-repository'
 import type { BankQuestion } from '../question-bank-repository'
 import { listBankQuestionsForQuiz } from '../question-bank-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 import {
   ANSWER_POLICIES,
   ANSWER_POLICY_LABELS,
@@ -208,7 +209,7 @@ function BankPicker({
               })}
             </ul>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button type="button" disabled={selected.size === 0} onClick={() => onAdd(available.filter((question) => selected.has(question.id)))} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">
+              <button type="button" disabled={selected.size === 0} onClick={() => onAdd(available.filter((question) => selected.has(question.id)))} className={buttonClass({ variant: 'primary', size: 'sm' })}>
                 <Plus className="size-4" aria-hidden="true" /> Add selected ({selected.size})
               </button>
               <button type="button" disabled={available.length === 0} onClick={() => onAdd(available)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50 disabled:opacity-50">

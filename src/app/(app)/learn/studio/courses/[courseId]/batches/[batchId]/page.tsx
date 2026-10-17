@@ -34,7 +34,7 @@ export default async function CourseBatchPage({ params }: { params: Promise<{ co
   const backHref = canManageCourse ? `/learn/studio/courses/${course.id}/batches` : '/learn/studio'
 
   return (
-    <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref={backHref} title="Batch" />
       <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> {canManageCourse ? 'All batches' : 'Learning Studio'}

@@ -99,6 +99,18 @@ describe('MentionInput with organizations', () => {
     expect(form.querySelector('input[name="organizationMentionId"]')).toBeNull()
   })
 
+  it('shows initials for a member without a photo in the suggestions (round H, H6)', async () => {
+    mocks.searchMentionCandidates.mockResolvedValue([{ ...member, id: '44444444-4444-4444-8444-444444444444', slug: 'placeholder-member', fullName: 'Placeholder Member' }])
+    const user = userEvent.setup()
+    render(<Harness />)
+    await user.type(screen.getByPlaceholderText('Write something'), '@pl')
+    const option = await screen.findByRole('option', { name: /Placeholder Member/ }, { timeout: 1200 })
+    const avatar = within(option).getByTestId('mention-avatar')
+    expect(avatar).toHaveTextContent('PM')
+    expect(avatar).toHaveAttribute('aria-hidden', 'true')
+    expect(option).toHaveAccessibleName(/^Placeholder Member/)
+  })
+
   it('keeps members as mentionProfileId, treating a mention without a kind as a member', async () => {
     mocks.searchMentionCandidates.mockResolvedValue([member])
     const user = userEvent.setup()

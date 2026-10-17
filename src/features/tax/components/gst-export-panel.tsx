@@ -1,5 +1,6 @@
 import { Download } from 'lucide-react'
 import { indiaMonth } from '../gst'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const GST_EXPORT_PATH = '/api/admin/tax/documents'
 
@@ -39,7 +40,7 @@ export function GstExportPanel({ defaultMonth, now = new Date() }: { defaultMont
         </label>
         <button
           type="submit"
-          className="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-navy-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2"
+          className={buttonClass()}
         >
           <Download aria-hidden="true" className="size-4" />
           Download CSV

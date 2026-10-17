@@ -20,6 +20,8 @@ import { EventNav } from '@/features/events/components/event-nav'
 import { EventsPhoneSearch } from '@/features/events/components/events-phone-search'
 import { PastEventsToggle } from '@/features/events/components/past-events-toggle'
 import { eventFormatLabel } from '@/features/events/event-labels'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export const metadata: Metadata = { title: 'Events' }
 
@@ -72,7 +74,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   const showForYou = wantsForYou && forYouList !== null
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 py-2 sm:px-6 sm:py-6 lg:px-8 max-md:space-y-3 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 py-2 sm:px-6 sm:py-6 lg:px-8 max-md:space-y-3 max-md:py-0">
       {/* Phones: chips + Create and one search box with a Filters sheet replace the hero and the filter form. */}
       <EventNav active="discover" className="max-md:-mt-4 md:hidden" />
       <EventsPhoneSearch
@@ -113,7 +115,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         <label className="relative"><span className="sr-only">Category</span><select name="category" defaultValue={params.category ?? ''} className={filterSelectClass}><option value="">All categories</option>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
         <label className="relative"><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className={filterSelectClass}><option value="">All types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
         <label className="relative"><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className={filterSelectClass}><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{eventFormatLabel(value)}</option>)}</select><FilterChevron /></label>
-        <button type="submit" className="min-h-12 cursor-pointer rounded-2xl bg-teal-600 px-6 text-sm font-bold text-white transition hover:bg-teal-700 lg:col-span-3 xl:col-span-1">Search</button>
+        <button type="submit" className={cn(buttonClass(), 'rounded-2xl px-6 lg:col-span-3 xl:col-span-1')}>Search</button>
         {placeFilter ? (
           <p className="text-sm text-muted lg:col-span-3 xl:col-span-5">
             Also showing only events in or near “{placeFilter}”. <Link href={withoutPlaceHref} className="font-semibold text-ocean-700 hover:underline">Remove place filter</Link>
@@ -144,7 +146,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         ) : (
           <>
         <div className="flex items-end justify-between gap-4 max-md:items-baseline"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 max-md:hidden">Discover</p><h2 className="text-2xl font-bold text-navy-950 max-md:text-[17px]">Upcoming events</h2></div><span className="text-sm text-muted max-md:text-[13px]">{upcoming.length} found</span></div>
-        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-2">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">{hasFilters ? 'No matching upcoming events' : 'No upcoming events yet'}</h3><p className="mt-1 text-sm text-muted">{hasFilters ? 'Try other filters, or host the session your community needs.' : 'Be the first to host a webinar, masterclass or meetup for the community.'}</p><div className="mt-4 flex justify-center gap-2">{hasFilters ? <Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear filters</Link> : null}<Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white hover:bg-teal-700 transition-colors">Create event</Link></div></div>}
+        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-2">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">{hasFilters ? 'No matching upcoming events' : 'No upcoming events yet'}</h3><p className="mt-1 text-sm text-muted">{hasFilters ? 'Try other filters, or host the session your community needs.' : 'Be the first to host a webinar, masterclass or meetup for the community.'}</p><div className="mt-4 flex justify-center gap-2">{hasFilters ? <Link href="/events" className={buttonClass({ variant: 'secondary', size: 'sm' })}>Clear filters</Link> : null}<Link href="/events/create" className={buttonClass({ variant: 'primary', size: 'sm' })}>Create event</Link></div></div>}
           </>
         )}
       </section>

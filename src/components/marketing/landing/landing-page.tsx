@@ -18,7 +18,11 @@ export type LandingPageProps = {
 const FONTS_HREF =
   'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap'
 
-/** The public Sea N Shore landing page (approved design, Sept 2026). */
+/**
+ * The public Sea N Shore landing page (approved design, Sept 2026).
+ * Round H (H6): signed-out visitors get the landing header and footer. For members the marketing
+ * layout draws the app chrome (header, phone bars, site footer) around this page, so both are left out.
+ */
 export function LandingPage({ signedIn, googleEnabled, prices, faqs }: LandingPageProps) {
   return (
     <MotionRoot className="lp">
@@ -28,8 +32,9 @@ export function LandingPage({ signedIn, googleEnabled, prices, faqs }: LandingPa
       <link rel="stylesheet" href={FONTS_HREF} precedence="default" />
 
       <a className="skip" href="#main-content">Skip to content</a>
-      <ScrollProgress />
-      <LandingHeader signedIn={signedIn} />
+      {/* Round H (H6): members get the fixed app header, so the landing's own header and top progress bar are left out. */}
+      {signedIn ? null : <ScrollProgress />}
+      {signedIn ? null : <LandingHeader />}
       <main id="main-content" tabIndex={-1}>
         <div id="top" />
         <LandingHero signedIn={signedIn} googleEnabled={googleEnabled} />
@@ -47,7 +52,7 @@ export function LandingPage({ signedIn, googleEnabled, prices, faqs }: LandingPa
         <FaqSection items={faqs} />
         <FinalCta signedIn={signedIn} />
       </main>
-      <LandingFooter />
+      {signedIn ? null : <LandingFooter />}
     </MotionRoot>
   )
 }

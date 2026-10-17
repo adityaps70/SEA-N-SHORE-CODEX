@@ -15,6 +15,7 @@ import { firstNameOf } from '../display-name'
 import { DgProfileOnFileBadge, DgProfileUpload } from './dg-profile-upload'
 import { useProfileCardEditor } from './profile-card-editing'
 import { PROFILE_SECTION_PHONE_CLASS, ProfileSection, ProfileSectionEditButton } from './profile-section'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 /** The DG profile card's edit mode: add, replace or remove the PDF in place, then Done. */
 function DgDocumentEditor({ profileId, document, onClose }: { profileId: string; document: ProfileDocumentSummary | null; onClose: () => void }) {
@@ -128,7 +129,7 @@ export function ProfileDgDocumentViewerCard({
           href={dgProfileDownloadHref(profileId)}
           target="_blank"
           rel="noreferrer"
-          className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2 sm:w-auto"
+          className={`mt-3 w-full sm:w-auto ${buttonClass({ variant: 'primary', size: 'sm' })}`}
         >
           Open DG profile (PDF)
           <ExternalLink aria-hidden="true" className="size-4" />

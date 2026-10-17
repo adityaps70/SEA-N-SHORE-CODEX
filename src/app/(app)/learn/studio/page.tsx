@@ -13,6 +13,8 @@ import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 import { batchRepository, type TeachingBatch } from '@/features/learning/batches/batch-repository'
 import { batchStartLabel, batchStatusLabel } from '@/features/learning/batches/batch-rules'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export const metadata: Metadata = { title: 'Learning Studio' }
 
@@ -191,7 +193,7 @@ export default async function MentorStudioPage({ searchParams }: { searchParams?
     if (!teaching.length) return redirect('/learn/teach')
     // A batch manager or instructor who does not publish courses sees only their batches.
     return (
-      <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
         <MobilePageBar backHref="/learn" title="Learning Studio" />
         <h1 className="text-2xl font-bold text-navy-950 max-md:hidden">Learning Studio</h1>
         <TeachingBatches teaching={teaching} />
@@ -222,7 +224,7 @@ export default async function MentorStudioPage({ searchParams }: { searchParams?
   ]
 
   return (
-    <div className="mx-auto w-full max-w-7xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar
         backHref="/learn"
         title="Learning Studio"
@@ -241,7 +243,7 @@ export default async function MentorStudioPage({ searchParams }: { searchParams?
         </div>
         <Link
           href="/learn/studio/courses/new"
-          className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px]"
+          className={cn(buttonClass(), 'max-md:w-full max-md:rounded-full max-md:text-[15px]')}
         >
           <Plus aria-hidden="true" className="size-4" /> Create course
         </Link>

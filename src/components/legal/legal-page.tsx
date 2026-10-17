@@ -28,7 +28,7 @@ export function LegalPage({
   return (
     <main className="px-4 py-8 sm:px-6 sm:py-12 max-md:py-4">
       <JumpToChips links={sections} />
-      <article className="mx-auto max-w-3xl rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8 max-md:p-5 [&_[id]]:scroll-mt-24">
+      <article className="mx-auto max-w-page-narrow rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8 max-md:p-5 [&_[id]]:scroll-mt-24">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700 max-md:hidden">{eyebrow}</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-2xl">{title}</h1>
         {updated ? <p className="mt-2 text-xs font-medium text-muted">Last updated: {updated}</p> : null}

@@ -37,7 +37,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
   // An administrator who is not a trainer picks a trainer's bank first.
   if ((!trainer && !hasActiveMentor) || (isAdmin && one(params.banks) === 'all')) {
     return (
-      <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
         <MobilePageBar backHref="/learn/studio" title="Question banks" />
         <h1 className="text-2xl font-bold text-navy-950 max-md:sr-only">Question banks</h1>
         <p className="mt-2 text-sm text-muted">Choose a trainer’s bank. Banks are private to their trainer and to Sea N Shore administrators.</p>
@@ -69,7 +69,7 @@ export default async function QuestionBankPage({ searchParams }: { searchParams:
   const filtered = Object.values(filters).some(Boolean)
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/learn/studio" title="Question bank" />
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> Learning Studio

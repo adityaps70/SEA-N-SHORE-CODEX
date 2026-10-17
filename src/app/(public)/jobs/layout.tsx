@@ -5,7 +5,7 @@ import { LegacyOrganizationConversionBanner } from '@/features/organizations/com
 import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
 import { SourceVisitBeacon } from '@/features/ranking/components/source-visit-beacon'
 
-const MAIN_CLASS = 'mx-auto w-full max-w-7xl px-4 py-4 md:py-6'
+const MAIN_CLASS = 'mx-auto w-full max-w-page-wide px-4 py-4 md:py-6'
 
 /**
  * Round H (H5): the jobs list and job pages are public, for visitors and search engines. The (public)

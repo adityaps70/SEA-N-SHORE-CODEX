@@ -87,7 +87,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
     : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">{closedReason === 'joining_passed' ? 'The joining date for this job has passed. It no longer takes applications.' : `Applications for this job closed on ${formatDate(job.applyUntil)}.`}</p>
 
   return (
-    <section className="mx-auto w-full max-w-5xl pb-0 pt-0 md:pb-8 md:pt-5">
+    <section className="mx-auto w-full max-w-page-wide pb-0 pt-0 md:pb-8 md:pt-5">
       {/* Round H (H5): schema.org JobPosting for search engines (validThrough is in the past once closed). */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(jobPostingJsonLd(job, siteOrigin())) }} />
       <MobilePageBar

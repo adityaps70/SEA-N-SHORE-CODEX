@@ -38,7 +38,7 @@ export default async function HiringPage() {
   ] as const
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar backHref="/jobs" title="Hiring" />
       <section className="overflow-hidden rounded-[2rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 sm:p-8">
         <div className="flex flex-col gap-6 max-md:gap-3 sm:flex-row sm:items-end sm:justify-between">

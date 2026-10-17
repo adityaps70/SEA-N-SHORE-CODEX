@@ -36,7 +36,7 @@ export default async function HashtagPage({ params }: { params: Promise<{ tag: s
   return (
     <>
       <MobilePageBar backHref="/home" title={`#${tag}`} />
-      <section className="mx-auto w-full max-w-3xl py-2 sm:py-5 max-md:-mx-4 max-md:w-auto max-md:py-0">
+      <section className="mx-auto w-full max-w-page-narrow py-2 sm:py-5 max-md:-mx-4 max-md:w-auto max-md:py-0">
         <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">

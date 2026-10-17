@@ -3,6 +3,7 @@ import { MailX, MailCheck, TriangleAlert } from 'lucide-react'
 import { createNewsletterService, tokenMessages } from '../service'
 import { newsletterTopicLabel } from '../topics'
 import { NewsletterTokenAction } from './newsletter-token-action'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 type Kind = 'confirm' | 'unsubscribe'
 
@@ -32,10 +33,10 @@ function LinkProblem({ kind, message }: { kind: Kind; message: string }) {
         <span>{message}</span>
       </p>
       <div className="mt-6 flex flex-wrap gap-2">
-        <Link href="/newsletter" className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700">
+        <Link href="/newsletter" className={buttonClass()}>
           Go to the newsletter page
         </Link>
-        <Link href="/help" className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 px-5 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+        <Link href="/help" className={buttonClass('secondary')}>
           Contact & support
         </Link>
       </div>

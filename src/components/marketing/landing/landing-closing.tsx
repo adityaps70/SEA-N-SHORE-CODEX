@@ -8,6 +8,7 @@ import { Reveal } from '@/components/marketing/motion'
 import { FooterSocialIcons, footerBottomLine, footerLinkGroups, type FooterLink } from '@/components/navigation/app-footer'
 import { configuredSocialLinks } from '@/components/navigation/social-links'
 import { BUSINESS, telHref } from '@/config/business'
+import { NewsletterFooterSignup } from '@/features/newsletter/components/newsletter-footer-signup'
 import type { PlanPriceSummary } from '@/features/billing/components/plan-cards'
 import { INTERVAL_LABELS, formatRupeesShort, trialBadge, type PaidPlanCode } from '@/features/billing/plans'
 import { LANDING_LINKS } from './landing-links'
@@ -250,6 +251,10 @@ function FooterLink({ href, label }: { href: string; label: string }) {
   return <li>{href.startsWith('#') ? <a href={href}>{label}</a> : <Link href={href}>{label}</Link>}</li>
 }
 
+/**
+ * The landing page's navy footer (approved design) for signed-out visitors. Round H (H6): it holds
+ * the same link groups and newsletter sign-up as the site footer, plus the landing anchors.
+ */
 export function LandingFooter() {
   const social = configuredSocialLinks()
   return (
@@ -287,6 +292,10 @@ export function LandingFooter() {
             <FooterSocialIcons linkClassName="ficon" size={22} />
           </div>
         ) : null}
+        {/* Round H (H6): the same newsletter sign-up as the site footer, on its own row. */}
+        <div className="fnews">
+          <NewsletterFooterSignup />
+        </div>
       </div>
       <div className="wrap legal">
         <p>{footerBottomLine()}</p>

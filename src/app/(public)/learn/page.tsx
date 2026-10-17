@@ -18,6 +18,7 @@ import { getRecommendedCourses } from '@/features/ranking/course-suggestions'
 import { coursePrice, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
 import { catalogueMetadata } from '@/features/learning/course-seo'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
+import { CoursePublisherAvatar } from '@/features/learning/components/course-publisher-avatar'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 
@@ -143,9 +144,8 @@ function CourseCard({ course, reason = null }: { course: MarketplaceCourse; reas
         </div>
 
         <div className="mt-4 flex items-center gap-2 border-t border-mist-100 pt-4">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-navy-950 text-xs font-extrabold text-white">
-            {course.mentorName.charAt(0).toUpperCase()}
-          </span>
+          {/* Round H (H6): the organization's logo when it publishes the course. */}
+          <CoursePublisherAvatar course={course} />
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-navy-950">{course.mentorName}</p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-teal-800">
@@ -205,7 +205,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <nav aria-label="Learning sections" className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
         {user ? (
           <Link href="/learn/my-learning" className={PHONE_CHIP_CLASS}>

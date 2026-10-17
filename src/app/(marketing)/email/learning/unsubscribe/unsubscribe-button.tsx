@@ -3,6 +3,7 @@
 import Link from '@/components/navigation/intent-link'
 import { useState, useTransition } from 'react'
 import { unsubscribeFromLearningEmails } from '@/features/learning/learning-email-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export function LearningUnsubscribeButton({ token }: { token: string }) {
   const [state, setState] = useState<'idle' | 'done' | 'failed'>('idle')
@@ -25,7 +26,7 @@ export function LearningUnsubscribeButton({ token }: { token: string }) {
           const result = await unsubscribeFromLearningEmails(token)
           setState(result.ok ? 'done' : 'failed')
         })}
-        className="inline-flex min-h-11 cursor-pointer items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-wait disabled:opacity-70"
+        className={`${buttonClass()} disabled:cursor-wait`}
       >
         {pending ? 'Turning off…' : 'Turn off learning emails'}
       </button>

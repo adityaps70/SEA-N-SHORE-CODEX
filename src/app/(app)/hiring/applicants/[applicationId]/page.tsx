@@ -82,7 +82,7 @@ export default async function HiringApplicantReviewPage({
   const phoneChip = 'relative inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[\'\'] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 pb-0 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 pb-0 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar
         backHref={applicantsHref}
         title="Applicant"

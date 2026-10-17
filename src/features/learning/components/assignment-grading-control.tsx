@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { CheckCircle2, Loader2, RotateCcw } from 'lucide-react'
 import { gradeAssignmentAttempt } from '../assignment-grading-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 type GradeDecision = 'pass' | 'needs_revision'
 
@@ -91,7 +92,7 @@ export function AssignmentGradingControl({ attemptId, maxPoints, passingPercenta
           type="button"
           onClick={() => submit('pass')}
           disabled={pending || score === ''}
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-teal-800 transition-colors disabled:cursor-not-allowed"
+          className={buttonClass({ variant: 'primary', size: 'sm' })}
         >
           {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
           Pass

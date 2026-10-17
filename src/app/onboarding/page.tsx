@@ -29,7 +29,7 @@ export default async function OnboardingPage({
       id="main-content"
       className="min-h-screen bg-[linear-gradient(180deg,var(--mist-50)_0%,white_42%,var(--mist-50)_100%)] px-4 py-4 sm:px-6 sm:py-6 max-md:bg-white max-md:py-2"
     >
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-page-narrow">
         <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100 max-md:min-h-14">
           <Wordmark compact />
           <div className="flex min-w-0 items-center gap-3">

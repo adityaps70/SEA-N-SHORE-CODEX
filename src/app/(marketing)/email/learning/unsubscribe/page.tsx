@@ -3,6 +3,7 @@ import Link from '@/components/navigation/intent-link'
 import { MailX, TriangleAlert } from 'lucide-react'
 import { createLearningEmailPreferences } from '@/features/learning/learning-email-sending'
 import { LearningUnsubscribeButton } from './unsubscribe-button'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const metadata: Metadata = { title: 'Turn off learning emails', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -47,10 +48,10 @@ export default async function LearningUnsubscribePage({ searchParams }: { search
               <span>This unsubscribe link is incomplete or no longer valid. Sign in and choose your emails in Settings instead.</span>
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
-              <Link href="/settings/notifications" className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700">
+              <Link href="/settings/notifications" className={buttonClass()}>
                 Email settings
               </Link>
-              <Link href="/help" className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 px-5 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+              <Link href="/help" className={buttonClass('secondary')}>
                 Contact & support
               </Link>
             </div>

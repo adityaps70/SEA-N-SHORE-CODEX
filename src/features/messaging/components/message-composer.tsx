@@ -505,7 +505,7 @@ export function MessageComposer({
           title={sendingCount > 0 ? 'Sending message' : 'Send message'}
           disabled={!canSend || attachment?.status === 'uploading'}
           className={cn(
-            'grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-ocean-700 text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted',
+            'grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-navy-950 text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted',
             dock && 'size-9 rounded-full',
           )}
         >

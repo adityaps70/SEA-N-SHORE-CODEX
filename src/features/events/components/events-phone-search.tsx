@@ -3,6 +3,8 @@
 import { Search, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 type Option = { value: string; label: string }
 
@@ -79,13 +81,13 @@ export function EventsPhoneSearch({
             <button
               type="button"
               onClick={() => setValues({ category: '', eventType: '', format: '' })}
-              className="inline-flex min-h-12 cursor-pointer items-center justify-center rounded-full border border-mist-300 px-5 text-[15px] font-semibold text-navy-700 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+              className={cn(buttonClass({ variant: 'secondary' }), 'rounded-full text-[15px]')}
             >
               Clear
             </button>
             <button
               type="submit"
-              className="inline-flex min-h-12 flex-1 cursor-pointer items-center justify-center rounded-full bg-ocean-700 px-5 text-[15px] font-bold text-white hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+              className={cn(buttonClass(), 'flex-1 rounded-full text-[15px] font-bold')}
             >
               Show results
             </button>

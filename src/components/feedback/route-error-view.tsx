@@ -4,6 +4,7 @@ import Link from '@/components/navigation/intent-link'
 import { useEffect, useSyncExternalStore } from 'react'
 import { RefreshCw, TriangleAlert, WifiOff } from 'lucide-react'
 import { isStaleAssetError, recoverFromStaleAssets } from '@/lib/stale-assets'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export type RouteErrorKind = 'stale' | 'offline' | 'general'
 
@@ -91,7 +92,7 @@ export function RouteErrorView({
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700"
+              className={buttonClass()}
             >
               <RefreshCw aria-hidden="true" className="size-4" />
               Reload page
@@ -101,7 +102,7 @@ export function RouteErrorView({
               <button
                 type="button"
                 onClick={retry}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700"
+                className={buttonClass()}
               >
                 <RefreshCw aria-hidden="true" className="size-4" />
                 Try again
@@ -109,7 +110,7 @@ export function RouteErrorView({
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-mist-200 px-5 text-sm font-semibold text-navy-950 hover:bg-mist-50"
+                className={buttonClass('secondary')}
               >
                 Reload page
               </button>

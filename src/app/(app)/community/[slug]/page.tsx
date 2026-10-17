@@ -5,7 +5,7 @@ import { Building2, Globe, Lock, Search, ShieldCheck } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { CommunityMediaControls } from '@/features/community/components/community-media-controls'
+import { CommunityIconEditor, CommunityMediaControls } from '@/features/community/components/community-media-controls'
 import { EditGroupForm } from '@/features/community/components/edit-group-form'
 import { GroupCover, GroupIconTile } from '@/features/community/components/group-icon-tile'
 import { GroupMembersList } from '@/features/community/components/group-members-list'
@@ -109,7 +109,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
   const VisibilityIcon = group.visibility === 'private' ? Lock : Globe
 
   return (
-    <div className="mx-auto w-full max-w-4xl py-2 sm:py-4 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide py-2 sm:py-4 max-md:py-0">
       <MobilePageBar backHref="/community" title={group.name} className="max-md:mb-0" />
       <div className="space-y-4 max-md:space-y-2">
         {single(search.mediaUpload) === "failed" && canManageMedia ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Community created. The banner/photo didn’t upload — you can add it from the community page.</div> : null}
@@ -124,12 +124,10 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
           </div>
           <div className="px-4 sm:px-6">
             <div className="relative -mt-10 w-fit sm:-mt-12">
-              <GroupIconTile icon={group.icon} iconUrl={group.iconUrl} size="xl" />
-              {canManageMedia ? (
-                <div className="absolute -bottom-1 -right-1 z-10">
-                  <CommunityMediaControls groupId={group.id} kind="icon" hasImage={Boolean(group.iconUrl)} canManage />
-                </div>
-              ) : null}
+              {/* Round H (H6): Change / Remove sit in an overlay (hover, focus or the touch Edit button), never over the photo. */}
+              <CommunityIconEditor groupId={group.id} hasImage={Boolean(group.iconUrl)} canManage={canManageMedia}>
+                <GroupIconTile icon={group.icon} iconUrl={group.iconUrl} size="xl" />
+              </CommunityIconEditor>
             </div>
             <div className="mt-3 min-w-0">
               <h1 id="group-name" className="break-words text-2xl font-bold tracking-tight text-navy-950 sm:text-[1.75rem] max-md:text-[22px] max-md:leading-7">{group.name}</h1>
