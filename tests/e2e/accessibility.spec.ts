@@ -12,6 +12,10 @@ import { expect, test, type Page } from '@playwright/test'
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 const BLOCKING = new Set(['serious', 'critical'])
 
+// Entrance and floating animations fade cards in over the hero photo; axe measures the settled page, so motion is
+// reduced (the site honours prefers-reduced-motion) and every element is at full opacity when it is scanned.
+test.use({ reducedMotion: 'reduce' })
+
 type Target = { name: string; path: (page: Page) => Promise<string | null> }
 
 const fixed = (path: string) => async () => path
@@ -64,6 +68,10 @@ const signedInConfigured = Boolean(process.env.E2E_ACCESS_COOKIE || (process.env
 /** Scans the open page and fails with a readable list of every serious or critical violation. */
 async function expectNoSeriousViolations(page: Page) {
   await page.waitForLoadState('load')
+  // Wait for entrance animations (finite ones) to finish, so text is measured at full opacity.
+  await page
+    .waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== 'running' || animation.effect?.getComputedTiming().endTime === Infinity), undefined, { timeout: 10_000 })
+    .catch(() => undefined)
   const results = await new AxeBuilder({ page }).withTags(TAGS).analyze()
   const blocking = results.violations
     .filter((violation) => BLOCKING.has(violation.impact ?? ''))
