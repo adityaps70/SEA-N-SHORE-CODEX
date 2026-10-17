@@ -40,6 +40,7 @@ function message(overrides: Record<string, unknown> = {}) {
 function makeMessagingRepository(overrides: Record<string, unknown> = {}) {
   return {
     findDirectConversationByPair: vi.fn(async () => null),
+    getMessagePermission: vi.fn(async () => 'connections'),
     insertDirectConversation: vi.fn(async () => CONVERSATION_ID),
     isParticipant: vi.fn(async () => true),
     findOtherParticipantId: vi.fn(async () => TARGET_ID),
@@ -152,6 +153,34 @@ describe('messaging authorization and durability service', () => {
       'messaging_not_allowed',
     )
     expect(blocked.messaging.insertDirectConversation).not.toHaveBeenCalled()
+  })
+
+  it('enforces the recipient\u2019s "Who can message me" choice on the server (Round H, H2)', async () => {
+    // Everyone: a member who is not connected may start a conversation and send.
+    const open = await service({
+      messaging: makeMessagingRepository({ getMessagePermission: vi.fn(async () => 'everyone') }),
+      network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null) }),
+    })
+    await expect(open.service.startDirectConversation(VIEWER_ID, TARGET_ID)).resolves.toBe(CONVERSATION_ID)
+    expect(open.messaging.getMessagePermission).toHaveBeenCalledWith(TARGET_ID)
+    await expect(open.service.sendMessage(VIEWER_ID, { conversationId: CONVERSATION_ID, clientMessageId: CLIENT_MESSAGE_ID, body: 'Good day, Captain.' })).resolves.toBeTruthy()
+
+    // Everyone still never overrides a block.
+    const blocked = await service({
+      messaging: makeMessagingRepository({ getMessagePermission: vi.fn(async () => 'everyone') }),
+      network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null), isPairBlocked: vi.fn(async () => true) }),
+    })
+    await expectCode(blocked.service.startDirectConversation(VIEWER_ID, TARGET_ID), 'messaging_not_allowed')
+
+    // Nobody: not even a connection may start a conversation or send in an existing one.
+    const closed = await service({ messaging: makeMessagingRepository({ getMessagePermission: vi.fn(async () => 'nobody') }) })
+    await expectCode(closed.service.startDirectConversation(VIEWER_ID, TARGET_ID), 'messaging_not_allowed')
+    await expectCode(
+      closed.service.sendMessage(VIEWER_ID, { conversationId: CONVERSATION_ID, clientMessageId: CLIENT_MESSAGE_ID, body: 'Good day, Captain.' }),
+      'messaging_not_allowed',
+    )
+    expect(closed.messaging.insertDirectConversation).not.toHaveBeenCalled()
+    expect(closed.messaging.insertMessage).not.toHaveBeenCalled()
   })
 
   it('returns the existing direct conversation instead of creating a duplicate pair', async () => {

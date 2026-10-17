@@ -1,4 +1,4 @@
-import { groupNotifications } from './grouping'
+import { collapseRepeatedNotifications, groupNotifications } from './grouping'
 import { isRankingEnabled } from '@/features/ranking/switches'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { resolveFeedMediaUrls } from '@/features/feed/media'
@@ -211,7 +211,8 @@ export function createNotificationQueries(input: {
   const groupingEnabled = input.groupingEnabled ?? (async () => false)
 
   async function present(recipientId: string, notifications: NetworkNotification[]) {
-    return await groupingEnabled(recipientId).catch(() => false) ? groupNotifications(notifications) : notifications
+    const collapsed = collapseRepeatedNotifications(notifications)
+    return await groupingEnabled(recipientId).catch(() => false) ? groupNotifications(collapsed) : collapsed
   }
 
   /** Actors (with signed photos) and post previews for one page of rows, in two batched lookups. */

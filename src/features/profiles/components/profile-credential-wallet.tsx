@@ -278,9 +278,16 @@ function LearningCertificateEntry({ certificate, editable }: { certificate: Prof
   return (
     <article className={`rounded-2xl border border-mist-100 bg-white p-4 shadow-sm max-md:rounded-none max-md:border-0 max-md:p-0 max-md:shadow-none sm:p-5 ${hidden ? 'opacity-70' : ''}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800">
-          <BadgeCheck aria-hidden="true" className="size-3.5" />Verified by Sea N Shore
-        </span>
+        {/* Round H (H2): a certificate from the member's own course or organization is not shown as verified. */}
+        {certificate.selfIssued ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-mist-200 bg-mist-50 px-2.5 py-1 text-xs font-semibold text-navy-900">
+            Self-issued
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800">
+            <BadgeCheck aria-hidden="true" className="size-3.5" />Verified by Sea N Shore
+          </span>
+        )}
         {expired ? <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">Expired</span> : null}
         {editable && hidden ? <span className="rounded-full border border-mist-200 bg-mist-50 px-2.5 py-1 text-xs font-semibold text-muted">Hidden from your profile</span> : null}
       </div>

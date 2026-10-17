@@ -8,10 +8,18 @@ const securityHeaders = [
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
   // Round 14 (2.4): HTTPS only for two years, subdomains included (preload-eligible).
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+  // Round H (H4): pages keep their browsing context to themselves, but windows they open stay
+  // linked. Google sign-in is a full-page redirect (fine with plain same-origin); Cashfree's
+  // `_modal` checkout and Razorpay Checkout may open pop-ups for UPI, wallet and bank steps and
+  // report back through window.opener, which same-origin would cut. Ignored inside iframes, so the
+  // SCORM player frame is unaffected.
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
 ]
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Round H (H4): do not advertise the framework (`x-powered-by: Next.js`).
+  poweredByHeader: false,
   experimental: {
     // Round 13: bound the native (libvips) memory the image optimizer can take in the web task.
     // One image at a time, no libvips operation cache, streaming reads, and at most 50 MP per

@@ -3,7 +3,14 @@ import { ADMIN_RETURN_PATH_HEADER, adminReturnPathForRequest } from '@/lib/auth/
 import { afterSignOutRedirect } from '@/lib/auth/after-sign-out'
 import { updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
 import { arrivedAtReturnPath, RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
-import { createCspNonce, reportOnlyContentSecurityPolicy, wantsContentSecurityPolicy } from '@/lib/security/content-security-policy'
+import {
+  API_CONTENT_SECURITY_POLICY,
+  CONTENT_SECURITY_POLICY_HEADER,
+  createCspNonce,
+  pageContentSecurityPolicy,
+  wantsApiContentSecurityPolicy,
+  wantsContentSecurityPolicy,
+} from '@/lib/security/content-security-policy'
 
 export async function proxy(incoming: NextRequest) {
   // Round 14 (2.4): page loads carry a Report-Only CSP with a per-request nonce. Only body-less
@@ -11,20 +18,23 @@ export async function proxy(incoming: NextRequest) {
   let request = incoming
   let policy: string | null = null
   if (wantsContentSecurityPolicy(incoming)) {
-    policy = reportOnlyContentSecurityPolicy(createCspNonce())
+    policy = pageContentSecurityPolicy(createCspNonce())
   }
+  // Round H (H4): API responses carry a fixed policy too (SCORM package files excepted). Only the
+  // response gets it; the request reaches the route unchanged.
+  const responsePolicy = policy ?? (wantsApiContentSecurityPolicy(incoming) ? API_CONTENT_SECURITY_POLICY : null)
   // Round 14 (2.11): admin page loads (GET/HEAD only) tell the admin MFA gate which page to return to.
   const adminReturnPath = adminReturnPathForRequest(incoming)
   if (policy || adminReturnPath) {
     const headers = new Headers(incoming.headers)
-    if (policy) headers.set('content-security-policy-report-only', policy)
+    if (policy) headers.set(CONTENT_SECURITY_POLICY_HEADER, policy)
     if (adminReturnPath) headers.set(ADMIN_RETURN_PATH_HEADER, adminReturnPath)
     request = new NextRequest(incoming, { headers })
   }
   const response = afterSignOutRedirect(request) ?? await updateCognitoRouteSession(request)
   // Round F: the member is back on the page they signed in for; forget it.
   if (arrivedAtReturnPath(request)) response.cookies.delete(RETURN_PATH_COOKIE)
-  if (policy) response.headers.set('Content-Security-Policy-Report-Only', policy)
+  if (responsePolicy) response.headers.set(CONTENT_SECURITY_POLICY_HEADER, responsePolicy)
   return response
 }
 

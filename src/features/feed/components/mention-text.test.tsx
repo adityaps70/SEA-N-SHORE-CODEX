@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MentionText, segmentBody } from './mention-text'
 
@@ -70,5 +70,58 @@ describe('MentionText', () => {
     render(<MentionText body="Read https://example.com/page#top or mail me@ship.com" />)
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByText('Read https://example.com/page#top or mail me@ship.com')).toBeInTheDocument()
+  })
+})
+
+describe('MentionText Markdown (Round H)', () => {
+  const member = { profileId: '44444444-4444-4444-8444-444444444444', slug: 'member-a', fullName: 'Member A' }
+
+  it('renders bold and italic instead of the raw markers', () => {
+    const { container } = render(<MentionText body="**Good Morning!** from *the* _bridge_" />)
+    expect(container).toHaveTextContent('Good Morning! from the bridge')
+    expect(container).not.toHaveTextContent('*')
+    expect(container.querySelector('strong')).toHaveTextContent('Good Morning!')
+    expect([...container.querySelectorAll('em')].map((element) => element.textContent)).toEqual(['the', 'bridge'])
+  })
+
+  it('renders bulleted and numbered lists', () => {
+    render(<MentionText body={'Kit:\n- Lifejacket\n* Torch\nSteps:\n1. Muster\n2. Report'} />)
+    const [bulleted, numbered] = screen.getAllByRole('list')
+    expect(within(bulleted!).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['•Lifejacket', '•Torch'])
+    expect(within(numbered!).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['1.Muster', '2.Report'])
+  })
+
+  it('links http(s) targets in a new tab with nofollow and same-site paths in place', () => {
+    render(<MentionText body="Read [the guide](https://example.com/guide) and [open jobs](/jobs)" />)
+    const external = screen.getByRole('link', { name: /the guide/ })
+    expect(external).toHaveAttribute('href', 'https://example.com/guide')
+    expect(external).toHaveAttribute('target', '_blank')
+    expect(external).toHaveAttribute('rel', 'nofollow ugc noopener noreferrer')
+    const internal = screen.getByRole('link', { name: 'open jobs' })
+    expect(internal).toHaveAttribute('href', '/jobs')
+    expect(internal).not.toHaveAttribute('target')
+  })
+
+  it('keeps mentions and hashtags as links, also inside bold', () => {
+    render(<MentionText body="**Thanks @Member A** for #Safety" mentions={[member]} />)
+    const mention = screen.getByRole('link', { name: '@Member A' })
+    expect(mention).toHaveAttribute('href', '/people/member-a')
+    expect(mention.closest('strong')).not.toBeNull()
+    expect(screen.getByRole('link', { name: '#Safety' })).toHaveAttribute('href', '/hashtags/safety')
+  })
+
+  it.each([
+    '<script>alert(1)</script>',
+    '<img src=x onerror=alert(1)>',
+    '[x](javascript:alert(1))',
+    '[x](JaVaScRiPt:alert(1))',
+    '[x](data:text/html,<script>alert(1)</script>)',
+    '[x](//evil.example)',
+  ])('renders %s as inert literal text', (body) => {
+    const { container } = render(<MentionText body={body} />)
+    expect(container).toHaveTextContent(body)
+    expect(container.querySelector('script, img, iframe')).toBeNull()
+    expect(container.querySelector('a')).toBeNull()
+    expect(container.querySelector('[href^="javascript" i], [onerror]')).toBeNull()
   })
 })

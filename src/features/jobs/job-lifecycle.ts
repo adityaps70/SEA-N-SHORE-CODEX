@@ -76,6 +76,29 @@ export function isApplyUntilOpen(applyUntil: string | null, today: string) {
   return !applyUntil || applyUntil >= today
 }
 
+/**
+ * Round H (H2): a job whose joining window is over closes by itself, like a passed apply-by date.
+ * The window ends on the joining-until date, or on the joining date when only that is set.
+ */
+export function isJoiningWindowOpen(joiningFrom: string | null, joiningUntil: string | null, today: string) {
+  const last = joiningUntil ?? joiningFrom
+  return !last || last >= today
+}
+
+export type JobClosedReason = 'apply_by_passed' | 'joining_passed'
+
+/** Why a published job no longer takes applications, or null while it does. */
+export function jobClosedReason(job: { applyUntil: string | null; joiningFrom: string | null; joiningUntil: string | null }, today: string): JobClosedReason | null {
+  if (!isJoiningWindowOpen(job.joiningFrom, job.joiningUntil, today)) return 'joining_passed'
+  if (!isApplyUntilOpen(job.applyUntil, today)) return 'apply_by_passed'
+  return null
+}
+
+export const JOB_CLOSED_LABELS: Record<JobClosedReason, string> = {
+  apply_by_passed: 'Applications closed',
+  joining_passed: 'Joining date passed',
+}
+
 function notAllowedMessage(action: JobLifecycleAction, status: JobListingStatus) {
   if (action === 'publish') {
     if (status === 'published') return 'This job is already live.'

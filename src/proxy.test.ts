@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ updateCognitoRouteSession: vi.fn() }))
 vi.mock('@/lib/auth/cognito-proxy', () => ({ updateCognitoRouteSession: mocks.updateCognitoRouteSession }))
 
+import { API_CONTENT_SECURITY_POLICY } from '@/lib/security/content-security-policy'
 import { proxy } from './proxy'
 
 beforeEach(() => {
@@ -27,12 +28,20 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
   it('leaves POSTs (server actions), API calls and RSC requests untouched', async () => {
     for (const request of [
       new NextRequest('https://seanshore.in/home', { method: 'POST', body: 'x', headers: { 'sec-fetch-dest': 'document' } }),
-      new NextRequest('https://seanshore.in/api/health/live', { headers: { 'sec-fetch-dest': 'document' } }),
-      new NextRequest('https://seanshore.in/api/health/home', { headers: { 'x-health-check-token': 'token-value' } }),
       new NextRequest('https://seanshore.in/home', { headers: { rsc: '1' } }),
     ]) {
       const response = await proxy(request)
       expect(response.headers.get('content-security-policy-report-only')).toBeNull()
+      expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
+    }
+    // Round H (H4): API calls still reach the route unchanged, but their responses now carry the
+    // fixed API policy (see below).
+    for (const request of [
+      new NextRequest('https://seanshore.in/api/health/live', { headers: { 'sec-fetch-dest': 'document' } }),
+      new NextRequest('https://seanshore.in/api/health/home', { headers: { 'x-health-check-token': 'token-value' } }),
+    ]) {
+      const response = await proxy(request)
+      expect(response.headers.get('content-security-policy-report-only')).toBe(API_CONTENT_SECURITY_POLICY)
       expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
     }
   })
@@ -42,6 +51,45 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toBe('https://seanshore.in/auth/sign-up')
     expect(mocks.updateCognitoRouteSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('proxy Content Security Policy for API responses (Round H, H4)', () => {
+  it('sends the fixed report-only policy on API responses of every method, without a nonce', async () => {
+    for (const request of [
+      new NextRequest('https://seanshore.in/api/feed-media/posts/clip.mp4', { headers: { 'sec-fetch-dest': 'video' } }),
+      new NextRequest('https://seanshore.in/api/realtime/ticket', { method: 'POST', body: '{}' }),
+    ]) {
+      const response = await proxy(request)
+      const policy = response.headers.get('content-security-policy-report-only')
+      expect(policy).toBe("default-src 'none'; frame-ancestors 'none'; report-uri /api/security/csp-report")
+      expect(policy).not.toContain('nonce-')
+      expect(response.headers.get('content-security-policy')).toBeNull()
+      expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
+    }
+  })
+
+  it('adds nothing to SCORM package files, which send their own sandbox policy', async () => {
+    const request = new NextRequest('https://seanshore.in/api/learning/scorm/lesson-1/content/token/index.html', { headers: { 'sec-fetch-dest': 'iframe' } })
+    const response = await proxy(request)
+    expect(response.headers.get('content-security-policy-report-only')).toBeNull()
+    expect(response.headers.get('content-security-policy')).toBeNull()
+    expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
+  })
+
+  it('tightens the page policy to named hosts instead of blanket https:', async () => {
+    const response = await proxy(new NextRequest('https://seanshore.in/home', { headers: { 'sec-fetch-dest': 'document' } }))
+    const policy = response.headers.get('content-security-policy-report-only') ?? ''
+    expect(policy).not.toMatch(/(?:^|\s)https:(?:\s|;|$)/)
+    expect(policy).toContain('https://fonts.gstatic.com')
+  })
+
+  it('serves security.txt without a sign-in redirect', async () => {
+    const { updateCognitoRouteSession } = await vi.importActual<typeof import('@/lib/auth/cognito-proxy')>('@/lib/auth/cognito-proxy')
+    mocks.updateCognitoRouteSession.mockImplementationOnce(updateCognitoRouteSession)
+    const response = await proxy(new NextRequest('https://seanshore.in/.well-known/security.txt'))
+    expect(response.status).toBe(200)
+    expect(response.headers.get('location')).toBeNull()
   })
 })
 

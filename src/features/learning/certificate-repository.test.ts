@@ -150,7 +150,16 @@ describe('learning certificate repository', () => {
       mentorName: 'Capt. Maya Singh',
       completedAt: '2026-09-15T08:00:00.000Z',
       issuedAt: '2026-09-15T08:01:00.000Z',
+      // Round H (H2): whether it is self-issued, and the course page while the course is published.
+      issuerRelation: 'independent',
+      courseSlug: null,
     })
+  })
+
+  it('reports a self-issued certificate and the live course slug (Round H, H2)', async () => {
+    const query = async () => [{ ...certificateRow(), issuer_relation: 'self_issued', course_slug: 'sire-2-readiness' }]
+    const repository = createCertificateRepository({ query })
+    await expect(repository.getCertificateByVerificationCode(verificationCode)).resolves.toMatchObject({ issuerRelation: 'self_issued', courseSlug: 'sire-2-readiness' })
   })
 
   it('matches nothing, without a query, for a verification code that is not a UUID (round C)', async () => {

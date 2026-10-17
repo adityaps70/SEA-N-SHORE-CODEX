@@ -4,7 +4,7 @@ import { downscaleImage } from '@/lib/images/downscale-image'
 import { avatarSizes } from '@/lib/images/media-image-source'
 import { MediaImage } from '@/components/ui/media-image'
 import { useActionState, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { BarChart3, Check, ChevronDown, FileText, Globe, Hash, ImagePlus, MessageCircleQuestion, PencilLine, UserRoundPlus, X } from 'lucide-react'
+import { BarChart3, Bold, Check, ChevronDown, FileText, Globe, Hash, ImagePlus, Italic, Link2, List, ListOrdered, MessageCircleQuestion, PencilLine, UserRoundPlus, X, type LucideIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
@@ -16,6 +16,7 @@ import {
   type PostComposerState,
 } from '../actions'
 import type { ComposeRequest } from '../compose-request'
+import { applyMarkdownFormat, type MarkdownFormat } from '../markdown'
 import { loadPostingOrganizations } from '../organization-post-actions'
 import {
   POST_DOCUMENT_MAX_PAGES,
@@ -71,6 +72,15 @@ function taggedPeopleSummary(people: TaggedPerson[]) {
   const rest = people.length - 2
   return rest > 0 ? `With ${shown} +${rest}` : `With ${shown}`
 }
+
+/** Round H (H2): the composer's formatting buttons; posts render this Markdown subset (see ../markdown). */
+const FORMAT_TOOLS: Array<{ format: MarkdownFormat; label: string; Icon: LucideIcon; shortcut?: string }> = [
+  { format: 'bold', label: 'Bold', Icon: Bold, shortcut: 'B' },
+  { format: 'italic', label: 'Italic', Icon: Italic, shortcut: 'I' },
+  { format: 'bulleted', label: 'Bulleted list', Icon: List },
+  { format: 'numbered', label: 'Numbered list', Icon: ListOrdered },
+  { format: 'link', label: 'Link', Icon: Link2 },
+]
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
@@ -268,6 +278,7 @@ export function PostComposer({
   const formRef = useRef<HTMLFormElement>(null)
   const mediaInputRef = useRef<HTMLInputElement>(null)
   const documentInputRef = useRef<HTMLInputElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const mediaStateRef = useRef<ComposerMedia[]>([])
   const uploadSequenceRef = useRef(0)
   const draftKey = `sea-n-shore:post-draft:${profile.id}${defaultOrganizationId ? `:${defaultOrganizationId}` : ''}${group ? `:group:${group.id}` : ''}`
@@ -487,6 +498,34 @@ export function PostComposer({
     }
     return nextState
   }, initialState)
+
+  /**
+   * Round H (H2): wraps the textarea selection in Markdown (or prefixes its lines for lists) and
+   * puts focus and the selection back. Mention labels are kept whole so their mentions stay attached.
+   */
+  function applyFormat(format: MarkdownFormat) {
+    const textarea = bodyRef.current
+    if (!textarea) return
+    const next = applyMarkdownFormat(
+      { value: body, start: textarea.selectionStart, end: textarea.selectionEnd },
+      format,
+      mentions.map((mention) => `@${mention.label}`),
+    )
+    setBody(next.value)
+    window.requestAnimationFrame(() => {
+      bodyRef.current?.focus()
+      bodyRef.current?.setSelectionRange(next.start, next.end)
+    })
+  }
+
+  function onBodyKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.target !== bodyRef.current || event.defaultPrevented) return
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+    const key = event.key.toLowerCase()
+    if (key !== 'b' && key !== 'i') return
+    event.preventDefault()
+    applyFormat(key === 'b' ? 'bold' : 'italic')
+  }
 
   function chooseMode(nextMode: ComposerMode) {
     setMode(nextMode)
@@ -796,17 +835,39 @@ export function PostComposer({
 
                 <div className="min-h-48 px-5 py-4 max-md:mt-3 max-md:min-h-0 max-md:border-t max-md:border-mist-100 max-md:px-4">
                   <label htmlFor="feed-post-body" className="sr-only">Post to Sea N Shore</label>
-                  <MentionInput
-                    id="feed-post-body"
-                    name="body"
-                    rows={6}
-                    value={body}
-                    onChange={setBody}
-                    mentions={mentions}
-                    onMentionsChange={setMentions}
-                    placeholder={mode === 'question' ? 'What would you like to ask the maritime community?' : mode === 'poll' ? 'Introduce your poll or explain the context…' : 'Share an update, insight or lesson with the maritime community…'}
-                    className="min-h-40 w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-7 text-ink outline-none placeholder:text-muted"
-                  />
+                  {/* Round H (H2): formatting buttons; mouse-down keeps the textarea's focus and selection. */}
+                  <div role="group" aria-label="Text formatting" data-testid="composer-format-bar" className="-ml-2 mb-1 flex items-center gap-0.5">
+                    {FORMAT_TOOLS.map(({ format, label, Icon, shortcut }) => (
+                      <button
+                        key={format}
+                        type="button"
+                        aria-label={label}
+                        aria-controls="feed-post-body"
+                        aria-keyshortcuts={shortcut ? `Control+${shortcut} Meta+${shortcut}` : undefined}
+                        title={shortcut ? `${label} (Ctrl/⌘+${shortcut})` : label}
+                        disabled={pending}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => applyFormat(format)}
+                        className="grid size-9 cursor-pointer place-items-center rounded-lg text-navy-800 transition hover:bg-mist-50 hover:text-navy-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-50 max-md:size-11"
+                      >
+                        <Icon aria-hidden="true" className="size-[18px]" />
+                      </button>
+                    ))}
+                  </div>
+                  <div onKeyDown={onBodyKeyDown}>
+                    <MentionInput
+                      id="feed-post-body"
+                      name="body"
+                      rows={6}
+                      value={body}
+                      onChange={setBody}
+                      mentions={mentions}
+                      onMentionsChange={setMentions}
+                      textareaRef={bodyRef}
+                      placeholder={mode === 'question' ? 'What would you like to ask the maritime community?' : mode === 'poll' ? 'Introduce your poll or explain the context…' : 'Share an update, insight or lesson with the maritime community…'}
+                      className="min-h-40 w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-7 text-ink outline-none placeholder:text-muted"
+                    />
+                  </div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs text-muted">{mode === 'question' ? 'Good questions include enough context for practical answers.' : 'Use @ to mention people or organizations and # to add topics.'}</p>
                     {/* Phones show the counter in the bottom toolbar. */}
@@ -1000,7 +1061,7 @@ export function PostComposer({
                   <Hash aria-hidden="true" className="size-6" />
                 </button>
 
-                <span className="ml-auto text-xs text-muted max-md:hidden">Audience: {group ? `Members of ${group.name}` : POST_AUDIENCE_LABELS[audience]}</span>
+                {/* Round H (H2): no "Audience: …" repeat here; the labelled Audience select above is the one place it shows. */}
                 <p className={`order-6 ml-auto pr-2 text-[13px] tabular-nums md:hidden ${characterCount > POST_CHARACTER_LIMIT ? 'font-semibold text-red-700' : 'text-muted'}`}>
                   {characterCount}/{POST_CHARACTER_LIMIT}
                 </p>

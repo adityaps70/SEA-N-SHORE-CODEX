@@ -250,7 +250,7 @@ describe('phone inbox chips', () => {
 
   it('filters to unread conversations on phones with All · Unread chips', async () => {
     const user = userEvent.setup()
-    render(<ConversationList inbox={inbox} />)
+    render(<ConversationList inbox={inbox} viewerId={VIEWER_ID} />)
     const chips = screen.getByRole('group', { name: 'Filter conversations' })
     expect(chips).toHaveClass('md:hidden')
     expect(within(chips).getAllByRole('button').map((chip) => chip.textContent)).toEqual(['All', 'Unread'])
@@ -262,7 +262,7 @@ describe('phone inbox chips', () => {
 
   it('shows an empty state when every conversation is read', async () => {
     const user = userEvent.setup()
-    render(<ConversationList inbox={[inbox[1]!]} />)
+    render(<ConversationList inbox={[inbox[1]!]} viewerId={VIEWER_ID} />)
     await user.click(screen.getByRole('button', { name: 'Unread' }))
     expect(screen.getByRole('status')).toHaveTextContent('You have read every conversation.')
     await user.click(screen.getByRole('button', { name: 'Show all conversations' }))

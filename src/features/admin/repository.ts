@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { LIVE_JOB_SQL } from '@/features/jobs/repository'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
 import {
@@ -788,7 +789,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          ) as high_priority_reports,
          (select count(*) from public.content_reports cr where cr.created_at >= now() - interval '24 hours') as reports_last_24h,
          (select count(*) from public.posts p where p.deleted_at is null) as active_posts,
-         (select count(*) from public.jobs j where j.status = 'published') as published_jobs,
+         (select count(*) from public.jobs j where ${LIVE_JOB_SQL}) as published_jobs,
          (select count(*) from public.events e where e.status = 'published') as published_events
        from public.organization_applications oa`,
     ) as MetricsRow[]

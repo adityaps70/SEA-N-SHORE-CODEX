@@ -17,6 +17,7 @@ const certificate = {
   verificationCode: '55555555-5555-4555-8555-555555555555',
   hidden: false,
   expired: true,
+  selfIssued: false,
 }
 
 afterEach(() => cleanup())
@@ -40,5 +41,17 @@ describe('Sea N Shore certificates in Licences & Credentials', () => {
     await waitFor(() => expect(mocks.setHidden).toHaveBeenCalledWith(certificate.certificateId, true))
     expect(await screen.findByText('Hidden from your profile')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Show on profile' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('shows a self-issued certificate as self-issued, never as verified (Round H, H2)', () => {
+    render(<ProfileCredentialWallet credentials={[]} learningCertificates={[{ ...certificate, selfIssued: true }]} />)
+    const group = screen.getByRole('group', { name: 'Sea N Shore certificates' })
+    expect(within(group).getByText('Self-issued')).toBeInTheDocument()
+    expect(within(group).queryByText('Verified by Sea N Shore')).not.toBeInTheDocument()
+  })
+
+  it('shows an independent certificate as verified by Sea N Shore', () => {
+    render(<ProfileCredentialWallet credentials={[]} learningCertificates={[certificate]} />)
+    expect(screen.getByText('Verified by Sea N Shore')).toBeInTheDocument()
   })
 })

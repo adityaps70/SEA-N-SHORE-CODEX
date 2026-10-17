@@ -1,7 +1,7 @@
 import Link from '@/components/navigation/intent-link'
 import { ArrowRight, BadgeCheck, CalendarClock, MapPin, Ship, WalletCards } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
+import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
 import { evaluateApplyGate } from '../apply-gate'
@@ -47,8 +47,10 @@ export function JobCard({
   source?: string
 }) {
   const salary = formatSalary(job)
-  const acceptingApplications = isApplyUntilOpen(job.applyUntil, todayIsoDate())
-  const joining = formatDate(job.joiningFrom, 'Joining')
+  // Round H (H2): past the apply-by date or the joining window, the job is closed.
+  const closedReason = jobClosedReason(job, todayIsoDate())
+  const acceptingApplications = closedReason === null
+  const joining = closedReason === 'joining_passed' ? 'Joining date passed' : formatDate(job.joiningFrom, 'Joining')
   // Round 12: no badge for no match or below 40%; banded labels from 40%.
   const display = jobMatchDisplay(match)
   const gateSource = gateMatch === undefined ? match : gateMatch
@@ -168,7 +170,7 @@ export function JobCard({
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
         {!acceptingApplications && !alreadyApplied ? (
           <span className="inline-flex min-h-10 items-center rounded-xl bg-amber-50 px-4 text-sm font-semibold text-amber-900">
-            Applications closed
+            {closedReason ? JOB_CLOSED_LABELS[closedReason] : null}
           </span>
         ) : job.easyApply ? (
           <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact gate={gate} {...(source ? { source } : {})} />

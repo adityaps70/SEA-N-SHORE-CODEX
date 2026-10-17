@@ -48,6 +48,23 @@ describe('/certificates/[verificationCode]', () => {
     expect(screen.getByText('SNS-2026-A1B2C3D4E5F6')).toBeInTheDocument()
   })
 
+  it('shows a self-issued certificate as self-issued, not verified, with the issuer and a course link (Round H, H2)', async () => {
+    mocks.getCertificateByVerificationCode.mockResolvedValue({ ...certificate, issuerRelation: 'self_issued', courseSlug: 'sire-2-readiness' })
+    render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
+    expect(screen.getByRole('heading', { name: 'Self-issued certificate' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Certificate verified' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Sea N Shore does not verify it/)).toBeInTheDocument()
+    expect(screen.getByText('Issued by')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'SIRE 2.0 Readiness' })).toHaveAttribute('href', '/learn/courses/sire-2-readiness')
+  })
+
+  it('shows the course as plain text once it is no longer published', async () => {
+    mocks.getCertificateByVerificationCode.mockResolvedValue({ ...certificate, issuerRelation: 'independent', courseSlug: null })
+    render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
+    expect(screen.getByRole('heading', { name: 'Certificate verified' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'SIRE 2.0 Readiness' })).not.toBeInTheDocument()
+  })
+
   it('shows holder, course, issue date, valid until and Valid for a certificate with an expiry (round B)', async () => {
     mocks.getCertificateByVerificationCode.mockResolvedValue({ ...certificate, templateKey: 'formal', serialNumber: 'SNS-SIRE-2026-1A2B3C4D', expiresAt: '2099-01-31T00:00:00.000Z', signatoryName: null, signatoryTitle: null })
     render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))

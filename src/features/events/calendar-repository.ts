@@ -484,10 +484,12 @@ async function listHostedEvents(userId: string) {
   `, [])
 }
 
+// Round H (H2): the public archive ("Knowledge library") lists sessions that took place; cancelled
+// events stay visible to their hosts and ticket holders (listMyEvents, the event page), not here.
 async function listPastEvents(viewerId: string, filters: CalendarEventFilters | string = '') {
   const value = normalizedFilters(filters)
   return rowsForViewer(viewerId, `
-    where e.status in ('published', 'cancelled')
+    where e.status = 'published'
       and ${EVENT_OPEN_SQL}
       and e.end_at <= now()
       and ${eventSearchSql('$2')}

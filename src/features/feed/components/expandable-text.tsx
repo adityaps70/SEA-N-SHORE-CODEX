@@ -64,7 +64,8 @@ type ExpandableTextProps = {
 
 /**
  * Long text shows its first lines with an inline "…more" button (LinkedIn style) that expands in
- * place; "Show less" collapses it again. Mentions keep rendering as profile links either way.
+ * place; "Show less" collapses it again. Mentions keep rendering as profile links either way, and
+ * the safe Markdown subset (bold, italic, lists, links; see ../markdown) renders in both states.
  */
 export function ExpandableText({ body, mentions = [], organizationMentions = [], className, limits = POST_COLLAPSE, defaultExpanded = false }: ExpandableTextProps) {
   const id = useId()
@@ -79,7 +80,8 @@ export function ExpandableText({ body, mentions = [], organizationMentions = [],
 
   return (
     <p id={id} className={className} data-collapsed={expanded ? 'false' : 'true'}>
-      <MentionText body={expanded ? body : body.slice(0, cut)} mentions={mentions} organizationMentions={organizationMentions} />
+      {/* Round H (H2): the whole body is parsed and then cut, so bold or a list open at the cut stays formatted. */}
+      <MentionText body={body} truncateAt={expanded ? undefined : cut} mentions={mentions} organizationMentions={organizationMentions} />
       {expanded ? (
         <>
           {' '}

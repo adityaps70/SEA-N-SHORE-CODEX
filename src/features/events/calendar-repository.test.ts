@@ -124,6 +124,9 @@ describe('calendar event repository', () => {
       expect(where).toContain('e.hidden_for_plan_at is null')
     }
     expect(detail).toContain('holder_ea.user_id = $1::uuid')
+    // Round H (H2): cancelled events are not in the public archive.
+    expect(whereOf(past)).toContain("e.status = 'published'")
+    expect(whereOf(past)).not.toContain('cancelled')
     // Ticket holders' own list is not filtered.
     expect(whereOf(mine)).not.toContain('removed_at')
     db.query.mockReset()

@@ -116,9 +116,10 @@ describe('MessageShell', () => {
     expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Capt. Meera Nair')
     expect(screen.getByLabelText('Unread conversation with Capt. Meera Nair')).toBeInTheDocument()
     expect(screen.getByText('Good day, Captain.')).toBeInTheDocument()
-    // Once in the inbox preview (phones drop its “Last:” label) and once in the thread.
+    // Once in the inbox preview (the message alone, Round H H2) and once in the thread.
     expect(screen.getAllByText('Joining instructions received.')).toHaveLength(2)
-    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Last: Joining instructions received.')
+    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Joining instructions received.')
+    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).not.toHaveTextContent(/Last:|You:/)
     expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
     // The number of conversations is not shown anywhere on the page.
@@ -229,6 +230,14 @@ describe('MessageShell', () => {
     // Round 14 (3.9): the action revalidates, which already re-renders the route.
     expect(navigation.refresh).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' })).toBeInTheDocument()
+  })
+
+  it('sizes the desktop grid to the dynamic viewport with a floor short laptop screens fit (Round H, H2)', () => {
+    render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={activeConversation} />)
+
+    const grid = screen.getByTestId('message-shell-grid')
+    expect(grid).toHaveClass('md:h-[calc(100dvh-13rem)]', 'md:min-h-[24rem]')
+    expect(grid).not.toHaveClass('md:h-[calc(100vh-13rem)]', 'md:min-h-[38rem]')
   })
 
   describe('phone page bars', () => {

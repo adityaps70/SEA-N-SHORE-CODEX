@@ -14,7 +14,7 @@ import { JobShareActions } from '@/features/jobs/components/job-share-actions'
 import { JobCompanyIdentity, JobCompanyLogo } from '@/features/jobs/components/job-company-identity'
 import { ReportJobButton } from '@/features/jobs/components/report-job-button'
 import { SaveJobButton } from '@/features/jobs/components/save-job-button'
-import { isApplyUntilOpen, todayIsoDate } from '@/features/jobs/job-lifecycle'
+import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { getJobDetailState } from '@/features/jobs/queries'
 import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { evaluateApplyGate } from '@/features/jobs/apply-gate'
@@ -52,7 +52,9 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
   const salaryMin = formatSalary(job.salaryMin, job.salaryCurrency)
   const salaryMax = formatSalary(job.salaryMax, job.salaryCurrency)
   const salary = salaryMin && salaryMax ? `${salaryMin}–${salaryMax}` : salaryMin ?? salaryMax
-  const acceptingApplications = isApplyUntilOpen(job.applyUntil, todayIsoDate())
+  // Round H (H2): past the apply-by date or the joining window, the job is closed.
+  const closedReason = jobClosedReason(job, todayIsoDate())
+  const acceptingApplications = closedReason === null
   const companyHref = job.companyId && job.companySlug ? `/organizations/${job.companySlug}` : null
   const postedAge = relativeTimeFrom(job.publishedAt ?? job.createdAt)
   const postedLabel = postedAge ? `Posted ${postedAge}${/^\d+[mhd]$/.test(postedAge) ? ' ago' : ''}` : null
@@ -63,7 +65,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
   const gate = evaluateApplyGate(job, gateMatch ?? match)
   const closedNotice = alreadyApplied
     ? null
-    : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">Applications for this job closed on {formatDate(job.applyUntil)}.</p>
+    : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">{closedReason === 'joining_passed' ? 'The joining date for this job has passed. It no longer takes applications.' : `Applications for this job closed on ${formatDate(job.applyUntil)}.`}</p>
 
   return (
     <section className="mx-auto w-full max-w-5xl pb-0 pt-0 md:pb-8 md:pt-5">
@@ -85,7 +87,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
                 <span className={metaChip}><Ship aria-hidden="true" className="size-4" />{job.domain === 'sea' ? 'Sea job' : 'Shore job'}{job.vesselTypes[0] ? ` · ${job.vesselTypes[0]}` : ''}</span>
                 {job.location ? <span className={metaChip}><MapPin aria-hidden="true" className="size-4" />{job.location}</span> : null}
                 {salary ? <span className={metaChip}><WalletCards aria-hidden="true" className="size-4" />{salary}{job.salaryPeriod ? `/${job.salaryPeriod}` : ''}</span> : null}
-                {job.joiningFrom ? <span className={metaChip}><CalendarClock aria-hidden="true" className="size-4" />Joining {formatDate(job.joiningFrom)}</span> : null}
+                {job.joiningFrom ? <span className={metaChip}><CalendarClock aria-hidden="true" className="size-4" />{closedReason === 'joining_passed' ? 'Joining date passed' : `Joining ${formatDate(job.joiningFrom)}`}</span> : null}
               </div>
             </div>
           </div>
@@ -146,7 +148,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
         </aside>
       </div>
 
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 py-3 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden" data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} gate={gate} source={source} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">Applications closed</span>}</div>
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 py-3 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden" data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} gate={gate} source={source} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">{closedReason ? JOB_CLOSED_LABELS[closedReason] : null}</span>}</div>
     </section>
   )
 }

@@ -1,7 +1,7 @@
 import Link from '@/components/navigation/intent-link'
 import type { ReactNode } from 'react'
 import { relativeTimeFrom } from '@/lib/relative-time'
-import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
+import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
 import { NotInterestedButton } from './not-interested'
@@ -9,6 +9,7 @@ import { JobCompanyLogo } from './job-company-identity'
 import { SaveJobButton } from './save-job-button'
 
 function formatJoining(job: JobListing) {
+  if (jobClosedReason(job, todayIsoDate()) === 'joining_passed') return 'Joining date passed'
   if (job.urgent) return 'Immediate joining'
   if (job.joiningFrom) {
     const date = new Date(`${job.joiningFrom}T00:00:00Z`)
@@ -40,9 +41,9 @@ export function JobListRow({
   /** Round G: 'for_you' or 'search', carried to the job page. */
   source?: string
 }) {
-  const open = isApplyUntilOpen(job.applyUntil, todayIsoDate())
+  const closedReason = jobClosedReason(job, todayIsoDate())
   const place = [job.location, formatJoining(job)].filter(Boolean).join(' · ')
-  const applyState = alreadyApplied ? 'Applied' : !open ? 'Applications closed' : job.easyApply ? 'Easy Apply' : null
+  const applyState = alreadyApplied ? 'Applied' : closedReason ? JOB_CLOSED_LABELS[closedReason] : job.easyApply ? 'Easy Apply' : null
   const age = relativeTimeFrom(job.publishedAt ?? job.createdAt)
   // Round 12: no badge for no match or below 40%; banded labels from 40%.
   const display = jobMatchDisplay(match)
@@ -65,7 +66,7 @@ export function JobListRow({
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-muted">
           {display?.showInList ? <span data-job-ineligible={display.ineligible ? '' : undefined} className={display.ineligible ? 'font-semibold text-amber-800' : 'font-semibold text-ocean-800'}>{display.text}</span> : null}
           {display?.showInList && (applyState || age) ? <span aria-hidden="true">·</span> : null}
-          {applyState ? <span className={applyState === 'Applications closed' ? 'font-medium text-amber-800' : ''}>{applyState}</span> : null}
+          {applyState ? <span className={closedReason && !alreadyApplied ? 'font-medium text-amber-800' : ''}>{applyState}</span> : null}
           {applyState && age ? <span aria-hidden="true">·</span> : null}
           {age ? <span>{age}</span> : null}
         </p>

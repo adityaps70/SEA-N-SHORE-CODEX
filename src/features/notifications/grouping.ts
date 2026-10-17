@@ -55,3 +55,27 @@ export function groupNotifications(rows: readonly NetworkNotification[]): Networ
   }
   return out
 }
+
+/**
+ * Round H (H2): the same notification written more than once (one per reviewed revision or per course
+ * manager, e.g. "Sea N Shore approved your changes to …" three times) shows as one row: same type, same
+ * actor, same message and same link within 24 hours. The row keeps every id, so opening it marks them
+ * all read. Runs for everyone, with or without the round G grouping.
+ */
+export function collapseRepeatedNotifications(rows: readonly NetworkNotification[]): NetworkNotification[] {
+  const open = new Map<string, NetworkNotification>()
+  const out: NetworkNotification[] = []
+  for (const row of rows) {
+    const key = [row.type, row.actor?.id ?? '', row.destination, row.message].join('\u0000')
+    const head = open.get(key)
+    if (head && Date.parse(head.createdAt) - Date.parse(row.createdAt) <= GROUP_WINDOW_MS) {
+      head.groupIds = [...(head.groupIds ?? [head.id]), row.id]
+      if (!row.readAt) head.readAt = null
+      continue
+    }
+    const copy = { ...row }
+    open.set(key, copy)
+    out.push(copy)
+  }
+  return out
+}

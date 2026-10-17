@@ -70,12 +70,32 @@ vi.mock('@/features/profiles/queries', () => ({
   getOwnProfile: vi.fn(async () => profile),
 }))
 
-vi.mock('@/features/profiles/profile-portfolio-queries', () => ({
-  getOwnProfilePortfolio: vi.fn(async () => portfolio),
-}))
+const portfolioQuery = vi.hoisted(() => ({ signedOut: false }))
+vi.mock('@/features/profiles/profile-portfolio-queries', async () => {
+  const { AwsAuthenticationRequiredError } = await import('@/features/auth/aws-queries')
+  return {
+    getOwnProfilePortfolio: vi.fn(async () => {
+      if (portfolioQuery.signedOut) throw new AwsAuthenticationRequiredError()
+      return portfolio
+    }),
+  }
+})
 
 describe('GET /api/profile/cv', () => {
-  beforeEach(() => vi.resetModules())
+  beforeEach(() => {
+    vi.resetModules()
+    portfolioQuery.signedOut = false
+  })
+
+  it('answers 401 JSON when signed out, not a 500 (Round H, H2)', async () => {
+    portfolioQuery.signedOut = true
+    const { GET } = await import('./route')
+    const response = await GET()
+    expect(response.status).toBe(401)
+    expect(response.headers.get('content-type')).toContain('application/json')
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(await response.json()).toEqual({ error: 'Sign in to continue.' })
+  })
 
   it('returns a downloadable PDF generated from the current Maritime Passport data', async () => {
     const { GET } = await import('./route')

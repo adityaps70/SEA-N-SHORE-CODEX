@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
+import { messagePermissionFrom, type MessagePermission } from '@/features/profiles/privacy-choices'
 import type {
   MessageAfterRequest,
   MessagePageRequest,
@@ -74,6 +75,15 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
       [low, high],
     ) as ConversationRow[]
     return rows[0] ?? null
+  }
+
+  /** Round H (H2): the member's "Who can message me" choice; members who never chose get the default. */
+  async function getMessagePermission(profileId: string): Promise<MessagePermission> {
+    const rows = await queryRows(
+      `select message_permission from public.member_preferences where profile_id = $1`,
+      [profileId],
+    ) as Array<QueryResultRow & { message_permission?: string | null }>
+    return messagePermissionFrom(rows[0]?.message_permission)
   }
 
   async function insertDirectConversation(userA: string, userB: string) {
@@ -604,6 +614,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
 
   return {
     findDirectConversationByPair,
+    getMessagePermission,
     insertDirectConversation,
     listDirectConversationsWithPeers,
     isParticipant,

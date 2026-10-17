@@ -30,7 +30,8 @@ const messagingService = createProductionMessagingService()
 function messagingError(message?: string) {
   switch (message) {
     case 'messaging_not_allowed':
-      return 'You can message accepted connections only.'
+      // Round H (H2): the recipient's "Who can message me" choice, or a block.
+      return 'This member isn’t accepting messages from you.'
     case 'messaging_self_conversation':
       return 'You cannot message yourself.'
     case 'messaging_not_participant':

@@ -6,11 +6,12 @@ const owner = '11111111-1111-4111-8111-111111111111'
 const connection = '22222222-2222-4222-8222-222222222222'
 const stranger = '33333333-3333-4333-8333-333333333333'
 
-function serviceWith(connectedPairs: Array<[string, string]> = [[owner, connection]]) {
+function serviceWith(connectedPairs: Array<[string, string]> = [[owner, connection]], visibility: 'everyone' | 'connections' | 'only_me' = 'connections') {
   const repository = {
     getCounts: vi.fn(async () => ({ connections: 3, followers: 8, following: 2 })),
     areConnected: vi.fn(async (a: string, b: string) => connectedPairs.some(([x, y]) => (x === a && y === b) || (x === b && y === a))),
     listIds: vi.fn(async () => [connection]),
+    getConnectionsVisibility: vi.fn(async () => visibility),
   }
   return { repository, service: createProfileNetworkStatsService(repository) }
 }
@@ -43,6 +44,29 @@ describe('profile network counts and privacy', () => {
     expect(repository.listIds).not.toHaveBeenCalled()
     await expect(service.getListIds(connection, owner, 'followers')).resolves.toEqual([connection])
     expect(repository.listIds).toHaveBeenCalledWith(owner, 'followers')
+  })
+})
+
+describe('"Who can see my connections" (Round H, H2)', () => {
+  it('everyone: any signed-in member may open the lists', async () => {
+    const { service } = serviceWith([[owner, connection]], 'everyone')
+    await expect(service.getListIds(stranger, owner, 'connections')).resolves.toEqual([connection])
+  })
+
+  it('only me: not even a connection may open them; the owner still can', async () => {
+    const { service, repository } = serviceWith([[owner, connection]], 'only_me')
+    await expect(service.getListIds(connection, owner, 'connections')).resolves.toBeNull()
+    await expect(service.getSummary(connection, owner)).resolves.toMatchObject({ canViewLists: false })
+    expect(repository.listIds).not.toHaveBeenCalled()
+    await expect(service.getListIds(owner, owner, 'connections')).resolves.toEqual([connection])
+  })
+
+  it('reads the choice from member_preferences, defaulting to connections', async () => {
+    const query = vi.fn(async () => [] as Array<Record<string, unknown>>)
+    const repository = createProfileNetworkStatsRepository({ query: query as never })
+    await expect(repository.getConnectionsVisibility(owner)).resolves.toBe('connections')
+    query.mockResolvedValueOnce([{ connections_visibility: 'only_me' }])
+    await expect(repository.getConnectionsVisibility(owner)).resolves.toBe('only_me')
   })
 })
 

@@ -9,6 +9,7 @@ import {
   type MessagingRepository,
 } from './repository'
 import { isWithinMessageEditWindow } from './edit-policy'
+import { canMessageMember } from '@/features/profiles/privacy-choices'
 import type { EditMessageInput, SendMessageInput } from './types'
 
 type MessagingTransactionContext = {
@@ -63,11 +64,13 @@ export function createMessagingService(input: {
       if (actorId === targetProfileId) error('messaging_self_conversation')
 
       return input.withTransaction(async ({ messaging, network }) => {
-        const [connection, blocked] = await Promise.all([
+        const [connection, blocked, permission] = await Promise.all([
           network.findConnectionByPair(actorId, targetProfileId),
           network.isPairBlocked(actorId, targetProfileId),
+          messaging.getMessagePermission(targetProfileId),
         ])
-        if (!connection || connection.status !== 'accepted' || blocked) {
+        // Round H (H2): the recipient's "Who can message me" choice decides; a block always refuses.
+        if (!canMessageMember({ permission, connected: connection?.status === 'accepted', blocked })) {
           error('messaging_not_allowed')
         }
 
@@ -93,11 +96,12 @@ export function createMessagingService(input: {
         )
         if (!counterpartId) error('messaging_not_allowed')
 
-        const [connection, blocked] = await Promise.all([
+        const [connection, blocked, permission] = await Promise.all([
           network.findConnectionByPair(actorId, counterpartId),
           network.isPairBlocked(actorId, counterpartId),
+          messaging.getMessagePermission(counterpartId),
         ])
-        if (!connection || connection.status !== 'accepted' || blocked) {
+        if (!canMessageMember({ permission, connected: connection?.status === 'accepted', blocked })) {
           error('messaging_not_allowed')
         }
 

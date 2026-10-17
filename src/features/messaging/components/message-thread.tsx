@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
+import { relativeTimeFrom } from '@/lib/relative-time'
 import {
   deleteMessageAction,
   editMessageAction,
@@ -84,6 +85,11 @@ function clock(value: string) {
 
 function dayKey(value: string) {
   return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+/** Round H (H2): day separators use the one messaging date style (relative under 7 days, then "1 Oct"). */
+function dayLabel(value: string) {
+  return relativeTimeFrom(value)
 }
 
 function deliveryState(message: MessageThreadItem) {
@@ -592,9 +598,9 @@ export function MessageThread({
               return (
                 <div key={`${message.clientMessageId}:${message.id}`}>
                   {showDay ? (
-                    <div className="my-4 flex items-center gap-3" aria-label={`Messages from ${dayKey(message.createdAt)}`}>
+                    <div className="my-4 flex items-center gap-3" aria-label={`Messages from ${dayLabel(message.createdAt)}`}>
                       <span className="h-px flex-1 bg-mist-100" />
-                      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">{dayKey(message.createdAt)}</span>
+                      <time dateTime={message.createdAt} className="text-[11px] font-semibold tracking-[0.08em] text-muted">{dayLabel(message.createdAt)}</time>
                       <span className="h-px flex-1 bg-mist-100" />
                     </div>
                   ) : null}
