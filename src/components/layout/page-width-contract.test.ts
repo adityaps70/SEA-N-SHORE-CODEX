@@ -32,6 +32,7 @@ const ALLOWED: Record<string, string> = {
   'src/app/(marketing)/email/unsubscribe/page.tsx::max-w-xl': 'centred status card',
   'src/app/(marketing)/email/learning/unsubscribe/page.tsx::max-w-xl': 'centred status card',
   'src/app/(marketing)/email/legacy/unsubscribe/page.tsx::max-w-xl': 'centred status card',
+  'src/app/(marketing)/email/notifications/unsubscribe/page.tsx::max-w-xl': 'centred status card',
   'src/app/(marketing)/email/legacy/test-link/page.tsx::max-w-xl': 'centred status card',
   'src/features/newsletter/components/newsletter-link-page.tsx::max-w-xl': 'centred status card',
   'src/features/payments/components/payment-return-view.tsx::max-w-xl': 'centred payment status card',
