@@ -49,6 +49,7 @@ describe('account deletion repository', () => {
     expect(sql).toMatch(/update public\.audit_events[\s\S]*actor_id = null/i)
     expect(sql).toMatch(/delete from public\.identity_accounts/i)
     expect(sql).toMatch(/delete from public\.post_hides/i)
+    expect(sql).toMatch(/delete from public\.support_tickets\s+where sender_profile_id = \$1/i)
     expect(sql).toMatch(/update public\.newsletter_subscribers[\s\S]*status = 'unsubscribed'/i)
     expect(sql).toMatch(/'unsubscribed', topics, 'account_deletion'/i)
     expect(sql).toMatch(/update public\.profiles[\s\S]*account_status = 'deletion_requested'/i)

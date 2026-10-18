@@ -3,7 +3,11 @@ import { BRAND_ASSETS, BRAND_NAME } from '@/components/brand/brand-assets'
 import { ScrollHeader } from '@/components/marketing/motion'
 import { LANDING_LINKS, LANDING_SECTIONS } from './landing-links'
 
-export function LandingHeader({ signedIn }: { signedIn: boolean }) {
+/**
+ * The landing page's own header, for signed-out visitors. Round H (H6): members get the app
+ * header from the marketing layout instead, so there is no signed-in variant here.
+ */
+export function LandingHeader() {
   return (
     <ScrollHeader className="site">
       <div className="wrap nav">
@@ -17,17 +21,8 @@ export function LandingHeader({ signedIn }: { signedIn: boolean }) {
           ))}
         </nav>
         <div className="actions">
-          {signedIn ? (
-            <>
-              <Link className="btn btn-ghost" href={LANDING_LINKS.profile}>My Profile</Link>
-              <Link className="btn btn-dark" href={LANDING_LINKS.home}>Home</Link>
-            </>
-          ) : (
-            <>
-              <Link className="btn btn-ghost" href={LANDING_LINKS.signIn}>Sign in</Link>
-              <Link className="btn btn-dark" href={LANDING_LINKS.signUp}>Join now</Link>
-            </>
-          )}
+          <Link className="btn btn-ghost" href={LANDING_LINKS.signIn}>Sign in</Link>
+          <Link className="btn btn-dark" href={LANDING_LINKS.signUp}>Join now</Link>
         </div>
       </div>
       <nav className="subnav" aria-label="Sections">

@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
+import { messagePermissionFrom, type MessagePermission } from '@/features/profiles/privacy-choices'
 import type { NetworkConnectionRow } from './types'
 
 export type NetworkNotificationType = 'connection_request' | 'connection_accepted' | 'new_follower'
@@ -15,6 +16,10 @@ type BooleanRow = QueryResultRow & { ready?: boolean; blocked?: boolean; created
 type IdRow = QueryResultRow & { id: string }
 type ConnectionRow = QueryResultRow & NetworkConnectionRow
 type CountRow = QueryResultRow & { count: number | string }
+type MessageAccessRow = QueryResultRow & { profile_id: string; message_permission: string | null; blocked: boolean }
+
+/** Round H (H7): what the messaging service checks before it opens a conversation, for many members at once. */
+export type MessageAccess = { permission: MessagePermission; blocked: boolean }
 
 function canonicalPair(userA: string, userB: string) {
   return userA < userB ? [userA, userB] as const : [userB, userA] as const
@@ -69,6 +74,29 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
     ) as FollowerRow[]
 
     return rows.map((row) => row.follower_id)
+  }
+
+  /** Round H (H7): each member's "Who can message me" choice and whether a block stands between them and the viewer. */
+  async function loadMessageAccess(viewerId: string, profileIds: readonly string[]) {
+    const access = new Map<string, MessageAccess>()
+    if (!profileIds.length) return access
+    const rows = await queryRows(
+      `select target.id as profile_id,
+              preferences.message_permission,
+              exists (
+                select 1
+                from public.user_blocks
+                where (blocker_id = $1 and blocked_id = target.id)
+                   or (blocker_id = target.id and blocked_id = $1)
+              ) as blocked
+       from unnest($2::uuid[]) as target(id)
+       left join public.member_preferences preferences on preferences.profile_id = target.id`,
+      [viewerId, [...profileIds]],
+    ) as MessageAccessRow[]
+    for (const row of rows) {
+      access.set(row.profile_id, { permission: messagePermissionFrom(row.message_permission), blocked: Boolean(row.blocked) })
+    }
+    return access
   }
 
   async function isMemberReady(profileId: string) {
@@ -258,6 +286,7 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
     loadViewerGraph,
     countIncomingRequests,
     loadFollowerIds,
+    loadMessageAccess,
     isMemberReady,
     isPairBlocked,
     findConnectionByPair,

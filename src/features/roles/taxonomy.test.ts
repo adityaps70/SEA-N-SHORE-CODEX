@@ -4,6 +4,7 @@ import {
   OTHER_ROLE_LABEL,
   ROLES,
   ROLE_DEPARTMENTS,
+  ROLE_KEYS_ADDED_IN_ROUND_H,
   acceptedRolesLabel,
   cadetStageRoleKey,
   defaultTargetRoleFor,
@@ -150,5 +151,46 @@ describe('rank selection banner', () => {
     expect(profileNeedsRankSelection({ persona: 'maritime_enthusiast', rank: 'Captain' })).toBe(false)
     expect(profileNeedsRankSelection({ persona: null, profileType: 'seafarer', roleKey: null })).toBe(true)
     expect(profileNeedsRankSelection({ persona: 'seafarer', identityRoot: 'organisation' })).toBe(false)
+  })
+})
+
+describe('ranks added in round H', () => {
+  it('adds Operations Coordinator and Ship Chandler, plus the extras that fit a department', () => {
+    expect([...ROLE_KEYS_ADDED_IN_ROUND_H]).toEqual(['operations_coordinator', 'ship_chandler', 'mooring_master', 'procurement_manager', 'business_development_manager'])
+    expect(ROLE_KEYS_ADDED_IN_ROUND_H.map((key) => [key, roleByKey(key)?.label, roleByKey(key)?.department])).toEqual([
+      ['operations_coordinator', 'Operations Coordinator', 'operations_commercial'],
+      ['ship_chandler', 'Ship Chandler', 'port_terminal_logistics'],
+      ['mooring_master', 'Mooring Master', 'specialist_offshore'],
+      ['procurement_manager', 'Procurement Manager', 'technical_fleet'],
+      ['business_development_manager', 'Business Development Manager', 'operations_commercial'],
+    ])
+    for (const key of ROLE_KEYS_ADDED_IN_ROUND_H) {
+      expect(roleByKey(key)?.other, key).toBeUndefined()
+      expect(roleByKey(key)?.sameAs, key).toBeUndefined()
+    }
+  })
+
+  it('keeps "Other (type your own)" last in the departments that gained a rank', () => {
+    for (const department of ['operations_commercial', 'port_terminal_logistics', 'specialist_offshore', 'technical_fleet']) {
+      expect(rolesFor(department).at(-1)?.label).toBe(OTHER_ROLE_LABEL)
+    }
+  })
+
+  it('maps each new rank’s label and synonyms to it, and no older text to a new rank', () => {
+    for (const key of ROLE_KEYS_ADDED_IN_ROUND_H) {
+      const role = roleByKey(key)!
+      for (const text of [role.label, ...role.synonyms]) expect([text, normaliseLegacyRank(text)]).toEqual([text, key])
+    }
+    expect(normaliseLegacyRank('Operations Manager')).toBe('operations_manager')
+    expect(normaliseLegacyRank('Logistics Coordinator')).toBe('logistics_executive')
+    expect(normaliseLegacyRank('Marine Pilot')).toBe('marine_pilot')
+  })
+
+  it('places the new ranks on their ladders', () => {
+    expect(ladderDistance('operations_coordinator', 'operations_manager')).toBe(2)
+    expect(ladderDistance('operations_coordinator', 'ship_operator')).toBe(1)
+    expect(ladderDistance('business_development_manager', 'commercial_manager')).toBe(1)
+    expect(ladderDistance('ship_chandler', 'shipping_agent')).toBeNull()
+    expect(isSeaDepartment(roleByKey('mooring_master')!.department)).toBe(true)
   })
 })

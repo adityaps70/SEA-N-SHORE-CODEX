@@ -28,7 +28,7 @@ export default async function CompanyInvitationPage({ params }: { params: Promis
   })
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6">
+    <div className="mx-auto w-full max-w-2xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6">
       <MobilePageBar backHref="/learn/my-learning" title="Crew training" />
       <section className="rounded-[1.6rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-0 max-md:shadow-none sm:p-8">
         {'error' in found ? (
@@ -41,7 +41,7 @@ export default async function CompanyInvitationPage({ params }: { params: Promis
           <InvitationBody found={found} invitationId={invitationId} />
         )}
       </section>
-    </main>
+    </div>
   )
 }
 

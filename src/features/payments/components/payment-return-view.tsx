@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, Clock3, RotateCcw, XCircle } from 'lucide-react'
 import type { ViewerConfirmResult } from '../order-handler-types'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export type PaymentReturnResult = Omit<ViewerConfirmResult, 'state'> & { state: ViewerConfirmResult['state'] | 'error' }
 
@@ -32,14 +33,14 @@ export function PaymentReturnView({ result, checkAgainHref }: { result: PaymentR
       <div className="mt-7 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
         <Link
           href={result.returnHref}
-          className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white transition hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-700"
+          className={buttonClass()}
         >
           {result.returnLabel}
         </Link>
         {canCheckAgain ? (
           <a
             href={checkAgainHref!}
-            className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-mist-200 bg-white px-5 text-sm font-semibold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50"
+            className={buttonClass('secondary')}
           >
             Check again
           </a>

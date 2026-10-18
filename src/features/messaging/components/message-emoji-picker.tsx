@@ -269,7 +269,7 @@ export function MessageEmojiPicker({
             aria-label="Show recent emojis"
             aria-pressed={category === 'recent'}
             onClick={() => setCategory('recent')}
-            className={`cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition ${
+            className={`cursor-pointer rounded-full px-2.5 py-1.5 text-xs font-semibold transition ${
               category === 'recent'
                 ? 'bg-navy-950 text-white'
                 : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950'
@@ -285,7 +285,7 @@ export function MessageEmojiPicker({
             aria-label={`Show ${key} emojis`}
             aria-pressed={category === key}
             onClick={() => setCategory(key)}
-            className={`cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition ${
+            className={`cursor-pointer rounded-full px-2.5 py-1.5 text-xs font-semibold transition ${
               category === key
                 ? 'bg-navy-950 text-white'
                 : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950'

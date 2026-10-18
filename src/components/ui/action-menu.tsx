@@ -237,7 +237,7 @@ export function ActionMenuItem({
       role="menuitem"
       {...props}
       className={cn(
-        'flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition-colors focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0',
+        'flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition-colors focus-visible:-outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0',
         tone === 'danger' ? 'text-red-700 hover:bg-red-50 focus-visible:bg-red-50' : 'text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50',
         SHEET_MENU_ITEM_CLASS,
         className,

@@ -151,6 +151,34 @@ describe('search (round G)', () => {
     expect(row!.visibility).toBe('hidden')
   })
 
+  it('"chief eng" ranks Chief Engineer people and jobs above Chief Officer ones, whatever the social boosts (round H, H7)', async () => {
+    const viewer = await member('Placeholder Viewer')
+    // A connected Chief Officer whose headline also matches the words "chief" and "eng…".
+    const officer = await member('Officer Placeholder', { roleKey: 'chief_officer', headline: 'Chief Officer | English and engine room liaison' })
+    await member('Engineer Placeholder', { roleKey: 'chief_engineer' })
+    await member('Headline Placeholder', { headline: 'Chief Engineer at Placeholder Lines' })
+    const [low, high] = [viewer, officer].sort()
+    await db.query(`insert into public.connections (user_low_id, user_high_id, requested_by, status) values ($1, $2, $1, 'accepted')`, [low, high])
+
+    const ranked = people(await repository.search({ viewerId: viewer, query: 'chief eng', limits: { person: 5 } }))
+    expect(ranked.slice(0, 2).sort()).toEqual(['Engineer Placeholder', 'Headline Placeholder'])
+    expect(ranked.indexOf('Officer Placeholder')).toBeGreaterThan(1)
+
+    // The Chief Officer job is newer and its title is a close typo match; the Chief Engineer job is titled "C/E".
+    await db.query(
+      `insert into public.jobs (title, company_name, summary, description, status, created_by_user_id, published_at, accepted_role_keys)
+       values ('C/E for LNG carrier', 'Placeholder Lines', 'Summary', 'Description', 'published', $1, now() - interval '2 days', array['chief_engineer']),
+              ('Chief Officer', 'Placeholder Lines', 'English speaking chief officer', 'Engine and deck coordination', 'published', $1, now(), array['chief_officer'])`,
+      [viewer],
+    )
+    const jobs = (await repository.search({ viewerId: viewer, query: 'chief eng', limits: { job: 5 } })).map((hit) => hit.name)
+    expect(jobs[0]).toBe('C/E for LNG carrier')
+    // The dropdown (names and rank synonyms only) agrees.
+    const dropdown = (await repository.search({ viewerId: viewer, query: 'chief eng', limits: { job: 2, person: 3 }, fullText: false }))
+    expect(dropdown.find((hit) => hit.kind === 'job')?.name).toBe('C/E for LNG carrier')
+    expect(dropdown.find((hit) => hit.kind === 'person')?.name).not.toBe('Officer Placeholder')
+  })
+
   it('maps a statement timeout to SearchTimeoutError', async () => {
     const timingOut = createSearchRepository({ transaction: async () => { throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' }) } })
     await expect(timingOut.search({ viewerId: '00000000-0000-4000-8000-000000000001', query: 'placeholder', limits: { person: 3 } })).rejects.toBeInstanceOf(SearchTimeoutError)

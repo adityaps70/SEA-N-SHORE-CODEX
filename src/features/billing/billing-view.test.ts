@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildPlanBillingView, formatBillingDate } from './billing-view'
+import { buildPlanBillingView, formatBillingDate, trialOfferLabel } from './billing-view'
+import { TRIAL_MONTHS } from './plans'
 import type { SubjectBilling } from './subscription-repository'
 import type { AccessRecord, CheckoutRecord, PaymentRecord } from './subscription-types'
 import { testPrice } from './testing/memory-billing-store'
@@ -43,7 +44,7 @@ describe('billing page view', () => {
       state: 'free',
       statusLabel: 'Free plan',
       prices: { month: { amountMinor: 10000 }, year: { amountMinor: 100000 } },
-      yearlySavingLabel: 'Save ₹200.00 a year — 2 months free',
+      yearlySavingLabel: 'Save ₹200 a year — 2 months free',
       actions: { choosePlan: true, cancelAutoRenew: false },
       configured: true,
     })
@@ -71,6 +72,20 @@ describe('billing page view', () => {
     expect(view({ access: access({ status: 'trialing', billingProvider: 'trial', periodEndsAt: '2026-10-11T00:00:00.000Z' }), accessIsCurrent: true }).statusLabel).toBe('Free trial — 1 day left')
   })
 
+  it('heads the panel with the plan the account is really on, and offers the trial from TRIAL_MONTHS (Round H, H7)', () => {
+    const free = view({})
+    expect(free.headline).toBe('Free plan')
+    expect(free.trialOffer).toBe('Try Creator Pro free for 3 months. No payment details needed.')
+    const trialing = view({ access: access({ status: 'trialing', billingProvider: 'trial', providerSubscriptionId: 'trial_t1', periodEndsAt: '2026-10-17T06:00:00.000Z' }), accessIsCurrent: true })
+    expect(trialing.headline).toBe(`Creator Pro · Free trial until ${formatBillingDate('2026-10-17T06:00:00.000Z')}`)
+    expect(trialing.trialOffer).toBeNull()
+    const active = view({ access: access(), accessIsCurrent: true, checkout: checkout() })
+    expect(active.headline).toBe('Creator Pro')
+    const organization = buildPlanBillingView({ plan: 'organization_pro', billing: billing({}), prices, configured: true, now: NOW })
+    expect(organization.trialOffer).toBe(`Try Organization Pro free for ${TRIAL_MONTHS.organization_pro} months. No payment details needed.`)
+    expect(trialOfferLabel('creator_pro')).toContain(`${TRIAL_MONTHS.creator_pro} months`)
+  })
+
   it('lists every interval that has a price, including half-yearly', () => {
     const organization = buildPlanBillingView({ plan: 'organization_pro', billing: billing({}), prices: [testPrice({ id: 'om', planCode: 'organization_pro', amountMinor: 199900 }), testPrice({ id: 'oh', planCode: 'organization_pro', interval: 'half_year', amountMinor: 1000000 })], configured: true, now: NOW })
     expect(organization.prices).toEqual({ month: { id: 'om', amountMinor: 199900 }, half_year: { id: 'oh', amountMinor: 1000000 }, year: null })
@@ -88,19 +103,19 @@ describe('billing page view', () => {
     expect(active).toMatchObject({
       state: 'active',
       statusLabel: 'Active — renews automatically',
-      current: { priceLabel: '₹100.00 per month', renewsOn: formatBillingDate('2026-11-01T06:00:00.000Z'), paymentMethod: 'UPI AutoPay', autoRenew: true, paidThrough: formatBillingDate('2026-11-01T06:00:00.000Z') },
+      current: { priceLabel: '₹100 per month', renewsOn: formatBillingDate('2026-11-01T06:00:00.000Z'), paymentMethod: 'UPI AutoPay', autoRenew: true, paidThrough: formatBillingDate('2026-11-01T06:00:00.000Z') },
       actions: { cancelAutoRenew: true, switchToYearly: true, choosePlan: false, chooseStartsOn: formatBillingDate('2026-11-01T06:00:00.000Z') },
     })
-    expect(active.statusHelp).toContain('The next payment of ₹100.00 is taken automatically on')
+    expect(active.statusHelp).toContain('The next payment of ₹100 is taken automatically on')
     const yearlyPlan = view({ access: access(), accessIsCurrent: true, checkout: checkout({ interval: 'year', amountMinor: 100000 }) })
     expect(yearlyPlan.actions.switchToYearly).toBe(false)
-    expect(yearlyPlan.current?.priceLabel).toBe('₹1,000.00 per year')
+    expect(yearlyPlan.current?.priceLabel).toBe('₹1,000 per year')
   })
 
   it('explains the first payment is still to come right after approval', () => {
     const first = view({ access: access({ periodEndsAt: '2026-10-15T06:00:00.000Z' }), accessIsCurrent: true, checkout: checkout({ paidThroughAt: null, nextChargeAt: '2026-10-12T06:00:00.000Z' }) })
     expect(first.state).toBe('active')
-    expect(first.statusHelp).toContain('The first payment of ₹100.00 is taken on')
+    expect(first.statusHelp).toContain('The first payment of ₹100 is taken on')
     expect(first.current?.paidThrough).toBeNull()
   })
 
@@ -125,7 +140,7 @@ describe('billing page view', () => {
 
   it('shows a mandate waiting for the bank', () => {
     const waiting = view({ pendingCheckout: checkout({ id: 'c2', status: 'pending_approval', interval: 'year', amountMinor: 100000, paidThroughAt: null }) })
-    expect(waiting.pending).toEqual({ checkoutId: 'c2', status: 'pending_approval', interval: 'year', priceLabel: '₹1,000.00 per year', startsAt: null })
+    expect(waiting.pending).toEqual({ checkoutId: 'c2', status: 'pending_approval', interval: 'year', priceLabel: '₹1,000 per year', startsAt: null })
   })
 
   it('lists billing history with plain statuses and periods', () => {
@@ -136,7 +151,7 @@ describe('billing page view', () => {
       createdAt: '2026-10-01T06:00:00.000Z', updatedAt: '2026-10-01T06:00:00.000Z',
     }
     const rows = view({ access: access(), accessIsCurrent: true, checkout: checkout(), payments: [payment, { ...payment, id: 'p2', status: 'failed', periodStart: null, periodEnd: null }] }).history
-    expect(rows[0]).toEqual({ id: 'p1', date: formatBillingDate(payment.paidAt), description: `Creator Pro · monthly · ${formatBillingDate(payment.periodStart)} – ${formatBillingDate(payment.periodEnd)}`, amount: '₹100.00', status: 'Paid', tone: 'success' })
+    expect(rows[0]).toEqual({ id: 'p1', date: formatBillingDate(payment.paidAt), description: `Creator Pro · monthly · ${formatBillingDate(payment.periodStart)} – ${formatBillingDate(payment.periodEnd)}`, amount: '₹100', status: 'Paid', tone: 'success' })
     expect(rows[1]).toMatchObject({ status: 'Failed — not charged', tone: 'failed' })
   })
 })

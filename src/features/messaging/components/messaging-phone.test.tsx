@@ -98,7 +98,7 @@ function renderThread(onReply = vi.fn()) {
 describe('phone chat: long-press message sheet', () => {
   it('hides the hover action buttons and the thread header on phones and shows the long-press hint', () => {
     renderThread()
-    const react = screen.getByRole('button', { name: `React to message ${THEIR_MESSAGE_ID}` })
+    const react = screen.getByRole('button', { name: "React to Rinki Mukharjee's message" })
     expect(react.closest('.max-md\\:hidden')).not.toBeNull()
     expect(screen.getByRole('link', { name: 'Back to messages' }).closest('header')).toHaveClass('max-md:hidden')
     expect(screen.getByTestId('message-long-press-hint')).toHaveTextContent('Long-press a message to react, reply, edit or unsend')
@@ -160,7 +160,7 @@ describe('phone chat: long-press message sheet', () => {
 
   it('offers a screen-reader button that opens the same sheet on phones', () => {
     renderThread()
-    const options = screen.getByRole('button', { name: `Options for message ${MY_MESSAGE_ID}` })
+    const options = screen.getByRole('button', { name: 'Options for your message' })
     expect(options).toHaveClass('sr-only', 'md:hidden')
     fireEvent.click(options)
     expect(screen.getByRole('menuitem', { name: 'Unsend message' })).toBeInTheDocument()

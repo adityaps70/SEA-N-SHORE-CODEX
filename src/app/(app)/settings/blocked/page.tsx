@@ -39,7 +39,7 @@ export default async function BlockedMembersPage() {
   }))
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Blocked & muted" />
       <header className="max-md:hidden">
         <Link href="/settings" className={backLinkClass}>
@@ -62,6 +62,6 @@ export default async function BlockedMembersPage() {
         <p className="px-5 pt-3 text-sm leading-6 text-muted">Muted members and organizations aren’t told. Their posts stay out of your feed; everything else is unchanged.</p>
         <MutedList items={muted} />
       </section>
-    </main>
+    </div>
   )
 }

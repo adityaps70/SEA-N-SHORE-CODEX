@@ -51,7 +51,8 @@ export function FeatureOverview() {
                 </span>
                 <b>{item.title}</b>
                 <span>{item.body}</span>
-                <em aria-hidden="true">{String(index + 1).padStart(2, '0')}</em>
+                {/* Round H (H8): the big number is decoration, drawn by CSS (::after) so it is never read as low-contrast text. */}
+                <em aria-hidden="true" data-n={String(index + 1).padStart(2, '0')} />
               </Reveal>
             )
           })}

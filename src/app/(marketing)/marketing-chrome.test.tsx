@@ -27,9 +27,11 @@ describe('MarketingChrome', () => {
 
   it('wraps every other marketing page in the shared public header and footer', () => {
     navigation.pathname = '/pricing'
-    renderChrome()
+    const { container } = renderChrome()
     expect(screen.getByText('Public header')).toBeInTheDocument()
     expect(screen.getByText('Page')).toBeInTheDocument()
     expect(screen.getByText('Public footer')).toBeInTheDocument()
+    // Round H (H6): the shell hook that lets the site footer hide where a rail footer shows.
+    expect(container.firstElementChild).toHaveClass('group/shell')
   })
 })

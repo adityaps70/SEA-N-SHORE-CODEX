@@ -49,7 +49,8 @@ describe('Events create and discovery UX contract', () => {
   it('uses calmer placeholders and roomier premium controls', () => {
     const form = source('src/features/events/components/event-form.tsx')
     const events = source('src/app/(app)/events/page.tsx')
-    expect(form).toContain('placeholder:text-slate-400')
+    // Round H (H8): placeholders use --muted (5.6:1); slate-400 was 2.6:1.
+    expect(form).toContain('placeholder:text-muted')
     expect(form).toContain('placeholder:font-normal')
     expect(form).toContain('min-h-12')
     expect(events).toContain('appearance-none')

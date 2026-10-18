@@ -5,6 +5,7 @@ import { pluralize } from '@/lib/format'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ModerationActionPanel } from '@/features/admin/components/moderation-action-panel'
 import { PendingCourseReviewsPanel } from '@/features/admin/components/pending-course-reviews-panel'
+import { CourseReviewRepliesPanel } from '@/features/admin/components/course-review-replies-panel'
 import { courseRatingRepository } from '@/features/learning/course-rating-repository'
 import { adminRepository } from '@/features/admin/repository'
 import {
@@ -58,13 +59,15 @@ export default async function AdminModerationPage({
   const user = await requireAwsUser()
   // Learning round C: course reviews wait for approval before they are public; they lead the open queue.
   const showPendingReviews = status === 'open' && (targetType === 'all' || targetType === 'course_review')
-  const [cases, pendingReviews] = await Promise.all([
+  const [cases, pendingReviews, reviewReplies] = await Promise.all([
     adminRepository.listModerationCases(user.id, {
       status,
       targetType,
       limit: 100,
     }),
     showPendingReviews ? courseRatingRepository.listPendingReviews(user.id) : Promise.resolve([]),
+    // Round H: course owners' replies to reviews, hidden or restored here.
+    showPendingReviews ? courseRatingRepository.listReviewReplies(user.id) : Promise.resolve([]),
   ])
 
   const statusFilters: Array<{ value: ModerationReportStatus; label: string }> = [
@@ -85,7 +88,7 @@ export default async function AdminModerationPage({
   ]
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Moderation & reports"
         meta={pluralize(cases.length, 'case') + ' in this view'}
@@ -93,6 +96,7 @@ export default async function AdminModerationPage({
       />
 
       {showPendingReviews ? <PendingCourseReviewsPanel reviews={pendingReviews} /> : null}
+      {showPendingReviews ? <CourseReviewRepliesPanel replies={reviewReplies} /> : null}
 
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <AdminFilterBar
@@ -141,7 +145,7 @@ export default async function AdminModerationPage({
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-navy-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white">
+                    <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.08em] text-white">
                       {item.targetType.replaceAll('_', ' ')}
                     </span>
                     <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800">
@@ -217,6 +221,6 @@ export default async function AdminModerationPage({
           </AdminPanel>
         ) : null}
       </section>
-    </main>
+    </div>
   )
 }

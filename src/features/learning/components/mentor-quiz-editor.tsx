@@ -17,6 +17,7 @@ import type { MentorQuizDefinition, MentorQuizDefinitionInput } from '../mentor-
 import type { MentorMaterial } from '../mentor-material-repository'
 import type { BankQuestion } from '../question-bank-repository'
 import { listBankQuestionsForQuiz } from '../question-bank-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
 import {
   ANSWER_POLICIES,
   ANSWER_POLICY_LABELS,
@@ -95,7 +96,7 @@ function moveArrayItem<T>(items: T[], index: number, direction: 'up' | 'down') {
 }
 
 function inputClassName() {
-  return 'mt-1.5 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted/60 focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
+  return 'mt-1.5 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
 }
 
 /** "Add from bank": the trainer's own bank, filtered; each pick is copied into this quiz. */
@@ -208,7 +209,7 @@ function BankPicker({
               })}
             </ul>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button type="button" disabled={selected.size === 0} onClick={() => onAdd(available.filter((question) => selected.has(question.id)))} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800 disabled:opacity-50">
+              <button type="button" disabled={selected.size === 0} onClick={() => onAdd(available.filter((question) => selected.has(question.id)))} className={buttonClass({ variant: 'primary', size: 'sm' })}>
                 <Plus className="size-4" aria-hidden="true" /> Add selected ({selected.size})
               </button>
               <button type="button" disabled={available.length === 0} onClick={() => onAdd(available)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50 disabled:opacity-50">
@@ -314,7 +315,7 @@ export function QuizEditor({
         </div>
         <ul className="mt-2 space-y-1 text-xs leading-5 text-muted">
           {drawCount && drawCount > draft.questions.length ? <li className="font-semibold text-rose-700">The quiz has {draft.questions.length} {draft.questions.length === 1 ? 'question' : 'questions'}, so it cannot draw {drawCount}. Add questions or lower the number.</li> : null}
-          {drawCount && drawCount <= draft.questions.length ? <li>Each attempt draws {drawCount} of these {draft.questions.length} questions at random and keeps them for that attempt.</li> : null}
+          {drawCount && drawCount <= draft.questions.length ? <li>{drawCount === draft.questions.length && drawCount === 1 ? 'Each attempt shows this one question.' : `Each attempt draws ${drawCount} of these ${draft.questions.length} questions at random and keeps them for that attempt.`}</li> : null}
           {draft.timeLimitMinutes ? <li>The server keeps the time: answers saved by the deadline are submitted automatically, and later answers are refused.</li> : null}
           {draft.answerPolicy === 'after_last_attempt' && material.maxAttempts === null ? <li>This material has unlimited attempts, so learners would never see the answers. Set an attempt limit on the material, or choose another option.</li> : null}
           <li>Total: {marksLabel(totalMarks)} marks{drawCount ? ' across all questions (each attempt is marked out of its drawn questions)' : ''}.</li>

@@ -7,6 +7,7 @@ import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
 import { jobDepartmentDisplay, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { PERSONAS } from '@/features/profiles/persona'
 import { matchPersonaSql } from '@/features/roles/sql'
+import { urgentActiveSql } from './urgent'
 import type {
   JobAlert,
   JobApplication,
@@ -277,7 +278,7 @@ const JOB_COLUMNS = `
     j.salary_currency,
     j.salary_period,
     j.sailing_regions,
-    j.urgent,
+    ${urgentActiveSql('j')} as urgent,
     j.easy_apply,
     j.department_key,
     j.accepted_role_keys,
@@ -540,7 +541,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       )`)
     }
     if (filters.verifiedOnly) where.push('coalesce(c.is_verified, false) = true')
-    if (filters.urgentOnly) where.push('j.urgent = true')
+    // Round H (H7): urgent lasts 14 days from urgent_since.
+    if (filters.urgentOnly) where.push(`j.urgent = true and ${urgentActiveSql('j')}`)
     if (filters.easyApplyOnly) where.push('j.easy_apply = true')
     if (filters.postedWithinDays !== null) {
       where.push(`coalesce(j.published_at, j.created_at) >= now() - (${bind(filters.postedWithinDays)}::int * interval '1 day')`)
@@ -570,7 +572,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         ? 'coalesce(j.salary_max, j.salary_min) desc nulls last, coalesce(j.published_at, j.created_at) desc, j.id desc'
         : filters.sort === 'recent'
           ? 'coalesce(j.published_at, j.created_at) desc, j.id desc'
-          : 'j.urgent desc, coalesce(c.is_verified, false) desc, coalesce(j.published_at, j.created_at) desc, j.id desc'
+          : `${urgentActiveSql('j')} desc, coalesce(c.is_verified, false) desc, coalesce(j.published_at, j.created_at) desc, j.id desc`
 
     const limitParam = bind(Math.min(Math.max(Math.trunc(limit), 1), pool ? 300 : 100))
     const offsetParam = bind(Math.max(Math.trunc(offset), 0))
@@ -635,6 +637,58 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       [jobId],
     ) as Array<QueryResultRow & { accepting: boolean }>
     return Boolean(rows[0]?.accepting)
+  }
+
+  /**
+   * Round H (H7): how many people applied to a job, for the public range on the job page
+   * ("10–25 applicants"). Read-only; withdrawn applications are left out.
+   */
+  async function countJobApplicants(jobId: string): Promise<number> {
+    const rows = await queryRows(
+      `select count(*)::int as applicant_count
+       from public.job_applications a
+       where a.job_id = $1
+         and a.status::text <> 'withdrawn'`,
+      [jobId],
+    ) as Array<QueryResultRow & { applicant_count: string | number | null }>
+    return numberOrNull(rows[0]?.applicant_count) ?? 0
+  }
+
+  /**
+   * Round H (H7): up to `limit` live jobs like this one for the job page: the same rank / role first,
+   * then the same department, then a shared vessel type, newest first. Only jobs still taking
+   * applications (LIVE_JOB_SQL), never the job itself, and only jobs related in at least one of those ways.
+   */
+  async function listSimilarJobs(job: Pick<JobListing, 'id' | 'acceptedRoleKeys' | 'rank' | 'departmentKey' | 'department' | 'vesselTypes'>, limit = 4): Promise<JobListing[]> {
+    const rows = await queryRows(
+      `with similar as (
+         select j.id,
+                (cardinality($2::text[]) > 0 and coalesce(j.accepted_role_keys, '{}'::text[]) && $2::text[])
+                  or coalesce(lower(j.rank) = lower($3::text), false) as same_role,
+                coalesce(j.department_key = $4::text, false)
+                  or coalesce(lower(j.department) = lower($5::text), false) as same_department,
+                coalesce(j.vessel_types, '{}'::text[]) && $6::text[] as same_vessel
+         from public.jobs j
+         where ${LIVE_JOB_SQL}
+           and j.id <> $1
+       )
+       ${JOB_SELECT}
+       join similar s on s.id = j.id
+       where s.same_role or s.same_department or s.same_vessel
+       order by s.same_role desc, s.same_department desc, s.same_vessel desc,
+                coalesce(j.published_at, j.created_at) desc, j.id desc
+       limit $7`,
+      [
+        job.id,
+        job.acceptedRoleKeys ?? [],
+        job.rank?.trim() || null,
+        job.departmentKey ?? null,
+        job.department?.trim() || null,
+        job.vesselTypes,
+        Math.min(Math.max(Math.trunc(limit), 1), 12),
+      ],
+    ) as JobRow[]
+    return rows.map(mapJob)
   }
 
   async function getCandidateProfile(profileId: string): Promise<JobCandidateProfile | null> {
@@ -899,6 +953,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     getPublishedJob,
     listSitemapJobs,
     isAcceptingApplications,
+    countJobApplicants,
+    listSimilarJobs,
     getCandidateProfile,
     listApplications,
     hasApplied,

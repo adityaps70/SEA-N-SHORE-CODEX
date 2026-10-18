@@ -50,7 +50,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
   const totals = totalsByCurrency(rows)
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
       <MobilePageBar backHref={`/events/${event.id}`} title="Paid registrations" />
       <EventNav active="hosting" className="max-md:hidden" />
       <div>
@@ -77,7 +77,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
         </p>
       ) : null}
 
-      <dl className="grid gap-3 sm:grid-cols-3 max-md:grid-cols-3 max-md:gap-2 max-md:[&>div]:p-3 max-md:[&_dd]:text-lg max-md:[&_dt]:text-[10px] max-md:[&_dt]:tracking-wide">
+      <dl className="grid gap-3 sm:grid-cols-3 max-md:grid-cols-3 max-md:gap-2 max-md:[&>div]:p-3 max-md:[&_dd]:text-lg max-md:[&_dt]:text-xs max-md:[&_dt]:tracking-wide">
         <div className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm">
           <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Confirmed paid seats</dt>
           <dd className="mt-1 text-2xl font-bold text-navy-950">{confirmed.length}{event.capacity ? <span className="text-base font-semibold text-muted"> / {event.capacity}</span> : null}</dd>

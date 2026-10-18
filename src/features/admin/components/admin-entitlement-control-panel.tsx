@@ -136,10 +136,10 @@ export function AdminEntitlementControlPanel({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm font-bold text-navy-950">{label(item.capability)}</p>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${item.active ? 'bg-emerald-50 text-emerald-800' : 'bg-mist-50 text-muted'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${item.active ? 'bg-emerald-50 text-emerald-800' : 'bg-mist-50 text-muted'}`}>
                       {item.active ? 'Active' : 'Inactive'}
                     </span>
-                    <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-semibold text-muted">{item.source.replaceAll('_', ' ')}</span>
+                    <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-semibold text-muted">{item.source.replaceAll('_', ' ')}</span>
                   </div>
                   <p className="mt-1 text-xs leading-5 text-muted">
                     {item.reason ?? 'No reason recorded'}

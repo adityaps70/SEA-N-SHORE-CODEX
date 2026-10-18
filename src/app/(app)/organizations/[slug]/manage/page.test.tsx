@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   listForOrganization: vi.fn(),
   getUserOrganizationState: vi.fn(),
   loadPlanBillingView: vi.fn(),
+  // Round H (H7): Payment history (default: no payments).
+  listForCompany: vi.fn(async () => [] as unknown[]),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
   redirect: vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT:${path}`) }),
 }))
@@ -28,6 +30,10 @@ vi.mock('@/features/organizations/repository', () => ({
 }))
 vi.mock('@/features/organizations/access-request-actions', () => ({ decideOrganizationAccessRequest: vi.fn() }))
 vi.mock('@/features/billing/page-data', () => ({ loadPlanBillingView: mocks.loadPlanBillingView }))
+vi.mock('@/features/billing/payment-history', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/billing/payment-history')>()),
+  paymentHistoryRepository: { listForCompany: mocks.listForCompany },
+}))
 vi.mock('@/features/billing/actions', () => ({
   startPlanCheckoutAction: vi.fn(),
   checkPlanCheckoutAction: vi.fn(),
@@ -221,7 +227,8 @@ describe('/organizations/[slug]/manage', () => {
     expect(mocks.loadPlanBillingView).toHaveBeenCalledWith({ kind: 'company', companyId: 'c1' })
     expect(screen.getByRole('heading', { level: 1, name: 'Plan & billing' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('aria-current', 'page')
-    const plan = screen.getByRole('region', { name: 'Organization Pro' })
+    // Round H (H7): the panel is headed by the plan the organization is on ("Free plan"), not the plan it offers.
+    const plan = screen.getByRole('region', { name: 'Free plan' })
     expect(within(plan).getByText('Free plan')).toBeInTheDocument()
     expect(within(plan).getByRole('heading', { level: 3, name: 'Try Organization Pro free for 2 months' })).toBeInTheDocument()
     expect(within(plan).getByRole('heading', { level: 3, name: 'Or choose a paid plan now' })).toBeInTheDocument()
@@ -239,6 +246,21 @@ describe('/organizations/[slug]/manage', () => {
     expect(within(plan).getByText('Next payment')).toBeInTheDocument()
     expect(within(plan).getByRole('button', { name: 'Cancel auto-renew' })).toBeInTheDocument()
     expect(within(plan).queryByRole('group', { name: /How often do you want to pay/ })).not.toBeInTheDocument()
+  })
+
+  it('lists the organization\'s payments with seat-pack invoices and subscription receipts (Round H, H7)', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('owner', 'organization_pro'))
+    mocks.loadPlanBillingView.mockResolvedValue(proOrganizationView)
+    mocks.listForCompany.mockResolvedValueOnce([
+      { id: '66666666-6666-4666-8666-666666666666', kind: 'subscription', at: '2026-10-01T06:30:00.000Z', item: 'Organization Pro · monthly', amountMinor: 500000, currency: 'INR', status: 'paid', invoiceId: null, invoiceNumber: null, creditNoteId: null, creditNoteNumber: null },
+      { id: 'o2', kind: 'seat_pack', at: '2026-09-01T06:30:00.000Z', item: 'Seat pack · 10 seats · Tanker safety', amountMinor: 900000, currency: 'INR', status: 'paid', invoiceId: '77777777-7777-4777-8777-777777777777', invoiceNumber: 'SNS/26-27/000002', creditNoteId: null, creditNoteNumber: null },
+    ])
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+
+    expect(mocks.listForCompany).toHaveBeenCalledWith('c1')
+    const history = screen.getByRole('region', { name: 'Payment history' })
+    expect(within(history).getByRole('link', { name: /Payment receipt \(PDF\), Organization Pro · monthly/ })).toHaveAttribute('href', '/api/billing/receipts/subscription/66666666-6666-4666-8666-666666666666')
+    expect(within(history).getByRole('link', { name: /Tax invoice SNS\/26-27\/000002 \(PDF\)/ })).toHaveAttribute('href', '/api/learn/invoices/77777777-7777-4777-8777-777777777777')
   })
 
   it('explains why an organization that is not verified cannot buy yet', async () => {

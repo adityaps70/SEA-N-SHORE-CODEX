@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import NetworkPage from './page'
-import { getPeopleSuggestions, isPeopleRankingEnabled } from '@/features/network/queries'
+import { getNetworkHub, getPeopleSuggestions, isPeopleRankingEnabled } from '@/features/network/queries'
 
 const profile = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -101,8 +101,32 @@ describe('Maritime Network page', () => {
     expect(screen.getByRole('heading', { name: 'Mutual connections' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'See all: Mutual connections' })).toHaveAttribute('href', '/network?tab=discover&section=mutual')
     expect(screen.queryByRole('heading', { name: 'Shipmates' })).not.toBeInTheDocument()
+    // Round H (H7): the only suggested person is already under Mutual connections, so More people you may know is hidden.
+    expect(screen.queryByRole('heading', { name: 'More people you may know' })).not.toBeInTheDocument()
+    expect(screen.getAllByText('Discover card Capt. Meera Nair')).toHaveLength(1)
+    expect(screen.getByText(/Already following someone\? See them under/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Following' })).toHaveAttribute('href', '/network?tab=following')
+    vi.mocked(getPeopleSuggestions).mockReset()
+  })
+
+  it('shows each person once across Discover sections and More people you may know (round H, H7)', async () => {
+    const other = { ...profile, id: '44444444-4444-4444-8444-444444444444', slug: 'placeholder-member', fullName: 'Placeholder Member' }
+    const third = { ...profile, id: '55555555-5555-4555-8555-555555555555', slug: 'placeholder-officer', fullName: 'Placeholder Officer' }
+    vi.mocked(isPeopleRankingEnabled).mockResolvedValueOnce(true)
+    vi.mocked(getNetworkHub).mockImplementationOnce(async (tab) => ({
+      tab, profiles: [profile, other, third], receivedRequests: [], sentRequests: [], incomingRequestCount: 0, totalCount: 3,
+    }) as never)
+    vi.mocked(getPeopleSuggestions).mockImplementation(async (_limit, section) => (
+      section === 'mutual' ? [profile] as never : section === 'similar' ? [profile, other] as never : []
+    ))
+    render(await NetworkPage({ searchParams: Promise.resolve({ tab: 'discover' }) }))
+
+    expect(screen.getByRole('heading', { name: 'Mutual connections' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Similar rank' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'More people you may know' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'People you follow' })).toHaveAttribute('href', '/network?tab=following')
+    expect(screen.getAllByText('Discover card Capt. Meera Nair')).toHaveLength(1)
+    expect(screen.getAllByText('Discover card Placeholder Member')).toHaveLength(1)
+    expect(screen.getAllByText('Discover card Placeholder Officer')).toHaveLength(1)
     vi.mocked(getPeopleSuggestions).mockReset()
   })
 

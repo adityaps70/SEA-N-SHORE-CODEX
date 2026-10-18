@@ -69,9 +69,10 @@ describe('/community landing (round 10, LinkedIn Groups style)', () => {
     expect(within(suggested).getByRole('button', { name: 'Join Tanker Professionals' })).toBeInTheDocument()
 
     const categories = screen.getByRole('list', { name: 'Community categories' })
-    expect(within(categories).getAllByRole('listitem')).toHaveLength(8)
+    // Round H (H7): only categories with communities get a tile (was all eight, including "0 communities").
+    expect(within(categories).getAllByRole('listitem')).toHaveLength(2)
     expect(within(categories).getByRole('link', { name: /Vetting & SIRE 2.0\s*2 communities/ })).toHaveAttribute('href', '/community?view=all&category=vetting_sire_2_0')
-    expect(within(categories).getByRole('link', { name: /Career Advice\s*0 communities/ })).toBeInTheDocument()
+    expect(within(categories).queryByRole('link', { name: /Career Advice/ })).not.toBeInTheDocument()
 
     const popular = screen.getByRole('list', { name: 'Popular communities' })
     expect(within(popular).getByText('42 members · 4 posts this week')).toBeInTheDocument()
@@ -106,6 +107,30 @@ describe('/community landing (round 10, LinkedIn Groups style)', () => {
     expect(create).toHaveClass('max-md:w-full', 'max-md:rounded-full')
     expect(create.closest('header')).toContainElement(screen.getByRole('searchbox', { name: 'Search communities' }))
     expect(screen.getByRole('heading', { level: 1 }).closest('header')).toHaveClass('md:justify-between')
+  })
+
+  it('adds an Other topics tile for communities without a category and hides the section when nothing is counted (round H, H7)', async () => {
+    mocks.countByCategory.mockResolvedValue({ learning: 1, other: 2, maritime_news: 0 })
+    render(await CommunityPage({ searchParams: Promise.resolve({}) }))
+    const categories = screen.getByRole('list', { name: 'Community categories' })
+    expect(within(categories).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(categories).getByRole('link', { name: /Other topics\s*2 communities/ })).toHaveAttribute('href', '/community?view=all&category=other')
+    expect(within(categories).queryByRole('link', { name: /Maritime News/ })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.countByCategory.mockResolvedValue({})
+    render(await CommunityPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.queryByRole('heading', { name: 'Browse by category' })).not.toBeInTheDocument()
+  })
+
+  it('counts joined communities and pending requests separately under Your communities (round H, H7)', async () => {
+    mocks.listViewerGroups.mockResolvedValue([
+      group({ viewerMembership: { role: 'member', status: 'active' } }),
+      { ...tankers, viewerMembership: { role: 'member', status: 'active' } },
+      { ...masters, viewerMembership: { role: 'member', status: 'pending' } },
+    ])
+    render(await CommunityPage({ searchParams: Promise.resolve({ view: 'mine' }) }))
+    expect(screen.getByText('You belong to 2 communities · 1 request waiting for a moderator.')).toBeInTheDocument()
   })
 
   it('tells an empty platform that members create communities with Creator Pro or Organization Pro', async () => {
@@ -155,6 +180,14 @@ describe('/community directory (Browse all / search)', () => {
     expect(screen.getByRole('heading', { name: 'Communities matching “tanker”' })).toBeInTheDocument()
     expect(screen.getByText('1 community')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Communities' })).toHaveAttribute('href', '/community')
+  })
+
+  it('filters the directory to communities without a category under Other topics (round H, H7)', async () => {
+    mocks.browseDirectory.mockResolvedValue({ groups: [group({ category: null })], total: 1 })
+    render(await CommunityPage({ searchParams: Promise.resolve({ view: 'all', category: 'other' }) }))
+    expect(mocks.browseDirectory).toHaveBeenCalledWith('viewer-1', expect.objectContaining({ category: 'other' }))
+    expect(screen.getByRole('heading', { level: 2, name: 'Other topics' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Filter by category' })).getByRole('link', { name: 'Other topics' })).toHaveAttribute('aria-current', 'true')
   })
 
   it('ignores an unknown category or sort', async () => {

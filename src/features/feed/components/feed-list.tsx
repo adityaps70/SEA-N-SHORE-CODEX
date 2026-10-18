@@ -11,6 +11,8 @@ import { useSuggestionDeck } from '@/features/network/components/suggestion-deck
 import { usePostImpressions } from '../impressions/use-post-impressions'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 const NO_SUGGESTIONS: NetworkProfile[] = []
 
@@ -165,9 +167,9 @@ export function FeedList({
           <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Publish a professional update above or discover relevant maritime professionals in the network.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             {/* Phones have no composer card on Home: the link opens the full-screen composer. */}
-            <Link href="/home?compose=update" className="inline-flex min-h-10 items-center rounded-full bg-ocean-700 px-4 text-sm font-semibold text-white hover:bg-ocean-800 transition-colors md:hidden">Publish an update</Link>
-            <a href="#feed-composer" className="max-md:hidden inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Publish an update</a>
-            <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-900 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Explore Network</Link>
+            <Link href="/home?compose=update" className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'rounded-full md:hidden')}>Publish an update</Link>
+            <a href="#feed-composer" className={`${buttonClass({ variant: 'primary', size: 'sm' })} max-md:hidden`}>Publish an update</a>
+            <Link href="/network" className={buttonClass({ variant: 'secondary', size: 'sm' })}>Explore Network</Link>
           </div>
         </div>
         {showPeople ? <div className="-mx-4 mt-2 md:hidden"><FeedPeopleRow deck={peopleDeck} showEmptyState /></div> : null}

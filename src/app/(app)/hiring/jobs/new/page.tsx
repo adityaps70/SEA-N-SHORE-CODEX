@@ -23,7 +23,7 @@ export default async function NewHiringJobPage() {
 
   if (!personal) {
     return (
-      <div className="mx-auto w-full max-w-5xl pb-4 pt-0 md:px-6 md:py-8 lg:px-8">
+      <div className="mx-auto w-full max-w-page-narrow pb-4 pt-0 md:px-6 md:py-8 lg:px-8">
         <MobilePageBar backHref="/hiring/jobs" title="Post a job" />
         <section className="rounded-[2rem] border border-mist-100 bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <h1 className="text-3xl font-bold text-navy-950">Complete your profile first</h1>
@@ -38,7 +38,7 @@ export default async function NewHiringJobPage() {
   const publisherOptions = buildHiringPublisherOptions(access, personal, companies)
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar backHref="/hiring/jobs" title="Post a job" />
       <CreateRequirementsBanner access={access} kind="job" organizations={organizations} />
       <div className="max-md:hidden">

@@ -5,19 +5,23 @@ import { cache } from 'react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { RailFooter } from '@/components/navigation/rail-footer'
 import { backLinkClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
-import { ArrowLeft, BadgeCheck, CalendarClock, CheckCircle2, MapPin, Ship, TriangleAlert, WalletCards } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, CalendarClock, CheckCircle2, MapPin, Ship, WalletCards } from 'lucide-react'
 import { ApplyJobButton } from '@/features/jobs/components/apply-job-button'
 import { ClampedText } from '@/features/jobs/components/clamped-text'
 import { JobDetailMoreMenu } from '@/features/jobs/components/job-detail-more-menu'
+import { JobMatchChecks } from '@/features/jobs/components/job-match-checks'
 import { JobMatchRow } from '@/features/jobs/components/job-match-row'
 import { JobShareActions } from '@/features/jobs/components/job-share-actions'
 import { JobCompanyIdentity, JobCompanyLogo } from '@/features/jobs/components/job-company-identity'
 import { ReportJobButton } from '@/features/jobs/components/report-job-button'
 import { SaveJobButton } from '@/features/jobs/components/save-job-button'
+import { SimilarJobs } from '@/features/jobs/components/similar-jobs'
+import { applicantRangeLabel } from '@/features/jobs/applicant-range'
+import { formatSalaryRange } from '@/features/jobs/salary'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { isJobId, jobMetadata, jobPath, jobPostingJsonLd } from '@/features/jobs/job-seo'
-import { getJobDetailState, getSignedOutJobDetailState } from '@/features/jobs/queries'
+import { getJobDetailState, getJobPageExtras, getSignedOutJobDetailState } from '@/features/jobs/queries'
 import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { evaluateApplyGate } from '@/features/jobs/apply-gate'
 import { ApplyGateNotice } from '@/features/jobs/components/apply-gate-notice'
@@ -29,11 +33,6 @@ import { siteOrigin } from '@/lib/site-url'
 function formatDate(value: string | null) {
   if (!value) return null
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`))
-}
-
-function formatSalary(value: number | null, currency: string | null) {
-  if (value === null) return null
-  return new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'USD', maximumFractionDigits: 0 }).format(value)
 }
 
 /**
@@ -65,18 +64,19 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
   const source = typeof rawSource === 'string' && APPLY_SOURCES.has(rawSource) ? rawSource : 'job_page'
   const { job, alreadyApplied, isSaved, match, gateMatch, profileReady, signedOut } = await loadJobDetail(id)
   if (!job) notFound()
+  // Round H (H7): the applicant range and similar jobs, public like the job itself.
+  const { applicantCount, similarJobs } = await getJobPageExtras(job)
   // Round H (H5): signed-out visitors sign in to apply, save or report, then come back to this job.
   const signInHref = signedOut ? authHrefWithReturn('/auth/sign-in', jobPath(job.id)) : undefined
 
-  const salaryMin = formatSalary(job.salaryMin, job.salaryCurrency)
-  const salaryMax = formatSalary(job.salaryMax, job.salaryCurrency)
-  const salary = salaryMin && salaryMax ? `${salaryMin}–${salaryMax}` : salaryMin ?? salaryMax
+  const salary = formatSalaryRange(job)
   // Round H (H2): past the apply-by date or the joining window, the job is closed.
   const closedReason = jobClosedReason(job, todayIsoDate())
   const acceptingApplications = closedReason === null
   const companyHref = job.companyId && job.companySlug ? `/organizations/${job.companySlug}` : null
   const postedAge = relativeTimeFrom(job.publishedAt ?? job.createdAt)
   const postedLabel = postedAge ? `Posted ${postedAge}${/^\d+[mhd]$/.test(postedAge) ? ' ago' : ''}` : null
+  const applicantsLabel = applicantCount === null ? null : applicantRangeLabel(applicantCount)
   const metaChip = 'inline-flex items-center gap-1.5 max-md:rounded-full max-md:bg-mist-50 max-md:px-2.5 max-md:py-1 max-md:text-[13px] max-md:font-semibold max-md:text-navy-900'
   // Round 12: null → no badge; below 40 the page says "Low match" and what is missing.
   const display = jobMatchDisplay(match)
@@ -87,7 +87,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
     : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">{closedReason === 'joining_passed' ? 'The joining date for this job has passed. It no longer takes applications.' : `Applications for this job closed on ${formatDate(job.applyUntil)}.`}</p>
 
   return (
-    <section className="mx-auto w-full max-w-5xl pb-0 pt-0 md:pb-8 md:pt-5">
+    <section className="mx-auto w-full max-w-page-wide pb-0 pt-0 md:pb-8 md:pt-5">
       {/* Round H (H5): schema.org JobPosting for search engines (validThrough is in the past once closed). */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(jobPostingJsonLd(job, siteOrigin())) }} />
       <MobilePageBar
@@ -103,11 +103,18 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
             <div className="min-w-0 flex-1 max-md:flex max-md:w-full max-md:flex-col">
               <div className="flex flex-wrap items-center gap-2 max-md:order-2 max-md:mt-1 max-md:justify-center">{companyHref ? <Link href={companyHref} className="min-w-0 break-words text-xs font-semibold uppercase tracking-[.14em] text-ocean-700 hover:underline max-md:text-[15px] max-md:normal-case max-md:tracking-normal max-md:text-ink">{job.companyName}</Link> : <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700 max-md:text-[15px] max-md:normal-case max-md:tracking-normal max-md:text-ink">{job.companyName}</p>}{job.companyVerified ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800"><BadgeCheck aria-hidden="true" className="size-3.5" />Verified employer</span> : null}{job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Urgent joining</span> : null}</div>
               <h1 className="mt-1 break-words text-2xl font-semibold tracking-[-.035em] text-navy-950 max-md:order-1 max-md:mt-0 max-md:text-[22px] max-md:font-bold max-md:leading-tight max-md:tracking-normal sm:text-4xl">{job.title}</h1>
-              {postedLabel ? <p className="order-3 mt-0.5 text-[13px] text-muted md:hidden">{postedLabel}</p> : null}
+              {/* Round H (H7): posted date and applicant range for everyone, on desktop too. */}
+              {postedLabel || applicantsLabel ? (
+                <p className="order-3 mt-0.5 text-[13px] text-muted md:mt-1 md:text-sm" data-testid="job-posted-line">
+                  {postedLabel ? <time dateTime={job.publishedAt ?? job.createdAt}>{postedLabel}</time> : null}
+                  {postedLabel && applicantsLabel ? <span aria-hidden="true"> · </span> : null}
+                  {applicantsLabel ? <span>{applicantsLabel}</span> : null}
+                </p>
+              ) : null}
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-muted max-md:order-4 max-md:justify-center max-md:gap-2">
                 <span className={metaChip}><Ship aria-hidden="true" className="size-4" />{job.domain === 'sea' ? 'Sea job' : 'Shore job'}{job.vesselTypes[0] ? ` · ${job.vesselTypes[0]}` : ''}</span>
                 {job.location ? <span className={metaChip}><MapPin aria-hidden="true" className="size-4" />{job.location}</span> : null}
-                {salary ? <span className={metaChip}><WalletCards aria-hidden="true" className="size-4" />{salary}{job.salaryPeriod ? `/${job.salaryPeriod}` : ''}</span> : null}
+                {salary ? <span className={metaChip}><WalletCards aria-hidden="true" className="size-4" />{salary}</span> : null}
                 {job.joiningFrom ? <span className={metaChip}><CalendarClock aria-hidden="true" className="size-4" />{closedReason === 'joining_passed' ? 'Joining date passed' : `Joining ${formatDate(job.joiningFrom)}`}</span> : null}
               </div>
             </div>
@@ -116,6 +123,13 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
           <p className="mt-6 text-lg leading-8 text-ink max-md:mt-4 max-md:text-[15px] max-md:leading-6">{job.summary}</p>
 
           {match && display ? <div className="mt-5 md:hidden"><JobMatchRow match={match} /></div> : null}
+          {match && display ? (
+            // Round H (H7): phones see the explained checks on the page too, not only in the match sheet.
+            <section aria-labelledby="job-checks-heading-phone" className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 md:hidden">
+              <h2 id="job-checks-heading-phone" className="text-base font-bold text-navy-950">Check before applying</h2>
+              <JobMatchChecks match={match} textClassName="text-[15px] leading-6" />
+            </section>
+          ) : null}
           {match?.notice ? <p className="mt-5 rounded-xl bg-mist-50 px-4 py-3 text-sm text-muted" data-testid="job-match-notice">{match.notice}</p> : null}
           {!alreadyApplied && acceptingApplications ? <ApplyGateNotice gate={gate} className="mt-4 md:hidden" /> : null}
 
@@ -133,7 +147,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
               <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 text-xl font-semibold">Your Maritime Match</h2></div><div className="text-right">{display.ineligible ? <p className="max-w-[16rem] text-base font-bold leading-snug" data-job-ineligible>{display.ineligible}</p> : display.band === 'low' || !display.showPercent ? <p className="text-2xl font-bold">{display.label}</p> : <><p className="text-3xl font-bold">{display.score}%</p><p className="text-xs text-white/60">{display.label}</p></>}</div></div>
               <div className="grid gap-5 p-5 md:grid-cols-2">
                 <div><h3 className="text-sm font-semibold text-navy-950">What matches</h3>{match.reasons.length ? <ul className="mt-3 space-y-2">{match.reasons.map((reason) => <li key={reason} className="flex items-start gap-2 text-sm leading-6 text-ink"><CheckCircle2 aria-hidden="true" className="mt-1 size-4 shrink-0 text-emerald-700" />{reason}</li>)}</ul> : <p className="mt-2 text-sm text-muted">Add more Maritime Passport details to improve match explanations.</p>}</div>
-                <div><h3 className="text-sm font-semibold text-navy-950">Check before applying</h3>{match.missingRequirements.length || match.warnings.length ? <ul className="mt-3 space-y-2">{[...match.missingRequirements, ...match.warnings].map((warning) => <li key={warning} className="flex items-start gap-2 text-sm leading-6 text-amber-900"><TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" />{warning}</li>)}</ul> : <p className="mt-2 text-sm font-medium text-emerald-800">No major profile gaps detected.</p>}</div>
+                <div><h3 className="text-sm font-semibold text-navy-950">Check before applying</h3><JobMatchChecks match={match} /></div>
               </div>
             </section>
           ) : !profileReady && !match?.notice && !signedOut ? <div className="mt-8 rounded-2xl max-md:mt-5 border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Complete your <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Maritime Passport</Link> to see an explainable fit score for this job.</div> : null}
@@ -168,6 +182,8 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
           <RailFooter visibleFrom="lg" />
         </aside>
       </div>
+
+      <SimilarJobs jobs={similarJobs} signedOut={signedOut} />
 
       {/* Round H (H5): visitors have no bottom tabs, so their bar sits at the bottom edge. */}
       <div className={`${signedOut ? 'sticky bottom-0 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]' : 'sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] py-3'} z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden`} data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" signInHref={signInHref} />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} gate={gate} source={source} signInHref={signInHref} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">{closedReason ? JOB_CLOSED_LABELS[closedReason] : null}</span>}</div>

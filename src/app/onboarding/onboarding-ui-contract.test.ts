@@ -12,7 +12,7 @@ describe('onboarding UI contract', () => {
   })
 
   it('keeps onboarding compact and visually aligned with the current app shell', () => {
-    expect(page).toContain('max-w-5xl')
+    expect(page).toContain('max-w-page-narrow')
     expect(page).toContain('rounded-[1.75rem]')
     expect(page).toContain('Build your maritime presence')
   })

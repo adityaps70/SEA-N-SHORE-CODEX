@@ -1,11 +1,15 @@
 import Link from 'next/link'
 import { Star } from 'lucide-react'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
-import type { PublicCourseReviews } from '../course-rating-repository'
+import type { OwnerReplyView, PublicCourseReviews } from '../course-rating-repository'
+import { CourseReviewOwnerReply, CourseReviewReplyDisplay } from './course-review-reply'
 
 /**
  * Learning round C (C5a): the course page's ratings: the average and count of approved reviews, then the reviews
  * themselves. Signed-in members can report a review (never their own).
+ *
+ * Round H: the course owner's reply shows under its review as "Reply from <publisher>". The course owner
+ * (`ownerView`) can reply, edit or delete, and also sees replies a moderator hid.
  */
 
 export function formatAverageRating(value: number) {
@@ -29,10 +33,15 @@ function reviewDate(value: string) {
 export function CourseReviewsSection({
   data,
   viewerId,
+  publisherName = 'the course publisher',
+  ownerView = null,
   className = '',
 }: {
   data: PublicCourseReviews
   viewerId: string | null
+  /** The course's publisher (trainer or organization) as the page shows it. */
+  publisherName?: string
+  ownerView?: OwnerReplyView | null
   className?: string
 }) {
   if (data.reviewCount === 0 || data.averageRating === null) return null
@@ -70,6 +79,11 @@ export function CourseReviewsSection({
                 ) : null}
               </div>
               {review.body ? <p className="mt-2 whitespace-pre-wrap break-words text-[15px] leading-7 text-navy-900">{review.body}</p> : null}
+              {ownerView ? (
+                <CourseReviewOwnerReply reviewId={review.id} publisherName={publisherName} reply={ownerView.replies[review.id] ?? null} />
+              ) : review.reply ? (
+                <CourseReviewReplyDisplay publisherName={publisherName} reply={review.reply} />
+              ) : null}
             </article>
           </li>
         ))}

@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
@@ -14,6 +15,7 @@ import {
 } from '@/features/profiles/profile-network-links'
 import { getProfileNetworkListIds, getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
 import { getPublicProfileBySlug, getPublicProfilesByIds } from '@/features/profiles/queries'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const metadata: Metadata = { title: 'Network' }
 
@@ -55,7 +57,7 @@ export default async function PersonNetworkPage({
   const firstName = firstNameOf(profile.fullName)
 
   return (
-    <main id="main-content" className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-6 max-md:gap-4 max-md:pt-4 sm:px-6 sm:py-10">
+    <MainLandmark className="mx-auto grid w-full max-w-page-wide gap-5 px-4 py-6 max-md:gap-4 max-md:pt-4 sm:px-6 sm:py-10">
       <MobilePageBar backHref={`/people/${profile.slug}`} title={`${profile.fullName}'s network`} className="!mb-0" />
       <div className="max-md:-mb-4">
         <Link
@@ -99,7 +101,7 @@ export default async function PersonNetworkPage({
           </p>
           <Link
             href={`/people/${profile.slug}`}
-            className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700"
+            className={`mt-5 ${buttonClass()}`}
           >
             Go to {firstName}&apos;s profile
           </Link>
@@ -122,6 +124,6 @@ export default async function PersonNetworkPage({
           {emptyCopy(list, firstName)}
         </div>
       )}
-    </main>
+    </MainLandmark>
   )
 }

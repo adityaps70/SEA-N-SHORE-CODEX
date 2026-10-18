@@ -88,7 +88,7 @@ export function JobCompanyIdentity({
             <span className="truncate font-bold text-navy-950">{name}</span>
           )}
           {verified && companyId ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
               <BadgeCheck aria-hidden="true" className="size-3.5" />
               Verified
             </span>

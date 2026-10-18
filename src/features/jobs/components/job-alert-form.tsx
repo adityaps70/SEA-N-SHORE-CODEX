@@ -5,6 +5,8 @@ import { BellRing, Trash2 } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
 import { createJobAlert, deleteJobAlert } from '../actions'
 import { SheetPortal } from './sheet-portal'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export function JobAlertForm({ queryString = 'mode=for-you', plain = false }: { queryString?: string; plain?: boolean }) {
   const [name, setName] = useState('')
@@ -52,7 +54,7 @@ export function CreateJobAlertSheet({ queryString = 'mode=for-you' }: { queryStr
         type="button"
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+        className={cn(buttonClass(), 'min-h-11 w-full rounded-full text-[15px]')}
       >
         <BellRing aria-hidden="true" className="size-4" />
         Create alert

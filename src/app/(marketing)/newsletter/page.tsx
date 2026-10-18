@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { Inbox, LockKeyhole, MailCheck } from 'lucide-react'
@@ -39,7 +40,7 @@ export default async function NewsletterPage() {
   const viewerPending = subscriber?.status === 'pending'
 
   return (
-    <main id="main-content" className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+    <MainLandmark className="mx-auto w-full max-w-page-narrow px-4 py-10 sm:px-6 sm:py-14">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
         <section>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Newsletter</p>
@@ -90,6 +91,6 @@ export default async function NewsletterPage() {
           )}
         </section>
       </div>
-    </main>
+    </MainLandmark>
   )
 }

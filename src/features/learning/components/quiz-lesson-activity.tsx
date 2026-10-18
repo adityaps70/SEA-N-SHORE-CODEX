@@ -96,7 +96,7 @@ function AttemptHistory({ history }: { history: LearnerQuizAttemptSummary[] }) {
           <div key={attempt.attemptId} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
             <div>
               <p className="text-sm font-semibold text-slate-950">Attempt {attempt.attemptNumber}</p>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-slate-600">
                 <time dateTime={attempt.submittedAt}>{formatAttemptDate(attempt.submittedAt, zone)}</time>
                 {attempt.autoSubmitted ? ' · Submitted when time ran out' : ''}
               </p>
@@ -687,7 +687,7 @@ export function QuizLessonActivity({
           aria-label="Time left"
         >
           <span className="inline-flex items-center gap-2"><Clock3 className="h-4 w-4" aria-hidden="true" /> {countdownLabel(remaining)} left</span>
-          <span className="text-xs font-medium text-slate-500">{answeredCount} of {questions.length} answered</span>
+          <span className="text-xs font-medium text-slate-600">{answeredCount} of {questions.length} answered</span>
         </div>
       ) : null}
 
@@ -830,7 +830,7 @@ export function QuizLessonActivity({
           </span>
         ) : null}
         {session ? (
-          <span className="text-xs text-slate-500" aria-live="polite">
+          <span className="text-xs text-slate-600" aria-live="polite">
             {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Answers saved' : saveState === 'error' ? 'Not saved yet; retrying with your next answer' : null}
             {usesSessions && !allAnswered ? `${saveState === 'idle' ? '' : ' · '}${questions.length - answeredCount} unanswered` : null}
           </span>

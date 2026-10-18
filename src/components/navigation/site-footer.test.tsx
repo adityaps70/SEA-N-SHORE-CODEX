@@ -1,25 +1,23 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ viewer: null as null | { id: string } }))
-
 vi.mock('next/link', () => ({
   default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => <a href={href} {...props}>{children}</a>,
 }))
 vi.mock('@/components/brand/wordmark', () => ({ Wordmark: () => <span>Sea N Shore</span> }))
-vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: async () => mocks.viewer }))
 vi.mock('@/features/newsletter/components/newsletter-footer-signup', () => ({
   NewsletterFooterSignup: () => <form aria-label="Newsletter sign-up" />,
 }))
 
-import { PublicFooter } from './public-footer'
+import { SiteFooter } from './site-footer'
 
 afterEach(() => cleanup())
 
-describe('PublicFooter', () => {
-  it('gives signed-out visitors the three link groups, social icons, the newsletter sign-up and the bottom line', async () => {
-    mocks.viewer = null
-    render(await PublicFooter())
+// Round H (H6): PublicFooter became the one SiteFooter. The signed-out assertions are the old
+// PublicFooter ones; signed-in status is now a prop instead of a session lookup.
+describe('SiteFooter', () => {
+  it('gives signed-out visitors the three link groups, social icons, the newsletter sign-up and the bottom line', () => {
+    render(<SiteFooter signedIn={false} />)
 
     const nav = screen.getByRole('navigation', { name: 'Footer' })
     expect(within(nav).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
@@ -45,9 +43,36 @@ describe('PublicFooter', () => {
     expect(screen.queryByText(/User-generated content/)).not.toBeInTheDocument()
   })
 
-  it('adds the data and privacy controls link for signed-in members', async () => {
-    mocks.viewer = { id: 'p1' }
-    render(await PublicFooter())
+  it('adds the data and privacy controls link for signed-in members', () => {
+    render(<SiteFooter signedIn />)
     expect(screen.getByRole('link', { name: 'Your data & privacy' })).toHaveAttribute('href', '/settings#your-data')
+  })
+
+  it('is one "Site footer" landmark holding the newsletter box, for visitors and members alike', () => {
+    for (const signedIn of [false, true]) {
+      const { unmount } = render(<SiteFooter signedIn={signedIn} />)
+      const footers = screen.getAllByRole('contentinfo')
+      expect(footers).toHaveLength(1)
+      expect(footers[0]).toHaveAttribute('aria-label', 'Site footer')
+      expect(footers[0]).toHaveAttribute('data-app-footer', 'site')
+      expect(within(footers[0]).getAllByRole('form', { name: 'Newsletter sign-up' })).toHaveLength(1)
+      unmount()
+    }
+  })
+
+  it('hides at the rail breakpoint on pages with a rail footer, for visitors and members alike', () => {
+    for (const signedIn of [false, true]) {
+      const { container, unmount } = render(<SiteFooter signedIn={signedIn} />)
+      expect(container.querySelector('footer')).toHaveClass('lg:group-has-data-[rail-footer=lg]/shell:hidden', 'xl:group-has-data-[rail-footer=xl]/shell:hidden')
+      unmount()
+    }
+  })
+
+  it('shows on phones for signed-out visitors (no side drawer) and not for members (links in the drawer)', () => {
+    const { container, unmount } = render(<SiteFooter signedIn={false} />)
+    expect(container.querySelector('footer')).not.toHaveClass('max-md:hidden')
+    unmount()
+    const member = render(<SiteFooter signedIn />)
+    expect(member.container.querySelector('footer')).toHaveClass('max-md:hidden')
   })
 })

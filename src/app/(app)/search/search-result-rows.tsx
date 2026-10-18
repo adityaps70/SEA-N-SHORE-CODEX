@@ -6,6 +6,7 @@ import { groupHref } from '@/features/community/types'
 import { hashtagHref } from '@/features/hashtags/parse'
 import { PersonCardActions } from '@/features/network/components/person-card-actions'
 import type { NetworkProfile } from '@/features/network/types'
+import { personContextParts } from '@/features/network/person-context'
 
 /*
  * Phone search results (round 8, below md only): compact rows with a thin divider, instead of
@@ -25,7 +26,8 @@ export const PHONE_RESULT_LIST_CLASS = 'divide-y divide-mist-100 md:hidden'
  * Report and Block — the same actions as the network cards.
  */
 export function SearchPersonRow({ profile, className = '' }: { profile: NetworkProfile; className?: string }) {
-  const context = [profile.rank, profile.currentCompany, profile.location].filter(Boolean).join(' · ')
+  // Round H (H7): the rank is not repeated when the headline already says it ("Chief Engineer / Chief Engineer").
+  const context = personContextParts(profile).join(' · ')
   const headline = profile.headline || context || 'Maritime professional'
   const profileInitials = (
     <span className="grid size-12 place-items-center rounded-full bg-ocean-50 text-[15px] font-semibold text-ocean-800">{initials(profile.fullName)}</span>
@@ -64,7 +66,7 @@ export function SearchOrganizationRow({ organization, className = '' }: { organi
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate text-[15px] font-semibold text-navy-950">{organization.name}</span>
-            {organization.verified ? <BadgeCheck aria-label="Verified" className="size-4 shrink-0 text-teal-500" /> : null}
+            {organization.verified ? <BadgeCheck aria-label="Verified" className="size-4 shrink-0 text-teal-700" /> : null}
           </span>
           <span className="block truncate text-[13px] text-muted">{organization.companyType ?? 'Maritime organization'}</span>
         </span>

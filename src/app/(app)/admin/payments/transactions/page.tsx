@@ -48,7 +48,7 @@ export default async function AdminPaymentsListPage({ searchParams }: { searchPa
   const { lines, unavailable } = await listRecentPayments(readClient, { type, status, limit: 100 })
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader title="Payments" meta="Latest 100 payments, for reconciliation with Cashfree and Razorpay" />
       <PaymentsAdminTabs />
 
@@ -102,6 +102,6 @@ export default async function AdminPaymentsListPage({ searchParams }: { searchPa
           <AdminEmptyState title="No payments match these filters" description="Try another type or status." />
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

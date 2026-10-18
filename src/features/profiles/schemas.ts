@@ -8,6 +8,7 @@ import {
 import { optionalOrganizationIdSchema } from './organization-link'
 import { PROFILE_TYPES } from './types'
 import { usernameSchema } from './username'
+import { HEADLINE_URL_MESSAGE, isUrlOnlyHeadline } from './headline'
 
 const normalizeTerms = (value: unknown) => {
   const source = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : []
@@ -74,7 +75,8 @@ const onboardingFieldsSchema = z
     fullName: z.string().trim().min(2, 'Add your full name.').max(120, 'Keep your full name to 120 characters or fewer.'),
     slug: usernameSchema,
     location: optionalText(120, 'Keep your location to 120 characters or fewer.'),
-    headline: z.string().trim().min(4, 'Add a professional headline.').max(160, 'Keep your professional headline to 160 characters or fewer.'),
+    headline: z.string().trim().min(4, 'Add a professional headline.').max(160, 'Keep your professional headline to 160 characters or fewer.')
+      .refine((value) => !isUrlOnlyHeadline(value), HEADLINE_URL_MESSAGE),
     summary: z.string().trim().min(20, 'Write at least 20 characters describing your professional background.').max(2000, 'Keep your professional summary to 2,000 characters or fewer.'),
     contactVisibility: z.enum(['private', 'members', 'public'], { error: 'Choose who can see your contact details.' }),
     skills: termsSchema,
@@ -137,7 +139,8 @@ const activationFieldsSchema = z.object({
   currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
   currentCompanyId: optionalOrganizationIdSchema,
   rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),
-  headline: optionalText(160, 'Keep your professional headline to 160 characters or fewer.'),
+  headline: optionalText(160, 'Keep your professional headline to 160 characters or fewer.')
+    .refine((value) => !isUrlOnlyHeadline(value), HEADLINE_URL_MESSAGE),
   specialization: optionalText(500, 'Keep your specialization to 500 characters or fewer.'),
   institutionName: optionalText(160, 'Keep your institution name to 160 characters or fewer.'),
   familyRelationship: optionalText(80, 'Keep your relationship to 80 characters or fewer.'),

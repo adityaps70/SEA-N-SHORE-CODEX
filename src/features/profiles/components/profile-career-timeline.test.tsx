@@ -69,7 +69,9 @@ describe('ProfileCareerTimeline', () => {
   it('switches the owner editor between sea-service and shore-role fields', () => {
     render(<ProfileCareerTimeline experiences={[]} editable />)
 
-    fireEvent.click(screen.getByRole('button', { name: /add experience/i }))
+    // Round H (H7): an empty timeline has one add button, the empty state's.
+    expect(screen.queryByRole('button', { name: 'Add experience' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add your first experience' }))
 
     expect(screen.getByLabelText('Vessel')).toBeInTheDocument()
     expect(screen.getByLabelText('Vessel type')).toBeInTheDocument()
@@ -107,14 +109,14 @@ describe('ProfileCareerTimeline on phones', () => {
     title: `Role ${index + 1}`,
   }))
 
-  it('shows two entries then "Show all n experience", expanding in place', () => {
+  it('shows two entries then "Show all n experiences", expanding in place', () => {
     render(<ProfileCareerTimeline experiences={many} />)
     const hidden = screen.getByRole('heading', { name: 'Role 3' }).closest('[data-phone-overflow]')
     expect(hidden).toHaveAttribute('data-phone-overflow', 'hidden')
     expect(hidden).toHaveClass('max-md:hidden')
     expect(screen.getByRole('heading', { name: 'Role 2' }).closest('[data-phone-overflow]')).toBeNull()
 
-    const showAll = screen.getByRole('button', { name: 'Show all 4 experience' })
+    const showAll = screen.getByRole('button', { name: 'Show all 4 experiences' })
     expect(showAll).toHaveClass('md:hidden')
     fireEvent.click(showAll)
     expect(screen.getByRole('heading', { name: 'Role 3' }).closest('[data-phone-overflow]')).toBeNull()

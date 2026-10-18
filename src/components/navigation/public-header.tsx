@@ -1,15 +1,20 @@
 import Link from '@/components/navigation/intent-link'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 import { Wordmark } from "@/components/brand/wordmark";
 import { getPublicVisitorActions } from "@/components/navigation/public-visitor-actions";
-import { getVerifiedUser } from "@/features/auth/queries";
 
-export async function PublicHeader() {
-  const viewer = await getVerifiedUser();
-  const actions = getPublicVisitorActions(Boolean(viewer));
+/**
+ * Header for signed-out visitors on public and marketing pages: the wordmark, Sign in and Join.
+ * Round H (H6): signed-in members get the full app header (MemberChrome) instead, so this
+ * header no longer has a cut-down Home / My Profile variant.
+ */
+export function PublicHeader() {
+  const actions = getPublicVisitorActions(false);
 
   return (
     <header className="border-b border-mist-100 bg-white">
-      <div className="mx-auto flex min-h-18 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+      <div className="mx-auto flex min-h-18 w-full max-w-page-wide items-center justify-between gap-4 px-4 sm:px-6">
         <Wordmark compact />
         <nav
           aria-label="Public navigation"
@@ -23,7 +28,7 @@ export async function PublicHeader() {
           </Link>
           <Link
             href={actions.primary.href}
-            className="inline-flex min-h-10 items-center rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white hover:bg-navy-900 sm:px-4"
+            className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'rounded-lg px-3 sm:px-4')}
           >
             {actions.primary.label}
           </Link>

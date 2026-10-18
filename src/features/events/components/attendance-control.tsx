@@ -3,6 +3,11 @@
 import { CheckCircle2 } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { attendEventAction, withdrawEventAttendanceAction } from '../calendar-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
+
+/** Registration closed or full: a flat grey button instead of the navy primary. */
+const unavailableClass = 'bg-mist-100 text-navy-700 hover:bg-mist-100 disabled:bg-mist-100 disabled:opacity-100'
 
 export function AttendanceControl({
   eventId,
@@ -45,7 +50,7 @@ export function AttendanceControl({
           type="button"
           disabled={disabled || pending}
           onClick={run}
-          className={`inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full px-5 text-[15px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed ${disabled ? 'bg-mist-100 text-navy-700' : 'bg-ocean-700 text-white hover:bg-ocean-800 disabled:opacity-60'}`}
+          className={cn(buttonClass(), 'w-full rounded-full text-[15px] font-bold', disabled && unavailableClass)}
         >
           {pending ? 'Registering…' : disabled && unavailableLabel ? unavailableLabel : 'Register for event'}
         </button>
@@ -89,7 +94,7 @@ export function AttendanceControl({
           type="button"
           disabled={disabled || pending}
           onClick={run}
-          className={`min-h-12 w-full rounded-xl px-5 py-3 text-sm font-bold transition disabled:cursor-not-allowed ${disabled ? 'bg-mist-100 text-navy-700' : 'bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60'}`}
+          className={cn(buttonClass(), 'w-full font-bold', disabled && unavailableClass)}
         >
           {pending ? 'Registering…' : disabled && unavailableLabel ? unavailableLabel : 'Register for event'}
         </button>

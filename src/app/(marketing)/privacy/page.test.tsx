@@ -8,7 +8,7 @@ describe('/privacy', () => {
   it('names the operator, keeps the existing content and explains payments and data requests', () => {
     render(<PrivacyPage />)
     expect(screen.getByText('Beaufort Marine Services LLP')).toBeVisible()
-    expect(screen.getByText(/Navi Mumbai, Maharashtra, India/)).toBeVisible()
+    expect(screen.getByText(/0502, Hermes Hiranandani Fortune City, Bhokarpada, Panvel, Raigad, Maharashtra 410206, India/)).toBeVisible()
     expect(screen.getByText(/uses account and professional-profile information/)).toBeVisible()
     expect(screen.getByText(/processed by our payment gateway, Cashfree Payments/)).toBeVisible()
     expect(screen.getByRole('heading', { name: 'Your data requests and grievances' }).closest('section')).toHaveAttribute('aria-labelledby', 'your-rights')

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   loadPlanBillingView: vi.fn(),
   loadCheckoutNotice: vi.fn(),
   listActivePrices: vi.fn(),
+  // Round H (H7): Payment history (default: no payments).
+  listForProfile: vi.fn(async () => [] as unknown[]),
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
@@ -22,6 +24,10 @@ vi.mock('@/features/organizations/repository', () => ({
 }))
 vi.mock('@/features/billing/page-data', () => ({ loadPlanBillingView: mocks.loadPlanBillingView, loadCheckoutNotice: mocks.loadCheckoutNotice }))
 vi.mock('@/features/billing/subscription-repository', () => ({ subscriptionRepository: { listActivePrices: mocks.listActivePrices } }))
+vi.mock('@/features/billing/payment-history', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/billing/payment-history')>()),
+  paymentHistoryRepository: { listForProfile: mocks.listForProfile },
+}))
 vi.mock('@/features/billing/actions', () => ({
   startPlanCheckoutAction: vi.fn(),
   checkPlanCheckoutAction: vi.fn(),
@@ -63,7 +69,8 @@ function params(plan?: string) {
 
 /** Top-level sections in page order, by their accessible name. */
 function sectionOrder() {
-  const sections = Array.from(document.querySelectorAll('main section')).filter((section) => !section.parentElement?.closest('section'))
+  // Round H (H8): the page no longer draws its own <main> (the app layout's MemberChrome does), so look at every top-level section.
+  const sections = Array.from(document.body.querySelectorAll('section')).filter((section) => !section.parentElement?.closest('section'))
   return sections.map((section) => {
     const labelledBy = section.getAttribute('aria-labelledby')
     return (labelledBy ? document.getElementById(labelledBy)?.textContent : section.querySelector('h2')?.textContent) ?? ''
@@ -109,13 +116,14 @@ describe('/settings/billing order by ?plan', () => {
 
     const order = sectionOrder()
     expect(order[0]).toBe('Organization Pro')
-    expect(order[1]).toContain('Creator Pro')
+    // Round H (H7): the personal card is headed by the plan the member is on ("Free plan"), not "Creator Pro".
+    expect(order[1]).toBe('Free plan')
     const organizations = screen.getByRole('list', { name: 'Organizations you manage' })
     expect(within(organizations).getByText('Oceanic Ship Management')).toBeInTheDocument()
     expect(within(organizations).getByText('Free plan')).toBeInTheDocument()
     expect(within(organizations).getByRole('link', { name: 'Upgrade Oceanic Ship Management to Organization Pro' }))
       .toHaveAttribute('href', `/settings/billing/organizations/${OCEANIC.id}?plan=organization_pro#organization-pro`)
-    expect(screen.getByText('₹5,000.00 per month or ₹50,000.00 per year')).toBeInTheDocument()
+    expect(screen.getByText('₹5,000 per month or ₹50,000 per year')).toBeInTheDocument()
 
     // No personal checkout until the member asks for it.
     expect(screen.queryByRole('group', { name: /How often do you want to pay/ })).not.toBeInTheDocument()
@@ -149,10 +157,40 @@ describe('/settings/billing order by ?plan', () => {
     render(await BillingSettingsPage({ searchParams: params('creator_pro') }))
 
     const order = sectionOrder()
-    expect(order[0]).toBe('Creator Pro')
+    // Round H (H7): headed "Free plan" (the plan the member is on); the panel itself offers Creator Pro.
+    expect(order[0]).toBe('Free plan')
     expect(order[order.length - 2]).toBe('Organization Pro')
     expect(screen.getByRole('group', { name: /How often do you want to pay/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Get Creator Pro' })).not.toBeInTheDocument()
+  })
+
+  it('lists payments with their tax invoice or payment receipt (Round H, H7)', async () => {
+    mocks.listForProfile.mockResolvedValueOnce([
+      { id: 'o1', kind: 'course', at: '2026-09-01T06:30:00.000Z', item: 'Course · Ballast basics', amountMinor: 49900, currency: 'INR', status: 'paid', invoiceId: '44444444-4444-4444-8444-444444444444', invoiceNumber: 'SNS/26-27/000001', creditNoteId: null, creditNoteNumber: null },
+      { id: '55555555-5555-4555-8555-555555555555', kind: 'event', at: '2026-10-01T06:30:00.000Z', item: 'Event ticket · Placeholder Summit', amountMinor: 150000, currency: 'INR', status: 'paid', invoiceId: null, invoiceNumber: null, creditNoteId: null, creditNoteNumber: null },
+    ])
+    render(await BillingSettingsPage({ searchParams: params() }))
+    const history = screen.getByRole('region', { name: 'Payment history' })
+    expect(mocks.listForProfile).toHaveBeenCalledWith('user-1')
+    expect(within(history).getByText('Course · Ballast basics')).toBeInTheDocument()
+    expect(within(history).getByText('₹499')).toBeInTheDocument()
+    expect(within(history).getByRole('link', { name: /Tax invoice SNS\/26-27\/000001 \(PDF\)/ })).toHaveAttribute('href', '/api/learn/invoices/44444444-4444-4444-8444-444444444444')
+    expect(within(history).getByRole('link', { name: /Payment receipt \(PDF\), Event ticket · Placeholder Summit/ })).toHaveAttribute('href', '/api/billing/receipts/event/55555555-5555-4555-8555-555555555555')
+  })
+
+  it('says so when payments cannot be read, and still renders the page (Round H, H7)', async () => {
+    mocks.listForProfile.mockRejectedValueOnce(new Error('database down'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(await BillingSettingsPage({ searchParams: params() }))
+    expect(within(screen.getByRole('region', { name: 'Payment history' })).getByRole('status')).toHaveTextContent('can’t be shown right now')
+  })
+
+  it('mentions both free trials, from the plan constants, as Pricing does (Round H, H7)', async () => {
+    render(await BillingSettingsPage({ searchParams: params() }))
+    expect(screen.getByText('Try Creator Pro free for 3 months. No payment details needed.')).toBeInTheDocument()
+    expect(screen.getByText('Try Organization Pro free for 2 months. No payment details needed.')).toBeInTheDocument()
+    // Not subscribed: no badge that reads like a free Creator Pro.
+    expect(document.getElementById('creator-pro')).not.toHaveTextContent(/Creator Pro\s*Free plan/)
   })
 
   it('without ?plan shows both as summaries when the member has an organization', async () => {
@@ -171,7 +209,9 @@ describe('/settings/billing order by ?plan', () => {
     const personal = document.getElementById('creator-pro') as HTMLElement
     expect(personal).not.toBeNull()
     expect(personal.closest('.max-md\\:hidden')).toBeNull()
-    expect(within(personal).getByText(freeCreatorView.planLabel)).toBeInTheDocument()
+    // Round H (H7): "Free plan" heads the card; Creator Pro is what it offers.
+    expect(within(personal).getByText(freeCreatorView.headline)).toBeInTheDocument()
+    expect(within(personal).getByRole('button', { name: 'Get Creator Pro' })).toBeInTheDocument()
     expect(within(personal).getByText(freeCreatorView.statusLabel)).toBeInTheDocument()
   })
 

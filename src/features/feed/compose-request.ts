@@ -10,3 +10,14 @@ export function parseComposeRequest(value: unknown): ComposeRequest | undefined 
     ? (value as ComposeRequest)
     : undefined
 }
+
+/**
+ * Round H (H7): a page can open its composer with text already in it (the community welcome-post prompt).
+ * The composer for the same group (or the one with no group when `groupId` is null) listens for this event.
+ */
+export const COMPOSER_PREFILL_EVENT = 'sea-n-shore:composer-prefill'
+export type ComposerPrefill = { groupId: string | null; body: string }
+
+export function requestComposerPrefill(detail: ComposerPrefill) {
+  window.dispatchEvent(new CustomEvent<ComposerPrefill>(COMPOSER_PREFILL_EVENT, { detail }))
+}

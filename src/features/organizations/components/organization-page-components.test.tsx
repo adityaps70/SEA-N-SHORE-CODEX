@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   requestOrganizationMediaUploadAction: vi.fn(),
   completeOrganizationMediaUploadAction: vi.fn(),
   cropImageToFile: vi.fn(),
+  startDirectConversationAction: vi.fn(),
+  push: vi.fn(),
 }))
 
 vi.mock('@/lib/images/crop-image', () => ({ cropImageToFile: mocks.cropImageToFile }))
@@ -24,7 +26,8 @@ vi.mock('react-easy-crop', () => ({
   },
 }))
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }), usePathname: () => '/organizations/oceanic' }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: mocks.push }), usePathname: () => '/organizations/oceanic' }))
+vi.mock('@/features/messaging/actions', () => ({ startDirectConversationAction: mocks.startDirectConversationAction }))
 vi.mock('@/features/feed/components/organization-posts-tab', () => ({
   OrganizationPostsTab: (props: { companyId: string; canPost: boolean; limit?: number }) => (
     <div data-testid="org-posts-tab" data-company={props.companyId} data-can-post={String(props.canPost)} data-limit={String(props.limit ?? '')} />
@@ -130,6 +133,37 @@ describe('OrganizationPageMenu', () => {
     await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Copy link' })) })
     expect(screen.getByRole('status')).toHaveTextContent('Your browser blocked copying. Copy the link from the address bar instead.')
   })
+
+  it('carries header actions that do not fit: Message uses the same server action, phone-only rows hide from md up (round H, H6)', async () => {
+    mocks.startDirectConversationAction.mockResolvedValue({ ok: true, conversationId: 'conv-1' })
+    render(
+      <OrganizationPageMenu
+        organizationName="Oceanic"
+        pagePath="/organizations/oceanic"
+        websiteHref="https://example.org/"
+        messageProfileId="contact-1"
+        createCommunityHref="/community/new?as=c1"
+        upgradeHref="/organizations/oceanic/manage?section=billing"
+        phoneOnlyItems={['website']}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Oceanic' }))
+    expect(screen.getByRole('menuitem', { name: /Visit website/ })).toHaveClass('md:hidden')
+    expect(screen.getByRole('menuitem', { name: 'Create a community' })).toHaveAttribute('href', '/community/new?as=c1')
+    expect(screen.getByRole('menuitem', { name: 'Create a community' })).not.toHaveClass('md:hidden')
+    expect(screen.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).not.toHaveClass('md:hidden')
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Message' })) })
+    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith('contact-1')
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/messages/conv-1'))
+  })
+
+  it('shows the error when Message cannot open a conversation', async () => {
+    mocks.startDirectConversationAction.mockResolvedValue({ ok: false, error: 'Messaging is unavailable right now.' })
+    render(<OrganizationPageMenu organizationName="Oceanic" pagePath="/organizations/oceanic" messageProfileId="contact-1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Oceanic' }))
+    await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Message' })) })
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Messaging is unavailable right now.'))
+  })
 })
 
 describe('OrganizationFollowButton', () => {
@@ -140,6 +174,17 @@ describe('OrganizationFollowButton', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Your account cannot update organization follows right now.'))
     expect(screen.getByRole('button', { name: 'Follow Oceanic' })).toHaveAttribute('aria-pressed', 'false')
     expect(mocks.followOrganizationAction).toHaveBeenCalledWith('c1')
+  })
+
+  it('page header: filled navy as the primary action until followed, bordered as a secondary one (round H, H6)', () => {
+    const { rerender } = render(<OrganizationFollowButton companyId="c1" initialFollowing={false} initialFollowerCount={1} appearance="page" emphasis="primary" />)
+    expect(screen.getByRole('button', { name: 'Follow' })).toHaveClass('bg-navy-950', 'text-white')
+    expect(screen.getByRole('button', { name: 'Follow' }).className).not.toMatch(/bg-ocean|bg-teal|bg-blue/)
+    rerender(<OrganizationFollowButton key="secondary" companyId="c1" initialFollowing={false} initialFollowerCount={1} appearance="page" emphasis="secondary" />)
+    expect(screen.getByRole('button', { name: 'Follow' })).not.toHaveClass('bg-navy-950')
+    expect(screen.getByRole('button', { name: 'Follow' })).toHaveClass('border', 'bg-white')
+    rerender(<OrganizationFollowButton key="following" companyId="c1" initialFollowing initialFollowerCount={1} appearance="page" emphasis="primary" />)
+    expect(screen.getByRole('button', { name: 'Following' })).not.toHaveClass('bg-navy-950')
   })
 
   it('keeps the original button with follower count by default', () => {

@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 /**
  * Discover · My Events · Hosting + Create. Below `md` it is one sideways-scrolling chip row
@@ -19,7 +21,7 @@ export function EventNav({ active, className = '' }: { active: 'discover' | 'my'
         </Link>
       ))}
       {/* Phones: a round "+" (label "Create event") so it stays on screen at 360px next to the chips. */}
-      <Link href="/events/create" className="ml-auto rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-teal-700 max-md:grid max-md:size-9 max-md:shrink-0 max-md:place-items-center max-md:rounded-full max-md:bg-ocean-700 max-md:p-0 max-md:hover:bg-ocean-800 max-md:relative max-md:before:absolute max-md:before:-inset-1 max-md:before:content-['']">
+      <Link href="/events/create" className={cn(buttonClass({ variant: 'primary', size: 'sm' }), "ml-auto max-md:relative max-md:grid max-md:size-9 max-md:min-h-0 max-md:shrink-0 max-md:place-items-center max-md:rounded-full max-md:p-0 max-md:before:absolute max-md:before:-inset-1 max-md:before:content-['']")}>
         <Plus aria-hidden="true" className="size-5 md:hidden" />
         <span className="max-md:sr-only">Create event</span>
       </Link>

@@ -6,10 +6,10 @@ import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel
 import { subscriptionChargeMode } from '@/features/billing/billing-config'
 import { paymentMethodLabel } from '@/features/billing/billing-view'
 import { AdminCancelSubscription, AdminTrialControls, PlanPriceEditor } from '@/features/billing/components/admin-billing-controls'
-import { INTERVAL_LABELS, PLAN_LABELS, PAID_PLAN_CODES, BILLING_INTERVALS, TRIAL_MONTHS, formatRupees, trialDaysLeft } from '@/features/billing/plans'
+import { INTERVAL_LABELS, PLAN_LABELS, PAID_PLAN_CODES, BILLING_INTERVALS, TRIAL_MONTHS, trialDaysLeft } from '@/features/billing/plans'
 import { subscriptionRepository } from '@/features/billing/subscription-repository'
 import { subscriptionService } from '@/features/billing/subscription-service'
-import { minorToPriceInput } from '@/features/payments/currency'
+import { formatMoney, minorToPriceInput } from '@/features/payments/currency'
 
 export const metadata: Metadata = { title: 'Billing · Admin' }
 export const dynamic = 'force-dynamic'
@@ -93,7 +93,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
                 <div className="min-w-0">
                   <p className="font-semibold text-navy-950">{label}</p>
                   <p className="text-sm text-navy-800">
-                    {price ? `${formatRupees(price.amountMinor)} ${INTERVAL_LABELS[interval].per}` : 'No price — this option can’t be bought'}
+                    {price ? `${formatMoney(price.amountMinor, 'INR')} ${INTERVAL_LABELS[interval].per}` : 'No price — this option can’t be bought'}
                     {price ? <span className="text-muted"> · since {formatAdminDate(price.createdAt)}</span> : null}
                   </p>
                   {price ? (
@@ -113,7 +113,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
             <ul className="mt-2 space-y-1 text-sm text-navy-800">
               {history.filter((price) => !price.active).map((price) => (
                 <li key={price.id}>
-                  {PLAN_LABELS[price.planCode]} {INTERVAL_LABELS[price.interval].adjective.toLowerCase()}: {formatRupees(price.amountMinor)} (from {formatAdminDate(price.createdAt)})
+                  {PLAN_LABELS[price.planCode]} {INTERVAL_LABELS[price.interval].adjective.toLowerCase()}: {formatMoney(price.amountMinor, 'INR')} (from {formatAdminDate(price.createdAt)})
                 </li>
               ))}
             </ul>
@@ -190,7 +190,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
                       <Link href={subjectHref} className="font-semibold text-ocean-700 hover:underline">{subjectName}</Link>
                       <p className="text-sm text-navy-800">
                         {PLAN_LABELS[access.planCode]}
-                        {checkout ? ` · ${formatRupees(checkout.amountMinor)} ${INTERVAL_LABELS[checkout.interval].per}` : ' · given by the team'}
+                        {checkout ? ` · ${formatMoney(checkout.amountMinor, 'INR')} ${INTERVAL_LABELS[checkout.interval].per}` : ' · given by the team'}
                       </p>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         <AdminChip tone={accessTone[access.status] ?? 'neutral'}>{accessLabel[access.status] ?? access.status}</AdminChip>
@@ -254,7 +254,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
                   <span className="text-muted"> · {PLAN_LABELS[payment.planCode]} {INTERVAL_LABELS[payment.interval].adjective.toLowerCase()}{payment.paymentType === 'AUTH' ? ' · approval' : ''}</span>
                   {payment.failureReason && payment.status === 'failed' ? <span className="block text-xs text-red-700">{payment.failureReason}</span> : null}
                 </span>
-                <span className="font-semibold text-navy-950 sm:text-right">{formatRupees(payment.amountMinor)}</span>
+                <span className="font-semibold text-navy-950 sm:text-right">{formatMoney(payment.amountMinor, 'INR')}</span>
                 <span className="sm:justify-self-end"><AdminChip tone={paymentTone[payment.status] ?? 'neutral'}>{paymentLabel[payment.status] ?? payment.status}</AdminChip></span>
               </li>
             ))}

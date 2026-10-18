@@ -20,6 +20,10 @@ import { DgProfileUpload } from './dg-profile-upload'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
+import { NameCaseSuggestion } from './name-case-suggestion'
+import { LocationPicker } from './location-picker'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 function firstError(state: ProfileActionState, field: string) {
   return state.fieldErrors?.[field]?.[0]
@@ -159,7 +163,7 @@ function phoneStepForErrors(fieldErrors: ProfileActionState['fieldErrors']): Pho
   return Object.values(fieldErrors).some((messages) => messages?.length) ? 3 : null
 }
 
-const phoneNextClass = 'sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 mt-6 inline-flex min-h-12 w-full shadow-[0_10px_24px_-12px_rgb(7_27_45/0.55)] cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-base font-semibold text-white transition-colors hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60 md:hidden'
+const phoneNextClass = cn(buttonClass(), 'sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 mt-6 w-full rounded-full text-base shadow-[0_10px_24px_-12px_rgb(7_27_45/0.55)] md:hidden')
 
 function OnboardingFields({
   initialFullName,
@@ -290,14 +294,18 @@ function OnboardingFields({
 
           {/* items-start: the username field grows with its status text; neighbours must not stretch to match. */}
           <div className="grid gap-5 sm:grid-cols-2 sm:items-start">
-            <Field
-              label="Full name"
-              name="fullName"
-              defaultValue={values?.fullName ?? initialFullName}
-              error={firstError(state, 'fullName')}
-              autoComplete="name"
-              required
-            />
+            <div className="grid gap-2">
+              <Field
+                label="Full name"
+                name="fullName"
+                defaultValue={values?.fullName ?? initialFullName}
+                error={firstError(state, 'fullName')}
+                autoComplete="name"
+                required
+              />
+              {/* Round H (H7): offer to fix a name typed in ALL CAPS or all lowercase. */}
+              <NameCaseSuggestion inputId="fullName" />
+            </div>
             <UsernameField
               initialValue={values?.slug ?? suggestedUsername}
               serverError={firstError(state, 'slug')}
@@ -306,13 +314,18 @@ function OnboardingFields({
                 ? 'We created this for you. Keep it or change it now or later from your profile.'
                 : 'You can change your username later from your profile.'}
             />
-            <Field
-              label="Location"
-              name="location"
-              defaultValue={values?.location}
-              error={firstError(state, 'location')}
-              autoComplete="address-level2"
-            />
+            {/* Round H (H7): a city picker over an offline list; free text stays possible ("Other"). */}
+            <div className="grid gap-2 text-sm font-medium text-navy-900">
+              <label htmlFor="location">Location</label>
+              <LocationPicker
+                id="location"
+                defaultValue={values?.location ?? ''}
+                invalid={Boolean(firstError(state, 'location'))}
+                errorId={firstError(state, 'location') ? 'location-error' : undefined}
+                className="min-h-12 w-full rounded-xl border border-mist-100 bg-white px-4 text-base text-ink shadow-sm placeholder:text-muted focus:border-ocean-700"
+              />
+              {firstError(state, 'location') ? <span id="location-error" className="text-red-700">{firstError(state, 'location')}</span> : null}
+            </div>
 
             {/* Round 12: Department → Rank / Role (or stage and target role, or occupation) for this profile type. */}
             <ProfileRoleFields

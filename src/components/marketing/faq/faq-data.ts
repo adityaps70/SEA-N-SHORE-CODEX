@@ -1,5 +1,9 @@
 import { BUSINESS } from '@/config/business'
 import { PLAN_PRICES, TRIAL_MONTHS, formatRupeesShort } from '@/features/billing/plans'
+import { AUTH_EMAIL_LIMITS } from '@/features/auth/email-limits'
+import { COMMUNITY_LIMIT_PER_OWNER } from '@/features/community/eligibility'
+import { MESSAGE_EDIT_WINDOW_MS } from '@/features/messaging/edit-policy'
+import { CONNECTION_REQUEST_COOLDOWN, SOCIAL_ACTION_QUOTAS } from '@/features/social/quotas'
 
 /**
  * Frequently asked questions — the one source for the landing-page FAQ and the full FAQ
@@ -41,6 +45,12 @@ function signInAnswer(googleEnabled: boolean) {
     : 'your email address and password'
   return `You sign in with ${methods}. Whichever you choose, you get the same free account. If the confirmation or password email does not arrive, check your spam or junk folder.`
 }
+
+// Round H (H7): numbers in the answers come from the rules the server enforces.
+const MESSAGE_EDIT_MINUTES = Math.round(MESSAGE_EDIT_WINDOW_MS / 60_000)
+const CONNECTION_REQUESTS_PER_DAY = SOCIAL_ACTION_QUOTAS.connection_request.limit
+const CONNECTION_COOLDOWN_DAYS = Number.parseInt(CONNECTION_REQUEST_COOLDOWN, 10)
+const PASSWORD_RESETS_PER_HOUR = AUTH_EMAIL_LIMITS.password_reset.perEmail
 
 const ONBOARDING_STEPS = 'Sign up with your email address, confirm it, then follow the short setup: choose what best describes you, say what you are here to do, and fill in your profile basics (name, location, and your rank or role and current organisation). If the confirmation email does not arrive, check your spam or junk folder.'
 
@@ -199,6 +209,32 @@ export function faqGroups({ googleEnabled = false }: FaqOptions = {}): FaqGroup[
       ],
     },
     {
+      // Round H (H7): how messaging, connections and communities work today (see src/features/messaging,
+      // src/features/network, src/features/social/quotas.ts and src/features/community/eligibility.ts).
+      id: 'network',
+      title: 'Messages, connections & communities',
+      items: [
+        {
+          id: 'messaging',
+          question: 'Who can message me, and how do messages work?',
+          answer:
+            `Open Messages to read and start conversations. By default only your connections can message you. In Settings → Privacy, "Who can message me" lets you choose Everyone on Sea N Shore, My connections only or Nobody; other members' choices decide whom you can message. You can send photos, short videos and documents such as PDF, Word and Excel files, edit a message for ${MESSAGE_EDIT_MINUTES} minutes after you send it, and delete your own messages. To stop someone contacting you, use Block in the "…" menu on their profile or card; Settings → Blocked & muted lists the members you blocked.`,
+        },
+        {
+          id: 'connections',
+          question: 'How do connections work?',
+          answer:
+            `Open My Network, find a member and choose Connect. They accept or decline your invitation in My Network, and you can withdraw a request that is still pending. You can send up to ${CONNECTION_REQUESTS_PER_DAY} connection requests in 24 hours; if a member declines or you withdraw, you can ask the same member again after ${CONNECTION_COOLDOWN_DAYS} days. You can also Follow members and organizations without connecting. In Settings → Privacy, "Who can see my connections" decides who sees your connections, followers and following lists (Everyone, My connections or Only me); everyone can still see how many you have.`,
+        },
+        {
+          id: 'communities',
+          question: 'How do communities work, and can I start one?',
+          answer:
+            `Open Communities to find groups to join. Choose Join for an open community, or Request to join when its moderators approve new members first. Posts in a public community can be read by every member; a private community's posts are only for its members. Members on Creator Pro (including the free trial) can run ${COMMUNITY_LIMIT_PER_OWNER === 1 ? 'one community' : `${COMMUNITY_LIMIT_PER_OWNER} communities`} of their own, and the owner or an administrator of a verified organization on Organization Pro can run ${COMMUNITY_LIMIT_PER_OWNER === 1 ? 'one' : COMMUNITY_LIMIT_PER_OWNER} for the organization. The owner appoints moderators, who approve join requests.`,
+        },
+      ],
+    },
+    {
       id: 'payments',
       title: 'Payments & plans',
       items: [
@@ -248,6 +284,19 @@ export function faqGroups({ googleEnabled = false }: FaqOptions = {}): FaqGroup[
           question: 'Can I download a copy of my data?',
           answer:
             'Yes. Go to Settings → Your data & privacy to download a copy of your data at any time.',
+        },
+        {
+          id: 'password-reset',
+          question: 'I forgot my password. How do I reset it?',
+          answer:
+            `On the sign-in page choose Forgot password?, enter the email address on your account and choose Send reset code. We email you a code; enter it with your new password. If the email does not arrive, check your spam or junk folder; you can ask for up to ${PASSWORD_RESETS_PER_HOUR} codes an hour. When you are signed in you can change your password in Settings → Password & Google sign-in. If you sign in with Google, your password is managed by Google.`,
+        },
+        {
+          id: 'lost-two-step-device',
+          question: 'I lost the phone or app I use for two-step verification. What can I do?',
+          answer:
+            'Two-step verification on Sea N Shore uses an authenticator app, and there are no backup codes, so without the app you cannot finish signing in. Send us a message with the Contact form, choose "Account and sign-in" and write from the email address on your account. The Sea N Shore team checks that the account is yours and replies by email with the next steps. Never send your password or a verification code. If you sign in with Google, Google\'s own 2-Step Verification protects your account instead.',
+          link: { href: '/contact?topic=account#contact-form', label: 'Contact support about a lost device' },
         },
         {
           id: 'contact',

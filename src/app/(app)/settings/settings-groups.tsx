@@ -61,12 +61,17 @@ export function settingsGroups(input: { planLabel: string | null }): SettingsGro
   ]
 }
 
+function groupHeadingId(title: string) {
+  return `settings-group-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+}
+
 export function PhoneSettingsList({ groups }: { groups: SettingsGroup[] }) {
   return (
     <nav aria-label="Settings" className="-mx-4 md:hidden">
       {groups.map((group) => (
-        <section key={group.title} aria-labelledby={`settings-group-${group.title}`} className="mb-2 bg-white">
-          <h2 id={`settings-group-${group.title}`} className="px-4 pb-1 pt-4 text-[13px] font-bold uppercase tracking-[0.08em] text-muted">
+        // Round H (H8): an id without spaces ("Sign in & security" broke aria-labelledby into three ids).
+        <section key={group.title} aria-labelledby={groupHeadingId(group.title)} className="mb-2 bg-white">
+          <h2 id={groupHeadingId(group.title)} className="px-4 pb-1 pt-4 text-[13px] font-bold uppercase tracking-[0.08em] text-muted">
             {group.title}
           </h2>
           <ul>

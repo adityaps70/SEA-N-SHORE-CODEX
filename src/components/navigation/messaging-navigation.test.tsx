@@ -44,7 +44,7 @@ describe('messaging navigation', () => {
       }))
     })
 
-    expect(screen.getByLabelText('1 unread messages')).toHaveTextContent('1')
+    expect(screen.getByLabelText('1 unread message')).toHaveTextContent('1')
 
     act(() => {
       window.dispatchEvent(new CustomEvent(MESSAGING_UNREAD_COUNT_EVENT, {
@@ -55,15 +55,16 @@ describe('messaging navigation', () => {
     expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument()
   })
 
-  it('keeps Messages in the phone top bar without capping its unread count', () => {
-    render(<MobileAppHeader messagingUnreadCount={27} />)
+  // Round H (H7): Messages moved from the phone top bar to the bottom tabs (the bell took its place).
+  it('keeps Messages in the phone bottom tabs without capping its unread count', () => {
+    render(<MobileNav messagingUnreadCount={27} />)
 
     expect(screen.getByRole('link', { name: 'Messages' })).toHaveAttribute('href', '/messages')
     expect(screen.getByLabelText('27 unread messages')).toHaveTextContent('27')
   })
 
   it('updates the mobile Messages badge immediately from exact unread-count events', () => {
-    render(<MobileAppHeader messagingUnreadCount={2} />)
+    render(<MobileNav messagingUnreadCount={2} />)
 
     act(() => {
       window.dispatchEvent(new CustomEvent(MESSAGING_UNREAD_COUNT_EVENT, {
@@ -74,8 +75,8 @@ describe('messaging navigation', () => {
     expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument()
   })
 
-  it('keeps Messages out of the five phone bottom tabs (it is in the top bar)', () => {
-    render(<MobileNav />)
+  it('keeps Messages out of the phone top bar (it is a bottom tab), so it is never shown twice', () => {
+    render(<MobileAppHeader />)
 
     expect(screen.queryByRole('link', { name: 'Messages' })).not.toBeInTheDocument()
   })

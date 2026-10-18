@@ -20,7 +20,7 @@ function single(value: string | string[] | undefined) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-3xl py-2 sm:py-4 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-narrow py-2 sm:py-4 max-md:py-0">
       <MobilePageBar backHref="/community" title="Create a community" />
       <header className="mb-4 max-md:sr-only">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-800">Professional Communities</p>

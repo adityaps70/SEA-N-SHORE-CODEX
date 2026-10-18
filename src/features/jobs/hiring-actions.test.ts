@@ -73,7 +73,8 @@ function createInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
     location: 'Worldwide',
     regions: ['Worldwide'],
     summary: 'Urgent tanker opening',
-    description: 'Lead the deck team onboard.',
+    // Round H (H7): job descriptions are at least 120 characters.
+    description: 'Lead the deck team onboard a crude oil tanker on a four month contract, with cargo operations, safety drills and watchkeeping.',
     requirements: 'Advanced tanker experience preferred.',
     experienceMinYears: 4,
     experienceMaxYears: 12,
@@ -182,6 +183,21 @@ describe('hiring server actions', () => {
     expect(mocks.createJob).toHaveBeenCalledWith('recruiter-1', expect.objectContaining({ status: 'draft', applyUntil: past }))
   })
 
+  it('applies the job form rules on the server: a short description, or one that repeats the title, is refused (Round H, H7)', async () => {
+    await expect(createHiringJob(createInput({ description: 'Lead the deck team.' }))).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/120/) })
+    await expect(createHiringJob(createInput({ title: 'Chief Officer', description: 'Chief  officer' }))).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/repeats the job title/) })
+    await expect(createHiringJob(createInput({ joiningFrom: isoDate(-3), joiningUntil: null }))).resolves.toMatchObject({ ok: false })
+    expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('keeps an unchanged past joining date editable, but refuses a new past date (Round H, H7)', async () => {
+    const past = isoDate(-3)
+    mocks.getManagedJob.mockResolvedValueOnce(managedJob({ joiningFrom: past }))
+    await expect(updateHiringJob(jobId, updateInput({ joiningFrom: past, joiningUntil: null }))).resolves.toEqual({ ok: true })
+    mocks.getManagedJob.mockResolvedValueOnce(managedJob({ joiningFrom: isoDate(40) }))
+    await expect(updateHiringJob(jobId, updateInput({ joiningFrom: past, joiningUntil: null }))).resolves.toMatchObject({ ok: false })
+  })
+
   it('never creates a job directly in the archived state', async () => {
     await expect(createHiringJob(createInput({ status: 'closed' }))).resolves.toMatchObject({ ok: false })
     expect(mocks.createJob).not.toHaveBeenCalled()
@@ -189,7 +205,7 @@ describe('hiring server actions', () => {
 
   it('blocks high-confidence unsafe vacancy text before creation', async () => {
     await expect(createHiringJob(createInput({
-      description: 'Send your OTP and password to verify your account immediately.',
+      description: 'Send your OTP and password to verify your account immediately. The vessel is a crude oil tanker trading worldwide on a four month contract.',
     }))).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/community safety rules/i) })
 
     expect(mocks.createJob).not.toHaveBeenCalled()
@@ -198,7 +214,7 @@ describe('hiring server actions', () => {
 
   it('creates an automated moderation case for review-level published vacancy text', async () => {
     await expect(createHiringJob(createInput({
-      description: 'Guaranteed job. Pay the registration fee now and contact us on WhatsApp.',
+      description: 'Guaranteed job. Pay the registration fee now and contact us on WhatsApp. The vessel is a crude oil tanker trading worldwide on a four month contract.',
     }))).resolves.toEqual({ ok: true, jobId })
 
     expect(mocks.flagContentAutomatically).toHaveBeenCalledWith(expect.objectContaining({
@@ -544,5 +560,28 @@ describe('applicant management actions', () => {
     await expect(saveHiringRecruiterNote(applicationId, 'Call after 1600 UTC.')).resolves.toEqual({ ok: true })
     expect(mocks.saveRecruiterNote).toHaveBeenCalledWith('recruiter-1', applicationId, 'Call after 1600 UTC.')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/hiring/applicants/${applicationId}`)
+  })
+})
+
+describe('urgent jobs limit (round H, H7)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'recruiter-1', cognitoSub: 'sub-1', email: null })
+    mocks.getManagedJob.mockResolvedValue(managedJob({ status: 'draft' }))
+  })
+
+  it('turns the repository’s urgent limit into a friendly form error, without logging it as a failure', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.createJob.mockRejectedValue(new Error('job_urgent_limit_reached'))
+    await expect(createHiringJob(createInput({ urgent: true }))).resolves.toEqual({
+      ok: false,
+      error: 'Your organization already has 2 live urgent jobs. Each job stays urgent for 14 days; untick Urgent on one of them, or save this job without it.',
+    })
+    mocks.changeJobStatus.mockRejectedValue(new Error('job_urgent_limit_reached'))
+    await expect(changeHiringJobStatus(jobId, 'publish', { applyUntil: future })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('2 live urgent jobs') })
+    mocks.updateJob.mockRejectedValue(new Error('job_urgent_limit_reached'))
+    await expect(updateHiringJob(jobId, updateInput({ urgent: true }), 'publish')).resolves.toMatchObject({ ok: false, error: expect.stringContaining('2 live urgent jobs') })
+    expect(error).not.toHaveBeenCalledWith('hiring_mutation_failed', expect.anything())
+    error.mockRestore()
   })
 })

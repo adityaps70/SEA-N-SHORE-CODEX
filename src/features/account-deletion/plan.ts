@@ -15,6 +15,9 @@
  * - Organization rows are never deleted.
  */
 
+import { formatMoney } from '@/features/payments/currency'
+import { pluralize } from '@/lib/format'
+
 export type DeletionOrganizationFacts = {
   companyId: string
   name: string
@@ -79,37 +82,23 @@ export type AccountDeletionPlan = {
   }
 }
 
-function plural(count: number, singular: string, pluralWord = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : pluralWord}`
-}
-
 /** "a, b and c" */
 function listing(parts: string[]) {
   if (parts.length <= 1) return parts[0] ?? ''
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
-export function formatMoney(amountMinor: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: amountMinor % 100 === 0 ? 0 : 2,
-      maximumFractionDigits: 2,
-    }).format(amountMinor / 100)
-  } catch {
-    return `${currency} ${(amountMinor / 100).toFixed(2)}`
-  }
-}
+// Round H (H7): the site-wide money formatter, still exported here for existing imports.
+export { formatMoney }
 
 function organizationSummary(organization: DeletionOrganizationFacts): string {
   if (organization.otherActiveManagers > 0) {
     return `Stays — managed by ${organization.otherActiveManagers === 1 ? '1 other' : `${organization.otherActiveManagers} others`}`
   }
   const removed = [
-    organization.jobs ? plural(organization.jobs, 'job') : null,
-    organization.events ? plural(organization.events, 'event') : null,
-    organization.courses ? plural(organization.courses, 'course') : null,
+    organization.jobs ? pluralize(organization.jobs, 'job') : null,
+    organization.events ? pluralize(organization.events, 'event') : null,
+    organization.courses ? pluralize(organization.courses, 'course') : null,
   ].filter((part): part is string => Boolean(part))
   return removed.length
     ? `Page stays; its ${listing(removed)} will be removed`
@@ -130,17 +119,17 @@ export function planAccountDeletion(facts: DeletionFacts): AccountDeletionPlan {
   }))
 
   const socialParts = [
-    facts.posts ? plural(facts.posts, 'post') : null,
-    facts.comments ? plural(facts.comments, 'comment') : null,
-    facts.reactions ? plural(facts.reactions, 'reaction') : null,
+    facts.posts ? pluralize(facts.posts, 'post') : null,
+    facts.comments ? pluralize(facts.comments, 'comment') : null,
+    facts.reactions ? pluralize(facts.reactions, 'reaction') : null,
   ].filter((part): part is string => Boolean(part))
 
   const deleted = [
     'Your profile, photos, experience, certificates, documents and contact details',
     socialParts.length ? `Your ${listing(socialParts)}` : null,
-    facts.personalJobs ? `${plural(facts.personalJobs, 'job')} you posted personally` : null,
-    facts.personalEvents ? `${plural(facts.personalEvents, 'event')} you host personally` : null,
-    facts.personalCourses ? `${plural(facts.personalCourses, 'course')} you published personally (removed from Sea N Shore)` : null,
+    facts.personalJobs ? `${pluralize(facts.personalJobs, 'job')} you posted personally` : null,
+    facts.personalEvents ? `${pluralize(facts.personalEvents, 'event')} you host personally` : null,
+    facts.personalCourses ? `${pluralize(facts.personalCourses, 'course')} you published personally (removed from Sea N Shore)` : null,
     'Your job applications, connections, follows, saved items, alerts, learning progress and certificates',
     'Your sign-in details (email, Google and mobile sign-in)',
   ].filter((line): line is string => Boolean(line))
@@ -150,7 +139,7 @@ export function planAccountDeletion(facts: DeletionFacts): AccountDeletionPlan {
       ? `People who already enrolled in your ${facts.personalCoursesWithLearners === 1 ? 'course keep' : 'courses keep'} access to ${facts.personalCoursesWithLearners === 1 ? 'it' : 'them'}`
       : null,
     facts.upcomingEventsWithRegistrations
-      ? `${plural(facts.upcomingEventsWithRegistrations, 'upcoming event')} with registrations will be cancelled and attendees told${facts.paidTicketsToRefund ? `; ${plural(facts.paidTicketsToRefund, 'paid ticket')} will be refunded in full` : ''}`
+      ? `${pluralize(facts.upcomingEventsWithRegistrations, 'upcoming event')} with registrations will be cancelled and attendees told${facts.paidTicketsToRefund ? `; ${pluralize(facts.paidTicketsToRefund, 'paid ticket')} will be refunded in full` : ''}`
       : null,
     'Messages you sent are removed; conversations stay for the other people in them',
     'Payment and safety records we have to keep, with your name removed',

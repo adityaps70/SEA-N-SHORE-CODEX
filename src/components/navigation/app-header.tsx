@@ -11,6 +11,8 @@ import {
   UsersRound,
 } from 'lucide-react'
 import Link from '@/components/navigation/intent-link'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
@@ -72,9 +74,9 @@ export function AppHeader({
 
   return (
     <header data-app-header="" className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
-      <div className="mx-auto grid min-h-18 w-full max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:gap-5">
+      <div className="mx-auto grid min-h-18 w-full max-w-page-wide grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:gap-5">
         <Wordmark compact />
-        <nav aria-label="Primary" className="flex min-w-0 items-center justify-self-center gap-0.5">
+        <nav aria-label="Main" className="flex min-w-0 items-center justify-self-center gap-0.5">
           {destinations.map(({ href, label, icon: Icon }) => (
             <ActiveNavLink
               key={href}
@@ -88,10 +90,10 @@ export function AppHeader({
               {href === '/messages' ? (
                 <MessagingUnreadBadge
                   initialCount={messagingUnreadCount}
-                  className="absolute right-0.5 top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white"
+                  className="absolute right-0.5 top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-xs font-bold leading-5 text-white"
                 />
               ) : null}
-              <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
+              <span className="hidden whitespace-nowrap text-xs leading-none xl:block">{label}</span>
             </ActiveNavLink>
           ))}
         </nav>
@@ -124,7 +126,7 @@ export function AppHeader({
           <HeaderMenu
             label="Create"
             items={createItems}
-            triggerClassName="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white transition hover:bg-ocean-800"
+            triggerClassName={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'gap-1.5 rounded-lg px-3')}
             trigger={(
               <>
                 <SquarePlus aria-hidden="true" className="size-4 shrink-0" />

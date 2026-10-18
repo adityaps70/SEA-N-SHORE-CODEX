@@ -4,6 +4,8 @@ import { useActionState, useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { updateMyNewsletterPreferences, type NewsletterFormState } from '../actions'
 import { NEWSLETTER_TOPICS, type NewsletterTopic } from '../topics'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 /** Lets a signed-in member change topics or unsubscribe for their own verified email. */
 export function NewsletterPreferencesForm({ email, topics }: { email: string; topics: NewsletterTopic[] }) {
@@ -50,7 +52,7 @@ export function NewsletterPreferencesForm({ email, topics }: { email: string; to
           name="intent"
           value="save"
           disabled={pending}
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-70"
+          className={cn(buttonClass(), 'disabled:cursor-wait')}
         >
           {pending ? 'Saving…' : 'Save topics'}
         </button>

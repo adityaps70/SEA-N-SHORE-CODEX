@@ -78,7 +78,7 @@ export default async function HiringApplicantsPage({
   const visibleFilters = FILTERS.filter((filter) => filter.value !== 'withdrawn' || (counts.get('withdrawn') ?? 0) > 0)
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar
         backHref="/hiring/jobs"
         title="Applicants"

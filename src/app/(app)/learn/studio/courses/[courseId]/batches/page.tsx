@@ -8,6 +8,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { BatchError, batchRepository } from '@/features/learning/batches/batch-repository'
 import { batchStartLabel, batchStatusLabel, seatsLeft } from '@/features/learning/batches/batch-rules'
 import { BatchForm, BatchSettingsForm } from '@/features/learning/batches/components/batch-forms'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Batches' }
 
@@ -28,7 +29,7 @@ export default async function CourseBatchesPage({ params }: { params: Promise<{ 
   const batchCourse = course.settings.batchMode === 'batches'
 
   return (
-    <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref={`/learn/studio/courses/${course.id}/edit`} title="Batches" />
       <Link href={`/learn/studio/courses/${course.id}/edit`} className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> Back to the course
@@ -63,7 +64,7 @@ export default async function CourseBatchesPage({ params }: { params: Promise<{ 
                             <span className="block break-words font-bold text-navy-950">{batch.title}</span>
                             <span className="block text-sm text-muted">{batchStartLabel(batch)} · {batchStatusLabel(batch.status)}</span>
                             <span className="block text-sm text-muted">
-                              {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${batch.seatLimit} seats (${left} left)` : ' · no seat limit'}
+                              {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${pluralize(batch.seatLimit, 'seat')} (${left} left)` : ' · no seat limit'}
                               {batch.managerName ? ` · Manager: ${batch.managerName}` : ''}
                               {batch.enrolmentOpen ? '' : ' · Enrolment closed'}
                             </span>

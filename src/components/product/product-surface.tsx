@@ -32,7 +32,7 @@ export function ProductSurface({
         title={title}
         description={description}
         eyebrowAccessory={(
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.1em] text-slate-100">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-[.1em] text-slate-100">
             <Hammer aria-hidden="true" className="size-3" />
             In development
           </span>

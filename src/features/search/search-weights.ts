@@ -2,14 +2,20 @@
  * Round G (G4): every weight, limit and threshold of search. Change the numbers here and bump
  * SEARCH_WEIGHTS_VERSION; tests check order and privacy, not exact scores.
  */
-export const SEARCH_WEIGHTS_VERSION = 'search-2026-10-13.1'
+export const SEARCH_WEIGHTS_VERSION = 'search-2026-10-17.1'
 
 export const SEARCH_KINDS = ['person', 'org', 'community', 'job', 'course', 'event', 'post'] as const
 export type SearchKind = (typeof SEARCH_KINDS)[number]
 
 export const SEARCH_WEIGHTS = {
-  /** Relevance tiers: exact name, name starts with the query, typo match on the name, full text. */
-  tiers: { exact: 400, prefix: 300, trigram: 200, fullText: 100 },
+  /**
+   * Relevance tiers: exact name, name starts with the query, typo match on the name, full text.
+   * Round H (H7): `rank` is a rank or title match among the full-text hits: the query names a rank ("chief eng",
+   * "C/E") and the person or job carries that rank, or a person's headline starts with the query. It sits with
+   * the name prefix, above full text plus every people boost and popularity (100 + 60 + 97), so a connected
+   * Chief Officer never outranks a Chief Engineer for "chief eng".
+   */
+  tiers: { exact: 400, prefix: 300, rank: 300, trigram: 200, fullText: 100 },
   /** Added to the trigram tier: word similarity (0..1) × this. */
   trigramScale: 100,
   /** Added to the full-text tier: ts_rank (0..1) × this. */

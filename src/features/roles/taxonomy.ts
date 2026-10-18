@@ -111,6 +111,7 @@ const ROLE_SEEDS: Record<string, readonly RoleSeed[]> = {
     ['yacht_crew', 'Yacht Captain / Crew', 'yacht', 1, ['Yacht Captain', 'Yacht Crew', 'Superyacht Crew']],
     ['inland_master', 'Inland / River Master', 'inland', 1, ['Inland Master', 'River Master', 'Inland Vessel Master']],
     ['marine_pilot', 'Marine Pilot', 'pilot', 1, ['Marine Pilot', 'Harbour Pilot', 'Sea Pilot', 'Pilot']],
+    ['mooring_master', 'Mooring Master', 'mooring', 1, ['STS Mooring Master', 'SPM Mooring Master', 'STS Superintendent']],
   ],
   technical_fleet: [
     ['technical_superintendent', 'Technical Superintendent', 'fleet', 3, ['Tech Superintendent', 'Technical Super', 'Superintendent Engineer']],
@@ -119,6 +120,7 @@ const ROLE_SEEDS: Record<string, readonly RoleSeed[]> = {
     ['technical_manager', 'Technical Manager', 'fleet', 2, ['Technical Director', 'Vessel Manager']],
     ['electrical_superintendent', 'Electrical Superintendent', 'electrical_superintendent', 1, ['Electrical Super']],
     ['site_superintendent', 'New-building / Site Superintendent', 'site_superintendent', 1, ['Newbuilding Superintendent', 'New Building Superintendent', 'Site Superintendent', 'Dry Dock Superintendent']],
+    ['procurement_manager', 'Procurement Manager', 'procurement', 1, ['Purchase Manager', 'Purchasing Manager', 'Marine Procurement Manager']],
   ],
   hseq_vetting: [
     ['hseq_manager', 'HSEQ Manager', 'hseq', 1, ['QHSE Manager', 'HSSEQ Manager', 'HSE Manager', 'HSSEQ Superintendent', 'Offshore HSE Manager']],
@@ -135,6 +137,8 @@ const ROLE_SEEDS: Record<string, readonly RoleSeed[]> = {
     ['commercial_manager', 'Commercial Manager', 'commercial', 1, ['Commercial Director']],
     ['post_fixture', 'Post-fixture / Claims Executive', 'post_fixture', 1, ['Post Fixture Executive', 'Post-Fixture Executive', 'Claims Executive', 'Demurrage Analyst']],
     ['bunker_trader', 'Bunker Trader', 'bunker', 1, ['Bunker Buyer', 'Bunker Broker']],
+    ['operations_coordinator', 'Operations Coordinator', 'operations', 3, ['Ops Coordinator', 'Operations Executive', 'Marine Operations Coordinator']],
+    ['business_development_manager', 'Business Development Manager', 'commercial', 2, ['BDM', 'Business Development Executive']],
   ],
   crewing_manning: [
     ['crewing_manager', 'Crewing Manager', 'crewing', 1, ['Crew Manager', 'Crew Superintendent', 'Fleet Personnel Manager']],
@@ -150,6 +154,7 @@ const ROLE_SEEDS: Record<string, readonly RoleSeed[]> = {
     ['freight_forwarder', 'Freight Forwarder', 'freight', 1, ['Freight Forwarding Executive', 'NVOCC Professional']],
     ['shipping_agent', 'Customs / Shipping Agent', 'agency', 1, ['Shipping Agent', 'Ship Agent', 'Port Agent', 'Customs Agent', 'Customs Broker']],
     ['logistics_executive', 'Logistics Executive', 'logistics', 2, ['Logistics Manager', 'Logistics Coordinator']],
+    ['ship_chandler', 'Ship Chandler', 'chandlery', 1, ['Chandler', 'Ship Supplier', 'Ship Supply Executive', 'Marine Supplier']],
   ],
   survey_class_legal_insurance: [
     ['marine_surveyor', 'Marine Surveyor', 'marine_surveyor', 1, ['Cargo Surveyor', 'Hull Surveyor', 'Condition Surveyor', 'Marine Warranty Surveyor']],
@@ -192,7 +197,22 @@ const ROLE_SEEDS: Record<string, readonly RoleSeed[]> = {
   ],
 }
 
+/**
+ * Round H: ranks added after the round 12 list, in the order migration 0089 appends them to public.maritime_ranks
+ * (sort order 101 on). Migration 0062's backfill and 0083's seed predate them, so the contract tests that pin those
+ * migrations leave these keys out.
+ */
+export const ROLE_KEYS_ADDED_IN_ROUND_H = [
+  'operations_coordinator',
+  'ship_chandler',
+  'mooring_master',
+  'procurement_manager',
+  'business_development_manager',
+] as const
+
 export const OTHER_ROLE_LABEL = 'Other (type your own)'
+/** Round H (H7): the longest "Other" rank / role a profile may type (the database allows 100). */
+export const OTHER_ROLE_TEXT_MAX = 60
 export const OTHER_ROLE_PREFIX = 'other_'
 
 function departmentsOf(source: readonly { key: string; label: string }[], domain: RoleDomain): RoleDepartment[] {

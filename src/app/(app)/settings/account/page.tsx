@@ -56,7 +56,7 @@ export default async function AccountSettingsPage() {
         : null
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Account" />
       <header className="max-md:hidden">
         <Link href="/settings" className={backLinkClass}>
@@ -101,6 +101,6 @@ export default async function AccountSettingsPage() {
           }}
         />
       </section>
-    </main>
+    </div>
   )
 }

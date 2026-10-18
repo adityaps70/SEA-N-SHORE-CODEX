@@ -128,7 +128,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
   const phoneSectionClass = 'max-md:-mx-4 max-md:mt-4 max-md:border-t-8 max-md:border-mist-100 max-md:px-4 max-md:pt-4'
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-0 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-0 max-md:py-0">
       {/* Round H (H5): schema.org Event data for listed events only (not drafts or plan-hidden events). */}
       {event.status !== 'draft' && !event.hiddenForPlan ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(eventJsonLd(event, siteOrigin())) }} />
@@ -271,7 +271,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
             <div className="rounded-xl bg-mist-50 p-3 text-xs leading-5 text-navy-700" aria-live="polite">
               <p className="font-bold text-navy-900">Registration</p>
               <p className={registrationState === 'open' ? 'font-semibold text-emerald-700' : 'font-semibold text-navy-800'}>{registrationLabel}</p>
-              {seatsLeft !== null && !event.isPast ? <p>{seatsLeft} seats left</p> : null}
+              {seatsLeft !== null && !event.isPast ? <p>{seatsLeft === 1 ? '1 seat left' : `${seatsLeft} seats left`}</p> : null}
               {event.registrationClosesAt && !event.isPast ? <p>Registration closes {dateTime(event.registrationClosesAt, event.timezone)}</p> : null}
               <p className="mt-1 font-semibold text-navy-900">{isPaidEvent ? `Ticket price: ${priceLabel}` : 'Free event'}</p>
             </div>

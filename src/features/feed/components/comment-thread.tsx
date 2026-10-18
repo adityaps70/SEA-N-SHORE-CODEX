@@ -21,6 +21,7 @@ import { MentionInput, type SelectedMention } from './mention-input'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
 import { ReactionSummaryTrigger } from './reaction-summary'
+import { pluralize } from '@/lib/format'
 
 const initialState: CommentActionState = {}
 
@@ -42,7 +43,7 @@ function commentSummary(comment: FeedComment): ReactionSummary {
 function CommentReplySummary({ count }: { count: number }) {
   if (!count) return null
   return (
-    <span aria-label={`${count} ${count === 1 ? 'reply' : 'replies'}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-[11px] text-muted">
+    <span aria-label={`${count} ${count === 1 ? 'reply' : 'replies'}`} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-xs text-muted">
       <MessageCircle aria-hidden="true" className="size-4" />
       <span>{count}</span>
     </span>
@@ -162,7 +163,7 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="grid size-7 max-md:size-9 cursor-pointer place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        className="grid size-7 max-md:size-9 cursor-pointer place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950"
       >
         <Ellipsis className="size-4" aria-hidden="true" />
       </button>
@@ -300,9 +301,9 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
         <div className={`relative rounded-2xl px-3 py-2.5 ${isReply ? 'bg-mist-50/70 ring-1 ring-mist-100' : 'bg-mist-50'}`}>
           <div className="flex flex-wrap items-baseline gap-x-2 pr-7 max-md:pr-9">
             <Link href={profileHref(comment.author.slug)} className="text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
-            {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
-            <span className="min-w-0 truncate text-xs text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
-            <div className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted"><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
+            {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
+            <span className="min-w-0 truncate text-meta text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
+            <div className="ml-auto inline-flex items-center gap-1 text-meta text-muted"><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
           </div>
           {replyTarget ? (
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted" data-testid={`reply-target-${comment.id}`}>
@@ -353,7 +354,7 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
                   aria-expanded={replying}
                   aria-label="Reply"
                   title={`Reply to ${comment.author.fullName}`}
-                  className="inline-flex min-h-8 shrink-0 cursor-pointer items-center rounded-full border border-mist-200 bg-white px-2.5 text-xs font-semibold text-navy-900 transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+                  className="inline-flex min-h-8 shrink-0 cursor-pointer items-center rounded-full border border-mist-200 bg-white px-2.5 text-xs font-semibold text-navy-900 transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
                 >
                   Reply
                 </button>
@@ -402,7 +403,7 @@ function ReplyThread({ root, replies, expanded, onToggle, children }: {
           onClick={onToggle}
           aria-expanded={expanded}
           aria-controls={listId}
-          className="-ml-1 mb-1 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-ocean-700 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+          className="-ml-1 mb-1 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-ocean-700 hover:bg-mist-50"
         >
           {expanded ? <ChevronUp aria-hidden="true" className="size-4" /> : <ChevronDown aria-hidden="true" className="size-4" />}
           {expanded ? 'Hide replies' : `View ${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
@@ -540,10 +541,10 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
               </div>
             )
           })}
-          {remaining > 0 ? <button type="button" onClick={() => setVisibleRootCount((count) => Math.min(roots.length, count + 10))} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50">View {remaining} more comments</button> : null}
+          {remaining > 0 ? <button type="button" onClick={() => setVisibleRootCount((count) => Math.min(roots.length, count + 10))} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50">{`View ${pluralize(remaining, 'more comment', 'more comments')}`}</button> : null}
           {remaining === 0 && moreOnServer ? (
             <button type="button" onClick={loadAllComments} disabled={loadingAll} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50 disabled:opacity-60">
-              {loadingAll ? 'Loading comments…' : `View all ${totalCount} comments`}
+              {loadingAll ? 'Loading comments…' : `View all ${pluralize(totalCount, 'comment')}`}
             </button>
           ) : null}
           {loadError ? <p role="alert" className="text-sm text-red-700">{loadError}</p> : null}

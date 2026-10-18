@@ -6,6 +6,7 @@ import { Download, Ellipsis, Eye, Pencil } from 'lucide-react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
 import { ProfileIdentityEditorContext } from './profile-header'
 import { ProfileShareControls } from './profile-share-controls'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 /** Link rows styled like the shared SheetRow (56px, icon + label). */
 const sheetLinkRowClass = 'flex min-h-14 w-full items-center gap-4 rounded-2xl px-4 text-left text-[15px] font-semibold text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 [&>svg]:size-5 [&>svg]:shrink-0'
@@ -28,7 +29,7 @@ export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUr
         View public profile
       </Link>
       <ProfileShareControls slug={slug} siteUrl={siteUrl} />
-      <Link href="/api/profile/cv" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white transition hover:bg-ocean-700 max-md:hidden">
+      <Link href="/api/profile/cv" className={`${buttonClass({ variant: 'primary', size: 'sm' })} max-md:hidden`}>
         <Download aria-hidden="true" className="size-4" />
         Download CV
       </Link>

@@ -21,6 +21,7 @@ import { UpcomingSessionsCard } from '@/features/learning/sessions/components/le
 import { CompanyTrainingCard } from '@/features/learning/company-training/components/company-training-card'
 import { crewRepository } from '@/features/learning/company-training/crew-repository'
 import { DeviceTimeZoneSync } from '@/features/learning/sessions/components/device-time-zone-sync'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'My learning' }
 
@@ -117,7 +118,7 @@ function EnrollmentCard({ enrollment, now }: { enrollment: LearnerCourseEnrollme
 
         <div className="mt-5 rounded-2xl border border-mist-100 bg-mist-50/70 p-4">
           <div className="flex items-center justify-between gap-3 text-sm font-bold text-navy-950">
-            <span>{enrollment.completedLessons} of {enrollment.totalLessons} lessons completed</span>
+            <span>{enrollment.completedLessons} of {pluralize(enrollment.totalLessons, 'lesson')} completed</span>
             <span>{enrollment.progressPercent}%</span>
           </div>
           <div
@@ -241,7 +242,7 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
   )
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/learn" title="My learning" />
       {/* Phones: the page bar is the title, so the intro card is desktop-only. */}
       <section className="overflow-hidden rounded-[1.9rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:hidden sm:p-8 lg:p-10">
@@ -273,6 +274,6 @@ export default async function MyLearningPage({ searchParams }: MyLearningPagePro
           purchases: purchasesPanel,
         }}
       />
-    </main>
+    </div>
   )
 }

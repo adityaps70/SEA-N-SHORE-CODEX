@@ -22,7 +22,7 @@ describe('MessagingUnreadBadge', () => {
         detail: { count: 1 },
       }))
     })
-    expect(screen.getByLabelText('1 unread messages')).toHaveTextContent('1')
+    expect(screen.getByLabelText('1 unread message')).toHaveTextContent('1')
 
     act(() => {
       window.dispatchEvent(new CustomEvent(MESSAGING_UNREAD_COUNT_EVENT, {

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { ArrowRight, Award, BookOpen } from 'lucide-react'
 import type { MarketplaceCourse } from '@/features/learning/marketplace-repository'
 import { accessRoleLabel } from '../access-request-labels'
+import { formatMoney } from '@/features/payments/currency'
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'SN'
@@ -62,11 +63,7 @@ export function LoadError({ what }: { what: string }) {
 
 function coursePrice(course: MarketplaceCourse) {
   if (course.accessType === 'free' || course.priceMinor === 0) return 'Free'
-  try {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: course.currency, maximumFractionDigits: 0 }).format(course.priceMinor / 100)
-  } catch {
-    return `${course.currency} ${Math.round(course.priceMinor / 100)}`
-  }
+  return formatMoney(course.priceMinor, course.currency)
 }
 
 /** Course published by the organization, in the Learn catalog card style. */
@@ -85,10 +82,10 @@ export function OrganizationCourseCard({ course }: { course: MarketplaceCourse }
           />
         ) : null}
         <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
-          <span className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-full border border-white/15 bg-navy-950/60 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-white">
+          <span className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-full border border-white/15 bg-navy-950/60 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.12em] text-white">
             <BookOpen aria-hidden="true" className="size-3.5 shrink-0" /> {course.category}
           </span>
-          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.1em] text-navy-950">{coursePrice(course)}</span>
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-extrabold uppercase tracking-[0.1em] text-navy-950">{coursePrice(course)}</span>
         </div>
       </div>
       <div className="flex flex-1 flex-col p-4">

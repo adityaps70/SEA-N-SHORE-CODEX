@@ -15,7 +15,7 @@ export default async function MyEventsPage() {
     calendarEventRepository.listMyPastEvents(user.id),
   ])
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-8 py-2 sm:px-6 sm:py-6 lg:px-8 max-md:space-y-3 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-8 py-2 sm:px-6 sm:py-6 lg:px-8 max-md:space-y-3 max-md:py-0">
       <MobilePageBar backHref="/events" title="My events" className="max-md:mb-0" />
       <EventNav active="my" />
       <div className="max-md:sr-only"><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Your calendar</p><h1 className="text-3xl font-bold text-navy-950">My Events</h1><p className="mt-2 text-sm text-muted">Events you are attending, with protected joining details available from each event page.</p></div>

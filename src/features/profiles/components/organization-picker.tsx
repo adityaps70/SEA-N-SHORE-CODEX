@@ -409,7 +409,7 @@ export function OrganizationPicker({
             <span className="min-w-0 truncate">Linked to the {linked.name} page on Sea N Shore</span>
           </span>
           {linked.pending ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-900">
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-900">
               <Clock3 aria-hidden="true" className="size-3" /> Waiting for Sea N Shore verification
             </span>
           ) : (

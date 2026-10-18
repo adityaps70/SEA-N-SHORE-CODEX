@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CheckCircle2 } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const metadata: Metadata = { title: 'Account deleted' }
 
@@ -28,7 +29,7 @@ export default function AccountDeletedPage() {
           </p>
           <Link
             href="/"
-            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white transition hover:bg-ocean-800"
+            className={`mt-7 ${buttonClass()}`}
           >
             Return to Sea N Shore
           </Link>

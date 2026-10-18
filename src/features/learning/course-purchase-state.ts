@@ -5,7 +5,7 @@ import { lutForDate } from '@/features/tax/tax-settings'
 import type { CoursePurchaseState } from './components/course-purchase-panel'
 import { coursePaymentRepository } from './course-payment-repository'
 import { coursePurchaseBlockerMessage, courseRefundReasonLabel } from './course-payment-rules'
-import { coursePrice, formatCourseAmount, type CoursePriceSource } from './course-pricing'
+import { coursePrice, formatCourseAmount, struckListPrice, wasListPriceCharged, type CoursePriceSource, type ListPriceSale } from './course-pricing'
 import type { LearnerEnrollment } from './enrollment-repository'
 import type { CoursePlanOffer } from './components/course-plan-checkout'
 import { coursePlanRepository } from './course-plan-repository'
@@ -30,16 +30,23 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date(value))
 }
 
-/** The plans on sale, as the course page shows them (prices always from the server's plan rows). */
-export function planOffers(plans: CoursePlan[]): CoursePlanOffer[] {
+/**
+ * The plans on sale, as the course page shows them (prices always from the server's plan rows).
+ * Round H (H7): a plan's list price is struck through only when that plan sold at it in the last 90 days.
+ */
+export function planOffers(plans: CoursePlan[], evidence: { courseId?: string; listPriceSales?: readonly ListPriceSale[] } = {}): CoursePlanOffer[] {
   return plans.flatMap((plan) => {
     const price = planPrice(plan)
     if (!price) return []
+    const charged = Boolean(evidence.courseId) && wasListPriceCharged(evidence.listPriceSales ?? [], {
+      courseId: evidence.courseId!, planId: plan.id ?? null, listPriceMinor: price.listPriceMinor, currency: price.currency,
+    })
+    const struck = struckListPrice(price, charged)
     return [{
       id: plan.id,
       name: plan.name,
       priceLabel: formatCourseAmount(price.amountMinor, price.currency),
-      listLabel: price.discountPriceMinor === null ? null : formatCourseAmount(price.listPriceMinor, price.currency),
+      listLabel: struck ? formatCourseAmount(struck.listPriceMinor, price.currency) : null,
       accessLabel: accessPeriodLabel(plan.accessMonths),
       currency: price.currency,
       amountMinor: price.amountMinor,
@@ -79,6 +86,8 @@ export async function loadCoursePurchaseState(input: {
   userId: string
   course: CoursePriceSource & { id: string }
   enrollment: LearnerEnrollment | null
+  /** Round H (H7): recent sales at the full list price (course-page-repository); none means no struck prices. */
+  listPriceSales?: readonly ListPriceSale[]
 }): Promise<CoursePurchaseState> {
   const { userId, course, enrollment } = input
   const log = (message: string) => console.error('course_purchase_state_failed', { courseId: course.id, message })
@@ -128,7 +137,7 @@ export async function loadCoursePurchaseState(input: {
   const closedMessage = (currency: string) => gateway.currencies.includes(currency as PaymentCurrency)
     ? USD_CLOSED_MESSAGE
     : coursePurchaseBlockerMessage('course_currency_unsupported')
-  const offers = planOffers(plans).map((offer) => offer.currency && payments.configured && !payments.currencies.includes(offer.currency as PaymentCurrency)
+  const offers = planOffers(plans, { courseId: course.id, listPriceSales: input.listPriceSales }).map((offer) => offer.currency && payments.configured && !payments.currencies.includes(offer.currency as PaymentCurrency)
     ? { ...offer, unavailableMessage: closedMessage(offer.currency) }
     : offer)
   const blockedMessage = !price

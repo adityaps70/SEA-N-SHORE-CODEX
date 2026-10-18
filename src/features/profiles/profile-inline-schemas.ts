@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { optionalOrganizationIdSchema } from './organization-link'
 import type { ProfileType } from './types'
 import { usernameSchema } from './username'
+import { HEADLINE_URL_MESSAGE, isUrlOnlyHeadline } from './headline'
 
 function optionalText(maximum: number) {
   return z.preprocess(
@@ -52,7 +53,8 @@ export const profileIdentitySectionSchema = z.object({
   fullName: z.string().trim().min(2, 'Add your full name.').max(120),
   slug: usernameSchema,
   location: optionalText(120),
-  headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
+  headline: z.string().trim().min(4, 'Add a professional headline.').max(160)
+    .refine((value) => !isUrlOnlyHeadline(value), HEADLINE_URL_MESSAGE),
   currentCompany: optionalText(160),
   currentCompanyId: optionalOrganizationIdSchema,
   /** Round 10: a rank saved by an earlier profile, editable or clearable from the header editor. */

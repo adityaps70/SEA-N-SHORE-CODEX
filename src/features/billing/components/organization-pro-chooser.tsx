@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Building2, Clock3 } from 'lucide-react'
+import { buttonClass } from '@/components/ui/interactive-styles'
 import {
   CREATE_ORGANIZATION_HREF,
   organizationCheckoutHref,
@@ -7,8 +8,8 @@ import {
   type OrganizationProPath,
 } from '../organization-pro-path'
 
-const primaryButton = 'inline-flex min-h-10 w-full cursor-pointer items-center justify-center rounded-xl bg-teal-600 px-4 text-sm font-bold text-white transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 sm:w-auto'
-const secondaryButton = 'inline-flex min-h-10 w-full cursor-pointer items-center justify-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 sm:w-auto'
+const primaryButton = `${buttonClass({ variant: 'primary', size: 'sm' })} w-full sm:w-auto`
+const secondaryButton = `${buttonClass({ variant: 'secondary', size: 'sm' })} w-full sm:w-auto`
 const textLink = 'font-bold text-ocean-700 hover:text-navy-950 hover:underline'
 
 function roleLabel(role: OrganizationProCandidate['role']) {
@@ -110,12 +111,15 @@ export function OrganizationProChooser({
   path,
   candidates,
   priceLine = null,
+  trialLine = null,
   highlight = false,
 }: {
   /** Null when the organizations could not be loaded. */
   path: OrganizationProPath | null
   candidates: OrganizationProCandidate[]
   priceLine?: string | null
+  /** Round H (H7): the free-trial offer, e.g. "Try Organization Pro free for 2 months. …". */
+  trialLine?: string | null
   highlight?: boolean
 }) {
   const upgradable = candidates.filter((candidate) => candidate.verified && candidate.plan !== 'organization_pro').length
@@ -140,6 +144,7 @@ export function OrganizationProChooser({
               : 'Organization Pro belongs to the organization and is paid for by its owner or an administrator. Members use it through their workspace role.'}
           </p>
           {priceLine ? <p className="mt-1 text-sm font-semibold text-navy-900">{priceLine}</p> : null}
+          {trialLine ? <p className="mt-1 text-sm text-teal-800">{trialLine}</p> : null}
         </div>
       </div>
 

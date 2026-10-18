@@ -9,7 +9,7 @@ export default async function NotificationsPage() {
   const notifications = await getNotifications(50)
 
   return (
-    <section className="mx-auto max-w-3xl py-2 max-md:-mt-4 max-md:py-0 sm:py-5">
+    <section className="mx-auto max-w-page-wide py-2 max-md:-mt-4 max-md:py-0 sm:py-5">
       {/* Phones: the list's compact "Notifications · Mark all read" row replaces this card. */}
       <div className="mb-5 rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden sm:p-7">
         <div className="flex items-start gap-4">

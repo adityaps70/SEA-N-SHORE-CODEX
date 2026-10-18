@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -15,9 +16,11 @@ import { getAccessContext } from '@/features/access/server'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { DismissibleSuggestion } from '@/features/ranking/components/dismissible-suggestion'
 import { getRecommendedCourses } from '@/features/ranking/course-suggestions'
-import { coursePrice, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
+import { coursePrice, formatCourseAmount, isPaidCourse, struckListPrice, wasListPriceCharged, type ListPriceSale } from '@/features/learning/course-pricing'
+import { coursePageRepository } from '@/features/learning/course-page-repository'
 import { catalogueMetadata } from '@/features/learning/course-seo'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
+import { CoursePublisherAvatar } from '@/features/learning/components/course-publisher-avatar'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 
@@ -69,15 +72,17 @@ function formatLabel(format: MarketplaceCourse['courseFormat']) {
   return 'Recorded'
 }
 
-function PricingLabel({ course }: { course: MarketplaceCourse }) {
+/** Round H (H7): the list price is struck through only when it was charged in the last 90 days. */
+function PricingLabel({ course, listPriceRecentlyCharged }: { course: MarketplaceCourse; listPriceRecentlyCharged: boolean }) {
   if (!isPaidCourse(course)) return <>Free</>
   const price = coursePrice(course)
   if (!price) return <>{formatCourseAmount(course.priceMinor, course.currency)}</>
-  if (price.discountPriceMinor === null) return <>{formatCourseAmount(price.amountMinor, price.currency)}</>
+  const struck = struckListPrice(price, listPriceRecentlyCharged)
+  if (!struck) return <>{formatCourseAmount(price.amountMinor, price.currency)}</>
   return (
     <>
       {formatCourseAmount(price.amountMinor, price.currency)}{' '}
-      <span className="font-semibold text-muted line-through"><span className="sr-only">was </span>{formatCourseAmount(price.listPriceMinor, price.currency)}</span>
+      <span className="font-semibold text-muted line-through"><span className="sr-only">was </span>{formatCourseAmount(struck.listPriceMinor, price.currency)}</span>
     </>
   )
 }
@@ -86,7 +91,8 @@ function PricingLabel({ course }: { course: MarketplaceCourse }) {
  * Round E (E8): the image shows on its own (16:9, nothing laid over it), so text baked into a thumbnail is
  * never covered; the category and price sit in the card body.
  */
-function CourseCard({ course, reason = null }: { course: MarketplaceCourse; reason?: string | null }) {
+function CourseCard({ course, reason = null, listPriceSales = [] }: { course: MarketplaceCourse; reason?: string | null; listPriceSales?: readonly ListPriceSale[] }) {
+  const listPriceRecentlyCharged = wasListPriceCharged(listPriceSales, { courseId: course.id, listPriceMinor: course.priceMinor, currency: course.currency })
   const firstOutcome = course.learningOutcomes[0] ?? null
   const thumbnailPath = course.thumbnailPath
 
@@ -117,7 +123,7 @@ function CourseCard({ course, reason = null }: { course: MarketplaceCourse; reas
             <BookOpen aria-hidden="true" className="size-3.5 shrink-0" /> <span className="truncate">{course.category}</span>
           </span>
           <span className="shrink-0 rounded-full bg-navy-950 px-2.5 py-1 text-meta font-bold text-white">
-            <PricingLabel course={course} />
+            <PricingLabel course={course} listPriceRecentlyCharged={listPriceRecentlyCharged} />
           </span>
         </div>
 
@@ -143,9 +149,8 @@ function CourseCard({ course, reason = null }: { course: MarketplaceCourse; reas
         </div>
 
         <div className="mt-4 flex items-center gap-2 border-t border-mist-100 pt-4">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-navy-950 text-xs font-extrabold text-white">
-            {course.mentorName.charAt(0).toUpperCase()}
-          </span>
+          {/* Round H (H6): the organization's logo when it publishes the course. */}
+          <CoursePublisherAvatar course={course} />
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-navy-950">{course.mentorName}</p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-teal-800">
@@ -185,6 +190,13 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
     // Round G (G5): a personal row for signed-in members when ranking_settings.suggestions is on.
     !category && !search ? getRecommendedCourses(user?.id ?? null).catch(() => null) : Promise.resolve(null),
   ])
+  // Round H (H7): one read-only query for every discounted course on the page.
+  const discountedIds = [...courses, ...(recommended ?? []).map((entry) => entry.course)]
+    .filter((course) => coursePrice(course)?.discountPriceMinor != null)
+    .map((course) => course.id)
+  const listPriceSales = discountedIds.length
+    ? await coursePageRepository.listRecentListPriceSales(discountedIds).catch(() => [] as ListPriceSale[])
+    : []
   const isActiveTrainer = mentorState?.kind === 'mentor' && mentorState.mentorStatus === 'active'
   const hasOrganizationLmsAccess = organizations.some((organization) =>
     organization.role === 'owner'
@@ -205,7 +217,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <MainLandmark className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <nav aria-label="Learning sections" className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
         {user ? (
           <Link href="/learn/my-learning" className={PHONE_CHIP_CLASS}>
@@ -303,7 +315,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
             {recommended.map(({ course, reason }) => (
               <DismissibleSuggestion key={course.id} kind="course" targetId={course.id} name={course.title}>
-                <CourseCard course={course} reason={reason} />
+                <CourseCard course={course} reason={reason} listPriceSales={listPriceSales} />
               </DismissibleSuggestion>
             ))}
           </div>
@@ -319,7 +331,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         </div>
 
         {courses.length ? (
-          <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{courses.map((course) => <CourseCard key={course.id} course={course} />)}</div>
+          <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{courses.map((course) => <CourseCard key={course.id} course={course} listPriceSales={listPriceSales} />)}</div>
         ) : (
           <div className="mt-4 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] sm:p-10">
             <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800"><BookOpen aria-hidden="true" className="size-5" /></span>
@@ -339,6 +351,6 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           </div>
         )}
       </section>
-    </main>
+    </MainLandmark>
   )
 }

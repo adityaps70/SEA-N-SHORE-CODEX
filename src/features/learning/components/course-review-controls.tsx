@@ -5,6 +5,7 @@ import { Archive, ArchiveRestore, CheckCircle2, MessageSquareWarning, Send } fro
 import { reviewCourse } from '@/features/learning/admin-actions'
 import type { CourseStatus } from '@/features/learning/course-workflow'
 import type { CourseAdminDecision } from '@/features/learning/admin-repository'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export function CourseReviewControls({
   courseId,
@@ -107,7 +108,7 @@ export function CourseReviewControls({
               type="button"
               disabled={isPending}
               onClick={() => submit('published')}
-              className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-3.5 py-2 text-sm font-bold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className={buttonClass({ variant: 'primary', size: 'sm' })}
             >
               <Send aria-hidden="true" className="size-4" /> Publish course
             </button>

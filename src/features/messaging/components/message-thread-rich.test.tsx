@@ -108,14 +108,14 @@ describe('MessageThread rich interactions', () => {
     expect(existingReaction).not.toHaveClass('border')
     expect(existingReaction).not.toHaveClass('bg-white')
 
-    await user.click(screen.getByRole('button', { name: `React to message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: "React to Capt. Anita's message" }))
     expect(screen.getByRole('menu', { name: 'Quick reactions' })).toBeVisible()
     expect(screen.getAllByRole('button', { name: /^React with / })).toHaveLength(6)
     expect(screen.getByRole('button', { name: 'More reaction emojis' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'React with ❤️' }))
     await waitFor(() => expect(actions.setMessageReactionAction).toHaveBeenCalledWith(MESSAGE_ID, '❤️'))
 
-    await user.click(screen.getByRole('button', { name: `React to message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: "React to Capt. Anita's message" }))
     await user.click(screen.getByRole('button', { name: 'More reaction emojis' }))
     expect(screen.getByRole('menu', { name: 'Choose reaction emoji' })).toBeVisible()
     const custom = screen.getByRole('textbox', { name: 'Custom emoji reaction' })
@@ -159,7 +159,7 @@ describe('MessageThread rich interactions', () => {
     )
 
     expect(screen.getByText('Please review this.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Reply to message/ }))
+    await user.click(screen.getByRole('button', { name: 'Reply to your message' }))
     expect(onReply).toHaveBeenCalledWith(reply)
   })
 
@@ -249,7 +249,7 @@ describe('MessageThread rich interactions', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: 'More actions for your message' }))
     await user.click(screen.getByRole('button', { name: 'Edit message' }))
     const editor = screen.getByRole('textbox', { name: 'Edit message text' })
     await user.clear(editor)
@@ -277,7 +277,7 @@ describe('MessageThread rich interactions', () => {
         peerReadCursor={null}
       />,
     )
-    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: 'More actions for your message' }))
     expect(screen.queryByRole('button', { name: 'Edit message' })).not.toBeInTheDocument()
   })
 
@@ -302,7 +302,7 @@ describe('MessageThread rich interactions', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: 'More actions for your message' }))
     expect(screen.getByRole('button', { name: 'Unsend message' })).toBeVisible()
 
     fireEvent.pointerDown(document.body)
@@ -358,7 +358,7 @@ describe('MessageThread rich interactions', () => {
     )
 
     expect(screen.getByRole('img', { name: 'bridge.jpg' })).toHaveAttribute('src', 'https://read.example.test/bridge.jpg')
-    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: 'More actions for your message' }))
     await user.click(screen.getByRole('button', { name: 'Unsend message' }))
     await waitFor(() => expect(actions.deleteMessageAction).toHaveBeenCalledWith(MESSAGE_ID))
     // Round 14 (3.9): the action revalidates, which already re-renders the route.

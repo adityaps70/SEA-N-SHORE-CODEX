@@ -67,9 +67,11 @@ describe('remaining website quality audit contract', () => {
   })
 
   it('uses a compact trust footer with real internal routes', () => {
+    // Round H (H6): the (app) layout's footer is the site footer inside the shared MemberChrome.
     const layout = source('src/app/(app)/layout.tsx')
     const footer = source('src/components/navigation/app-footer.tsx')
-    expect(layout).toContain('AppFooter')
+    expect(layout).toContain('MemberChrome')
+    expect(source('src/components/navigation/member-chrome.tsx')).toContain('SiteFooter')
     for (const route of ['/about', '/privacy', '/terms', '/help']) expect(footer).toContain(route)
   })
 

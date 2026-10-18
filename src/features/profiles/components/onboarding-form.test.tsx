@@ -460,7 +460,7 @@ describe('OnboardingForm organization registration round trip', () => {
     const first = render(<OnboardingForm initialFullName="Asha Singh" />)
     fireEvent.click(screen.getByRole('button', { name: 'Shore Professional' }))
     fireEvent.click(screen.getByRole('button', { name: /^Network$/i }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Location' }), { target: { value: 'Kochi, India' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Location' }), { target: { value: 'Kochi, India' } })
     fireEvent.change(screen.getByRole('combobox', { name: 'Current organisation' }), { target: { value: 'Blue Anchor Marine' } })
 
     const owner = await screen.findByRole('link', { name: /I own or manage this organization/ })
@@ -478,7 +478,7 @@ describe('OnboardingForm organization registration round trip', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Shore Professional' })).toHaveAttribute('aria-pressed', 'true'))
     expect(screen.getByRole('button', { name: /^Network$/i })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('textbox', { name: 'Location' })).toHaveValue('Kochi, India')
+    expect(screen.getByRole('combobox', { name: 'Location' })).toHaveValue('Kochi, India')
     expect(document.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')?.value).toBe('55555555-5555-4555-8555-555555555555')
     expect(window.sessionStorage.getItem('sns:onboarding-draft')).toBeNull()
   })

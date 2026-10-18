@@ -78,6 +78,23 @@ export async function getAppChromeData(user: AwsVerifiedUser) {
 
 export type AppChromeData = Awaited<ReturnType<typeof getAppChromeData>>
 
+/**
+ * Round H (H6): plain chrome for a signed-in member when the counts or profile cannot be loaded.
+ * Marketing pages use it so they still render (with the member header) instead of failing.
+ */
+export function fallbackAppChromeData(user: Pick<AwsVerifiedUser, 'email'>): AppChromeData {
+  return {
+    notificationUnreadCount: 0,
+    messagingUnreadCount: 0,
+    canAccessAdmin: false,
+    viewer: { name: user.email ?? 'Member', avatarUrl: null, headline: null, organization: null, location: null, profileCompletion: null },
+    organizations: [],
+    organizationCount: 0,
+    pendingConnectionRequestCount: 0,
+    liveSearch: false,
+  }
+}
+
 /** Props for the desktop header, shared by the (app) and (public) layouts so they never drift. */
 export function appHeaderProps(chrome: AppChromeData) {
   return {
@@ -94,7 +111,8 @@ export function appHeaderProps(chrome: AppChromeData) {
 /** Props for the phone top bar (and its side drawer). */
 export function mobileAppHeaderProps(chrome: AppChromeData) {
   return {
-    messagingUnreadCount: chrome.messagingUnreadCount,
+    // Round H (H7): the phone top bar carries the Notifications bell; Messages is a bottom tab.
+    notificationUnreadCount: chrome.notificationUnreadCount,
     canAccessAdmin: chrome.canAccessAdmin,
     viewer: chrome.viewer,
     organizations: chrome.organizations,
@@ -105,7 +123,7 @@ export function mobileAppHeaderProps(chrome: AppChromeData) {
 /** Props for the phone bottom tabs. */
 export function mobileNavProps(chrome: AppChromeData) {
   return {
-    notificationUnreadCount: chrome.notificationUnreadCount,
+    messagingUnreadCount: chrome.messagingUnreadCount,
     pendingConnectionRequestCount: chrome.pendingConnectionRequestCount,
   }
 }

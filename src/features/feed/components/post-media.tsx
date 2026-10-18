@@ -296,7 +296,7 @@ function PhotoLightbox({ media, activeIndex, authorName, postId, photoTags, onCl
             className={`relative grid size-11 place-items-center rounded-full text-white ${peopleOpen ? 'bg-white/30' : 'bg-white/10 hover:bg-white/20'}`}
           >
             <UsersRound aria-hidden="true" className="size-5" />
-            <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 grid min-w-5 place-items-center rounded-full bg-teal-500 px-1 text-[11px] font-bold leading-5 text-navy-950">
+            <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 grid min-w-5 place-items-center rounded-full bg-teal-500 px-1 text-xs font-bold leading-5 text-navy-950">
               {currentTags.length}
             </span>
           </button>

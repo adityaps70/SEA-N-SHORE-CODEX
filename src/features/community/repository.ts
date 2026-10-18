@@ -2,8 +2,10 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import {
   isCommunityCategory,
+  UNCATEGORISED_COMMUNITIES,
   type AdminCommunityGroup,
   type CommunityCategory,
+  type CommunityCategoryFilter,
   type CommunityGroup,
   type DirectorySort,
   type GroupJoinPolicy,
@@ -179,11 +181,21 @@ function likePattern(search: string) {
   return `%${search.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
 }
 
+/**
+ * Round H (H7): one rule for every member count. A member counts when their membership is active and their
+ * account is active, the same rule as the members list (`listMembers`), so "42 members" matches the list.
+ */
+function memberCountSql(groupColumn: string, status: 'active' | 'pending' = 'active') {
+  return `(select count(*) from public.community_group_memberships c
+           join public.profiles counted_profile on counted_profile.id = c.profile_id
+           where c.group_id = ${groupColumn} and c.status = '${status}' and counted_profile.account_status = 'active')`
+}
+
 /** `$1` must be the viewer's profile id. */
 const GROUP_SELECT = `
   select g.id, g.slug, g.name, g.description, g.rules, g.cover_path, g.icon_path, g.icon, g.visibility, g.join_policy, g.category, g.created_by, g.archived_at,
          g.owner_company_id, owner_company.slug as owner_company_slug, owner_company.name as owner_company_name,
-         (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'active') as member_count,
+         ${memberCountSql('g.id')} as member_count,
          (select count(*) from public.posts recent where recent.group_id = g.id and recent.deleted_at is null and recent.created_at > now() - interval '7 days') as recent_post_count,
          vm.role as viewer_role,
          vm.status as viewer_status
@@ -229,7 +241,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
    */
   async function browseDirectory(viewerId: string, options: {
     search?: string
-    category?: CommunityCategory | null
+    category?: CommunityCategoryFilter | null
     joinPolicy?: GroupJoinPolicy | null
     sort?: DirectorySort
     /** Leave out groups the viewer belongs to or asked to join ("Popular this week"). */
@@ -244,7 +256,9 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
       values.push(likePattern(search))
       where.push(`(g.name ilike $${values.length} escape '\\' or g.description ilike $${values.length} escape '\\')`)
     }
-    if (options.category) {
+    if (options.category === UNCATEGORISED_COMMUNITIES) {
+      where.push('g.category is null')
+    } else if (options.category) {
       values.push(options.category)
       where.push(`g.category = $${values.length}`)
     }
@@ -281,18 +295,22 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     return { groups: rows.map(mapGroup), total: Number(totals[0]?.total ?? 0) }
   }
 
-  /** Round 10: live communities per category, for the "Browse by category" chips. */
+  /**
+   * Round 10: live communities per category, for the "Browse by category" chips. Round H (H7): communities saved
+   * with "No category" are counted under `other`, so the tiles add up to every live community.
+   */
   async function countByCategory() {
     const rows = await queryRows(
       `select g.category, count(*)::int as total
        from public.community_groups g
-       where g.archived_at is null and g.category is not null
+       where g.archived_at is null
        group by g.category`,
-    ) as Array<QueryResultRow & { category: string; total: number | string }>
-    const counts: Partial<Record<CommunityCategory, number>> = {}
+    ) as Array<QueryResultRow & { category: string | null; total: number | string }>
+    const counts: Partial<Record<CommunityCategoryFilter, number>> = {}
     for (const row of rows) {
       const category: unknown = row.category
-      if (isCommunityCategory(category)) counts[category] = Number(row.total)
+      if (category === null) counts[UNCATEGORISED_COMMUNITIES] = Number(row.total)
+      else if (isCommunityCategory(category)) counts[category] = Number(row.total)
     }
     return counts
   }
@@ -350,7 +368,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
            g.owner_company_id is not null and exists (
              select 1 from public.organization_follows f where f.company_id = g.owner_company_id and f.follower_id = $1
            ) as followed_org,
-           (select count(*) from public.community_group_memberships members where members.group_id = g.id and members.status = 'active')::int as members
+           ${memberCountSql('g.id')}::int as members
          from public.community_groups g
          where g.archived_at is null
            and not exists (
@@ -447,7 +465,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
 
   async function countPendingRequests(groupId: string) {
     const rows = await queryRows(
-      `select count(*)::int as count from public.community_group_memberships where group_id = $1 and status = 'pending'`,
+      `select ${memberCountSql('$1::uuid', 'pending')}::int as count`,
       [groupId],
     ) as Array<QueryResultRow & { count: number | string }>
     return Number(rows[0]?.count ?? 0)
@@ -667,8 +685,8 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     const rows = await queryRows(
       `select g.id, g.slug, g.name, g.description, g.rules, g.icon, g.icon_path, g.visibility, g.join_policy, g.category, g.archived_at, g.created_at,
               g.owner_company_id, owner_company.slug as owner_company_slug, owner_company.name as owner_company_name,
-              (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'active') as member_count,
-              (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'pending') as pending_count,
+              ${memberCountSql('g.id')} as member_count,
+              ${memberCountSql('g.id', 'pending')} as pending_count,
               owner.id as owner_id, owner.full_name as owner_name, owner.slug as owner_slug
        from public.community_groups g
        left join public.companies owner_company on owner_company.id = g.owner_company_id

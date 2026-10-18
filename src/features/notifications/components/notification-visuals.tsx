@@ -41,7 +41,7 @@ export function NotificationPostThumb({ notification, size = 'size-12', onOpen }
       aria-label={preview.text ? `Open post: ${preview.text}` : 'Open post'}
       title={actorName ? `Open the post ${actorName} interacted with` : 'Open post'}
       data-testid={`notification-preview-${notification.id}`}
-      className={`relative block ${size} shrink-0 overflow-hidden rounded-lg bg-mist-100 ring-1 ring-mist-200 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/50`}
+      className={`relative block ${size} shrink-0 overflow-hidden rounded-lg bg-mist-100 ring-1 ring-mist-200 transition hover:opacity-90`}
     >
       {preview.mediaUrl && preview.mediaType === 'video' ? (
         <>

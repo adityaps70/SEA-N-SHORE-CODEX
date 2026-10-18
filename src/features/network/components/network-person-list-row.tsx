@@ -65,6 +65,16 @@ export function NetworkPersonListRow({
             compact
             menuIconOnly
           />
+        ) : kind === 'following' ? (
+          // Round H (H7): Following rows get Message (where the member allows it) and "…", like Connections.
+          <RelationshipControls
+            profileId={profile.id}
+            initialRelationship={profile.relationship}
+            compact
+            menuIconOnly
+            connectInMenu
+            messageAllowed={profile.canMessage}
+          />
         ) : (
           <FollowToggleButton
             profileId={profile.id}

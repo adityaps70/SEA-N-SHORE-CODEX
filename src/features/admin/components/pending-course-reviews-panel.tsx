@@ -44,7 +44,7 @@ function PendingReviewCard({ review }: { review: PendingCourseReview }) {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-navy-950 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white">Course review</span>
+            <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-bold uppercase tracking-[0.08em] text-white">Course review</span>
             {review.edited ? <span className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-bold text-muted">Edited</span> : null}
             {flagged ? (
               <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">

@@ -148,14 +148,19 @@ export function HeaderMenu({
           className={`absolute z-50 ${menuWidthClassName} max-w-[calc(100vw-2rem)] rounded-xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] ${direction === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} ${align === 'right' ? 'right-0' : 'left-0'}`}
         >
           {segments.map((segment, index) => {
-            const links = segment.items.map((item) => {
+            const links = segment.items.map((item, itemIndex) => {
               const active = itemIsActive(pathname, item.href)
+              // Round H (H8): the item is named by its label alone; the badge and description are its description.
+              const itemId = `${menuId}-item-${index}-${itemIndex}`
+              const extraIds = [item.badge ? `${itemId}-badge` : null, item.description ? `${itemId}-description` : null].filter(Boolean).join(' ')
               const link = (
                 <Link
                   key={item.href}
                   href={item.href}
                   role="menuitem"
                   title={item.secondary ? item.label : undefined}
+                  aria-labelledby={`${itemId}-label`}
+                  aria-describedby={extraIds || undefined}
                   aria-current={active ? 'page' : undefined}
                   onClick={close}
                   className={`group/item flex min-w-0 items-start gap-3 rounded-lg px-3 py-2 text-sm text-navy-950 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 ${item.secondary ? 'flex-1' : ''} ${active ? 'bg-ocean-50 text-ocean-800' : ''}`}
@@ -163,12 +168,12 @@ export function HeaderMenu({
                   {item.icon ? <span aria-hidden="true" className="mt-0.5 shrink-0 text-muted">{item.icon}</span> : null}
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2 font-semibold">
-                      <span className={item.tone === 'link' ? 'text-ocean-700 group-hover/item:underline' : item.secondary ? 'line-clamp-2 break-words' : undefined}>{item.label}</span>
+                      <span id={`${itemId}-label`} className={item.tone === 'link' ? 'text-ocean-700 group-hover/item:underline' : item.secondary ? 'line-clamp-2 break-words' : undefined}>{item.label}</span>
                       {item.badge ? (
-                        <span className="shrink-0 rounded-full bg-mist-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">{item.badge}</span>
+                        <span id={`${itemId}-badge`} className="shrink-0 rounded-full bg-mist-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-muted">{item.badge}</span>
                       ) : null}
                     </span>
-                    {item.description ? <span className="mt-0.5 block text-xs leading-5 text-muted">{item.description}</span> : null}
+                    {item.description ? <span id={`${itemId}-description`} className="mt-0.5 block text-xs leading-5 text-muted">{item.description}</span> : null}
                   </span>
                 </Link>
               )
@@ -196,7 +201,7 @@ export function HeaderMenu({
             const headingId = `${menuId}-group-${index}`
             return (
               <div key={`group-${index}`} role="group" aria-labelledby={headingId} className={index > 0 ? 'mt-1 border-t border-mist-100 pt-1' : undefined}>
-                <p id={headingId} className="px-3 pb-0.5 pt-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-muted">{segment.group}</p>
+                <p id={headingId} className="px-3 pb-0.5 pt-1.5 text-xs font-bold uppercase tracking-[0.12em] text-muted">{segment.group}</p>
                 {links}
               </div>
             )

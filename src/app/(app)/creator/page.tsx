@@ -53,7 +53,7 @@ export default async function CreatorPage() {
   const access = await getAccessContext(user.id)
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 max-md:space-y-3 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 px-4 py-8 max-md:space-y-3 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/home" title="Creator tools" />
       <header className="flex flex-wrap items-end justify-between gap-4 max-md:items-center max-md:gap-3">
         <div>
@@ -116,6 +116,6 @@ export default async function CreatorPage() {
           </div>
         </div>
       </section>
-    </main>
+    </div>
   )
 }

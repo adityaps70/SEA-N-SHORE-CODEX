@@ -18,6 +18,9 @@ import { OrganizationStatusBadge } from './organization-status-badge'
 import { ProfileCardFieldError, ProfileCardForm, profileCardInputClass, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
 import { PersonaDetailFields, PersonaSelect } from './profile-persona-fields'
 import { UsernameField } from './username-field'
+import { NameCaseSuggestion } from './name-case-suggestion'
+import { LocationPicker } from './location-picker'
+import { HeadlineUrlCheck } from './headline-url-check'
 
 const profileTypeLabels: Record<PublicProfile['profileType'], string> = {
   seafarer: 'Seafarer',
@@ -100,8 +103,9 @@ function ProfileIdentityEditor({
         )}
         <label className={profileCardLabelClass}>
           Full name
-          <input name="fullName" required maxLength={120} defaultValue={profile.fullName} className={profileCardInputClass} />
+          <input id="profile-header-full-name" name="fullName" required maxLength={120} defaultValue={profile.typedFullName ?? profile.fullName} className={profileCardInputClass} />
           <ProfileCardFieldError fieldErrors={state.fieldErrors} name="fullName" />
+          <NameCaseSuggestion inputId="profile-header-full-name" />
         </label>
         <UsernameField
           initialValue={profile.slug}
@@ -116,14 +120,16 @@ function ProfileIdentityEditor({
         />
         <label className={profileCardLabelClass}>
           Headline
-          <input name="headline" required maxLength={160} defaultValue={profile.headline ?? ''} className={profileCardInputClass} />
+          <input id="profile-header-headline" name="headline" required maxLength={160} defaultValue={profile.headline ?? ''} className={profileCardInputClass} />
           <ProfileCardFieldError fieldErrors={state.fieldErrors} name="headline" />
+          <HeadlineUrlCheck inputId="profile-header-headline" />
         </label>
-        <label className={profileCardLabelClass}>
-          Location
-          <input name="location" maxLength={120} defaultValue={profile.location ?? ''} className={profileCardInputClass} />
+        {/* Round H (H7): a city picker over an offline list; free text stays possible ("Other"). */}
+        <div className={profileCardLabelClass}>
+          <label htmlFor="profile-header-location">Location</label>
+          <LocationPicker id="profile-header-location" defaultValue={profile.location ?? ''} className={profileCardInputClass} invalid={Boolean(state.fieldErrors?.location?.[0])} />
           <ProfileCardFieldError fieldErrors={state.fieldErrors} name="location" />
-        </label>
+        </div>
         <PersonaDetailFields
           persona={persona}
           profile={profile}

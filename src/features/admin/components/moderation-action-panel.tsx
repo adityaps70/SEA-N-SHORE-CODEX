@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { CheckCircle2, Eye, RotateCcw, ShieldX, XCircle } from 'lucide-react'
 import type { ModerationAction, ModerationTargetType } from '@/features/moderation/types'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export function ModerationActionPanel({
   targetType,
@@ -115,7 +117,7 @@ export function ModerationActionPanel({
             type="button"
             disabled={pending}
             onClick={() => run('restore')}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-ocean-700 px-3 text-xs font-bold text-white hover:bg-ocean-800 disabled:cursor-wait disabled:opacity-60"
+            className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'min-h-9 gap-1.5 px-3 text-xs disabled:cursor-wait')}
           >
             <RotateCcw aria-hidden="true" className="size-3.5" /> {buttonLabel('restore', restoreLabel)}
           </button>

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   listDiscoverEvents: vi.fn(),
   listPastEvents: vi.fn(),
+  canViewerCreateEvents: vi.fn(),
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
@@ -14,6 +15,7 @@ vi.mock('@/features/events/calendar-repository', () => ({
     listPastEvents: mocks.listPastEvents,
   },
 }))
+vi.mock('@/features/events/create-permission', () => ({ canViewerCreateEvents: mocks.canViewerCreateEvents }))
 vi.mock('@/features/events/components/event-card', () => ({
   EventCard: ({ event }: { event: { title: string } }) => <article>{event.title}</article>,
 }))
@@ -35,6 +37,7 @@ describe('/events discovery search', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1' })
     mocks.listDiscoverEvents.mockResolvedValue([])
     mocks.listPastEvents.mockResolvedValue([])
+    mocks.canViewerCreateEvents.mockResolvedValue(false)
   })
 
   it('shows one search box plus the category, type and format dropdowns and a Search button', async () => {
@@ -130,5 +133,49 @@ describe('/events on phones', () => {
     fireEvent.click(toggle)
     expect(screen.queryByRole('button', { name: 'Show past events' })).not.toBeInTheDocument()
     expect(screen.getByText('Last year conference').closest('.max-md\\:hidden')).toBeNull()
+  })
+
+})
+
+describe('/events empty states (round H, H7)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'user-1' })
+    mocks.listDiscoverEvents.mockResolvedValue([])
+    mocks.listPastEvents.mockResolvedValue([])
+    mocks.canViewerCreateEvents.mockResolvedValue(false)
+  })
+
+  it('with no upcoming events offers "Create an event" only to members who can publish one (round H, H7)', async () => {
+    mocks.canViewerCreateEvents.mockResolvedValue(true)
+    await renderPage()
+    expect(screen.getByRole('heading', { name: 'No upcoming events yet' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create an event' })).toHaveAttribute('href', '/events/create')
+    expect(mocks.canViewerCreateEvents).toHaveBeenCalledWith('user-1')
+    cleanup()
+
+    mocks.canViewerCreateEvents.mockResolvedValue(false)
+    await renderPage()
+    expect(screen.getByRole('heading', { name: 'No upcoming events yet' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Create an event' })).not.toBeInTheDocument()
+    expect(screen.getByText(/appear here as soon as they are announced/)).toBeInTheDocument()
+  })
+
+  it('does not check event permissions when upcoming events exist', async () => {
+    mocks.listDiscoverEvents.mockResolvedValue([{ id: 'event-1', title: 'Upcoming placeholder session' }])
+    await renderPage()
+    expect(screen.getByText('Upcoming placeholder session')).toBeInTheDocument()
+    expect(mocks.canViewerCreateEvents).not.toHaveBeenCalled()
+  })
+
+  it('says "No past events yet" without filters and mentions filters only when some are set (round H, H7)', async () => {
+    await renderPage()
+    expect(screen.getByText('No past events yet.')).toBeInTheDocument()
+    expect(screen.queryByText('No past events match these filters yet.')).not.toBeInTheDocument()
+    cleanup()
+
+    await renderPage({ category: 'training' })
+    expect(screen.getByText('No past events match these filters yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Clear filters' })).toHaveAttribute('href', '/events')
   })
 })

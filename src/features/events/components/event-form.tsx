@@ -29,12 +29,13 @@ import {
 import type { EventPublisherOption } from '../publishers'
 import { EventDateTimeField } from './event-date-time-field'
 import { uploadEventBannerFile } from './upload-event-banner'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 type Props =
   | { mode: 'create'; publisherOptions: EventPublisherOption[]; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; initial?: never; eventId?: never }
   | { mode: 'edit'; initial: CalendarEvent; eventId: string; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; publisherOptions?: never }
 
-const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-teal-500 aria-[invalid=true]:border-rose-300'
+const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-500 aria-[invalid=true]:border-rose-300'
 const selectClass = `${inputClass} appearance-none pr-10 font-semibold`
 const labelClass = 'space-y-2 text-sm font-semibold text-navy-900'
 const helperClass = 'block text-xs font-normal leading-5 text-muted'
@@ -483,7 +484,7 @@ export function EventForm(props: Props) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-navy-950">{option.name}</span>
-                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-muted">
                           {option.kind === 'personal' ? 'Personal' : 'Organization'}
                         </span>
                       </div>
@@ -738,8 +739,8 @@ export function EventForm(props: Props) {
 
       {/* Create and edit are full-screen on phones (no tab bar), so the bar sits at the bottom edge. */}
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap gap-3 max-md:bottom-[calc(0.5rem+env(safe-area-inset-bottom))] rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-xl backdrop-blur sm:p-4 md:bottom-3">
-        <button disabled={busy} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors disabled:cursor-not-allowed">{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
-        <button disabled={busy} type="submit" name="status" value="published" className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-60">{pending ? 'Saving…' : initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
+        <button disabled={busy} type="submit" name="status" value="draft" className={buttonClass({ variant: 'secondary' })}>{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
+        <button disabled={busy} type="submit" name="status" value="published" className={buttonClass({ variant: 'primary' })}>{pending ? 'Saving…' : initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
         {props.mode === 'edit' ? <button disabled={busy} type="button" onClick={() => setConfirmingCancel(true)} aria-expanded={confirmingCancel} className="rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60 sm:ml-auto">Cancel event</button> : null}
       </div>
     </form>

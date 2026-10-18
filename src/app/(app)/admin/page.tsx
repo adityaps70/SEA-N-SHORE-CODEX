@@ -5,6 +5,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { auditSummary, auditTargetHref, auditTargetLabel } from '@/features/admin/audit-format'
 import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminRepository } from '@/features/admin/repository'
+import { pluralizeWithVerb } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Admin' }
 
@@ -39,10 +40,10 @@ export default async function AdminPage() {
   ]
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader
         title="Overview"
-        meta={waiting.length ? `${waiting.reduce((sum, item) => sum + item.count, 0)} items need attention` : 'All queues clear'}
+        meta={waiting.length ? pluralizeWithVerb(waiting.reduce((sum, item) => sum + item.count, 0), 'item', 'needs attention', 'need attention') : 'All queues clear'}
         actions={(
           <>
             <Link href="/admin/verifications" className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">Creator verifications</Link>
@@ -143,6 +144,6 @@ export default async function AdminPage() {
           <p className="px-5 py-4 text-sm text-muted">No administrator activity has been recorded yet.</p>
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

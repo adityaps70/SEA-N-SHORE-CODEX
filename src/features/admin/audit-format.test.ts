@@ -24,6 +24,11 @@ describe('audit formatting', () => {
     expect(auditTargetLabel('group')).toBe('Group')
     expect(auditTargetHref('group', 'g1')).toBe('/admin/communities?group=g1')
     expect(auditTargetHref('unknown', 'x')).toBeNull()
+    // Round H (H7): support requests and site settings.
+    expect(auditSummary('support_ticket', 'support_ticket.replied')).toBe('Support request replied')
+    expect(auditTargetHref('support_ticket', 't1')).toBe('/admin/support/t1')
+    expect(auditSummary('site_setting', 'site_setting.updated')).toBe('Site setting updated')
+    expect(auditTargetHref('site_setting', 'about_page')).toBe('/admin/settings')
   })
 
   it('summarises decision, prior state, report count and the reason', () => {
@@ -31,5 +36,45 @@ describe('audit formatting', () => {
       .toEqual(['Decision: changes requested', 'Previously pending', '2 reports', 'Spam'])
     expect(auditDetails({ reportCount: 1 })).toEqual(['1 report'])
     expect(auditDetails({})).toEqual([])
+  })
+})
+
+describe('learning audit actions (round H, H7)', () => {
+  // Every learning.course.* and learning.mentor_application.* action the code writes (admin-repository.ts,
+  // migration 0086), plus the two-part learning actions recorded against a course.
+  const actions: Array<[targetType: string, action: string, summary: string]> = [
+    ['learning_course', 'learning.course.approved', 'Course approved'],
+    ['learning_course', 'learning.course.changes_requested', 'Course changes requested'],
+    ['learning_course', 'learning.course.published', 'Course published'],
+    ['learning_course', 'learning.course.archived', 'Course archived'],
+    ['learning_course', 'learning.course.revision_approved', 'Course revision approved'],
+    ['learning_course', 'learning.course.publisher_transferred', 'Course publisher transferred'],
+    ['learning_mentor_application', 'learning.mentor_application.approved', 'Trainer application approved'],
+    ['learning_mentor_application', 'learning.mentor_application.changes_requested', 'Trainer application changes requested'],
+    ['learning_mentor_application', 'learning.mentor_application.rejected', 'Trainer application rejected'],
+    ['learning_course', 'learning.course_community_linked', 'Course community linked'],
+    ['learning_course', 'learning.course_community_unlinked', 'Course community unlinked'],
+    ['learning_course', 'learning.roster_enrolled', 'Course roster enrolled'],
+    ['learning_course', 'learning.session_created', 'Course session created'],
+    ['course_review', 'moderation.course_review_approved', 'Course review approved'],
+    // Round H: course owners' replies to reviews and their moderation (course-rating-repository.ts).
+    ['course_review', 'learning.course_review_reply_added', 'Course review reply added'],
+    ['course_review', 'learning.course_review_reply_edited', 'Course review reply edited'],
+    ['course_review', 'learning.course_review_reply_deleted', 'Course review reply deleted'],
+    ['course_review', 'moderation.course_review_reply_hidden', 'Course review reply hidden'],
+    ['course_review', 'moderation.course_review_reply_restored', 'Course review reply restored'],
+  ]
+
+  it.each(actions)('%s %s reads "%s" without a repeated word', (targetType, action, summary) => {
+    expect(auditSummary(targetType, action)).toBe(summary)
+    expect(auditSummary(targetType, action)).not.toMatch(/\b(\w+) \1\b/i)
+  })
+
+  it('names learning targets and keeps the verb free of the object', () => {
+    expect(auditTargetLabel('learning_course')).toBe('Course')
+    expect(auditTargetLabel('learning_mentor_application')).toBe('Trainer application')
+    expect(auditVerb('learning.course.revision_approved')).toBe('Revision approved')
+    expect(auditVerb('learning.mentor_application.approved')).toBe('Approved')
+    expect(auditActionLabel('learning.course.revision_approved')).toBe('Learning · Course · Revision approved')
   })
 })

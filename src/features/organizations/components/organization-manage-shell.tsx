@@ -62,7 +62,7 @@ export function OrganizationManageShell({
   const activeLabel = items.find((item) => item.id === active)?.label ?? 'Overview'
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
       {/* Phones: back to the public page, and the section name in the bar. */}
       <MobilePageBar backHref={`/organizations/${slug}`} title={`Manage · ${activeLabel}`} />
       <div className="flex flex-col gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between max-md:gap-0 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none">

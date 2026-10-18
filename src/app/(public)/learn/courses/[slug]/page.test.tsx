@@ -16,6 +16,12 @@ const mocks = vi.hoisted(() => ({
   createMediaReadUrl: vi.fn(),
   // Learning round C: approved reviews (default: none).
   getPublicReviews: vi.fn(async () => ({ averageRating: null as number | null, reviewCount: 0, reviews: [] as unknown[] })),
+  // Round H: the course owner's reply controls (default: not the owner).
+  getOwnerReplyView: vi.fn(async () => null as unknown),
+  // Round H (H7): list-price evidence, the publisher card and the certificate preview (default: none).
+  listRecentListPriceSales: vi.fn(async () => [] as unknown[]),
+  getPublisherCard: vi.fn(async () => null as unknown),
+  getCertificatePreviewSettings: vi.fn(async () => null as unknown),
 }))
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }))
@@ -26,8 +32,17 @@ vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMembe
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/public-course-repository', () => ({ publicCourseRepository: { getPublicCurriculum: mocks.getPublicCurriculum } }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
-vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getPublicReviews: mocks.getPublicReviews } }))
+vi.mock('@/features/learning/course-rating-repository', () => ({ courseRatingRepository: { getPublicReviews: mocks.getPublicReviews, getOwnerReplyView: mocks.getOwnerReplyView } }))
+vi.mock('@/features/learning/course-review-reply-actions', () => ({ saveCourseReviewReply: vi.fn(), deleteCourseReviewReply: vi.fn() }))
 vi.mock('@/features/moderation/actions', () => ({ reportContent: vi.fn() }))
+vi.mock('@/features/learning/course-page-repository', () => ({
+  coursePageRepository: {
+    listRecentListPriceSales: mocks.listRecentListPriceSales,
+    getPublisherCard: mocks.getPublisherCard,
+    getCertificatePreviewSettings: mocks.getCertificatePreviewSettings,
+  },
+}))
+vi.mock('@/lib/images/media-image-src', () => ({ createMediaImageSrc: vi.fn(async () => '/api/media/image/placeholder') }))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
   return {
@@ -200,6 +215,24 @@ describe('/learn/courses/[slug]', () => {
     expect(screen.getByText(/Trainer credentials and this course were reviewed/).closest('div.rounded-\\[1\\.3rem\\]')).toHaveClass('max-md:hidden')
   })
 
+  it('sizes "Who this course is for" to its content instead of stretching it to its row (round H, H6)', async () => {
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    const audience = screen.getByRole('region', { name: 'Who this course is for' })
+    expect(audience).toHaveClass('self-start')
+    expect(audience.className).not.toMatch(/(^|\s)(lg:|md:)?(min-h-|h-full|self-stretch|flex-1)/)
+    const grid = screen.getByTestId('course-detail-sections')
+    expect(grid).toContainElement(audience)
+    expect(grid).toHaveClass('lg:items-start')
+    expect(grid.className).not.toMatch(/items-stretch/)
+  })
+
+  it('shows the publishing organization\'s logo beside the trainer name when it has one (round H, H6)', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...freeCourse, mentorName: 'Placeholder Academy', publisherLogoUrl: '/api/company-logo/c1?v=logo.png' })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    const avatar = screen.getByTestId('course-publisher-avatar')
+    expect(avatar.querySelector('img')).toHaveAttribute('src', '/api/company-logo/c1?v=logo.png')
+  })
+
   it('still renders the course page when the phone overview cannot load', async () => {
     mocks.getPublishedCourseOverview.mockRejectedValueOnce(new Error('db down'))
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
@@ -243,7 +276,7 @@ describe('/learn/courses/[slug]', () => {
     expect(within(desktopHero()).getByText('₹20,000')).toBeInTheDocument()
     // Nothing to buy yet, so no phone sticky bar either.
     expect(screen.queryByTestId('course-action-bar')).not.toBeInTheDocument()
-    expect(mocks.loadCoursePurchaseState).toHaveBeenCalledWith({ userId: 'learner-1', course: paidCourse, enrollment: null })
+    expect(mocks.loadCoursePurchaseState).toHaveBeenCalledWith({ userId: 'learner-1', course: paidCourse, enrollment: null, listPriceSales: [] })
     expect(screen.getByRole('button', { name: 'Purchases open soon' })).toBeDisabled()
     expect(screen.getByText(/You'll be able to buy this course here as soon as they are/)).toBeInTheDocument()
     expect(screen.queryByTestId('enroll-free-control')).not.toBeInTheDocument()
@@ -252,6 +285,8 @@ describe('/learn/courses/[slug]', () => {
 
   it('shows the discount with the original price struck through and offers Buy course at the discounted price', async () => {
     mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...paidCourse, discountPriceMinor: 1_600_000 })
+    // Round H (H7): the list price was charged in the last 90 days, so it may be struck through.
+    mocks.listRecentListPriceSales.mockResolvedValueOnce([{ courseId: paidCourse.id, planId: null, listPriceMinor: 2_000_000, currency: 'INR' }])
     mocks.loadCoursePurchaseState.mockResolvedValueOnce({ kind: 'buy', priceLabel: '₹16,000', configured: true, pending: null })
 
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
@@ -265,6 +300,53 @@ describe('/learn/courses/[slug]', () => {
     // and the discounted price is on the header chip.
     expect(within(screen.getByTestId('course-action-bar')).getByRole('link', { name: 'Buy — ₹16,000' })).toHaveAttribute('href', '#course-access')
     expect(within(screen.getByTestId('phone-course-header')).getByText('₹16,000')).toBeInTheDocument()
+  })
+
+  it('shows the selling price alone when the list price was not charged in the last 90 days (Round H, H7)', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...paidCourse, discountPriceMinor: 1_600_000 })
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({ kind: 'buy', priceLabel: '₹16,000', configured: true, pending: null })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    expect(mocks.listRecentListPriceSales).toHaveBeenCalledWith([paidCourse.id])
+    expect(within(desktopHero()).getByText('₹16,000')).toBeInTheDocument()
+    expect(within(desktopHero()).queryByText('₹20,000')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Save \d+%/)).not.toBeInTheDocument()
+  })
+
+  it('hides empty course sections instead of placeholder copy, and shows the total length (Round H, H7)', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...freeCourse, requirements: [], targetAudience: ['  '], learningOutcomes: ['Read a passage plan'] })
+    mocks.getPublishedCourseOverview.mockResolvedValueOnce({ sections: [], lessonCount: 0, durationSeconds: 6 * 3600 + 30 * 60, learnerCount: 0, publisher: null })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    expect(screen.queryByText(/No additional prerequisites/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Requirements' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Who this course is for' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'What you will learn' })).toBeInTheDocument()
+    expect(within(desktopHero()).getByText('6 h 30 min')).toBeInTheDocument()
+    expect(within(screen.getByTestId('phone-course-header')).getByText('6 h 30 min')).toBeInTheDocument()
+  })
+
+  it('hides the total length when the materials have no duration (Round H, H7)', async () => {
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    expect(screen.queryByText('Total length')).not.toBeInTheDocument()
+  })
+
+  it('shows the trainer card with bio and other courses, and a sample certificate (Round H, H7)', async () => {
+    mocks.getPublisherCard.mockResolvedValueOnce({
+      kind: 'person', name: 'Placeholder Trainer', href: '/people/placeholder-trainer', bio: 'Master Mariner and SIRE inspector.',
+      photoPath: 'profiles/u1/avatar.jpg', logoUrl: null, otherCourses: [{ id: 'c2', slug: 'ballast-basics', title: 'Ballast basics' }],
+    })
+    mocks.getCertificatePreviewSettings.mockResolvedValueOnce({ template: 'modern', signatoryName: null, signatoryTitle: null, serialPrefix: null, validityMonths: null })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    const card = screen.getByRole('region', { name: 'About the trainer' })
+    expect(within(card).getByRole('link', { name: 'Placeholder Trainer' })).toHaveAttribute('href', '/people/placeholder-trainer')
+    expect(within(card).getByText('Master Mariner and SIRE inspector.')).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'Ballast basics' })).toHaveAttribute('href', '/learn/courses/ballast-basics')
+    expect(screen.getByRole('img', { name: /Sample certificate of completion for SIRE 2\.0 Readiness for Tanker Officers, issued to Your Name/ })).toBeInTheDocument()
   })
 
   it('offers Check payment status for a checkout the learner started but did not finish', async () => {
@@ -447,6 +529,31 @@ describe('/learn/courses/[slug]', () => {
 
     const jsonLd = JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!)
     expect(jsonLd.aggregateRating).toEqual({ '@type': 'AggregateRating', ratingValue: '4.5', ratingCount: 2, reviewCount: 2, bestRating: 5, worstRating: 1 })
+  })
+
+  it('shows the owner’s reply as "Reply from <publisher>", and gives the course owner Reply (round H)', async () => {
+    const reviews = {
+      averageRating: 4.5,
+      reviewCount: 2,
+      reviews: [
+        { id: 'r1', rating: 5, body: 'Clear and practical.', reviewedAt: '2026-10-05T10:00:00.000Z', reviewer: { id: 'fixture-a', name: 'Fixture Reviewer Ana', slug: null }, reply: { body: 'Thank you, Ana.', repliedAt: '2026-10-06T10:00:00.000Z' } },
+        { id: 'r2', rating: 4, body: 'Good.', reviewedAt: '2026-10-04T10:00:00.000Z', reviewer: { id: 'fixture-b', name: 'Fixture Reviewer Bo', slug: null }, reply: null },
+      ],
+    }
+    mocks.getPublicReviews.mockResolvedValueOnce(reviews)
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    expect(mocks.getOwnerReplyView).toHaveBeenCalledWith('learner-1', freeCourse.id)
+    let section = screen.getByRole('region', { name: 'Ratings and reviews' })
+    expect(within(section).getByRole('group', { name: 'Reply from Capt. Maya Singh' })).toHaveTextContent('Thank you, Ana.')
+    expect(within(section).queryByRole('button', { name: 'Reply' })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.getPublicReviews.mockResolvedValueOnce(reviews)
+    mocks.getOwnerReplyView.mockResolvedValueOnce({ replies: { r1: { body: 'Thank you, Ana.', repliedAt: '2026-10-06T10:00:00.000Z', status: 'visible' } } })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    section = screen.getByRole('region', { name: 'Ratings and reviews' })
+    expect(within(within(section).getByRole('article', { name: 'Review by Fixture Reviewer Ana' })).getByRole('button', { name: 'Edit reply' })).toBeInTheDocument()
+    expect(within(within(section).getByRole('article', { name: 'Review by Fixture Reviewer Bo' })).getByRole('button', { name: 'Reply' })).toBeInTheDocument()
   })
 
   it('leaves the reviews section and aggregateRating out while no review is approved (round C)', async () => {

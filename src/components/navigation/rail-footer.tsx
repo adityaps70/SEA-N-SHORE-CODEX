@@ -28,16 +28,16 @@ const linkClass = 'inline-flex min-h-6 items-center hover:text-ocean-700 hover:u
  * has the page background and leaves room at the bottom for the Messaging dock,
  * which is fixed over the right-rail column. `visibleFrom`
  * must match the breakpoint at which the rail itself is visible beside the content;
- * the full-width compact footer hides at that breakpoint so links never repeat.
+ * the full-width site footer hides at that breakpoint so links never repeat.
  */
 export function RailFooter({ visibleFrom = 'xl' }: { visibleFrom?: RailBreakpoint }) {
   return (
     <footer
       aria-label="Site footer"
       data-rail-footer={visibleFrom}
-      className={`${visibilityClass[visibleFrom]} relative bg-mist-50 px-2 pb-16 pt-4 text-center text-[11px] leading-4 text-muted`}
+      className={`${visibilityClass[visibleFrom]} relative bg-mist-50 px-2 pb-16 pt-4 text-center text-xs leading-4 text-muted`}
     >
-      <nav aria-label="Footer">
+      <nav aria-label="Footer links">
         <ul className="flex flex-wrap justify-center gap-x-3 gap-y-0.5">
           {railKeyLinks().map((link) => (
             <li key={link.href}>
@@ -50,7 +50,7 @@ export function RailFooter({ visibleFrom = 'xl' }: { visibleFrom?: RailBreakpoin
         <RailFooterMore className={linkClass}>
           {footerLinkGroups({ signedIn: true }).map((group) => (
             <div key={group.title}>
-              <h2 className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">{group.title}</h2>
+              <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-muted">{group.title}</h2>
               <ul className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                 {group.links.map((link) => (
                   <li key={link.href}>

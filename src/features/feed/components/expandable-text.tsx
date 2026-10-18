@@ -76,7 +76,7 @@ export function ExpandableText({ body, mentions = [], organizationMentions = [],
     return <p className={className}><MentionText body={body} mentions={mentions} organizationMentions={organizationMentions} /></p>
   }
 
-  const buttonClass = 'cursor-pointer rounded font-semibold text-muted hover:text-ocean-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40'
+  const buttonClass = 'cursor-pointer rounded font-semibold text-muted hover:text-ocean-700 hover:underline'
 
   return (
     <p id={id} className={className} data-collapsed={expanded ? 'false' : 'true'}>

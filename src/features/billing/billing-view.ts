@@ -1,7 +1,8 @@
-import { BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS, TRIAL_MONTHS, formatRupees, trialDaysLeft, yearlySaving, type BillingInterval, type PaidPlanCode } from './plans'
+import { BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS, TRIAL_MONTHS, trialDaysLeft, yearlySaving, type BillingInterval, type PaidPlanCode } from './plans'
 import type { SubjectBilling } from './subscription-repository'
 import { TRIAL_BILLING_PROVIDER, type PaymentRecord, type PlanPrice } from './subscription-types'
 import { trialEligibility } from './trials'
+import { formatMoney } from '@/features/payments/currency'
 
 /**
  * Turns the stored billing state into what the billing pages show, in plain words.
@@ -34,6 +35,13 @@ export type BillingHistoryRow = {
 export type PlanBillingView = {
   plan: PaidPlanCode
   planLabel: string
+  /**
+   * Round H (H7): the plan the account is on, as the heading says it: "Free plan" when not subscribed,
+   * "Creator Pro · Free trial until 15 Jan 2027" during the trial, otherwise the plan's name.
+   */
+  headline: string
+  /** Round H (H7): "Try Creator Pro free for 3 months …" while a free trial can still be started (TRIAL_MONTHS). */
+  trialOffer: string | null
   configured: boolean
   prices: Record<BillingInterval, { id: string; amountMinor: number } | null>
   /** e.g. "Save ₹200.00 a year — 2 months free", when yearly is cheaper. */
@@ -97,8 +105,13 @@ export function formatBillingDate(value: string | null | undefined, timeZone = '
   return new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone }).format(date)
 }
 
+/** Round H (H7): the free-trial offer, from the same TRIAL_MONTHS the Pricing page uses. */
+export function trialOfferLabel(plan: PaidPlanCode) {
+  return `Try ${PLAN_LABELS[plan]} free for ${TRIAL_MONTHS[plan]} months. No payment details needed.`
+}
+
 function priceLabel(amountMinor: number, interval: BillingInterval) {
-  return `${formatRupees(amountMinor)} ${INTERVAL_LABELS[interval].per}`
+  return `${formatMoney(amountMinor, 'INR')} ${INTERVAL_LABELS[interval].per}`
 }
 
 /** "₹1,000.00 per month or ₹10,000.00 per year" from the active prices; null when none. */
@@ -126,7 +139,7 @@ function historyRow(payment: PaymentRecord, plan: PaidPlanCode, intervalFor: (ch
       : payment.status === 'cancelled'
         ? { status: 'Cancelled — not charged', tone: 'neutral' as const }
         : { status: 'Scheduled', tone: 'pending' as const }
-  return { id: payment.id, date, description, amount: formatRupees(payment.amountMinor), ...status }
+  return { id: payment.id, date, description, amount: formatMoney(payment.amountMinor, 'INR'), ...status }
 }
 
 export function buildPlanBillingView(input: {
@@ -143,7 +156,7 @@ export function buildPlanBillingView(input: {
   const year = input.prices.find((price) => price.planCode === plan && price.interval === 'year' && price.active) ?? null
   const saving = month && year ? yearlySaving(month.amountMinor, year.amountMinor) : null
   const yearlySavingLabel = saving
-    ? `Save ${formatRupees(saving.savingMinor)} a year${saving.monthsFree >= 1 ? ` — ${saving.monthsFree} month${saving.monthsFree === 1 ? '' : 's'} free` : ''}`
+    ? `Save ${formatMoney(saving.savingMinor, 'INR')} a year${saving.monthsFree >= 1 ? ` — ${saving.monthsFree} month${saving.monthsFree === 1 ? '' : 's'} free` : ''}`
     : null
 
   const { access, checkout } = billing
@@ -176,6 +189,8 @@ export function buildPlanBillingView(input: {
   const base = {
     plan,
     planLabel,
+    headline: planLabel,
+    trialOffer: trial.canStart ? trialOfferLabel(plan) : null,
     configured: input.configured,
     prices: Object.fromEntries(BILLING_INTERVALS.map((interval) => {
       const price = input.prices.find((entry) => entry.planCode === plan && entry.interval === interval && entry.active) ?? null
@@ -192,6 +207,7 @@ export function buildPlanBillingView(input: {
     return {
       ...base,
       state: 'free',
+      headline: 'Free plan',
       statusLabel: 'Free plan',
       statusHelp: plan === 'organization_pro'
         ? (ended ? `This organization’s ${planLabel} plan ended on ${ended}. It is on the free plan now.` : 'This organization is on the free plan.')
@@ -209,6 +225,7 @@ export function buildPlanBillingView(input: {
     return {
       ...base,
       state: 'trialing',
+      headline: trial.endsOn ? `${planLabel} · Free trial until ${trial.endsOn}` : `${planLabel} · Free trial`,
       statusLabel: `Free trial — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`,
       statusHelp: `${whose} ${trial.months}-month free trial of ${planLabel} ends on ${trial.endsOn}. Choose a plan before then to keep it: the first payment is taken on the day the trial ends, not before. If you do nothing, the account returns to the free plan and anything published with ${planLabel} is locked, not deleted.`,
       current: { interval: null, priceLabel: 'Free trial', renewsOn: null, accessUntil, paidThrough: accessUntil, paymentMethod: null, autoRenew: false },
@@ -288,8 +305,8 @@ export function buildPlanBillingView(input: {
     state: 'active',
     statusLabel: 'Active — renews automatically',
     statusHelp: firstChargePending
-      ? `Auto-pay is approved. The first payment of ${formatRupees(checkout.amountMinor)} is taken${renewsOn ? ` on ${renewsOn}` : ' within a few days'}; you can use ${planLabel} now.`
-      : `Paid until ${paidThrough}. The next payment of ${formatRupees(checkout.amountMinor)} is taken automatically on ${renewsOn}.`,
+      ? `Auto-pay is approved. The first payment of ${formatMoney(checkout.amountMinor, 'INR')} is taken${renewsOn ? ` on ${renewsOn}` : ' within a few days'}; you can use ${planLabel} now.`
+      : `Paid until ${paidThrough}. The next payment of ${formatMoney(checkout.amountMinor, 'INR')} is taken automatically on ${renewsOn}.`,
     current: { ...details, renewsOn },
     endedOn: null,
     actions: {

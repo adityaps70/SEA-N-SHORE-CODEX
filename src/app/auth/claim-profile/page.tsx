@@ -5,6 +5,7 @@ import { AuthShell } from '@/features/auth/components/auth-shell'
 import { prepareLegacyProfileClaim } from '@/features/auth/legacy-claim-actions'
 import { legacyInviteRepository } from '@/features/legacy-invites/repository'
 import { getCognitoEnvironment } from '@/lib/env'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const metadata: Metadata = { title: 'Claim your old profile' }
 
@@ -85,7 +86,7 @@ export default async function ClaimProfilePage({
         ) : null}
         <button
           type="submit"
-          className="inline-flex min-h-12 items-center justify-center rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-ocean-800"
+          className={buttonClass()}
         >
           Continue with email
         </button>

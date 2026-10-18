@@ -17,6 +17,7 @@ import {
   organizationCoverUrl,
   organizationLogoUrl,
 } from '../organization-page-profile'
+import { pluralize } from '@/lib/format'
 
 const initialState: OrganizationBrandingActionState = {}
 const IMAGE_TYPES = new Set<string>(BRANDING_IMAGE_TYPES)
@@ -213,7 +214,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
               aria-describedby="tagline-hint"
             />
             <span id="tagline-hint" className={hintClass}>
-              One line shown under your name. {TAGLINE_MAX_LENGTH - tagline.length} characters left. Leave empty to use the first line of the description.
+              One line shown under your name. {pluralize(TAGLINE_MAX_LENGTH - tagline.length, 'character')} left. Leave empty to use the first line of the description.
             </span>
             {error('tagline') ? <span className="mt-1 block text-xs text-red-700">{error('tagline')}</span> : null}
           </label>

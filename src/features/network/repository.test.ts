@@ -58,6 +58,25 @@ describe('Aurora network repository', () => {
     expect(String(callsOf(query)[0]?.[0])).toContain('order by created_at desc')
   })
 
+  it('loads message permissions and blocks for many members in one parameterized query (round H, H7)', async () => {
+    const query = vi.fn(async () => [
+      { profile_id: TARGET_ID, message_permission: 'everyone', blocked: false },
+      { profile_id: CONNECTION_ID, message_permission: null, blocked: true },
+    ])
+    const { createNetworkRepository } = await import('./repository')
+    const repository = createNetworkRepository({ query })
+
+    const access = await repository.loadMessageAccess(VIEWER_ID, [TARGET_ID, CONNECTION_ID])
+    expect(access.get(TARGET_ID)).toEqual({ permission: 'everyone', blocked: false })
+    expect(access.get(CONNECTION_ID)).toEqual({ permission: 'connections', blocked: true })
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('from public.user_blocks'), [VIEWER_ID, [TARGET_ID, CONNECTION_ID]])
+    expect(String(callsOf(query)[0]?.[0])).toContain('public.member_preferences')
+
+    query.mockClear()
+    await expect(repository.loadMessageAccess(VIEWER_ID, [])).resolves.toEqual(new Map())
+    expect(query).not.toHaveBeenCalled()
+  })
+
   it('checks member readiness and symmetric blocking with parameterized SQL', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce([{ ready: true }])

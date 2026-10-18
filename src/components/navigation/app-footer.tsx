@@ -13,8 +13,8 @@ export type FooterLink = {
 export type FooterLinkGroup = { title: string; links: FooterLink[] }
 
 /**
- * The one link set used by every footer (public, compact, rail, side drawer and
- * landing). Every href must resolve to a route in src/app — see footer-links.test.ts.
+ * The one link set used by every footer (site, rail, side drawer and landing).
+ * Every href must resolve to a route in src/app — see footer-links.test.ts.
  */
 export const FOOTER_LINK_GROUPS: FooterLinkGroup[] = [
   {
@@ -179,32 +179,24 @@ export function FooterSocialIcons({ className = '', linkClassName = socialLinkCl
 
 const headingClass = 'text-xs font-bold uppercase tracking-[0.14em] text-muted'
 
-/**
- * The three link groups as columns: two on phones, three from `sm` up. `compact`
- * is the small-text variant for the end-of-content footer.
- */
-export function FooterLinkColumns({ signedIn, compact = false, className = '' }: {
+/** The three link groups as columns: two on phones, three from `sm` up (used by the site footer). */
+export function FooterLinkColumns({ signedIn, className = '' }: {
   signedIn: boolean
-  compact?: boolean
   className?: string
 }) {
   const groups = footerLinkGroups({ signedIn })
   return (
     <nav aria-label="Footer" className={className}>
-      <div className={`grid grid-cols-2 sm:grid-cols-3 ${compact ? 'gap-x-8 gap-y-4' : 'gap-8'}`}>
+      <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
         {groups.map((group) => (
           <div key={group.title} className="min-w-0">
-            <h2 className={compact ? 'text-[11px] font-bold uppercase tracking-[0.14em] text-muted' : headingClass}>{group.title}</h2>
-            <ul className={`mt-2 grid ${compact ? 'gap-0' : 'gap-1'}`}>
+            <h2 className={headingClass}>{group.title}</h2>
+            <ul className="mt-2 grid gap-1">
               {group.links.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    className={
-                      compact
-                        ? 'inline-flex min-h-7 items-center text-xs font-semibold text-navy-900 transition hover:text-ocean-700 hover:underline'
-                        : 'inline-flex min-h-8 items-center text-sm font-semibold text-navy-900 transition hover:text-ocean-700 hover:underline'
-                    }
+                    className="inline-flex min-h-8 items-center text-sm font-semibold text-navy-900 transition hover:text-ocean-700 hover:underline"
                   >
                     {link.label}
                   </Link>
@@ -215,30 +207,5 @@ export function FooterLinkColumns({ signedIn, compact = false, className = '' }:
         ))}
       </div>
     </nav>
-  )
-}
-
-/**
- * Compact footer shown at the end of the content on pages without a right rail,
- * from the `md` breakpoint up. Phones do not show it: the same links are at the
- * bottom of the side drawer (side-drawer.tsx). When a page renders <RailFooter>,
- * this footer hides itself at the rail's breakpoint so the links are never shown twice.
- * Requires an ancestor with the `group/shell` class (the app layouts).
- */
-export function AppFooter() {
-  return (
-    <footer
-      aria-label="Site footer"
-      data-app-footer="compact"
-      className="mx-auto w-full max-w-7xl px-4 pb-6 pt-2 max-md:hidden sm:px-6 lg:group-has-data-[rail-footer=lg]/shell:hidden xl:group-has-data-[rail-footer=xl]/shell:hidden"
-    >
-      <div className="border-t border-mist-100 pt-5 text-xs text-muted">
-        <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-5">
-          <FooterLinkColumns signedIn compact className="max-w-2xl grow" />
-          <FooterSocialIcons className="-ml-2 shrink-0" size={18} />
-        </div>
-        <p className="mt-5 border-t border-mist-100 pt-3">{footerBottomLine()}</p>
-      </div>
-    </footer>
   )
 }

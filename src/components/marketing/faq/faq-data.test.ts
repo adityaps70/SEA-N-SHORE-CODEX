@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { faqGroups, faqJsonLd, jsonLdScript, landingFaqs } from './faq-data'
 
 describe('FAQ data', () => {
-  it('has the seven help groups with unique question ids', () => {
+  it('has the eight help groups with unique question ids', () => {
     const groups = faqGroups()
     expect(groups.map((group) => group.title)).toEqual([
       'Joining Sea N Shore',
@@ -10,6 +10,7 @@ describe('FAQ data', () => {
       'Companies & organizations',
       'Global partners',
       'Courses & events',
+      'Messages, connections & communities',
       'Payments & plans',
       'Account & privacy',
     ])
@@ -84,5 +85,24 @@ describe('FAQ data', () => {
     const json = jsonLdScript(data)
     expect(json).not.toContain('</script>')
     expect(JSON.parse(json)).toEqual(data)
+  })
+
+  it('answers messaging, connections, communities, password reset and a lost two-step device from the real rules (round H, H7)', () => {
+    const items = faqGroups().flatMap((group) => group.items)
+    const byId = (id: string) => items.find((item) => item.id === id)
+    expect(byId('messaging')?.answer).toContain('My connections only')
+    expect(byId('messaging')?.answer).toContain('Everyone on Sea N Shore')
+    expect(byId('messaging')?.answer).toContain('edit a message for 5 minutes')
+    expect(byId('messaging')?.answer).toContain('Settings → Blocked & muted')
+    expect(byId('connections')?.answer).toContain('up to 50 connection requests in 24 hours')
+    expect(byId('connections')?.answer).toContain('after 7 days')
+    expect(byId('connections')?.answer).toContain('Only me')
+    expect(byId('communities')?.answer).toContain('Request to join')
+    expect(byId('communities')?.answer).toContain('Creator Pro (including the free trial) can run one community')
+    expect(byId('password-reset')?.answer).toContain('Forgot password?')
+    expect(byId('password-reset')?.answer).toContain('up to 5 codes an hour')
+    expect(byId('lost-two-step-device')?.answer).toContain('there are no backup codes')
+    expect(byId('lost-two-step-device')?.answer).toContain('Contact form')
+    expect(byId('lost-two-step-device')?.link).toEqual({ href: '/contact?topic=account#contact-form', label: 'Contact support about a lost device' })
   })
 })

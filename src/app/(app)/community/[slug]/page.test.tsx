@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getBySlug: vi.fn(),
   listMembers: vi.fn(),
   listPendingRequests: vi.fn(),
+  countPendingRequests: vi.fn(),
   getFeedPage: vi.fn(),
   getOwnProfile: vi.fn(),
   createMediaReadUrl: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock('next/navigation', () => ({
 }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/community/repository', () => ({
-  communityRepository: { getBySlug: mocks.getBySlug, listMembers: mocks.listMembers, listPendingRequests: mocks.listPendingRequests },
+  communityRepository: { getBySlug: mocks.getBySlug, listMembers: mocks.listMembers, listPendingRequests: mocks.listPendingRequests, countPendingRequests: mocks.countPendingRequests },
 }))
 vi.mock('@/features/community/actions', () => ({
   joinGroup: vi.fn(), leaveGroup: vi.fn(), approveJoinRequest: vi.fn(), declineJoinRequest: vi.fn(), approveAllPending: vi.fn(), removeMember: vi.fn(), setMemberRole: vi.fn(), transferOwnership: vi.fn(), updateGroup: vi.fn(),
@@ -74,6 +75,7 @@ beforeEach(() => {
   mocks.getBySlug.mockResolvedValue(group())
   mocks.listMembers.mockResolvedValue([member()])
   mocks.listPendingRequests.mockResolvedValue([])
+  mocks.countPendingRequests.mockResolvedValue(0)
   mocks.getFeedPage.mockResolvedValue({ posts: [], nextCursor: null })
   mocks.getOwnProfile.mockResolvedValue({ id: 'viewer-1', fullName: 'Viewer', avatarUrl: null, rank: null, headline: null })
   mocks.createMediaReadUrl.mockResolvedValue('https://cdn.example/avatar.jpg')
@@ -229,6 +231,24 @@ describe('/community/[slug]', () => {
     expect(screen.getByRole('button', { name: 'Add community photo' })).toBeInTheDocument()
   })
 
+  it('puts the photo controls in an edit overlay for people who manage the community, never for plain members (round H, H6)', async () => {
+    mocks.getBySlug.mockResolvedValue(group({ iconUrl: '/api/community-media/g/icon?v=i.webp', viewerMembership: { role: 'member', status: 'active' } }))
+    render(await CommunityGroupPage({ params, searchParams: search({}) }))
+    expect(screen.queryByRole('group', { name: 'Edit community photo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit community photo' })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.getBySlug.mockResolvedValue(group({ iconUrl: '/api/community-media/g/icon?v=i.webp', viewerMembership: { role: 'owner', status: 'active' } }))
+    render(await CommunityGroupPage({ params, searchParams: search({}) }))
+    const overlay = screen.getByRole('group', { name: 'Edit community photo' })
+    expect(overlay).toContainElement(screen.getByRole('button', { name: 'Change community photo' }))
+    expect(overlay).toContainElement(screen.getByRole('button', { name: 'Remove community photo' }))
+    expect(overlay).toHaveClass('opacity-0', 'group-focus-within/icon:opacity-100')
+    expect(screen.getByRole('button', { name: 'Edit community photo' })).toHaveAttribute('aria-expanded', 'false')
+    // The photo itself is not covered by the buttons at rest.
+    expect(screen.getByTestId('community-icon-editor')).toContainElement(screen.getByTestId('group-icon-tile'))
+  })
+
   it('labels the join button by the join setting and shows it on the About tab, with "By <organization>" for organization-owned communities (round 9C)', async () => {
     mocks.getBySlug.mockResolvedValue(group({ joinPolicy: 'approval', ownerOrganization: { id: 'c1', slug: 'harbour-minds', name: 'Harbour Minds' } }))
     render(await CommunityGroupPage({ params, searchParams: search({}) }))
@@ -303,6 +323,48 @@ describe('/community/[slug]', () => {
     expect(screen.getByRole('menuitem', { name: 'Edit group' })).toBeInTheDocument()
     // Still not a member: the header offers Request to join, not Leave.
     expect(screen.getByRole('button', { name: 'Request to join Tanker Professionals' })).toBeInTheDocument()
+  })
+
+  it('asks a new community\'s owner for a welcome post until an owner or moderator has posted (round H, H7)', async () => {
+    mocks.requireAwsUser.mockResolvedValue({ id: 'owner-1' })
+    mocks.getOwnProfile.mockResolvedValue({ id: 'owner-1', fullName: 'Placeholder Member', avatarUrl: null, rank: null, headline: null })
+    mocks.getBySlug.mockResolvedValue(group({ viewerMembership: { role: 'owner', status: 'active' } }))
+    mocks.getFeedPage.mockResolvedValue({ posts: [{ id: 'p1', updatedAt: 'x', author: { id: 'member-9' } }], nextCursor: null })
+    render(await CommunityGroupPage({ params, searchParams: search({ tab: 'posts' }) }))
+    const prompt = screen.getByRole('region', { name: 'Welcome your first members' })
+    expect(within(prompt).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(prompt).getByRole('button', { name: 'Write the welcome post' })).toBeInTheDocument()
+    expect(within(prompt).getByRole('button', { name: 'Dismiss the welcome post suggestion' })).toBeInTheDocument()
+    cleanup()
+
+    mocks.getFeedPage.mockResolvedValue({ posts: [{ id: 'p2', updatedAt: 'x', author: { id: 'owner-1' } }], nextCursor: null })
+    render(await CommunityGroupPage({ params, searchParams: search({ tab: 'posts' }) }))
+    expect(screen.queryByRole('region', { name: 'Welcome your first members' })).not.toBeInTheDocument()
+    cleanup()
+
+    // Plain members never see it.
+    mocks.requireAwsUser.mockResolvedValue({ id: 'viewer-1' })
+    mocks.getBySlug.mockResolvedValue(group({ viewerMembership: { role: 'member', status: 'active' } }))
+    mocks.getFeedPage.mockResolvedValue({ posts: [], nextCursor: null })
+    render(await CommunityGroupPage({ params, searchParams: search({ tab: 'posts' }) }))
+    expect(screen.queryByRole('region', { name: 'Welcome your first members' })).not.toBeInTheDocument()
+  })
+
+  it('shows owners and moderators a Moderation panel with the waiting request count, members and settings (round H, H7)', async () => {
+    mocks.getBySlug.mockResolvedValue(group({ joinPolicy: 'approval', viewerMembership: { role: 'admin', status: 'active' } }))
+    mocks.countPendingRequests.mockResolvedValue(3)
+    render(await CommunityGroupPage({ params, searchParams: search({ tab: 'posts' }) }))
+    const panel = screen.getByRole('region', { name: 'Moderation' })
+    expect(within(panel).getByRole('link', { name: /Join requests\s*3 requests waiting/ })).toHaveAttribute('href', '/community/tanker-professionals?requests=1')
+    expect(within(panel).getByRole('link', { name: /Manage members/ })).toHaveAttribute('href', '/community/tanker-professionals?tab=members')
+    expect(within(panel).getByRole('link', { name: /Group settings/ })).toHaveAttribute('href', '/community/tanker-professionals?tab=about&edit=1')
+    expect(within(panel).getByText(/Remove from group/)).toBeInTheDocument()
+    expect(mocks.countPendingRequests).toHaveBeenCalledWith(group().id)
+    cleanup()
+
+    mocks.getBySlug.mockResolvedValue(group({ viewerMembership: { role: 'member', status: 'active' } }))
+    render(await CommunityGroupPage({ params, searchParams: search({ tab: 'posts' }) }))
+    expect(screen.queryByRole('region', { name: 'Moderation' })).not.toBeInTheDocument()
   })
 
   it('returns not found for unknown or archived groups', async () => {

@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { pluralize } from '@/lib/format'
 
 /**
  * Plain validation messages (learning round C, C0.1). A schema rule without its own message makes zod report
@@ -19,10 +20,6 @@ export function isRawValidationMessage(message: string | undefined | null) {
   return !message || ZOD_DEFAULT_MESSAGE.test(message.trim())
 }
 
-function plural(count: number, one: string, many: string) {
-  return `${count} ${count === 1 ? one : many}`
-}
-
 function amount(value: unknown) {
   return typeof value === 'bigint' ? Number(value) : Number(value)
 }
@@ -39,7 +36,7 @@ export function plainIssueMessage(issue: Issue, labels: FieldLabels = {}) {
     case 'too_small': {
       const minimum = amount(issue.minimum)
       if (issue.origin === 'string') {
-        return minimum <= 1 ? `${field} is required.` : `${field} needs at least ${plural(minimum, 'character', 'characters')}.`
+        return minimum <= 1 ? `${field} is required.` : `${field} needs at least ${pluralize(minimum, 'character')}.`
       }
       if (issue.origin === 'array' || issue.origin === 'set') {
         return minimum <= 1 ? `Add at least one entry to ${lower}.` : `Add at least ${minimum} entries to ${lower}.`
@@ -48,8 +45,8 @@ export function plainIssueMessage(issue: Issue, labels: FieldLabels = {}) {
     }
     case 'too_big': {
       const maximum = amount(issue.maximum)
-      if (issue.origin === 'string') return `${field} can be at most ${plural(maximum, 'character', 'characters')}.`
-      if (issue.origin === 'array' || issue.origin === 'set') return `${field} can have at most ${plural(maximum, 'entry', 'entries')}.`
+      if (issue.origin === 'string') return `${field} can be at most ${pluralize(maximum, 'character')}.`
+      if (issue.origin === 'array' || issue.origin === 'set') return `${field} can have at most ${pluralize(maximum, 'entry', 'entries')}.`
       if (issue.origin === 'file') return `${field} is too large.`
       return `${field} must be ${maximum} or less.`
     }

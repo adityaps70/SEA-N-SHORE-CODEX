@@ -39,15 +39,46 @@ export function minorToPriceInput(amountMinor: number | null | undefined, curren
   return fraction ? `${whole}.${String(fraction).padStart(2, '0')}` : String(whole)
 }
 
-export function formatMoney(amountMinor: number, currency: string) {
-  const code = isPaymentCurrency(currency) ? currency : DEFAULT_PAYMENT_CURRENCY
-  const major = amountMinor / MINOR_UNITS[code]
+/** An ISO 4217 code Intl can format ("usd" → "USD"); null for anything else. */
+function currencyCode(currency: string | null | undefined): string | null {
+  const code = (currency ?? '').trim().toUpperCase()
+  if (!/^[A-Z]{3}$/.test(code)) return null
+  try {
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: code })
+    return code
+  } catch {
+    return null
+  }
+}
+
+/** Decimal places of a currency's minor unit: 2 for INR and USD, 0 for JPY. */
+function minorDigits(code: string) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits ?? 2
+}
+
+/**
+ * Round H (H7): the one money formatter for display. Whole amounts drop the decimals ("₹99",
+ * "$1,200"); a non-zero fraction shows both digits ("₹99.50"). INR uses Indian grouping
+ * ("₹1,23,456"), other currencies en-US grouping. An unknown code falls back to INR.
+ * Tax invoices and payout statements keep exact two-decimal amounts (formatExactMoney, tax/gst).
+ */
+export function formatMoney(amountMinor: number, currency: string | null | undefined = DEFAULT_PAYMENT_CURRENCY) {
+  const code = currencyCode(currency) ?? DEFAULT_PAYMENT_CURRENCY
+  const digits = minorDigits(code)
+  const factor = 10 ** digits
+  const whole = Math.trunc(amountMinor)
   return new Intl.NumberFormat(code === 'INR' ? 'en-IN' : 'en-US', {
     style: 'currency',
     currency: code,
-    minimumFractionDigits: Number.isInteger(major) ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(major)
+    minimumFractionDigits: whole % factor === 0 ? 0 : digits,
+    maximumFractionDigits: digits,
+  }).format(whole / factor)
+}
+
+/** Round H (H7): a whole amount in major units (rupees, dollars), e.g. a salary, with the same rules. */
+export function formatMajorMoney(amount: number, currency: string | null | undefined = DEFAULT_PAYMENT_CURRENCY) {
+  const code = currencyCode(currency) ?? DEFAULT_PAYMENT_CURRENCY
+  return formatMoney(Math.round(amount * 10 ** minorDigits(code)), code)
 }
 
 /**

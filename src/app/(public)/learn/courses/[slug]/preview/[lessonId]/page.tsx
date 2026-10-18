@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import { cache } from 'react'
 import Link from 'next/link'
@@ -74,7 +75,7 @@ export default async function CoursePreviewPage({ params }: PreviewPageProps) {
   const coursePath = `/learn/courses/${preview.course.slug}`
 
   return (
-    <main className="mx-auto w-full max-w-4xl">
+    <MainLandmark className="mx-auto w-full max-w-page-narrow">
       <Link href={coursePath} className="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-ocean-700 hover:underline">
         <ArrowLeft aria-hidden="true" className="size-4" /> {preview.course.title}
       </Link>
@@ -104,6 +105,6 @@ export default async function CoursePreviewPage({ params }: PreviewPageProps) {
           </Link>
         </div>
       </section>
-    </main>
+    </MainLandmark>
   )
 }

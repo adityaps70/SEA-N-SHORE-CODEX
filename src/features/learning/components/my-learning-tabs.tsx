@@ -117,7 +117,6 @@ export function MyLearningTabs({
           aria-labelledby={`${baseId}-tab-${tab}`}
           hidden={tab !== active}
           tabIndex={0}
-          className="focus-visible:outline-none"
         >
           {panels[tab]}
         </div>

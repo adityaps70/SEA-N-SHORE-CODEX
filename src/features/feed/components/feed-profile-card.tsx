@@ -229,7 +229,7 @@ export function FeedProfileCard({
         </p>
         {identity.headline ? <p className="mt-1 line-clamp-2 text-xs leading-4 text-ink">{identity.headline}</p> : null}
         {identity.personaLabel ? (
-          <p className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-teal-700">{identity.personaLabel}</p>
+          <p className="mt-1.5 text-xs font-bold uppercase tracking-[0.1em] text-teal-700">{identity.personaLabel}</p>
         ) : null}
         {identity.detail ? (
           <p className="mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-navy-900">

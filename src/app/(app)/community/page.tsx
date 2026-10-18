@@ -10,6 +10,7 @@ import {
   CommunityDiscoverCard,
   CommunityListRow,
   communityHref,
+  yourCommunitiesSummary,
 } from '@/features/community/components/community-discover'
 import { GroupCard } from '@/features/community/components/group-card'
 import { communityRepository } from '@/features/community/repository'
@@ -19,8 +20,11 @@ import {
   COMMUNITY_CATEGORY_LABELS,
   DIRECTORY_SORTS,
   DIRECTORY_SORT_LABELS,
-  isCommunityCategory,
-  type CommunityCategory,
+  UNCATEGORISED_COMMUNITIES,
+  UNCATEGORISED_COMMUNITIES_LABEL,
+  communityCategoryFilterLabel,
+  isCommunityCategoryFilter,
+  type CommunityCategoryFilter,
   type CommunityGroup,
   type DirectorySort,
   type GroupJoinPolicy,
@@ -158,7 +162,7 @@ type DiscoverData = {
   mine: CommunityGroup[]
   suggestedBySignals: CommunityGroup[]
   active: CommunityGroup[]
-  categoryCounts: Partial<Record<CommunityCategory, number>>
+  categoryCounts: Partial<Record<CommunityCategoryFilter, number>>
 }
 
 async function loadDiscover(viewerId: string): Promise<DiscoverData> {
@@ -167,7 +171,7 @@ async function loadDiscover(viewerId: string): Promise<DiscoverData> {
     communityRepository.listViewerGroups(viewerId),
     communityService.suggestGroups(viewerId).catch((): CommunityGroup[] => []),
     communityRepository.browseDirectory(viewerId, { notJoined: true, sort: 'active', limit: 12 }).catch(() => ({ groups: [] as CommunityGroup[], total: 0 })),
-    communityRepository.countByCategory().catch((): Partial<Record<CommunityCategory, number>> => ({})),
+    communityRepository.countByCategory().catch((): Partial<Record<CommunityCategoryFilter, number>> => ({})),
   ])
   return { personal, mine, suggestedBySignals, active: activePage.groups, categoryCounts }
 }
@@ -219,10 +223,13 @@ function DiscoverView({ personal, mine, suggestedBySignals, active, categoryCoun
           </section>
         ) : null}
 
-        <section aria-labelledby="community-categories-heading">
-          <SectionHeader id="community-categories-heading" title="Browse by category" />
-          <CommunityCategoryGrid counts={categoryCounts} />
-        </section>
+        {/* Round H (H7): only categories that have communities; hidden when none do. */}
+        {Object.values(categoryCounts).some((count) => (count ?? 0) > 0) ? (
+          <section aria-labelledby="community-categories-heading">
+            <SectionHeader id="community-categories-heading" title="Browse by category" />
+            <CommunityCategoryGrid counts={categoryCounts} />
+          </section>
+        ) : null}
 
         {popular.length ? (
           <section aria-labelledby="popular-communities-heading">
@@ -255,7 +262,7 @@ function DiscoverView({ personal, mine, suggestedBySignals, active, categoryCoun
 
 type DirectoryFilters = {
   query: string
-  category: CommunityCategory | null
+  category: CommunityCategoryFilter | null
   joinPolicy: GroupJoinPolicy | null
   sort: DirectorySort
   page: number
@@ -267,7 +274,7 @@ function DirectoryView({ query, category, joinPolicy, sort, page, groups, total 
   const href = (changes: Record<string, string | number | null>) => communityHref({ ...base, page: null, ...changes })
   const title = query
     ? `Communities matching “${query}”`
-    : category ? COMMUNITY_CATEGORY_LABELS[category] : 'All communities'
+    : category ? communityCategoryFilterLabel(category) : 'All communities'
 
   return (
     <section aria-labelledby="directory-heading" className="space-y-4 max-md:space-y-3">
@@ -283,6 +290,7 @@ function DirectoryView({ query, category, joinPolicy, sort, page, groups, total 
           {COMMUNITY_CATEGORIES.map((value) => (
             <FilterChip key={value} href={href({ category: value })} active={category === value}>{COMMUNITY_CATEGORY_LABELS[value]}</FilterChip>
           ))}
+          <FilterChip href={href({ category: UNCATEGORISED_COMMUNITIES })} active={category === UNCATEGORISED_COMMUNITIES}>{UNCATEGORISED_COMMUNITIES_LABEL}</FilterChip>
         </nav>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Filter by join setting" className="flex flex-wrap gap-2">
@@ -330,7 +338,7 @@ function DirectoryView({ query, category, joinPolicy, sort, page, groups, total 
 function YourCommunitiesView({ mine }: { mine: CommunityGroup[] }) {
   return (
     <section aria-labelledby="all-your-communities-heading">
-      <SectionHeader id="all-your-communities-heading" title="Your communities" description="Communities you belong to, and requests waiting for a moderator." />
+      <SectionHeader id="all-your-communities-heading" title="Your communities" description={yourCommunitiesSummary(mine)} />
       {mine.length ? (
         <GroupGrid groups={mine} label="Your communities" />
       ) : (
@@ -352,7 +360,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
   const query = readSingle(params.q).slice(0, 100)
   const view = readSingle(params.view)
   const rawCategory = readSingle(params.category)
-  const category = isCommunityCategory(rawCategory) ? rawCategory : null
+  const category = isCommunityCategoryFilter(rawCategory) ? rawCategory : null
   const rawJoin = readSingle(params.join)
   const joinPolicy: GroupJoinPolicy | null = rawJoin === 'open' || rawJoin === 'approval' ? rawJoin : null
   const rawSort = readSingle(params.sort)

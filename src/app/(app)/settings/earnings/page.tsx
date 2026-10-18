@@ -46,7 +46,7 @@ export default async function EarningsPage({ searchParams }: { searchParams: Sea
   const payoutDetailsHref = '/settings/payouts'
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
       <MobilePageBar backHref="/settings" title={active.kind === 'organization' ? `Earnings · ${active.name}` : 'Earnings'} />
       <header className="space-y-3">
         <Link href="/settings" className={`${backLinkClass} max-md:hidden`}>
@@ -98,6 +98,6 @@ export default async function EarningsPage({ searchParams }: { searchParams: Sea
           />
         ) : null}
       />
-    </main>
+    </div>
   )
 }

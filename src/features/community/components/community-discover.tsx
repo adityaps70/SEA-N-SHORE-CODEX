@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { Lock } from 'lucide-react'
+import { Lock, UsersRound } from 'lucide-react'
 import { pluralize } from '@/lib/format'
 import { COMMUNITY_CATEGORY_ICONS, GroupIcon } from '../group-icons'
-import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, groupHref, type CommunityCategory, type CommunityGroup } from '../types'
+import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, UNCATEGORISED_COMMUNITIES, communityCategoryFilterLabel, groupHref, type CommunityCategoryFilter, type CommunityGroup } from '../types'
 import { GroupCover, GroupIconTile } from './group-icon-tile'
 import { GroupMembershipButton } from './group-membership-button'
 
@@ -19,10 +19,10 @@ export function communityHref(params: Record<string, string | number | null | un
 function RoleChip({ group }: { group: CommunityGroup }) {
   const membership = group.viewerMembership
   if (membership?.status === 'pending') {
-    return <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">Pending</span>
+    return <span className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-bold text-amber-900">Pending</span>
   }
   if (membership?.status === 'active' && membership.role !== 'member') {
-    return <span className="rounded-md bg-ocean-50 px-1.5 py-0.5 text-[11px] font-bold text-ocean-800">{membership.role === 'owner' ? 'Owner' : 'Moderator'}</span>
+    return <span className="rounded-md bg-ocean-50 px-1.5 py-0.5 text-xs font-bold text-ocean-800">{membership.role === 'owner' ? 'Owner' : 'Moderator'}</span>
   }
   return null
 }
@@ -32,6 +32,19 @@ function activityLine(group: CommunityGroup) {
   const parts = [pluralize(group.memberCount, 'member')]
   if (group.recentPostCount) parts.push(`${pluralize(group.recentPostCount, 'post')} this week`)
   return parts.join(' · ')
+}
+
+/**
+ * Round H (H7): "Your communities" lists joined communities and pending requests together; the line under the
+ * heading counts them separately so the total is not mistaken for communities joined.
+ */
+export function yourCommunitiesSummary(mine: CommunityGroup[]) {
+  const pending = mine.filter((group) => group.viewerMembership?.status === 'pending').length
+  const joined = mine.length - pending
+  if (!mine.length) return 'Communities you belong to, and requests waiting for a moderator.'
+  const parts = [`You belong to ${pluralize(joined, 'community', 'communities')}`]
+  if (pending) parts.push(`${pluralize(pending, 'request')} waiting for a moderator`)
+  return `${parts.join(' · ')}.`
 }
 
 /**
@@ -107,21 +120,29 @@ export function CommunityDiscoverCard({ group, reason = null }: { group: Communi
   )
 }
 
-/** "Browse by category": one tile per category with how many communities it has. */
-export function CommunityCategoryGrid({ counts }: { counts: Partial<Record<CommunityCategory, number>> }) {
+/**
+ * "Browse by category": one tile per category with how many live communities it has. Round H (H7): empty
+ * categories are left out, and communities without a category get an "Other topics" tile, so the tiles add
+ * up to every live community.
+ */
+export function CommunityCategoryGrid({ counts }: { counts: Partial<Record<CommunityCategoryFilter, number>> }) {
+  const tiles = ([...COMMUNITY_CATEGORIES, UNCATEGORISED_COMMUNITIES] as CommunityCategoryFilter[]).filter((category) => (counts[category] ?? 0) > 0)
+  if (!tiles.length) return null
   return (
     <ul aria-label="Community categories" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {COMMUNITY_CATEGORIES.map((category) => (
+      {tiles.map((category) => (
         <li key={category} className="min-w-0">
           <Link
             href={communityHref({ view: 'all', category })}
             className="flex min-h-14 min-w-0 items-center gap-2.5 rounded-xl border border-mist-200 bg-white px-3 py-2 transition hover:border-ocean-200 hover:bg-ocean-50"
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-mist-50 text-ocean-700">
-              <GroupIcon icon={COMMUNITY_CATEGORY_ICONS[category]} aria-hidden="true" className="size-4" />
+              {category === UNCATEGORISED_COMMUNITIES
+                ? <UsersRound aria-hidden="true" className="size-4" />
+                : <GroupIcon icon={COMMUNITY_CATEGORY_ICONS[category]} aria-hidden="true" className="size-4" />}
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-navy-950">{COMMUNITY_CATEGORY_LABELS[category]}</span>
+              <span className="block truncate text-sm font-semibold text-navy-950">{communityCategoryFilterLabel(category)}</span>
               <span className="block text-xs text-muted">{pluralize(counts[category] ?? 0, 'community', 'communities')}</span>
             </span>
           </Link>

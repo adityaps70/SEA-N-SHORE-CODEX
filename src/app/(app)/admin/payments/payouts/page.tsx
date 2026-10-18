@@ -107,7 +107,7 @@ export default async function AdminPayoutsQueuePage() {
   const payableTotal = payable.reduce((sum, line) => sum + line.availableMinor, 0)
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader
         title="Payments"
         meta={payable.length ? `${payable.length} seller${payable.length === 1 ? '' : 's'} ready · ${formatExactMoney(payableTotal)}` : 'No payouts ready to send'}
@@ -172,6 +172,6 @@ export default async function AdminPayoutsQueuePage() {
           <AdminEmptyState title="No payouts yet" description="Completed, failed and cancelled payouts are listed here with their bank reference." />
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

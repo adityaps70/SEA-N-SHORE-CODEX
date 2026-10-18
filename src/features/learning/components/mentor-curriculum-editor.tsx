@@ -113,7 +113,7 @@ const materialTypeOptions: Array<{ value: MaterialType; label: string }> = [
 ]
 
 function inputClassName() {
-  return 'mt-1.5 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted/60 focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
+  return 'mt-1.5 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
 }
 
 function completionDefaults(type: MaterialType): Pick<MaterialFormState, 'completionRule' | 'completionThreshold'> {
@@ -918,9 +918,9 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-mist-100 px-2.5 py-1 text-xs font-semibold capitalize text-navy-800">{material.materialType.replaceAll('_', ' ')}</span>
                         <span className="text-xs font-semibold text-muted">Material {materialIndex + 1}</span>
-                        {!material.isPublished ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">Unpublished</span> : null}
-                        {material.releaseMode !== 'immediate' ? <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-bold capitalize text-sky-700">{material.releaseMode}</span> : null}
-                        {material.scorm ? <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${material.scorm.status === 'ready' ? 'bg-emerald-50 text-emerald-700' : material.scorm.status === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-violet-50 text-violet-700'}`}>SCORM {material.scorm.status}</span> : null}
+                        {!material.isPublished ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">Unpublished</span> : null}
+                        {material.releaseMode !== 'immediate' ? <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold capitalize text-sky-700">{material.releaseMode}</span> : null}
+                        {material.scorm ? <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${material.scorm.status === 'ready' ? 'bg-emerald-50 text-emerald-700' : material.scorm.status === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-violet-50 text-violet-700'}`}>SCORM {material.scorm.status}</span> : null}
                       </div>
                       <h4 className="mt-2 font-bold text-navy-950">{material.title}</h4>
                       {material.summary ? <p className="mt-1 text-sm leading-6 text-muted">{material.summary}</p> : null}

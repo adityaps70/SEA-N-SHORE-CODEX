@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useActionState } from 'react'
 import { CheckCircle2, TriangleAlert } from 'lucide-react'
 import { confirmNewsletterSubscription, unsubscribeWithNewsletterToken, type NewsletterFormState } from '../actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 const COPY = {
   confirm: { button: 'Confirm subscription', pending: 'Confirming…' },
@@ -44,7 +46,7 @@ export function NewsletterTokenAction({ token, kind }: { token: string; kind: 'c
         <button
           type="submit"
           disabled={pending}
-          className={`inline-flex min-h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold text-white transition disabled:cursor-wait disabled:opacity-70 ${kind === 'unsubscribe' ? 'bg-navy-950 hover:bg-navy-800' : 'bg-ocean-700 hover:bg-navy-900'}`}
+          className={cn(buttonClass(), 'disabled:cursor-wait')}
         >
           {pending ? COPY[kind].pending : COPY[kind].button}
         </button>

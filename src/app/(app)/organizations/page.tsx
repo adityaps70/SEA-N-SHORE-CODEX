@@ -21,6 +21,8 @@ import { RequestAccessForm, type RequestAccessState } from '@/features/organizat
 import { organizationManageHref, organizationPlanBillingHref } from '@/features/organizations/organization-page-profile'
 import { organizationRepository } from '@/features/organizations/repository'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 export const metadata: Metadata = { title: 'Organizations' }
 
@@ -40,8 +42,8 @@ function SectionHeader({ id, title, description, meta, className = '' }: { id: s
 const REGISTER_INTRO = 'For shipping and maritime companies, wellbeing and support services, training bodies, public bodies, associations and more. Sea N Shore verifies each organization before its workspace can publish.'
 const VERIFICATION_NOTE = 'Verification confirms an organization is genuine. It does not start an Organization Pro subscription or give anyone extra permissions.'
 
-const primaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg bg-navy-950 px-3 text-xs font-bold text-white transition hover:bg-navy-900'
-const secondaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50'
+const primaryButton = cn(buttonClass({ variant: 'primary', size: 'sm' }), 'flex-1 px-3')
+const secondaryButton = cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'flex-1 px-3')
 
 /** Round G (G5): the one plain reason line on a personalised Discover card. */
 function reasonChip(reason: string | null) {
@@ -98,7 +100,7 @@ export default async function OrganizationsPage({
 
   return (
     // Phones: one column in this order: Your pages, Find an organization, then the rest.
-    <div className="mx-auto w-full max-w-6xl space-y-8 py-2 sm:py-4 max-md:flex max-md:flex-col max-md:gap-6 max-md:space-y-0 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-wide space-y-8 py-2 sm:py-4 max-md:flex max-md:flex-col max-md:gap-6 max-md:space-y-0 max-md:py-0">
       <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none">
         <h1 className="text-2xl font-bold tracking-tight text-navy-950 max-md:text-lg">Organizations</h1>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted max-md:hidden">
@@ -156,7 +158,7 @@ export default async function OrganizationsPage({
                         {canUpgradeOrganization(access, organization.id) ? (
                           <Link
                             href={organizationPlanBillingHref(organization.slug)}
-                            className="flex min-h-9 items-center justify-center rounded-lg bg-teal-600 px-3 text-xs font-bold text-white transition hover:bg-teal-700"
+                            className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'flex px-3')}
                             aria-label={`Upgrade ${organization.name} to Organization Pro`}
                           >
                             Upgrade to Organization Pro

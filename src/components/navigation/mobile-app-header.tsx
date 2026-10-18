@@ -1,32 +1,33 @@
 'use client'
 
 import Link from '@/components/navigation/intent-link'
-import { MessageCircleMore, Search } from 'lucide-react'
+import { Bell, Search } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { useCallback, useState } from 'react'
-import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import type { HeaderOrganization } from './account-menu'
 import { isPhoneDetailRoute } from './mobile-routes'
+import { tabBadgeText } from './mobile-nav'
 import { SIDE_DRAWER_ID, SideDrawer } from './side-drawer'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
 
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
-const badgeClass = 'absolute right-0.5 top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white'
+const badgeClass = 'absolute right-0.5 top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-xs font-bold leading-5 text-white ring-2 ring-white'
 
 /**
  * Phone top bar (round 8, below `md` only): profile photo (opens the side drawer) · search bar
- * (links to /search) · Messages with its unread badge. Notifications and Create are bottom tabs.
+ * (links to /search) · the Notifications bell with its unread badge. Round H (H7): Messages moved to the
+ * bottom tabs (Home, Network, Post, Messages, Jobs) and the bell replaced it here.
  * Detail routes (see mobile-routes.ts) render their own MobilePageBar instead, so the bar is
  * not rendered there.
  */
 export function MobileAppHeader({
-  messagingUnreadCount = 0,
+  notificationUnreadCount = 0,
   canAccessAdmin = false,
   viewer = { name: 'Member', avatarUrl: null },
   organizations = [],
   organizationCount = organizations.length,
 }: {
-  messagingUnreadCount?: number
+  notificationUnreadCount?: number
   canAccessAdmin?: boolean
   viewer?: HeaderViewer
   organizations?: HeaderOrganization[]
@@ -64,12 +65,13 @@ export function MobileAppHeader({
             <span className="truncate">Search jobs, people, courses</span>
           </Link>
           <Link
-            href="/messages"
-            aria-label="Messages"
-            className={`relative grid size-11 shrink-0 place-items-center rounded-full text-navy-900 hover:bg-mist-50 ${focusRing}`}
+            href="/notifications"
+            aria-label={notificationUnreadCount > 0 ? `Notifications, ${notificationUnreadCount} unread` : 'Notifications'}
+            aria-current={pathname === '/notifications' ? 'page' : undefined}
+            className={`relative grid size-11 shrink-0 place-items-center rounded-full text-navy-900 hover:bg-mist-50 aria-[current=page]:bg-mist-100 ${focusRing}`}
           >
-            <MessageCircleMore aria-hidden="true" className="size-6" strokeWidth={1.75} />
-            <MessagingUnreadBadge initialCount={messagingUnreadCount} className={badgeClass} />
+            <Bell aria-hidden="true" className="size-6" strokeWidth={1.75} />
+            {notificationUnreadCount > 0 ? <span aria-hidden="true" data-testid="notifications-bell-badge" className={badgeClass}>{tabBadgeText(notificationUnreadCount)}</span> : null}
           </Link>
         </div>
       </header>

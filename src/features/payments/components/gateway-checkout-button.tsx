@@ -4,6 +4,8 @@ import { CheckCircle2, Lock, Smartphone } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { PHONE_REQUIRED_MESSAGE, type ConfirmCheckoutAction, type ConfirmCheckoutResult, type StartCheckoutAction } from '../checkout-types'
 import { openGatewayCheckout, shouldConfirmWithServer } from './gateway-checkout'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 /**
  * One "Pay" button for any checkout (event tickets now; courses and plans later).
@@ -205,7 +207,7 @@ export function GatewayCheckoutButton(props: GatewayCheckoutButtonProps) {
             placeholder="98765 43210"
             aria-invalid={phoneError ? true : undefined}
             aria-describedby={phoneError ? `${phoneId}-error` : `${phoneId}-help`}
-            className="min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/30 aria-[invalid=true]:border-rose-400"
+            className="min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 aria-[invalid=true]:border-rose-400"
           />
           {phoneError
             ? <p id={`${phoneId}-error`} className="text-xs font-semibold leading-5 text-rose-700">{phoneError}</p>
@@ -216,7 +218,7 @@ export function GatewayCheckoutButton(props: GatewayCheckoutButtonProps) {
             type="submit"
             disabled={submitting}
             aria-busy={submitting || undefined}
-            className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-teal-600 px-4 text-sm font-bold text-white transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`${buttonClass()} w-full`}
           >
             <Lock aria-hidden="true" className="size-4" />
             {submitting ? 'Opening secure checkout…' : 'Continue to payment'}
@@ -225,7 +227,7 @@ export function GatewayCheckoutButton(props: GatewayCheckoutButtonProps) {
             type="button"
             onClick={cancelPhone}
             disabled={submitting}
-            className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`${buttonClass('secondary')} w-full`}
           >
             Cancel
           </button>
@@ -255,7 +257,7 @@ export function GatewayCheckoutButton(props: GatewayCheckoutButtonProps) {
         onClick={() => { void begin() }}
         disabled={unavailable || busy}
         aria-busy={busy || undefined}
-        className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed ${unavailable ? 'border border-mist-200 bg-mist-100 text-navy-700' : 'cursor-pointer bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60'}`}
+        className={cn(buttonClass(), 'w-full', unavailable && 'border border-mist-200 bg-mist-100 text-navy-700 hover:bg-mist-100 disabled:bg-mist-100 disabled:opacity-100')}
       >
         {unavailable ? null : <Lock aria-hidden="true" className="size-4" />}
         {label}

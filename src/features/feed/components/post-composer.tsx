@@ -15,7 +15,7 @@ import {
   discardPendingPostMedia,
   type PostComposerState,
 } from '../actions'
-import type { ComposeRequest } from '../compose-request'
+import { COMPOSER_PREFILL_EVENT, type ComposeRequest, type ComposerPrefill } from '../compose-request'
 import { applyMarkdownFormat, type MarkdownFormat } from '../markdown'
 import { loadPostingOrganizations } from '../organization-post-actions'
 import {
@@ -32,11 +32,15 @@ import { MentionInput, type SelectedMention } from './mention-input'
 import { PHOTO_TAG_LIMIT, TagPeopleDialog, type TaggedPerson } from './tag-people-dialog'
 import { uploadPostMediaFile } from './upload-post-media'
 import { uploadVideoPoster } from '../video-poster'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 const initialState: PostComposerState = {}
 const POST_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm'
 const POST_DOCUMENT_ACCEPT = 'application/pdf'
 const POST_CHARACTER_LIMIT = 5000
+/** Post buttons go flat grey until there is something to post. */
+const composerSubmitDisabledClass = 'disabled:bg-mist-100 disabled:text-muted disabled:opacity-100'
 
 type ComposerMode = 'update' | 'question' | 'poll'
 type PollField = { id: string; value: string }
@@ -192,7 +196,7 @@ function PostAsChooser({ profile, organizations, value, onChange, disabled }: {
     }
   }
 
-  const optionClass = 'flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none'
+  const optionClass = 'flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:-outline-offset-2'
 
   return (
     <div ref={rootRef} className="relative min-w-[min(100%,15rem)] flex-1" onKeyDown={onRootKeyDown}>
@@ -204,11 +208,11 @@ function PostAsChooser({ profile, organizations, value, onChange, disabled }: {
         aria-expanded={open}
         aria-label={`Post as ${selected ? selected.name : `yourself, ${profile.fullName}`}. Change who this post is from`}
         onClick={() => setOpen((current) => !current)}
-        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-mist-200 bg-white p-1.5 pr-3 text-left transition hover:border-ocean-200 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-mist-200 bg-white p-1.5 pr-3 text-left transition hover:border-ocean-200 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {selected ? <OrganizationAvatar organization={selected} size="size-11" /> : <ProfileAvatar profile={profile} size="size-11" />}
         <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted">Post as</span>
+          <span className="block text-xs font-semibold uppercase tracking-wide text-muted">Post as</span>
           <span className="block truncate font-semibold text-navy-950">{selected ? selected.name : profile.fullName}</span>
           <span className="block truncate text-xs text-muted">{selected ? 'Organization' : profile.rank ?? profile.headline ?? 'Maritime professional'}</span>
         </span>
@@ -230,7 +234,7 @@ function PostAsChooser({ profile, organizations, value, onChange, disabled }: {
             </span>
             {!selected ? <Check aria-hidden="true" className="size-4 shrink-0 text-ocean-700" /> : null}
           </button>
-          <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Organizations you post for</p>
+          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted">Organizations you post for</p>
           {organizations.map((organization) => (
             <button key={organization.id} type="button" role="menuitemradio" aria-checked={selected?.id === organization.id} onClick={() => choose(organization.id)} className={optionClass}>
               <OrganizationAvatar organization={organization} size="size-9" />
@@ -343,6 +347,20 @@ export function PostComposer({
     if (hasDraft) window.localStorage.setItem(draftKey, JSON.stringify(draft))
     else window.localStorage.removeItem(draftKey)
   }, [body, draftHydrated, draftKey, mentions, mode, pollFields, topicTags])
+
+  // Round H (H7): a page asks to open this composer with text in it; a draft the member already wrote is kept.
+  useEffect(() => {
+    const groupId = group?.id ?? null
+    function prefill(event: Event) {
+      const detail = (event as CustomEvent<ComposerPrefill>).detail
+      if (!detail || detail.groupId !== groupId) return
+      setMode((current) => current === 'poll' ? 'update' : current)
+      setBody((current) => current.trim() ? current : detail.body)
+      setOpen(true)
+    }
+    window.addEventListener(COMPOSER_PREFILL_EVENT, prefill)
+    return () => window.removeEventListener(COMPOSER_PREFILL_EVENT, prefill)
+  }, [group?.id])
 
   // /home?compose=… (phone Create sheet): open in the requested mode once the draft is restored.
   useEffect(() => {
@@ -765,7 +783,7 @@ export function PostComposer({
                 <button
                   type="submit"
                   disabled={pending || !canSubmit}
-                  className="mr-1 inline-flex min-h-10 cursor-pointer items-center rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white transition hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted"
+                  className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'mr-1 rounded-full px-5 text-[15px]', composerSubmitDisabledClass)}
                 >
                   {pending ? 'Posting…' : 'Post'}
                 </button>
@@ -865,7 +883,7 @@ export function PostComposer({
                       onMentionsChange={setMentions}
                       textareaRef={bodyRef}
                       placeholder={mode === 'question' ? 'What would you like to ask the maritime community?' : mode === 'poll' ? 'Introduce your poll or explain the context…' : 'Share an update, insight or lesson with the maritime community…'}
-                      className="min-h-40 w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-7 text-ink outline-none placeholder:text-muted"
+                      className="min-h-40 w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-7 text-ink placeholder:text-muted"
                     />
                   </div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -978,9 +996,9 @@ export function PostComposer({
                             </div>
                             <div className="px-2.5 py-2">
                               <p className="truncate text-xs font-semibold text-navy-950">{item.file.name}</p>
-                              <p className="mt-0.5 truncate text-[11px] text-muted">{mediaStatus(item)}</p>
+                              <p className="mt-0.5 truncate text-xs text-muted">{mediaStatus(item)}</p>
                               {item.taggedPeople.length ? (
-                                <p data-testid="composer-photo-tags" className="mt-0.5 truncate text-[11px] font-medium text-ocean-700" title={item.taggedPeople.map((person) => person.fullName).join(', ')}>
+                                <p data-testid="composer-photo-tags" className="mt-0.5 truncate text-xs font-medium text-ocean-700" title={item.taggedPeople.map((person) => person.fullName).join(', ')}>
                                   {taggedPeopleSummary(item.taggedPeople)}
                                 </p>
                               ) : null}
@@ -1076,8 +1094,8 @@ export function PostComposer({
               ) : null}
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-mist-100 px-5 py-4 max-md:hidden">
-                <button type="button" onClick={() => resetComposer({ discardMedia: true, clearDraft: true })} className="min-h-10 rounded-full px-4 text-sm font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">Discard draft</button>
-                <button type="submit" disabled={pending || !canSubmit} className="inline-flex min-h-10 items-center rounded-full bg-navy-950 px-6 text-sm font-semibold text-white transition hover:bg-ocean-700 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted">
+                <button type="button" onClick={() => resetComposer({ discardMedia: true, clearDraft: true })} className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'rounded-full')}>Discard draft</button>
+                <button type="submit" disabled={pending || !canSubmit} className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'rounded-full px-6', composerSubmitDisabledClass)}>
                   {pending ? 'Posting…' : submitLabel}
                 </button>
               </div>

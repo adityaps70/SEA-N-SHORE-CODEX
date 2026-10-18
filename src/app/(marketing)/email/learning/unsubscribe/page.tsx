@@ -1,8 +1,10 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { MailX, TriangleAlert } from 'lucide-react'
 import { createLearningEmailPreferences } from '@/features/learning/learning-email-sending'
 import { LearningUnsubscribeButton } from './unsubscribe-button'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export const metadata: Metadata = { title: 'Turn off learning emails', robots: { index: false } }
 export const dynamic = 'force-dynamic'
@@ -25,7 +27,7 @@ export default async function LearningUnsubscribePage({ searchParams }: { search
   }
 
   return (
-    <main id="main-content" className="mx-auto grid w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
+    <MainLandmark className="mx-auto grid w-full max-w-xl px-4 py-12 sm:px-6 sm:py-16">
       <section className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
         <span className="grid size-12 place-items-center rounded-2xl bg-ocean-50 text-ocean-700">
           <MailX aria-hidden="true" className="size-5" />
@@ -47,16 +49,16 @@ export default async function LearningUnsubscribePage({ searchParams }: { search
               <span>This unsubscribe link is incomplete or no longer valid. Sign in and choose your emails in Settings instead.</span>
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
-              <Link href="/settings/notifications" className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700">
+              <Link href="/settings/notifications" className={buttonClass()}>
                 Email settings
               </Link>
-              <Link href="/help" className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 px-5 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+              <Link href="/help" className={buttonClass('secondary')}>
                 Contact & support
               </Link>
             </div>
           </>
         )}
       </section>
-    </main>
+    </MainLandmark>
   )
 }

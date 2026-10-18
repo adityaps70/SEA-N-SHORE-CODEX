@@ -235,7 +235,9 @@ describe('/organizations/[slug] public page', () => {
     it('unclaimed page: Claim this page', async () => {
       mocks.getBySlug.mockResolvedValue({ ...workspace, verified: false, unclaimed: true, website: null })
       const menu = await openMenu()
-      expect(labels(menu)).toEqual(['Copy link', 'Share page', 'Claim this page'])
+      // Round H (H6): Claim this page and Message are the two secondary buttons; on phones only the first fits, so Message is a phone-only row.
+      expect(labels(menu)).toEqual(['Message', 'Copy link', 'Share page', 'Claim this page'])
+      expect(menu.getByRole('menuitem', { name: 'Message' })).toHaveClass('md:hidden')
       expect(menu.getByRole('menuitem', { name: 'Claim this page' })).toHaveAttribute('href', '/organizations/harbour-minds/claim')
     })
 
@@ -243,14 +245,17 @@ describe('/organizations/[slug] public page', () => {
       mocks.getAccessContext.mockResolvedValue(access('owner'))
       mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
       const menu = await openMenu()
-      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Upgrade to Organization Pro', 'Leave organization'])
+      // Round H (H6): Message, Create a community and Upgrade no longer fit beside Manage page, Follow and Visit website.
+      expect(labels(menu)).toEqual(['Visit website', 'Message', 'Create a community', 'Copy link', 'Share page', 'Upgrade to Organization Pro', 'Leave organization'])
       expect(menu.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+      expect(menu.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).not.toHaveClass('md:hidden')
     })
 
     it('recruiter: no upgrade and no join row', async () => {
       mocks.getAccessContext.mockResolvedValue(access('recruiter'))
       const menu = await openMenu()
-      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Leave organization'])
+      // Round H (H6): Message to the contact person moved from the header into the menu for people who manage the page.
+      expect(labels(menu)).toEqual(['Visit website', 'Message', 'Copy link', 'Share page', 'Leave organization'])
     })
 
     it('member: "Leave organization" opens the in-page leave dialog (round F)', async () => {
@@ -286,7 +291,10 @@ describe('/organizations/[slug] public page', () => {
     render(await OrganizationPage({ params }))
     expect(screen.getByRole('region', { name: 'You are part of Harbour Minds' })).toHaveClass('max-md:hidden')
     expect(screen.getByRole('region', { name: 'Pages people also viewed' })).toHaveClass('max-md:hidden')
-    expect(screen.getByRole('link', { name: 'Upgrade to Organization Pro' })).toHaveClass('max-md:hidden')
+    // Round H (H6): Upgrade to Organization Pro is no longer a header link (hidden on phones); it is in the "…" menu at every size.
+    expect(screen.queryByRole('link', { name: 'Upgrade to Organization Pro' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'More actions for Harbour Minds' })[1]!)
+    expect(screen.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).not.toHaveClass('md:hidden')
   })
 
   it('shows the About tab with overview facts, specialities, verification and wellbeing support', async () => {
@@ -367,29 +375,36 @@ describe('/organizations/[slug] public page', () => {
     expect(screen.queryByRole('button', { name: 'Leave organization' })).not.toBeInTheDocument()
   })
 
-  it('offers owners and administrators "Create a community" next to Manage page, pointing at /community/new?as=<organization> (round 9C)', async () => {
+  it('offers owners and administrators "Create a community" in the "…" menu beside Manage page, pointing at /community/new?as=<organization> (round 9C)', async () => {
     mocks.getAccessContext.mockResolvedValue(access('administrator'))
     mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'administrator' })
     render(await OrganizationPage({ params }))
-    const create = screen.getByRole('link', { name: /Create a community/ })
+    // Round H (H6): the header keeps Manage page, Follow and Visit website; Create a community is in the menu at every size.
+    const row = screen.getByTestId('organization-actions')
+    expect(within(row).getByRole('link', { name: /Manage page/ })).toBeInTheDocument()
+    expect(within(row).queryByRole('link', { name: /Create a community/ })).not.toBeInTheDocument()
+    fireEvent.click(within(row).getByRole('button', { name: 'More actions for Harbour Minds' }))
+    const create = screen.getByRole('menuitem', { name: /Create a community/ })
     expect(create).toHaveAttribute('href', '/community/new?as=c1')
-    // Phones reach it from Manage page › Community instead.
-    expect(create).toHaveClass('max-md:hidden')
-    expect(create.parentElement).toContainElement(screen.getByRole('link', { name: /Manage page/ }))
+    expect(create).not.toHaveClass('md:hidden')
     cleanup()
 
     mocks.getAccessContext.mockResolvedValue(access('recruiter'))
     mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'recruiter' })
     render(await OrganizationPage({ params }))
     expect(screen.queryByRole('link', { name: /Create a community/ })).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByTestId('organization-actions')).getByRole('button', { name: 'More actions for Harbour Minds' }))
+    expect(screen.queryByRole('menuitem', { name: /Create a community/ })).not.toBeInTheDocument()
   })
 
-  it('shows the owner of a free organization a subtle Upgrade to Organization Pro link next to Manage page', async () => {
+  it('shows the owner of a free organization Upgrade to Organization Pro in the "…" menu beside Manage page', async () => {
     mocks.getAccessContext.mockResolvedValue(access('owner'))
     mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
     render(await OrganizationPage({ params }))
 
-    expect(screen.getByRole('link', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+    // Round H (H6): a menu row instead of a header link, so the header row never wraps.
+    fireEvent.click(within(screen.getByTestId('organization-actions')).getByRole('button', { name: 'More actions for Harbour Minds' }))
+    expect(screen.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
   })
 
   it('does not show the upgrade link to roles that cannot buy or to Organization Pro workspaces', async () => {
@@ -439,6 +454,83 @@ describe('/organizations/[slug] public page', () => {
     expect(within(rail).getByText('1 follower')).toBeInTheDocument()
     expect(within(rail).getByRole('button', { name: 'Following Sailors Care' })).toHaveAttribute('aria-pressed', 'true')
     expect(mocks.listSimilarOrganizations).toHaveBeenCalledWith(workspace, 'user-1', 4)
+  })
+
+  describe('header action row (round H, H6)', () => {
+    async function renderRow() {
+      render(await OrganizationPage({ params }))
+      return screen.getByTestId('organization-actions')
+    }
+    const slots = (row: HTMLElement) => Array.from(row.querySelectorAll<HTMLElement>('[data-header-action]'))
+    const byEmphasis = (row: HTMLElement, emphasis: string) => slots(row).filter((slot) => slot.dataset.emphasis === emphasis).map((slot) => slot.dataset.headerAction)
+    // Filled navy controls in the row (the shared primary look).
+    const darkControls = (row: HTMLElement) => Array.from(row.querySelectorAll('a, button')).filter((element) => element.classList.contains('bg-navy-950'))
+    async function menuLabels(row: HTMLElement) {
+      fireEvent.click(within(row).getByRole('button', { name: 'More actions for Harbour Minds' }))
+      return within(screen.getByRole('menu')).getAllByRole('menuitem').map((item) => item.textContent?.replace('(opens in a new tab)', '').trim())
+    }
+
+    function expectOneLine(row: HTMLElement) {
+      expect(row).toHaveClass('flex', 'flex-nowrap')
+      expect(row).not.toHaveClass('flex-wrap')
+      // The "…" button is in the same row as the buttons.
+      expect(within(row).getByRole('button', { name: 'More actions for Harbour Minds' })).toBeInTheDocument()
+    }
+
+    it('visitor: Follow is the one primary, Message and Visit website are secondary', async () => {
+      const row = await renderRow()
+      expectOneLine(row)
+      expect(byEmphasis(row, 'primary')).toEqual(['follow'])
+      expect(byEmphasis(row, 'secondary')).toEqual(['message', 'website'])
+      expect(darkControls(row)).toHaveLength(1)
+      expect(within(row).getByRole('button', { name: 'Follow' })).toHaveClass('bg-navy-950')
+      expect(within(row).getByRole('button', { name: 'Message' })).not.toHaveClass('bg-navy-950')
+      expect(within(row).getByRole('link', { name: /Visit website/ })).not.toHaveClass('bg-navy-950')
+      // Phones: only the first secondary button fits; the second is a phone-only menu row.
+      expect(row.querySelector('[data-header-action="website"]')).toHaveClass('max-md:hidden')
+      expect(row.querySelector('[data-header-action="message"]')).not.toHaveClass('max-md:hidden')
+      expect(await menuLabels(row)).toEqual(['Visit website', 'Copy link', 'Share page', 'Request to join'])
+      expect(screen.getByRole('menuitem', { name: /Visit website/ })).toHaveClass('md:hidden')
+    })
+
+    it('visitor who already follows: Message is the primary and Following is secondary', async () => {
+      mocks.getFollowState.mockResolvedValue({ following: true, followerCount: 3 })
+      const row = await renderRow()
+      expectOneLine(row)
+      expect(byEmphasis(row, 'primary')).toEqual(['message'])
+      expect(byEmphasis(row, 'secondary')).toEqual(['follow', 'website'])
+      expect(darkControls(row)).toHaveLength(1)
+      expect(within(row).getByRole('button', { name: 'Message' })).toHaveClass('bg-navy-950')
+      expect(within(row).getByRole('button', { name: 'Following' })).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('administrator: Manage page is the one primary, at most two secondary, the rest in the menu', async () => {
+      mocks.getAccessContext.mockResolvedValue(access('administrator'))
+      mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'administrator' })
+      const row = await renderRow()
+      expectOneLine(row)
+      expect(byEmphasis(row, 'primary')).toEqual(['manage'])
+      expect(byEmphasis(row, 'secondary')).toEqual(['follow', 'website'])
+      expect(darkControls(row)).toHaveLength(1)
+      expect(within(row).getByRole('link', { name: /Manage page/ })).toHaveClass('bg-navy-950')
+      expect(within(row).getByRole('link', { name: /Manage page/ })).toHaveAttribute('href', '/organizations/harbour-minds/manage')
+      expect(within(row).getByRole('button', { name: 'Follow' })).not.toHaveClass('bg-navy-950')
+      // Everything else stays reachable from "…".
+      expect(await menuLabels(row)).toEqual(['Visit website', 'Message', 'Create a community', 'Copy link', 'Share page', 'Upgrade to Organization Pro', 'Leave organization'])
+    })
+
+    it('never shows more than one primary and two secondary buttons for any role', async () => {
+      for (const role of [null, 'member', 'recruiter', 'administrator', 'owner']) {
+        mocks.getAccessContext.mockResolvedValue(access(role))
+        mocks.getViewer.mockResolvedValue(role === 'owner' || role === 'administrator' ? { kind: 'organization', role } : null)
+        const row = await renderRow()
+        expect(byEmphasis(row, 'primary')).toHaveLength(1)
+        expect(byEmphasis(row, 'secondary').length).toBeLessThanOrEqual(2)
+        expect(darkControls(row).length).toBeLessThanOrEqual(1)
+        expectOneLine(row)
+        cleanup()
+      }
+    })
   })
 
   it('returns not found for an unknown organization', async () => {

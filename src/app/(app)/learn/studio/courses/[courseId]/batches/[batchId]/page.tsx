@@ -10,6 +10,7 @@ import { batchStartLabel, batchStatusLabel, seatsLeft } from '@/features/learnin
 import { BatchForm, BatchStaffPanel } from '@/features/learning/batches/components/batch-forms'
 import { BatchTabs } from '@/features/learning/batches/components/batch-tabs'
 import { formatZonedTime } from '@/features/learning/sessions/session-time'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Batch' }
 
@@ -34,7 +35,7 @@ export default async function CourseBatchPage({ params }: { params: Promise<{ co
   const backHref = canManageCourse ? `/learn/studio/courses/${course.id}/batches` : '/learn/studio'
 
   return (
-    <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref={backHref} title="Batch" />
       <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> {canManageCourse ? 'All batches' : 'Learning Studio'}
@@ -47,7 +48,7 @@ export default async function CourseBatchPage({ params }: { params: Promise<{ co
           {batchStartLabel(batch)} · {batchStatusLabel(batch.status)}
         </p>
         <p className="mt-1 text-sm text-white/70">
-          {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${batch.seatLimit} seats (${left} left)` : ' · no seat limit'}
+          {batch.enrolledCount} enrolled{batch.seatLimit !== null ? ` of ${pluralize(batch.seatLimit, 'seat')} (${left} left)` : ' · no seat limit'}
           {batch.heldCount ? ` · ${batch.heldCount} at checkout` : ''}
         </p>
         <div className="mt-5 flex flex-wrap gap-3">

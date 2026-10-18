@@ -10,9 +10,11 @@ import {
   type CheckPlanCheckoutResult,
   type PlanCheckoutTarget,
 } from '../checkout-messages'
-import { BILLING_INTERVALS, INTERVAL_LABELS, formatRupees, intervalSaving, type BillingInterval } from '../plans'
+import { BILLING_INTERVALS, INTERVAL_LABELS, intervalSaving, type BillingInterval } from '../plans'
 import type { PlanPriceSummary } from './plan-cards'
 import { openSubscriptionCheckout, type SubscriptionRedirectTarget } from './subscription-sdk'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { formatMoney } from '@/features/payments/currency'
 
 /**
  * Choose monthly, half-yearly or yearly, then approve an auto-pay mandate in Cashfree's window.
@@ -53,9 +55,9 @@ type Phase = 'choose' | 'starting' | 'contact' | 'opening' | 'approving' | 'done
 const POLL_MS = 5_000
 const POLL_LIMIT = 120
 
-const inputClass = 'min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/30 aria-[invalid=true]:border-rose-400'
-const primaryButton = 'inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60'
-const secondaryButton = 'inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60'
+const inputClass = 'min-h-11 w-full rounded-xl border border-mist-200 bg-white px-4 text-[15px] text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 aria-[invalid=true]:border-rose-400'
+const primaryButton = `${buttonClass({ variant: 'primary' })} w-full`
+const secondaryButton = buttonClass({ variant: 'secondary' })
 
 const SCRIPT_BLOCKED = 'The secure Cashfree window could not load. Check your connection or turn off content blockers for this site, then try again. No money was taken.'
 
@@ -131,7 +133,7 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   if (!props.configured) {
     if (props.trialEndsOn) return <PaidPlansOpenSoon trialEndsOn={props.trialEndsOn} />
     const priceLines = BILLING_INTERVALS.filter((option) => props.prices[option] !== null)
-      .map((option) => `${formatRupees(props.prices[option] as number)} ${INTERVAL_LABELS[option].per}`)
+      .map((option) => `${formatMoney(props.prices[option] as number, 'INR')} ${INTERVAL_LABELS[option].per}`)
     return (
       <div className="space-y-2 rounded-2xl border border-mist-200 bg-mist-50/60 p-4">
         <p className="text-sm font-bold text-navy-950">{BILLING_NOT_CONFIGURED_TITLE}</p>
@@ -212,7 +214,7 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   }
 
   const amount = props.prices[interval]
-  const priceText = amount !== null ? `${formatRupees(amount)} ${INTERVAL_LABELS[interval].per}` : null
+  const priceText = amount !== null ? `${formatMoney(amount, 'INR')} ${INTERVAL_LABELS[interval].per}` : null
 
   if (phase === 'done' && status) {
     const tone = status.state === 'active'
@@ -361,11 +363,11 @@ export function PlanCheckout(props: PlanCheckoutProps) {
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-sm font-bold text-navy-950">{INTERVAL_LABELS[option].adjective}</span>
                     {option === 'year' && props.yearlySavingLabel ? (
-                      <span className="rounded-full bg-teal-600 px-2 py-0.5 text-[11px] font-bold text-white">Best value</span>
+                      <span className="rounded-full bg-teal-600 px-2 py-0.5 text-xs font-bold text-white">Best value</span>
                     ) : null}
                   </span>
                   <span className="mt-1 text-lg font-bold text-navy-950">
-                    {formatRupees(optionAmount)} <span className="text-sm font-semibold text-muted">{INTERVAL_LABELS[option].per}</span>
+                    {formatMoney(optionAmount, 'INR')} <span className="text-sm font-semibold text-muted">{INTERVAL_LABELS[option].per}</span>
                   </span>
                   {option === 'year' && props.yearlySavingLabel ? (
                     <span className="mt-0.5 text-xs font-semibold text-teal-800">{props.yearlySavingLabel}</span>
@@ -394,7 +396,7 @@ export function PlanCheckout(props: PlanCheckoutProps) {
           <p className="text-xs leading-5 text-muted">
             {props.startsOn
               ? `Nothing is charged today. Your ${INTERVAL_LABELS[interval].adjective.toLowerCase()} plan starts on ${props.startsOn}, when your current period ends, and renews automatically.`
-              : `You approve a secure auto-pay mandate with UPI AutoPay, a card or your bank account through our payment partner, Cashfree.${amount !== null ? ` ${formatRupees(amount)} is charged every ${INTERVAL_LABELS[interval].noun} until you cancel.` : ''} Cancel auto-renew any time; your plan stays active until the end of the period you paid for.`}
+              : `You approve a secure auto-pay mandate with UPI AutoPay, a card or your bank account through our payment partner, Cashfree.${amount !== null ? ` ${formatMoney(amount, 'INR')} is charged every ${INTERVAL_LABELS[interval].noun} until you cancel.` : ''} Cancel auto-renew any time; your plan stays active until the end of the period you paid for.`}
           </p>
           {amount !== null && amount > 1500000 ? (
             <p className="flex items-start gap-2 text-xs leading-5 text-navy-700">
@@ -414,15 +416,15 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   )
 }
 
-/** "Save ₹1,994.00 every 6 months" for a longer interval, compared with paying monthly; null when it saves nothing. */
+/** "Save ₹1,994 every 6 months" for a longer interval, compared with paying monthly; null when it saves nothing. */
 export function savingLabel(prices: PlanPriceSummary, interval: BillingInterval) {
   const amount = prices[interval]
   if (prices.month === null || amount === null) return null
   const saving = intervalSaving(prices.month, amount, interval)
-  return saving ? `Save ${formatRupees(saving.savingMinor)} every ${INTERVAL_LABELS[interval].noun}` : null
+  return saving ? `Save ${formatMoney(saving.savingMinor, 'INR')} every ${INTERVAL_LABELS[interval].noun}` : null
 }
 
-/** "₹99.00 per month, ₹999.00 per year or …": a short list joined with "or". */
+/** "₹99 per month, ₹999 per year or …": a short list joined with "or". */
 export function listWithOr(items: string[]) {
   if (items.length <= 1) return items[0] ?? ''
   return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`

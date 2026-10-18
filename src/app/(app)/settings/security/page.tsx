@@ -58,7 +58,7 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
   const adminReady = sentByAdminGate && satisfiesAdminMfa(status)
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Two-step verification" />
       <header className="max-md:hidden">
         <Link href="/settings" className={backLinkClass}>
@@ -104,6 +104,6 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
         Lost access to your authenticator app? Keep backup codes in{' '}
         <Link href="/settings/account#backup-codes-heading" className={textLinkClass}>Settings › Account</Link>.
       </p>
-    </main>
+    </div>
   )
 }

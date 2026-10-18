@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { startPlanTrialAction } from '../actions'
 import type { PlanCheckoutTarget } from '../checkout-messages'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
-const primaryButton = 'inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-teal-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto'
+const primaryButton = `${buttonClass({ variant: 'primary' })} w-full sm:w-auto`
 
 /** "Start free trial": switches the plan on at once, with no payment details. */
 export function TrialStartButton({ target, planLabel, months }: { target: PlanCheckoutTarget; planLabel: string; months: number }) {

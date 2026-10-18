@@ -50,7 +50,7 @@ export default async function AdminCreatorVerificationsPage({
   const applications = await creatorVerificationRepository.listAdminApplications(user.id, status, type)
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Creator verification applications"
         meta={`${applications.length} in this view`}
@@ -172,6 +172,6 @@ export default async function AdminCreatorVerificationsPage({
           </section>
         ) : null}
       </section>
-    </main>
+    </div>
   )
 }

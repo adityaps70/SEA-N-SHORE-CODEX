@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import Link from '@/components/navigation/intent-link'
 import type { ReactNode } from 'react'
 import { JumpToChips, type JumpLink } from '@/components/marketing/jump-to-chips'
@@ -26,16 +27,16 @@ export function LegalPage({
   children: ReactNode
 }) {
   return (
-    <main className="px-4 py-8 sm:px-6 sm:py-12 max-md:py-4">
+    <MainLandmark className="px-4 py-8 sm:px-6 sm:py-12 max-md:py-4">
       <JumpToChips links={sections} />
-      <article className="mx-auto max-w-3xl rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8 max-md:p-5 [&_[id]]:scroll-mt-24">
+      <article className="mx-auto max-w-page-narrow rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8 max-md:p-5 [&_[id]]:scroll-mt-24">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700 max-md:hidden">{eyebrow}</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-2xl">{title}</h1>
         {updated ? <p className="mt-2 text-xs font-medium text-muted">Last updated: {updated}</p> : null}
         {intro ? <div className="mt-4 space-y-3 text-sm leading-7 text-muted max-md:text-base">{intro}</div> : null}
         <div className="mt-6 space-y-7 text-sm leading-7 text-muted max-md:text-base">{children}</div>
       </article>
-    </main>
+    </MainLandmark>
   )
 }
 

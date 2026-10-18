@@ -15,6 +15,7 @@ export function CollapsiblePlanSection({
   statusLabel,
   summary,
   priceLine = null,
+  note = null,
   openLabel,
   defaultOpen = false,
   children,
@@ -23,9 +24,12 @@ export function CollapsiblePlanSection({
   anchorId: string
   eyebrow: string
   title: string
-  statusLabel: string
+  /** Round H (H7): left out when the title already says it ("Free plan"). */
+  statusLabel?: string | null
   summary: string
   priceLine?: string | null
+  /** Round H (H7): a line under the price, e.g. the free-trial offer. */
+  note?: string | null
   /** Button text, e.g. "Get Creator Pro" or "Manage Creator Pro". */
   openLabel: string
   defaultOpen?: boolean
@@ -43,7 +47,7 @@ export function CollapsiblePlanSection({
 
   if (open) {
     return (
-      <div ref={panelRef} tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40">
+      <div ref={panelRef} tabIndex={-1} className="rounded-2xl outline-none">
         {children}
       </div>
     )
@@ -64,10 +68,13 @@ export function CollapsiblePlanSection({
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">{eyebrow}</p>
             <h2 id={titleId} className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-lg font-bold text-navy-950">
               {title}
-              <span className="inline-flex items-center rounded-full bg-mist-100 px-2.5 py-0.5 text-xs font-bold text-navy-800">{statusLabel}</span>
+              {statusLabel && statusLabel !== title ? (
+                <span className="inline-flex items-center rounded-full bg-mist-100 px-2.5 py-0.5 text-xs font-bold text-navy-800">{statusLabel}</span>
+              ) : null}
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted">{summary}</p>
             {priceLine ? <p className="mt-0.5 text-sm font-semibold text-navy-900">{priceLine}</p> : null}
+            {note ? <p className="mt-0.5 text-sm text-teal-800">{note}</p> : null}
           </div>
         </div>
         <button

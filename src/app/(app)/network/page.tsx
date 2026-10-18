@@ -11,8 +11,11 @@ import { NetworkSuggestionGrid } from '@/features/network/components/network-sug
 import { NetworkTabs } from '@/features/network/components/network-tabs'
 import { getNetworkHub, getPeopleSuggestions, isPeopleRankingEnabled } from '@/features/network/queries'
 import { PEOPLE_SECTIONS, PEOPLE_SECTION_LABELS, type PeopleSection } from '@/features/ranking/people-scorer'
+import { dedupePeopleSections } from '@/features/network/people-section-dedupe'
 import { parseNetworkTab } from '@/features/network/schemas'
 import type { NetworkFollowView, NetworkProfile } from '@/features/network/types'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'My Network' }
 
@@ -43,10 +46,6 @@ function EmptyState({ title, body, compact = false }: { title: string; body: str
 function sortProfiles(profiles: NetworkProfile[], sort: string) {
   if (sort !== 'name') return profiles
   return [...profiles].sort((left, right) => left.fullName.localeCompare(right.fullName))
-}
-
-function countLabel(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`
 }
 
 function SearchField({
@@ -82,7 +81,7 @@ function SearchField({
           className="min-h-11 w-full rounded-xl border border-mist-100 bg-white py-2.5 pl-10 pr-3 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-400"
         />
       </div>
-      <button type="submit" className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700">Search</button>
+      <button type="submit" className={buttonClass()}>Search</button>
     </form>
   )
 }
@@ -108,10 +107,13 @@ export default async function NetworkPage({
   // Round G (G2): with the new People you may know, Discover is grouped by why people are suggested.
   const grouped = tab === 'discover' && !query && await isPeopleRankingEnabled().catch(() => false)
   const section = (PEOPLE_SECTIONS as readonly string[]).includes(rawSection ?? '') ? rawSection as PeopleSection : null
-  const sections = grouped && !section
-    ? (await Promise.all(PEOPLE_SECTIONS.map(async (key) => ({ key, profiles: await getPeopleSuggestions(12, key).catch(() => []) }))))
-      .filter((entry) => entry.profiles.length)
-    : []
+  // Round H (H7): a person shows once per page, in the first section (by priority) that lists them.
+  const { sections, more: moreProfiles } = grouped && !section
+    ? dedupePeopleSections(
+      await Promise.all(PEOPLE_SECTIONS.map(async (key) => ({ key, profiles: await getPeopleSuggestions(12, key).catch(() => []) }))),
+      profiles,
+    )
+    : { sections: [], more: profiles }
   const sectionProfiles = grouped && section ? await getPeopleSuggestions(40, section).catch(() => []) : []
 
   return (
@@ -176,7 +178,7 @@ export default async function NetworkPage({
               {query ? <Link href="/network?tab=discover" className="text-sm font-semibold text-ocean-700 hover:text-navy-950">Clear search</Link> : null}
             </div>
             {query ? (
-              <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div data-testid="network-suggestion-grid" className="grid auto-rows-fr gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
               </div>
             ) : section ? (
@@ -198,12 +200,12 @@ export default async function NetworkPage({
                     <NetworkSuggestionGrid profiles={entry.profiles} visibleCount={4} showEmptyState={false} />
                   </section>
                 ))}
-                {sections.length ? <h3 className="px-5 pt-4 text-base font-semibold text-navy-950 max-md:px-4">More people you may know</h3> : null}
+                {sections.length && moreProfiles.length ? <h3 className="px-5 pt-4 text-base font-semibold text-navy-950 max-md:px-4">More people you may know</h3> : null}
                 {/* Round G hotfix: Connect or X replaces a card with the next person; an empty list says so. */}
-                <NetworkSuggestionGrid profiles={profiles} />
+                <NetworkSuggestionGrid profiles={moreProfiles} showEmptyState={!sections.length} />
                 {grouped ? (
                   <p className="border-t border-mist-100 px-5 py-3 text-sm text-muted max-md:px-4">
-                    People you already follow are on <Link href="/network?tab=following" className="font-semibold text-ocean-700 hover:underline">People you follow</Link>.
+                    Already following someone? See them under <Link href="/network?tab=following" className="font-semibold text-ocean-700 hover:underline">Following</Link>.
                   </p>
                 ) : null}
               </>
@@ -217,7 +219,7 @@ export default async function NetworkPage({
       {tab === 'connections' ? (
         <section className={`mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm ${PHONE_FULL_BLEED}`} aria-labelledby="connections-heading">
           <div className="border-b border-mist-100 px-5 py-4 sm:px-6">
-            <h2 id="connections-heading" className="text-xl font-semibold text-navy-950">{countLabel(hub.totalCount, 'connection')}</h2>
+            <h2 id="connections-heading" className="text-xl font-semibold text-navy-950">{pluralize(hub.totalCount, 'connection')}</h2>
             <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted">Sort by:</span>

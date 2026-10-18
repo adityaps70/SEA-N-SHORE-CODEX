@@ -214,13 +214,13 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
                   type="button"
                   disabled={pending}
                   onClick={() => openNotification(notification)}
-                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-wait disabled:opacity-60"
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg py-0.5 text-left disabled:cursor-wait disabled:opacity-60"
                 >
                   <span className="min-w-0 flex-1">
                     <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
                     <span className="mt-0.5 flex items-center gap-2">
                       {unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-700" aria-hidden="true" /> : null}
-                      {unread && notification.important ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">Important</span> : null}
+                      {unread && notification.important ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">Important</span> : null}
                       <time dateTime={notification.createdAt} title={notification.createdAt} className="block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
                     </span>
                   </span>

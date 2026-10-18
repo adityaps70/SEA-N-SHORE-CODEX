@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { Building2, ExternalLink, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { UserWebsiteLink } from '@/components/ui/user-website-link'
 import { adminRepository } from '@/features/admin/repository'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
@@ -50,7 +51,7 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
   const has = (field: Parameters<typeof organizationTypeHasField>[1]) => organizationTypeHasField(typeCode, field)
 
   return (
-    <main className="space-y-5">
+    <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <Link href="/admin/organizations?view=queue" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">← Organization reviews</Link>
@@ -75,7 +76,12 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
 
           <dl className="mt-6 grid gap-5 sm:grid-cols-2">
             <Detail label="Organization type" value={valueOrDash(review.company.type)} />
-            <Detail label="Website" value={valueOrDash(review.company.website)} />
+            <Detail
+              label="Website"
+              value={review.company.website?.trim()
+                ? <UserWebsiteLink href={review.company.website} className="break-all font-semibold text-ocean-700 underline-offset-2 hover:underline">{review.company.website.trim()}</UserWebsiteLink>
+                : '—'}
+            />
             <Detail label="Official work email" value={review.officialEmail} />
             <Detail label="Registration / reference" value={valueOrDash(review.registrationReference)} />
             {has('recruitmentLicence') ? <Detail label="Recruitment licence (RPSL / MLC)" value={valueOrDash(details.recruitmentLicence)} /> : null}
@@ -195,6 +201,6 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
       </div>
 
       <OrganizationReviewActions applicationId={review.applicationId} status={review.status} />
-    </main>
+    </div>
   )
 }

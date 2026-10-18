@@ -55,7 +55,7 @@ export default async function AdminSellerInvoicesPage() {
   ])
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <AdminPageHeader
         title="Payments"
         meta={submitted.length ? `${submitted.length} invoice${submitted.length === 1 ? '' : 's'} to review` : 'No invoices to review'}
@@ -120,6 +120,6 @@ export default async function AdminSellerInvoicesPage() {
           <AdminEmptyState title="No invoices reviewed yet" />
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

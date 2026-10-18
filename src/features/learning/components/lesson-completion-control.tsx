@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { CheckCircle2, CircleAlert, Loader2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { completeLearningLesson } from '../learner-progress-actions'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 type LessonCompletionControlProps = {
   slug: string
@@ -61,7 +63,7 @@ export function LessonCompletionControl({
         type="button"
         disabled={pending}
         onClick={() => void onComplete()}
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 max-md:w-full max-md:focus-visible:outline max-md:focus-visible:outline-2 max-md:focus-visible:outline-offset-2 max-md:focus-visible:outline-ocean-500 max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px] max-md:font-bold max-md:hover:bg-navy-900"
+        className={cn(buttonClass(), 'max-md:w-full max-md:rounded-full max-md:text-[15px] max-md:font-bold')}
       >
         {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="h-5 w-5 md:hidden" aria-hidden="true" />}
         {pending ? 'Saving…' : nextLessonHref ? 'Complete & next' : 'Mark complete'}

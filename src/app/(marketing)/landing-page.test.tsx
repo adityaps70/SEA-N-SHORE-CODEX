@@ -14,6 +14,9 @@ vi.mock('@/features/billing/public-prices', () => ({ loadPublicPlanPrices: mocks
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_GOOGLE_ENABLED: mocks.googleEnabled }),
 }))
+vi.mock('@/features/newsletter/components/newsletter-footer-signup', () => ({
+  NewsletterFooterSignup: () => <form aria-label="Newsletter sign-up" />,
+}))
 
 import Home, { metadata } from './page'
 
@@ -98,10 +101,30 @@ describe('public landing page', () => {
     await renderHome()
 
     expect(screen.queryByRole('link', { name: /Sign in with email/ })).not.toBeInTheDocument()
-    const header = screen.getByRole('banner')
-    expect(within(header).getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/home')
-    expect(within(header).getByRole('link', { name: 'My Profile' })).toHaveAttribute('href', '/profile')
+    expect(screen.queryByRole('link', { name: 'Join now' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Go to Home' })[0]).toHaveAttribute('href', '/home')
+  })
+
+  it('leaves the header and footer to the member app chrome for signed-in visitors (Round H, H6)', async () => {
+    mocks.getVerifiedUser.mockResolvedValue({ id: 'user-1' })
+    const { container } = await renderHome()
+
+    // No cut-down Home / My Profile landing header and no second footer: the marketing layout
+    // draws the app header, phone bars and the site footer around the page (marketing-layout.test.tsx).
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument()
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'My Profile' })).not.toBeInTheDocument()
+    // The top progress bar would sit over the fixed app header.
+    expect(container.querySelector('.progress')).toBeNull()
+    // The landing content itself is unchanged.
+    expect(container.querySelector('main#main-content')).not.toBeNull()
+    for (const id of SECTION_IDS) expect(container.querySelector(`section#${id}`), `section #${id}`).not.toBeNull()
+  })
+
+  it('keeps the reading progress bar for visitors (Round H, H6)', async () => {
+    mocks.getVerifiedUser.mockResolvedValue(null)
+    const { container } = await renderHome()
+    expect(container.querySelector('.progress')).not.toBeNull()
   })
 
   it('still renders for an anonymous visitor when auth resolution fails', async () => {
@@ -197,6 +220,9 @@ describe('public landing page', () => {
     expect(within(footer).getByText(/^Photos: Unsplash/)).toHaveClass('credits')
     expect(within(footer).queryByText(/All rights reserved/)).not.toBeInTheDocument()
     expect(within(footer).getByRole('img', { name: 'Sea N Shore' })).toHaveAttribute('src', '/brand/sea-n-shore-lockup-white.webp')
+    // Round H (H6): the same newsletter sign-up as the site footer, so this stays the one full footer on '/'.
+    expect(within(footer).getByRole('form', { name: 'Newsletter sign-up' }).closest('.fnews')).not.toBeNull()
+    expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
   })
 
   it('uses the new ship logo in the header', async () => {

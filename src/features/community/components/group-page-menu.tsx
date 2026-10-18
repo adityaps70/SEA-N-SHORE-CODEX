@@ -44,7 +44,7 @@ export function GroupPageMenu({ groupId, groupName, pagePath, editHref }: { grou
       <ActionMenu open={open} onClose={close} anchorRef={triggerRef} id={menuId} label={`More actions for ${groupName}`} align="end" className="w-56 shadow-[var(--shadow-card)]">
         <ActionMenuItem onClick={() => void copyLink()} className={itemClass} icon={<Link2 aria-hidden="true" className="size-4 text-muted" />}>Copy link</ActionMenuItem>
         {editHref ? (
-          <Link href={editHref} role="menuitem" onClick={close} className="flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px]">
+          <Link href={editHref} role="menuitem" onClick={close} className="flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:-outline-offset-2 max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px]">
             <Settings2 aria-hidden="true" className="size-4 text-muted" /> Edit group
           </Link>
         ) : null}

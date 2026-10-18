@@ -437,11 +437,11 @@ export function MessagingDock({
         footer), so nothing is left under the bar once scrolled to the bottom. The open panel
         floats over the page: the member opened it. */}
     <div aria-hidden="true" data-testid="messaging-dock-spacer" className={cn('hidden md:block', DOCK_BAR_HEIGHT_CLASS)} />
-    {/* The dock sits in a container that mirrors the app shell's (max-w-7xl, px-4), right-aligned,
+    {/* The dock sits in a container that mirrors the app shell's (max-w-page-wide, px-4), right-aligned,
         so it is exactly the right rail's 300px column and lines up with its left and right edges.
         An open conversation widens to 416px; the extra width grows leftwards over the page. */}
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] hidden md:block" data-testid="messaging-dock-anchor">
-      <div className="mx-auto flex w-full max-w-7xl items-end justify-end gap-3 px-4">
+      <div className="mx-auto flex w-full max-w-page-wide items-end justify-end gap-3 px-4">
       {/* Only one conversation opens at a time today. The wrapper is a flex item in this
           right-aligned, bottom-aligned row, so extra windows (or a separate bar) could be added
           as siblings without overlapping: they would line up leftwards like LinkedIn's. */}
@@ -502,7 +502,7 @@ export function MessagingDock({
                 ) : title}
               </p>
               {active?.otherHeadline ? (
-                <p title={active.otherHeadline} className="truncate text-[11px] text-muted">{active.otherHeadline}</p>
+                <p title={active.otherHeadline} className="truncate text-xs text-muted">{active.otherHeadline}</p>
               ) : null}
             </div>
 
@@ -630,12 +630,12 @@ export function MessagingDock({
                                 <a
                                   href={messageAttachmentRoute(message.id, { download: true })}
                                   download={message.attachment.name}
-                                  className="mb-1 block truncate text-[11px] font-semibold underline underline-offset-2 hover:decoration-2"
+                                  className="mb-1 block truncate text-xs font-semibold underline underline-offset-2 hover:decoration-2"
                                 >
                                   📎 {message.attachment.name}
                                 </a>
                               ) : message.attachment ? (
-                                <p className="mb-1 text-[11px] font-semibold">
+                                <p className="mb-1 text-xs font-semibold">
                                   📎 {message.attachment.name}
                                 </p>
                               ) : null}
@@ -705,7 +705,7 @@ export function MessagingDock({
                             </span>
                             {item.unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-600" /> : null}
                           </span>
-                          <span className="mt-0.5 block truncate text-[11px] text-muted">
+                          <span className="mt-0.5 block truncate text-xs text-muted">
                             {/* Round H (H2): same preview rule as the inbox, “You: ” when the viewer sent it. */}
                             {item.lastMessageBody
                               ? <>{item.lastMessageSenderId === viewerId ? <span>You: </span> : null}{item.lastMessageBody}</>
@@ -754,7 +754,7 @@ export function MessagingDock({
           <MessageCircleMore aria-hidden="true" className="size-5 text-ocean-700" />
           <span className="flex-1 text-left">Messaging</span>
           {unreadCount > 0 ? (
-            <span className="grid min-w-6 place-items-center rounded-full bg-ocean-700 px-1.5 py-0.5 text-[10px] font-bold text-white">
+            <span className="grid min-w-6 place-items-center rounded-full bg-ocean-700 px-1.5 py-0.5 text-xs font-bold text-white">
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           ) : null}

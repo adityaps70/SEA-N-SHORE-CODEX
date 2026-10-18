@@ -39,7 +39,7 @@ export default async function PlansPage() {
   ])
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-8 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/settings/billing" title="Plans" />
       <header className="mx-auto max-w-3xl text-center max-md:text-left">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 max-md:hidden">Sea N Shore plans</p>
@@ -85,6 +85,6 @@ export default async function PlansPage() {
         <h2 className="font-bold text-amber-950">Verification and payment are separate</h2>
         <p className="mt-2 text-sm leading-6 text-amber-900">{VERIFICATION_NOTE}</p>
       </section>
-    </main>
+    </div>
   )
 }

@@ -2,6 +2,7 @@
 
 import './globals.css'
 import { useEffect } from 'react'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 /**
  * Replaces the root layout when the layout itself fails. It renders its own
@@ -36,13 +37,13 @@ export default function GlobalError({
               <button
                 type="button"
                 onClick={() => (retry ?? reset)?.()}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700"
+                className={buttonClass()}
               >
                 Try again
               </button>
               {/* A full navigation is intentional: the app shell itself failed to render. */}
               {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-              <a href="/" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-mist-200 px-5 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+              <a href="/" className={buttonClass('secondary')}>
                 Go to the home page
               </a>
             </div>

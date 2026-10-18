@@ -3,6 +3,8 @@ import { CalendarPlus, PlayCircle, Video } from 'lucide-react'
 import type { LearnerBatchSessions, UpcomingLearnerSession } from '../session-repository'
 import { attendanceSummary, joinState, learnerSessionStatus, sessionEndsAt } from '../session-rules'
 import { LocalSessionTime } from './local-session-time'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 const JOIN_NOTICES: Record<string, string> = {
   not_yet: 'Join opens 15 minutes before the session starts.',
@@ -59,17 +61,17 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
                   <div className="min-w-0">
                     <p className="break-words font-semibold text-slate-950">{session.title}</p>
                     <p className="text-sm text-slate-600"><LocalSessionTime startsAt={session.startsAt} durationMinutes={session.durationMinutes} fallbackZone={zone} /></p>
-                    <p className="text-xs text-slate-500">{learnerSessionStatus(session, session.mark, session.joined, now)}{state === 'no_link' ? ' · meeting link coming soon' : ''}</p>
+                    <p className="text-xs text-slate-600">{learnerSessionStatus(session, session.mark, session.joined, now)}{state === 'no_link' ? ' · meeting link coming soon' : ''}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {state === 'open' ? (
-                      <a href={`/api/learn/sessions/${session.id}/join`} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">
+                      <a href={`/api/learn/sessions/${session.id}/join`} className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'min-h-11')}>
                         <Video aria-hidden="true" className="size-4" /> Join
                       </a>
                     ) : (
-                      <span className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-500">Join opens 15 min before</span>
+                      <span className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600">Join opens 15 min before</span>
                     )}
-                    <a href={`/api/learn/sessions/${session.id}/calendar`} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 hover:border-teal-400">
+                    <a href={`/api/learn/sessions/${session.id}/calendar`} className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'min-h-11 px-3')}>
                       <CalendarPlus aria-hidden="true" className="size-4" /> Add to calendar
                     </a>
                   </div>
@@ -93,7 +95,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">{learnerSessionStatus(session, session.mark, session.joined, now)}</span>
                   {session.recording ? (
-                    <a href={`/api/learn/sessions/${session.id}/recording`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 hover:border-teal-400">
+                    <a href={`/api/learn/sessions/${session.id}/recording`} target="_blank" rel="noopener noreferrer" className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'min-h-11 px-3')}>
                       <PlayCircle aria-hidden="true" className="size-4" /> Recording
                     </a>
                   ) : null}
@@ -114,7 +116,7 @@ export function LearnerSessionsPanel({ data, joinNotice, now = new Date() }: { d
                   <PlayCircle aria-hidden="true" className="size-5 shrink-0 text-teal-700" />
                   <span className="min-w-0">
                     <span className="block break-words font-semibold text-slate-950">{session.title}</span>
-                    <span className="block text-xs text-slate-500"><LocalSessionTime startsAt={session.startsAt} fallbackZone={zone} withYear /></span>
+                    <span className="block text-xs text-slate-600"><LocalSessionTime startsAt={session.startsAt} fallbackZone={zone} withYear /></span>
                   </span>
                 </a>
               </li>
@@ -144,11 +146,11 @@ export function UpcomingSessionsCard({ sessions, now = new Date() }: { sessions:
               </div>
               <div className="flex flex-wrap gap-2">
                 {state === 'open' ? (
-                  <a href={`/api/learn/sessions/${session.id}/join`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-bold text-white hover:bg-teal-800">
+                  <a href={`/api/learn/sessions/${session.id}/join`} className={buttonClass({ variant: 'primary', size: 'sm' })}>
                     <Video aria-hidden="true" className="size-4" /> Join
                   </a>
                 ) : null}
-                <a href={`/api/learn/sessions/${session.id}/calendar`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-bold text-navy-900 hover:border-teal-400">
+                <a href={`/api/learn/sessions/${session.id}/calendar`} className={cn(buttonClass({ variant: 'secondary', size: 'sm' }), 'px-3')}>
                   <CalendarPlus aria-hidden="true" className="size-4" /> Add to calendar
                 </a>
                 <Link href={`/learn/courses/${session.courseSlug}/learn?tab=sessions`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-3 text-sm font-bold text-navy-900 hover:border-teal-400">

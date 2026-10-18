@@ -19,7 +19,8 @@ const publisher = { key: 'personal', kind: 'personal' as const, id: 'user-1', na
 function fillBasics() {
   fireEvent.change(screen.getByRole('textbox', { name: 'Job title' }), { target: { value: 'Master' } })
   fireEvent.change(screen.getByRole('textbox', { name: 'Summary' }), { target: { value: 'Command a tanker.' } })
-  fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'Full command.' } })
+  // Round H (H7): descriptions need at least 120 characters.
+  fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'Full command of a product tanker on a nine-month contract, responsible for safe navigation, cargo operations and the crew.' } })
 }
 
 beforeEach(() => {
@@ -92,5 +93,58 @@ describe('HiringJobForm department, accepted ranks and minimum match (round 12)'
     expect(screen.getByRole('combobox', { name: 'Department' })).toHaveValue('deck_officers')
     expect(screen.getByRole('checkbox', { name: 'Master / Captain' })).toBeChecked()
     expect(screen.getByRole('spinbutton', { name: /Minimum match to apply/ })).toHaveValue(0)
+  })
+})
+
+describe('HiringJobForm rules (Round H, H7)', () => {
+  it('blocks saving a short description and says why next to the field', async () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'deck_officers' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Chief Officer' }))
+    fillBasics()
+    const description = screen.getByRole('textbox', { name: 'Description' })
+    fireEvent.change(description, { target: { value: 'Full command.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Publish job' }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Describe the role in at least 120 characters (13 so far).'))
+    expect(mocks.createHiringJob).not.toHaveBeenCalled()
+    expect(description).toHaveAttribute('aria-invalid', 'true')
+    expect(description).toHaveAccessibleDescription(/At least 120 characters.*Describe the role in at least 120 characters/)
+  })
+
+  it('blocks a salary minimum above the maximum and a conflicting location and region', async () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'technical_fleet' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Technical Superintendent' }))
+    fillBasics()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Location' }), { target: { value: 'Andheri East' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Sailing regions' }), { target: { value: 'Worldwide' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Salary minimum' }), { target: { value: '90000' } })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Salary maximum' }), { target: { value: '60000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save as draft' }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/^Fix 2 things before saving/))
+    expect(mocks.createHiringJob).not.toHaveBeenCalled()
+    expect(screen.getByRole('spinbutton', { name: 'Salary maximum' })).toHaveAccessibleDescription('Maximum salary must be at least the minimum salary.')
+    expect(screen.getByRole('textbox', { name: 'Sailing regions' })).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('warns that a Master usually needs 10+ years, without blocking the save', async () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'deck_officers' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Master / Captain' }))
+    fillBasics()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Minimum years' }), { target: { value: '0' } })
+
+    expect(screen.getByText(/Master Mariner usually needs 10\+ years of sea service; check the experience years\./)).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Minimum years' })).not.toHaveAttribute('aria-invalid')
+    fireEvent.click(screen.getByRole('button', { name: 'Publish job' }))
+    await waitFor(() => expect(mocks.createHiringJob).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not offer joining dates in the past', () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
+    const joining = document.querySelector('input[name="joiningFrom"]')!
+    expect(joining).toHaveAttribute('min', new Date().toISOString().slice(0, 10))
   })
 })

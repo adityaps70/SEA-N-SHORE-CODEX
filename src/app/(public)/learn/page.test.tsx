@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   getAccessContext: vi.fn(),
   listUserOrganizations: vi.fn(),
   listPublishedCourses: vi.fn(),
+  listRecentListPriceSales: vi.fn(async () => [] as unknown[]),
+}))
+
+vi.mock('@/features/learning/course-page-repository', () => ({
+  coursePageRepository: { listRecentListPriceSales: mocks.listRecentListPriceSales },
 }))
 
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
@@ -118,6 +123,19 @@ describe('/learn marketplace', () => {
     expect(cover).not.toHaveTextContent('₹20,000')
     expect(cover).not.toHaveTextContent('SIRE 2.0')
     expect(screen.getByText('₹20,000').closest('article')).toContainElement(screen.getByRole('link', { name: 'SIRE 2.0 Readiness for Tanker Officers' }))
+  })
+
+  it('shows the publishing organization\'s logo on the course card, and the initial when there is none (round H, H6)', async () => {
+    mocks.listPublishedCourses.mockResolvedValue([
+      { ...course, id: 'org-course', slug: 'org-course', title: 'Placeholder Organization Course', mentorName: 'Placeholder Academy', publisherLogoUrl: '/api/company-logo/c1?v=logo.png' },
+      course,
+    ])
+    await renderLearnPage()
+    const [orgAvatar, trainerAvatar] = screen.getAllByTestId('course-publisher-avatar')
+    expect(orgAvatar!.querySelector('img')).toHaveAttribute('src', '/api/company-logo/c1?v=logo.png')
+    expect(orgAvatar!.closest('article')).toHaveTextContent('Placeholder Academy')
+    expect(trainerAvatar!.querySelector('img')).toBeNull()
+    expect(trainerAvatar).toHaveTextContent('C')
   })
 
   it('replaces the teaching application CTA with Learning Studio for an approved active trainer', async () => {
@@ -251,5 +269,19 @@ describe('/learn marketplace', () => {
       openGraph: { url: '/learn', title: 'Maritime courses on Sea N Shore' },
       twitter: { card: 'summary_large_image' },
     })
+  })
+
+  it('strikes through a card\'s list price only when it sold at that price in the last 90 days (Round H, H7)', async () => {
+    const discounted = { ...course, discountPriceMinor: 1_500_000 }
+    mocks.listPublishedCourses.mockResolvedValue([discounted])
+    await renderLearnPage({ search: 'sire' })
+    expect(mocks.listRecentListPriceSales).toHaveBeenCalledWith([course.id])
+    expect(screen.getByText('₹15,000')).toBeInTheDocument()
+    expect(screen.queryByText('₹20,000')).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.listRecentListPriceSales.mockResolvedValueOnce([{ courseId: course.id, planId: 'plan-a', listPriceMinor: 2_000_000, currency: 'INR' }])
+    await renderLearnPage({ search: 'sire' })
+    expect(screen.getByText('₹20,000').closest('.line-through')).not.toBeNull()
   })
 })

@@ -19,7 +19,7 @@ export default async function DeletedContentPage() {
   const deletedPosts = await adminRepository.listDeletedPosts(admin.id, 100)
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Deleted content & recovery"
         meta={pluralize(deletedPosts.length, 'retained post')}
@@ -93,6 +93,6 @@ export default async function DeletedContentPage() {
           </>
         )}
       </AdminPanel>
-    </main>
+    </div>
   )
 }

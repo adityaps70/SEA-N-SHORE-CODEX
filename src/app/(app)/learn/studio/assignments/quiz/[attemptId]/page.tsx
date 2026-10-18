@@ -66,7 +66,7 @@ export default async function QuizGradingPage({ params }: { params: Promise<{ at
     .filter(({ answer }) => answer.gradingStatus === 'pending')
 
   return (
-    <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/learn/studio/assignments" title="Grade quiz answers" />
       <Link href="/learn/studio/assignments" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> Grading

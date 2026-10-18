@@ -200,13 +200,13 @@ export function TagPeopleDialog({
         ) : null}
         {connections.length ? (
           <section aria-label="Your connections">
-            <h3 className="bg-mist-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Your connections</h3>
+            <h3 className="bg-mist-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Your connections</h3>
             <ul className="divide-y divide-mist-100">{connections.map(renderRow)}</ul>
           </section>
         ) : null}
         {others.length ? (
           <section aria-label="Other members">
-            <h3 className="bg-mist-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">Other members</h3>
+            <h3 className="bg-mist-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Other members</h3>
             <ul className="divide-y divide-mist-100">{others.map(renderRow)}</ul>
           </section>
         ) : null}

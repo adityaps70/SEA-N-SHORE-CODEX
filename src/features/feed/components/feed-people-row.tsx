@@ -111,7 +111,7 @@ function PeopleRow({ deck, showEmptyState }: { deck: SuggestionDeck; showEmptySt
                       ) : personInitials}
                       <span className="mt-2 block w-full truncate text-sm font-semibold text-navy-950">{person.fullName}</span>
                       <span className="mt-0.5 line-clamp-2 min-h-8 w-full text-xs leading-4 text-muted">{role}</span>
-                      {person.suggestionReason ? <span className="mt-0.5 line-clamp-1 w-full text-[11px] font-medium leading-4 text-ocean-700">{person.suggestionReason}</span> : null}
+                      {person.suggestionReason ? <span className="mt-0.5 line-clamp-1 w-full text-xs font-medium leading-4 text-ocean-700">{person.suggestionReason}</span> : null}
                     </Link>
                     <div className="mt-2 w-full">
                       <ConnectionPrimaryAction

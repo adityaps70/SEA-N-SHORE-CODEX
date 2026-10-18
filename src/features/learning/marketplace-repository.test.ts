@@ -154,6 +154,25 @@ describe('learning marketplace repository', () => {
     ])
   })
 
+  it('carries the publishing organization\'s logo route, and none for a trainer\'s course or a logo-less organization (round H, H6)', async () => {
+    let seenText = ''
+    const repository = createMarketplaceRepository({
+      query: async (text: string) => {
+        seenText = text
+        return [
+          { ...publishedRow, id: 'org-with-logo', publisher_company_id: 'c1', publisher_logo_path: 'companies/c1/logo-123.png' },
+          { ...publishedRow, id: 'org-without-logo', publisher_company_id: 'c2', publisher_logo_path: null },
+          { ...publishedRow, id: 'trainer', publisher_company_id: null, publisher_logo_path: null },
+        ]
+      },
+    })
+
+    const courses = await repository.listPublishedCourses()
+    expect(seenText).toContain('course.company_id as publisher_company_id')
+    expect(seenText).toContain('company.logo_path as publisher_logo_path')
+    expect(courses.map((course) => course.publisherLogoUrl)).toEqual(['/api/company-logo/c1?v=logo-123.png', undefined, undefined])
+  })
+
   it('summarizes a published course for the phone page: published lessons per section, length, learners and publisher slug', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({

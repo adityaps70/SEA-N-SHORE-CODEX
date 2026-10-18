@@ -51,12 +51,33 @@ describe('LiveSearchBox (round G)', () => {
     expect(input).toHaveAttribute('aria-expanded', 'true')
     const options = screen.getAllByRole('option')
     expect(options.map((option) => option.textContent)).toEqual([
-      'SachinPerson · Second Officer'.replace('SachinPerson', 'Sachin PlaceholderPerson'),
+      // Round H (H6): a person without a photo starts with their initials (aria-hidden, so not part of the option's name).
+      'SP' + 'SachinPerson · Second Officer'.replace('SachinPerson', 'Sachin PlaceholderPerson'),
       'Placeholder LinesOrganization',
       'See all results for “sach”',
     ])
     expect(screen.getByText('Sach').tagName).toBe('MARK')
     expect(screen.getByRole('status')).toHaveTextContent('2 results. Press Enter for all results.')
+  })
+
+  it('shows initials for people without a photo, the photo when there is one, and an icon for other kinds (round H, H6)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ query: 'sach', items: [
+      ...items,
+      { id: 'p2', kind: 'person', name: 'Placeholder Photo Member', subtitle: null, avatarUrl: 'https://signed.example/photo.webp', href: '/people/placeholder-photo-member' },
+    ] }) })))
+    render(<LiveSearchBox />)
+    await typeAndSettle('sach')
+    const [person, org, withPhoto] = screen.getAllByRole('option')
+    const initials = person!.querySelector('[data-testid="suggestion-initials"]')
+    expect(initials).toHaveTextContent('SP')
+    expect(initials).toHaveAttribute('aria-hidden', 'true')
+    expect(person!.querySelector('svg')).toBeNull()
+    // The initials are not read out: the option's name starts with the person's name.
+    expect(person).toHaveAccessibleName(/^Sachin/)
+    expect(org!.querySelector('[data-testid="suggestion-initials"]')).toBeNull()
+    expect(org!.querySelector('svg')).not.toBeNull()
+    expect(withPhoto!.querySelector('img')).toHaveAttribute('src', 'https://signed.example/photo.webp')
+    expect(withPhoto!.querySelector('[data-testid="suggestion-initials"]')).toBeNull()
   })
 
   it('moves with up/down, opens with Enter and closes with Esc', async () => {

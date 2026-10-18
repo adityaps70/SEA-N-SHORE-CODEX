@@ -124,7 +124,7 @@ export function ConversationList({
                       <span className={`truncate text-sm max-md:text-base ${item.unread ? 'font-bold text-navy-950' : 'font-semibold text-navy-900'}`}>
                         {name}{item.unread ? <span className="max-md:sr-only"> · New</span> : null}
                       </span>
-                      <span className={`shrink-0 text-[11px] text-muted ${onConversationDeleted ? 'md:group-focus-within:invisible md:group-hover:invisible' : ''}`}>{lastMessageTime(item.lastMessageAt)}</span>
+                      <span className={`shrink-0 text-xs text-muted ${onConversationDeleted ? 'md:group-focus-within:invisible md:group-hover:invisible' : ''}`}>{lastMessageTime(item.lastMessageAt)}</span>
                     </span>
                     {item.otherHeadline ? (
                       <span className="mt-0.5 block truncate text-xs text-muted max-md:hidden">{item.otherHeadline}</span>

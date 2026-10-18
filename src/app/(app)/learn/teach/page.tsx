@@ -138,7 +138,7 @@ export default async function TeachPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/learn" title="Teach on Sea N Shore" />
       <Link href="/learn" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Back to Learning
@@ -190,6 +190,6 @@ export default async function TeachPage() {
           </article>
         </aside>
       </div>
-    </main>
+    </div>
   )
 }

@@ -7,7 +7,9 @@ import { canUseCapability, type Capability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { canManageOrganizationBilling, isOrganizationBillingContact } from '@/features/billing/billing-access'
-import { BillingHistory, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { PaymentHistory } from '@/features/billing/components/payment-history'
+import { paymentHistoryRepository, paymentHistoryRows, type PaymentHistoryEntry } from '@/features/billing/payment-history'
 import { loadPlanBillingView } from '@/features/billing/page-data'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { organizationAccessRequestRepository } from '@/features/organizations/access-request-repository'
@@ -65,12 +67,20 @@ export default async function OrganizationManagePage({
   // WITH Organization Pro). Buying is authorized again in every billing server action.
   const billingContact = isOrganizationBillingContact(access, workspace.id)
   const activeSection = section === 'requests' && viewer ? 'requests' : section === 'billing' && billingContact ? 'billing' : 'overview'
-  const billingView = activeSection === 'billing'
-    ? await loadPlanBillingView({ kind: 'company', companyId: workspace.id }).catch((error: unknown) => {
-        console.error('organization_manage_billing_unavailable', { message: error instanceof Error ? error.message : null })
-        return null
-      })
-    : null
+  const [billingView, payments] = activeSection === 'billing'
+    ? await Promise.all([
+        loadPlanBillingView({ kind: 'company', companyId: workspace.id }).catch((error: unknown) => {
+          console.error('organization_manage_billing_unavailable', { message: error instanceof Error ? error.message : null })
+          return null
+        }),
+        // Round H (H7): read-only payment records for Payment history.
+        paymentHistoryRepository.listForCompany(workspace.id).catch((error: unknown) => {
+          console.error('payment_history_unavailable', { message: error instanceof Error ? error.message : null })
+          return null as PaymentHistoryEntry[] | null
+        }),
+      ])
+    : [null, null]
+  const paymentRows = payments ? paymentHistoryRows(payments) : []
   const billingBlockedMessage = !canManageOrganizationBilling(access, workspace.id)
     ? 'Your account is restricted right now, so plans can’t be bought or changed. Contact the Sea N Shore team for help.'
     : !workspace.verified
@@ -136,7 +146,13 @@ export default async function OrganizationManagePage({
                 blockedMessage={billingBlockedMessage}
                 anchorId="organization-pro"
               />
-              {billingView.history.length ? <BillingHistory rows={billingView.history} /> : null}
+              {paymentRows.length || !payments ? (
+                <PaymentHistory
+                  rows={paymentRows}
+                  unavailable={!payments}
+                  description="Organization Pro payments and seat packs bought for this organization. Seat packs have a GST tax invoice; subscription payments have a payment receipt."
+                />
+              ) : null}
             </>
           ) : (
             <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">

@@ -80,7 +80,7 @@ describe('My Activities and jobs integration contract', () => {
   it('stacks each signed-in primary navigation icon above its label', () => {
     render(<AppHeader unreadCount={0} />)
 
-    const primary = screen.getByRole('navigation', { name: 'Primary' })
+    const primary = screen.getByRole('navigation', { name: 'Main' })
     const links = within(primary).getAllByRole('link')
     // Seven destinations, Community last; My Activities lives in Settings and Saved on the Home rail.
     expect(links).toHaveLength(7)

@@ -78,7 +78,7 @@ export function EmojiPicker({
           }
           setOpen((value) => !value)
         }}
-        className={`grid place-items-center rounded-full text-navy-900 transition hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 ${size === 'sm' ? 'size-9' : 'size-10'}`}
+        className={`grid place-items-center rounded-full text-navy-900 transition hover:bg-mist-50 ${size === 'sm' ? 'size-9' : 'size-10'}`}
       >
         <Smile aria-hidden="true" className="size-5 text-ocean-700" />
       </button>
@@ -91,7 +91,7 @@ export function EmojiPicker({
           className="absolute bottom-full z-50 mb-2 grid grid-cols-5 gap-1 rounded-2xl border border-mist-100 bg-white p-2 shadow-xl"
         >
           {EMOJI.map((emoji) => (
-            <button key={emoji} type="button" role="menuitem" aria-label={`Insert ${emoji}`} onClick={() => { onSelect(emoji); setOpen(false) }} className="grid size-10 place-items-center rounded-xl text-xl hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40">
+            <button key={emoji} type="button" role="menuitem" aria-label={`Insert ${emoji}`} onClick={() => { onSelect(emoji); setOpen(false) }} className="grid size-10 place-items-center rounded-xl text-xl hover:bg-mist-50">
               {emoji}
             </button>
           ))}

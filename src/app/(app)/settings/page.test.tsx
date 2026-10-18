@@ -76,6 +76,9 @@ describe('SettingsPage', () => {
     expect(within(section).getByRole('link', { name: /Payout details/ })).toHaveAttribute('href', '/settings/payouts')
     expect(within(section).getByRole('link', { name: /Blocked & muted/ })).toHaveAttribute('href', '/settings/blocked')
     expect(within(section).getByRole('link', { name: /Email notifications/ })).toHaveAttribute('href', '/settings/notifications')
+    // Round H (H8): a card is named by its title alone; the line under it is its description.
+    expect(within(section).getByRole('link', { name: 'Earnings' })).toHaveAccessibleDescription('See ticket and course sales, the platform fee, your balance and payouts.')
+    expect(within(section).getByRole('link', { name: 'Membership & billing' })).toHaveAttribute('href', '/settings/billing')
 
     const security = screen.getByText('Security:').closest('p')
     expect(security).not.toBeNull()

@@ -31,7 +31,7 @@ export function StudioToolsMenu({ tools }: { tools: Array<{ href: string; label:
             role="menuitem"
             onClick={() => setOpen(false)}
             className={cn(
-              'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none [&>svg]:size-4 [&>svg]:shrink-0',
+              'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:-outline-offset-2 [&>svg]:size-4 [&>svg]:shrink-0',
               SHEET_MENU_ITEM_CLASS,
             )}
           >

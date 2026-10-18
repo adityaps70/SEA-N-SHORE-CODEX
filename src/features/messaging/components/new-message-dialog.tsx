@@ -258,7 +258,7 @@ function NewMessageDialogPanel({
                 setSelectionError('')
               }}
               onKeyDown={onInputKeyDown}
-              className="min-w-0 flex-1 bg-transparent py-2 text-sm text-navy-950 outline-none placeholder:text-muted read-only:opacity-60"
+              className="min-w-0 flex-1 bg-transparent py-2 text-sm text-navy-950 placeholder:text-muted read-only:opacity-60"
             />
             {status === 'loading' ? (
               <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin text-ocean-700" />
@@ -339,7 +339,7 @@ function NewMessageDialogPanel({
                           : recipient.unavailableReason}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[11px] font-semibold text-ocean-700">
+                    <span className="shrink-0 text-xs font-semibold text-ocean-700">
                       {starting
                         ? <LoaderCircle aria-label="Opening conversation" className="size-4 animate-spin" />
                         : available

@@ -74,7 +74,7 @@ export default async function NewMentorCoursePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref="/learn/studio" title="Create course" />
       <WorksBestOnComputer>The course editor and SCORM upload work best on a computer. Everything still works here.</WorksBestOnComputer>
       <CreateRequirementsBanner access={access} kind="course" organizations={organizations} className="mb-5" />

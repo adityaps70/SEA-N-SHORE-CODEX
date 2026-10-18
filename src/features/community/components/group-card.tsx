@@ -20,7 +20,7 @@ export function GroupCard({ group, showAction = true }: { group: CommunityGroup;
           <p className="mt-0.5 text-xs font-semibold text-muted">
             {group.visibility === 'private' ? 'Private' : 'Public'} · {pluralize(group.memberCount, 'member')}
             {group.ownerOrganization ? <> · By <Link href={`/organizations/${group.ownerOrganization.slug}`} className="text-ocean-700 hover:underline">{group.ownerOrganization.name}</Link></> : null}
-            {group.viewerMembership?.status === 'pending' ? <span className="ml-1.5 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-900">Pending</span> : null}
+            {group.viewerMembership?.status === 'pending' ? <span className="ml-1.5 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-xs font-bold text-amber-900">Pending</span> : null}
           </p>
         </div>
       </div>

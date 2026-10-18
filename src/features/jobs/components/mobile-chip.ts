@@ -1,3 +1,6 @@
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
+
 /**
  * Phone chip styles for the jobs and hiring screens (round 8): 32px pills, selected = navy-950
  * filled. The ::before pseudo-element grows the tap area to 44px without changing the look.
@@ -13,8 +16,7 @@ export function chipClass(selected: boolean) {
 export const CHIP_ROW_CLASS = '-mx-4 flex gap-2 overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
 /** Filled and outline pill buttons for phone bars and sheets. */
-export const PHONE_PRIMARY_BUTTON =
-  'inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white transition hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-wait disabled:opacity-60'
+export const PHONE_PRIMARY_BUTTON = cn(buttonClass(), 'min-h-11 rounded-full text-[15px] disabled:cursor-wait')
 export const PHONE_OUTLINE_BUTTON =
   'inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full border border-ocean-700 bg-white px-5 text-[15px] font-semibold text-ocean-700 transition hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60'
 

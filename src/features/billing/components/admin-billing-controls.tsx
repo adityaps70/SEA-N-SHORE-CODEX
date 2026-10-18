@@ -66,7 +66,7 @@ export function PlanPriceEditor({ plan, interval, label, currentRupees }: { plan
               inputMode="decimal"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
-              className="min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-500 focus-visible:ring-2 focus-visible:ring-ocean-500/30 sm:w-36"
+              className="min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-500 sm:w-36"
             />
           </div>
           <div className="flex gap-2">
@@ -200,7 +200,7 @@ export function AdminTrialControls({ trialId, subjectName, planLabel, endsOn }: 
               inputMode="numeric"
               value={days}
               onChange={(event) => setDays(event.target.value)}
-              className="min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-500 focus-visible:ring-2 focus-visible:ring-ocean-500/30 sm:w-28"
+              className="min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-500 sm:w-28"
             />
           </div>
           <div className="flex gap-2">

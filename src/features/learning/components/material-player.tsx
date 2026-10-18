@@ -10,6 +10,8 @@ import { QuizLessonActivity } from './quiz-lesson-activity'
 import { ResumableLessonMedia } from './resumable-lesson-media'
 import { ScormPlayer } from './scorm-player'
 import { ViewCompletionBeacon } from './view-completion-beacon'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 type Props = {
   lesson: LearnerLesson
@@ -157,7 +159,7 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           {/* Phones: a tall embedded PDF is hard to read, so open it in the browser's own viewer. */}
           <div className="rounded-2xl border border-mist-200 bg-mist-50 p-4 md:hidden">
             <p className="text-sm leading-6 text-muted">This PDF opens in a new tab so you can zoom and scroll comfortably.</p>
-            <a href={mediaUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-bold text-white transition-colors hover:bg-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500">
+            <a href={mediaUrl} target="_blank" rel="noreferrer" className={cn(buttonClass(), 'mt-3 min-h-11 rounded-full text-[15px] font-bold')}>
               Open PDF <ExternalLink className="size-4" aria-hidden="true" />
             </a>
           </div>

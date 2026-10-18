@@ -78,7 +78,8 @@ describe('HeaderMenu', () => {
     render(<MobileAppHeader />)
     expect(screen.queryByRole('button', { name: 'Account menu' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Messages' })).toHaveAttribute('href', '/messages')
+    // Round H (H7): the phone top bar's icon is the Notifications bell (Messages is a bottom tab).
+    expect(screen.getByRole('link', { name: 'Notifications' })).toHaveAttribute('href', '/notifications')
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()

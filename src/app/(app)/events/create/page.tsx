@@ -24,7 +24,7 @@ export default async function CreateEventPage() {
 
   if (!profile) {
     return (
-      <div className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
+      <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
         <MobilePageBar backHref="/events" title="Create event" />
         <EventNav active="hosting" className="max-md:hidden" />
         <section className="rounded-[1.75rem] border border-mist-100 bg-white p-8 text-center shadow-[var(--shadow-card)]">
@@ -47,7 +47,7 @@ export default async function CreateEventPage() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
       <MobilePageBar backHref="/events" title="Create event" />
       <CreateRequirementsBanner access={access} kind="event" organizations={organizations} />
       <EventNav active="hosting" className="max-md:hidden" />

@@ -115,7 +115,7 @@ export default async function ActivitiesPage({
         </div>
       </aside>
 
-      <main className="min-w-0">
+      <div className="min-w-0">
         <MobilePageBar backHref="/settings" title="My Activities" />
         {/* Phones: the page bar replaces the intro; the profile card is one tap away in the drawer. */}
         <div className="mb-4 max-md:hidden lg:hidden">
@@ -207,7 +207,7 @@ export default async function ActivitiesPage({
             </EmptyState>
           )}
         </section>
-      </main>
+      </div>
 
       <aside className="hidden min-w-0 bg-transparent xl:block">
         <div className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-4 overflow-y-auto bg-transparent [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

@@ -5,6 +5,8 @@ import { useState, useTransition } from 'react'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { enrollInFreeCourse } from '../enrollment-actions'
 import { CourseCheckoutButton } from './course-checkout-button'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 /**
  * Phone course page (round 8): the main action as a sticky bottom bar above the tab bar.
@@ -19,7 +21,7 @@ export type CourseActionBarMode =
   | { kind: 'choose'; label: string }
 
 const PRIMARY =
-  'inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-bold text-white transition hover:bg-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60'
+  cn(buttonClass(), 'w-full rounded-full text-[15px] font-bold')
 
 export function CourseActionBar({
   course,

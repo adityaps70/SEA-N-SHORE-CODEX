@@ -32,7 +32,7 @@ export function SendPostButton({
         onClick={() => setOpen(true)}
         className={variant === 'action'
           ? POST_ACTION_BUTTON_CLASS
-          : 'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40'}
+          : 'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50'}
       >
         <Send aria-hidden="true" className="size-5" />
         {variant === 'action' ? <span className={POST_ACTION_LABEL_CLASS}>Send</span> : null}

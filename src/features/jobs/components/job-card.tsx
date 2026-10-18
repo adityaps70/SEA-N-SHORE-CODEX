@@ -6,6 +6,8 @@ import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '../job-lifecyc
 import type { JobListing, JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
 import { evaluateApplyGate } from '../apply-gate'
+import { companyLocationSentence } from '../job-location'
+import { formatSalaryRange } from '../salary'
 import { ApplyJobButton } from './apply-job-button'
 import { JobCompanyLogo } from './job-company-identity'
 import { NotInterestedButton } from './not-interested'
@@ -14,20 +16,6 @@ import { SaveJobButton } from './save-job-button'
 function formatDate(value: string | null, prefix: string) {
   if (!value) return null
   return `${prefix} ${new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`))}`
-}
-
-function formatSalary(job: JobListing) {
-  if (job.salaryMin === null && job.salaryMax === null) return null
-  const currency = job.salaryCurrency ?? 'USD'
-  const format = (value: number) => new Intl.NumberFormat('en', {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  }).format(value)
-  const amount = job.salaryMin !== null && job.salaryMax !== null
-    ? `${format(job.salaryMin)}–${format(job.salaryMax)}`
-    : format(job.salaryMin ?? job.salaryMax ?? 0)
-  return `${amount}${job.salaryPeriod ? `/${job.salaryPeriod}` : ''}`
 }
 
 export function JobCard({
@@ -50,7 +38,8 @@ export function JobCard({
   /** Round H (H5): a signed-out visitor; Save and Apply link to sign-in, coming back to the job. */
   signedOut?: boolean
 }) {
-  const salary = formatSalary(job)
+  const salary = formatSalaryRange(job)
+  const employerLine = job.companyId ? companyLocationSentence(job.companyLocation) : null
   const signInHref = signedOut ? authHrefWithReturn('/auth/sign-in', `/jobs/${job.id}`) : undefined
   // Round H (H2): past the apply-by date or the joining window, the job is closed.
   const closedReason = jobClosedReason(job, todayIsoDate())
@@ -78,23 +67,23 @@ export function JobCard({
             {job.companyId && job.companySlug ? (
               <Link
                 href={`/organizations/${job.companySlug}`}
-                className="relative z-10 min-w-0 max-w-full truncate text-[11px] font-bold uppercase tracking-[0.11em] text-ocean-700 hover:underline"
+                className="relative z-10 min-w-0 max-w-full truncate text-xs font-bold uppercase tracking-[0.11em] text-ocean-700 hover:underline"
               >
                 {job.companyName}
               </Link>
             ) : (
-              <p className="min-w-0 max-w-full truncate text-[11px] font-bold uppercase tracking-[0.11em] text-ocean-700">
+              <p className="min-w-0 max-w-full truncate text-xs font-bold uppercase tracking-[0.11em] text-ocean-700">
                 {job.companyName}
               </p>
             )}
             {job.companyVerified ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-800">
                 <BadgeCheck aria-hidden="true" className="size-3.5" />
                 Verified
               </span>
             ) : null}
             {job.urgent ? (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">
                 Urgent
               </span>
             ) : null}
@@ -106,9 +95,7 @@ export function JobCard({
           >
             {job.title}
           </Link>
-          {job.companyId && job.companyLocation ? (
-            <p className="mt-1 truncate text-xs text-muted">Employer based in {job.companyLocation}</p>
-          ) : null}
+          {employerLine ? <p className="mt-1 truncate text-xs text-muted">{employerLine}</p> : null}
         </div>
       </div>
 

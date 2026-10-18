@@ -1,4 +1,5 @@
 import { roleDisplayLabel } from '@/features/roles/taxonomy'
+import { displayName } from './display-name'
 import { mapLinkedOrganization } from './organization-link'
 import type { PublicProfile, PublicProfileRow } from './types'
 
@@ -26,7 +27,9 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     targetDepartmentKey: row.target_department_key ?? null,
     targetRoleKey: row.target_role_key ?? null,
     occupationText: row.occupation_text ?? null,
-    fullName: row.full_name,
+    // Round H (H7): shown with smart capitalisation; stored as typed.
+    fullName: displayName(row.full_name) || row.full_name,
+    typedFullName: row.full_name,
     avatarPath: row.avatar_path,
     avatarUrl: null,
     coverPath: row.cover_path ?? null,

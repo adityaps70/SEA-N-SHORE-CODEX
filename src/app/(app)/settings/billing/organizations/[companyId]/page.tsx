@@ -8,7 +8,9 @@ import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { canManageOrganizationBilling } from '@/features/billing/billing-access'
-import { BillingHistory, CheckoutNotice, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { CheckoutNotice, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { PaymentHistory } from '@/features/billing/components/payment-history'
+import { paymentHistoryRepository, paymentHistoryRows, type PaymentHistoryEntry } from '@/features/billing/payment-history'
 import { loadCheckoutNotice, loadPlanBillingView } from '@/features/billing/page-data'
 import { billingRepository } from '@/features/billing/repository'
 
@@ -45,10 +47,16 @@ export default async function OrganizationBillingPage({
 
   const query = (await searchParams) ?? {}
   const subject = { kind: 'company' as const, companyId }
-  const [view, checkoutNotice] = await Promise.all([
+  const [view, checkoutNotice, payments] = await Promise.all([
     loadPlanBillingView(subject),
     loadCheckoutNotice(first(query.checkout), subject),
+    // Round H (H7): read-only payment records for Payment history; the page still renders without them.
+    paymentHistoryRepository.listForCompany(companyId).catch((error: unknown) => {
+      console.error('payment_history_unavailable', { message: error instanceof Error ? error.message : null })
+      return null as PaymentHistoryEntry[] | null
+    }),
   ])
+  const paymentRows = payments ? paymentHistoryRows(payments) : []
   const canBuy = canManageOrganizationBilling(access, companyId)
   const blockedMessage = !canBuy
     ? 'Only the organization’s owner or an administrator can buy or change this plan.'
@@ -57,7 +65,7 @@ export default async function OrganizationBillingPage({
       : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
       <MobilePageBar backHref="/settings/billing" title={billing.company.name} />
       <header>
         <Link href="/settings/billing" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
@@ -92,7 +100,13 @@ export default async function OrganizationBillingPage({
         highlight={first(query.plan) === 'organization_pro'}
       />
 
-      {view.history.length ? <BillingHistory rows={view.history} /> : null}
+      {paymentRows.length || !payments ? (
+        <PaymentHistory
+          rows={paymentRows}
+          unavailable={!payments}
+          description="Organization Pro payments and seat packs bought for this organization. Seat packs have a GST tax invoice; subscription payments have a payment receipt."
+        />
+      ) : null}
 
       <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
         <div className="flex gap-3">
@@ -108,6 +122,6 @@ export default async function OrganizationBillingPage({
           </div>
         </div>
       </section>
-    </main>
+    </div>
   )
 }

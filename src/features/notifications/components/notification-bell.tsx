@@ -173,7 +173,7 @@ export function NotificationBell({
       >
         <Bell aria-hidden="true" className="size-5" />
         {localUnreadCount > 0 ? (
-          <span className="absolute right-0 top-0 inline-flex min-w-5 -translate-y-1/4 translate-x-1/4 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white">
+          <span className="absolute right-0 top-0 inline-flex min-w-5 -translate-y-1/4 translate-x-1/4 items-center justify-center rounded-full bg-ocean-700 px-1 text-xs font-bold leading-5 text-white">
             {localUnreadCount > 9 ? '9+' : localUnreadCount}
           </span>
         ) : null}
@@ -223,7 +223,7 @@ export function NotificationBell({
                         type="button"
                         disabled={pending}
                         onClick={() => openNotification(notification)}
-                        className="block min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:opacity-60"
+                        className="block min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left disabled:opacity-60"
                       >
                         <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
                         <span className="mt-1 flex items-center gap-2">

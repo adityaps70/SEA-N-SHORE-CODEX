@@ -59,6 +59,39 @@ export function discountPercent(price: CoursePrice) {
   return Math.floor(((price.listPriceMinor - price.discountPriceMinor) * 100) / price.listPriceMinor)
 }
 
+/** Round H (H7): how far back a sale at the full list price counts as evidence for a struck-through price. */
+export const LIST_PRICE_EVIDENCE_DAYS = 90
+
+/**
+ * Round H (H7): one paid order at the full list price (no sale price, no promo code, not a seat pack) within
+ * LIST_PRICE_EVIDENCE_DAYS, as read from course_payment_orders by list-price-evidence-repository.ts.
+ */
+export type ListPriceSale = { courseId: string; planId: string | null; listPriceMinor: number; currency: string }
+
+/**
+ * Round H (H7): whether this list price was actually charged recently. `planId` undefined matches a sale on any
+ * plan (the course's own price, as cards show it); a plan id or null (no plan rows) matches only that plan.
+ */
+export function wasListPriceCharged(
+  sales: readonly ListPriceSale[],
+  target: { courseId: string; planId?: string | null; listPriceMinor: number; currency: string },
+) {
+  return sales.some((sale) => sale.courseId === target.courseId
+    && sale.listPriceMinor === target.listPriceMinor
+    && sale.currency === target.currency
+    && (target.planId === undefined || sale.planId === target.planId))
+}
+
+/**
+ * Round H (H7): the struck-through "was" price beside a discounted price, or null. It is shown only when the
+ * course really sold at that list price on Sea N Shore in the last 90 days (`listPriceRecentlyCharged`);
+ * otherwise the selling price is shown alone, with no "Save N%".
+ */
+export function struckListPrice(price: CoursePrice | null, listPriceRecentlyCharged: boolean) {
+  if (!price || price.discountPriceMinor === null || !listPriceRecentlyCharged) return null
+  return { listPriceMinor: price.listPriceMinor, savePercent: discountPercent(price) }
+}
+
 /** The seller's terms for each sale: Sea N Shore's fee percent (e.g. "10.00") and the payout hold. */
 export type SellerFeeTerms = { percent: string; holdDays: number }
 

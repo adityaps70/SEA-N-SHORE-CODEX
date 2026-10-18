@@ -108,10 +108,10 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
             aria-expanded={open}
             aria-label={`${label} date: ${readableDate(date)}`}
             aria-describedby={error ? errorId : undefined}
-            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl border bg-mist-50 px-4 text-left text-[15px] font-normal outline-none transition ${open ? 'border-teal-500' : error ? 'border-rose-300' : 'border-mist-200 hover:border-mist-200'}`}
+            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl border bg-mist-50 px-4 text-left text-[15px] font-normal transition ${open ? 'border-teal-500' : error ? 'border-rose-300' : 'border-mist-200 hover:border-mist-200'}`}
           >
             <CalendarDays className="size-4.5 shrink-0 text-teal-700" aria-hidden="true" />
-            <span className={date ? 'text-navy-950' : 'text-slate-400'}>{readableDate(date)}</span>
+            <span className={date ? 'text-navy-950' : 'text-muted'}>{readableDate(date)}</span>
           </button>
           {open ? (
             <div className="absolute left-0 top-[calc(100%+0.5rem)] z-40 w-[min(22rem,calc(100vw-3rem))] rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-xl">
@@ -121,7 +121,7 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
                 <button type="button" onClick={() => setViewMonth(new Date(year, month + 1, 1))} className="grid size-9 place-items-center rounded-xl text-navy-700 hover:bg-mist-50" aria-label="Next month"><ChevronRight className="size-4.5" /></button>
               </div>
               <div className="grid grid-cols-7 gap-1 text-center">
-                {weekdays.map((weekday) => <span key={weekday} className="py-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{weekday}</span>)}
+                {weekdays.map((weekday) => <span key={weekday} className="py-1 text-xs font-bold uppercase tracking-wide text-muted">{weekday}</span>)}
                 {cells.map((day, index) => {
                   if (!day) return <span key={`empty-${index}`} className="aspect-square" />
                   const key = dateKey(year, month, day)
@@ -152,7 +152,7 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
             onChange={(event) => setTime(event.target.value)}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? errorId : undefined}
-            className={`min-h-12 w-full rounded-2xl border bg-mist-50 py-2 pl-10 pr-3 text-[15px] font-normal text-navy-950 outline-none transition focus:border-teal-500 ${error ? 'border-rose-300' : 'border-mist-100'}`}
+            className={`min-h-12 w-full rounded-2xl border bg-mist-50 py-2 pl-10 pr-3 text-[15px] font-normal text-navy-950 transition focus:border-teal-500 ${error ? 'border-rose-300' : 'border-mist-100'}`}
           />
         </div>
       </div>

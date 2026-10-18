@@ -8,8 +8,12 @@ import { personaUsesProfessionalCompany } from '../persona'
 import type { OwnProfile } from '../types'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
+import { NameCaseSuggestion } from './name-case-suggestion'
+import { LocationPicker } from './location-picker'
+import { HeadlineUrlCheck } from './headline-url-check'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 import { VesselTypesInput } from '@/features/taxonomy/components/vessel-types-input'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 const initialState: ProfileActionState = {}
 
@@ -78,8 +82,9 @@ export function ProfileEditForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className={labelClass}>
               Full name
-              <input name="fullName" required maxLength={120} defaultValue={textValue('fullName', profile.fullName)} className={inputClass} />
+              <input id="profile-edit-full-name" name="fullName" required maxLength={120} defaultValue={textValue('fullName', profile.typedFullName ?? profile.fullName)} className={inputClass} />
               <FieldError state={state} name="fullName" />
+              <NameCaseSuggestion inputId="profile-edit-full-name" />
             </label>
             <UsernameField
               initialValue={usernameValue}
@@ -92,15 +97,17 @@ export function ProfileEditForm({
                 ? 'We created this username for you when you joined. Changing it once does not count toward your 2 changes.'
                 : undefined}
             />
-            <label className={labelClass}>
-              Location
-              <input name="location" maxLength={120} defaultValue={textValue('location', profile.location ?? '')} className={inputClass} />
+            {/* Round H (H7): a city picker over an offline list; free text stays possible ("Other"). */}
+            <div className={labelClass}>
+              <label htmlFor="profile-edit-location">Location</label>
+              <LocationPicker id="profile-edit-location" defaultValue={textValue('location', profile.location ?? '')} className={inputClass} invalid={Boolean(state.fieldErrors?.location?.[0])} />
               <FieldError state={state} name="location" />
-            </label>
+            </div>
             <label className={labelClass}>
               Headline
-              <input name="headline" required maxLength={160} defaultValue={textValue('headline', profile.headline ?? '')} className={inputClass} />
+              <input id="profile-edit-headline" name="headline" required maxLength={160} defaultValue={textValue('headline', profile.headline ?? '')} className={inputClass} />
               <FieldError state={state} name="headline" />
+              <HeadlineUrlCheck inputId="profile-edit-headline" />
             </label>
             {showCompanyField ? (
               <div className="min-w-0 sm:col-span-2">
@@ -197,10 +204,10 @@ export function ProfileEditForm({
         {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
 
         <div className="flex flex-wrap justify-end gap-3 border-t border-mist-100 pt-4">
-          <Link href="/profile" className="inline-flex min-h-11 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-500">
+          <Link href="/profile" className={buttonClass('secondary')}>
             Cancel
           </Link>
-          <button type="submit" disabled={pending || !usernameReady} className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={pending || !usernameReady} className={buttonClass('primary')}>
             {pending ? 'Saving…' : 'Save changes'}
           </button>
         </div>

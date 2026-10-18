@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { Anchor } from 'lucide-react'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { MainLandmark } from '@/components/layout/main-landmark'
 
 /**
  * Round H (H5): the tab title and robots tag of every not-found.tsx (`export const metadata = NOT_FOUND_METADATA`).
@@ -34,10 +36,11 @@ export function NotFoundView({
   landmark?: boolean
   children?: React.ReactNode
 }) {
-  const Root = landmark || fullScreen ? 'main' : 'div'
-  const rootProps = Root === 'main' ? { id: 'main-content' } : {}
+  // Round H (H8): MainLandmark is a <div> when a layout already draws the page's <main>.
+  const standalone = landmark || fullScreen
+  const Root = standalone ? MainLandmark : 'div'
   return (
-    <Root {...rootProps} className={`grid place-items-center ${Root === 'main' ? 'px-4' : ''} ${fullScreen ? 'min-h-screen bg-mist-50 py-10' : 'min-h-[55vh] py-8'}`}>
+    <Root className={`grid place-items-center ${standalone ? 'px-4' : ''} ${fullScreen ? 'min-h-screen bg-mist-50 py-10' : 'min-h-[55vh] py-8'}`}>
       <section className="w-full max-w-lg rounded-[1.75rem] border border-mist-100 bg-white p-7 text-center shadow-[var(--shadow-card)] sm:p-9">
         {children}
         <div className="mx-auto mt-2 grid size-14 place-items-center rounded-2xl bg-mist-50 text-ocean-700">
@@ -47,11 +50,11 @@ export function NotFoundView({
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-navy-950 sm:text-3xl">{title}</h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted">{body}</p>
         <div className="mt-7 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Link href={primary.href} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700">
+          <Link href={primary.href} className={buttonClass()}>
             {primary.label}
           </Link>
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+            <Link key={link.href} href={link.href} className={buttonClass('secondary')}>
               {link.label}
             </Link>
           ))}

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useModalLayer } from '@/features/messaging/components/use-modal-layer'
 import { cropImageToFile, type PixelCrop } from '@/lib/images/crop-image'
+import { buttonClass } from '@/components/ui/interactive-styles'
 
 export type ImageCropShape = 'circle' | 'rect'
 
@@ -163,7 +164,7 @@ export function ImageCropDialog({ file, shape, aspect, title, initialError = '',
           </div>
           <div className="shrink-0 text-center">
             <span aria-hidden="true" className={`block overflow-hidden bg-mist-100 ring-1 ring-mist-200 ${previewClass}`} style={imageUrl ? cropPreviewStyle(imageUrl, area) : undefined} data-testid="crop-preview" />
-            <span className="mt-1 block text-[11px] font-medium text-muted">Preview</span>
+            <span className="mt-1 block text-xs font-medium text-muted">Preview</span>
           </div>
         </div>
 
@@ -174,7 +175,7 @@ export function ImageCropDialog({ file, shape, aspect, title, initialError = '',
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-navy-900 bg-white px-5 text-sm font-semibold text-navy-900 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className={buttonClass('secondary')}
           >
             Cancel
           </button>
@@ -182,7 +183,7 @@ export function ImageCropDialog({ file, shape, aspect, title, initialError = '',
             type="button"
             onClick={() => void save()}
             disabled={saving || !pixelCrop}
-            className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl bg-navy-950 px-5 text-sm font-bold text-white transition hover:bg-ocean-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className={buttonClass('primary')}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

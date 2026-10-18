@@ -86,7 +86,7 @@ export async function SearchV2({ viewerId, query, tab, page }: { viewerId: strin
   const total = result?.total ?? 0
 
   return (
-    <section className="mx-auto w-full max-w-4xl py-2 max-md:py-0 sm:py-5">
+    <section className="mx-auto w-full max-w-page-wide py-2 max-md:py-0 sm:py-5">
       <h1 className="sr-only">Search</h1>
       <div className="flex items-center gap-2 max-md:-mx-4 max-md:border-b max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:py-2">
         <Link href="/home" aria-label="Back" className="-ml-2 grid size-11 shrink-0 place-items-center rounded-full text-navy-900 hover:bg-mist-50 md:hidden">

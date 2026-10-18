@@ -4,6 +4,8 @@ import { RotateCcw, Trash2 } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { restoreDeletedPost } from '../actions'
 import { POST_CATEGORY_LABELS, type RecentlyDeletedPost } from '../types'
+import { buttonClass } from '@/components/ui/interactive-styles'
+import { cn } from '@/lib/cn'
 
 function dateLabel(value: string) {
   const date = new Date(value)
@@ -61,7 +63,7 @@ export function RecentlyDeletedPostCard({ post }: { post: RecentlyDeletedPost })
           type="button"
           onClick={restore}
           disabled={pending}
-          className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-ocean-700 px-4 text-sm font-bold text-white transition hover:bg-ocean-800 disabled:cursor-wait disabled:opacity-60"
+          className={cn(buttonClass({ variant: 'primary', size: 'sm' }), 'disabled:cursor-wait')}
         >
           <RotateCcw aria-hidden="true" className="size-4" />
           {pending ? 'Restoring…' : 'Restore post'}

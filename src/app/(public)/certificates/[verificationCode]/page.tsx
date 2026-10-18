@@ -1,3 +1,4 @@
+import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -54,7 +55,7 @@ export default async function CertificateVerificationPage({ params }: PageProps)
 
   return (
     <>
-      <main className="mx-auto max-w-4xl px-5 py-12 sm:py-16">
+      <MainLandmark className="mx-auto max-w-page-narrow px-5 py-12 sm:py-16">
         <section className="overflow-hidden rounded-[2rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
           <div className="bg-navy-950 px-6 py-8 text-white sm:px-10">
             <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold uppercase tracking-[0.16em] text-teal-200">
@@ -122,7 +123,7 @@ export default async function CertificateVerificationPage({ params }: PageProps)
             ) : null}
           </div>
         </section>
-      </main>
+      </MainLandmark>
       {joinBar}
     </>
   )

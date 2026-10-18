@@ -1,3 +1,4 @@
+import { displayName } from '@/features/profiles/display-name'
 import type {
   FeedAuthor,
   FeedComment,
@@ -260,7 +261,8 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, 
   return {
     id: author.id,
     slug: author.slug,
-    fullName: author.full_name,
+    // Round H (H7): smart capitalisation for ALL CAPS or all-lowercase names (stored as typed).
+    fullName: displayName(author.full_name) || author.full_name,
     avatarPath: author.avatar_path,
     avatarUrl: author.avatar_path ? signedUrls.get(author.avatar_path) ?? null : null,
     headline: author.headline,
@@ -460,7 +462,7 @@ export function mapHiddenPost(row: HiddenPostSourceRow, signedUrls: Map<string, 
     author: {
       id: row.author_id,
       slug: row.author_slug,
-      fullName: row.author_name,
+      fullName: displayName(row.author_name) || row.author_name,
       avatarUrl: row.author_avatar_path ? signedUrls.get(row.author_avatar_path) ?? null : null,
     },
     organization: mapOrganization(row.company_id && row.company_slug && row.company_name

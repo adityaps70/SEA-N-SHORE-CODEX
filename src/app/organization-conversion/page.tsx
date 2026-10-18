@@ -16,10 +16,10 @@ export default async function OrganizationConversionPage() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,var(--mist-50)_0%,white_42%,var(--mist-50)_100%)] px-4 py-5 sm:px-6 sm:py-7">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-page-narrow">
         <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100">
           <Wordmark compact />
-          <span className="inline-flex items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm">
+          <span className="inline-flex items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm">
             <ArrowLeftRight aria-hidden="true" className="size-3.5" /> Account conversion
           </span>
         </div>

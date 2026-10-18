@@ -130,7 +130,7 @@ export default async function CourseRevisionChangesPage({ params }: { params: Pr
   const otherChanges = changes.filter((change) => change.area !== 'material' || !materials.some((item) => item.title === change.label))
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide py-6 max-md:pt-0 sm:px-6 lg:px-8">
       <MobilePageBar backHref={`/learn/studio/courses/${comparison.revisionCourseId}/edit`} title="Draft changes" />
       <Link href={`/learn/studio/courses/${comparison.revisionCourseId}/edit`} className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Back to the draft

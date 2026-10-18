@@ -10,8 +10,9 @@ import { peopleSuggestions as peopleSuggestionService } from '@/features/ranking
 import { peopleCandidateRepository } from '@/features/ranking/people-candidates'
 import type { PeopleSection } from '@/features/ranking/people-scorer'
 import { isRankingEnabled } from '@/features/ranking/switches'
+import { canMessageMember } from '@/features/profiles/privacy-choices'
 import { incrementRankingMetric } from '@/features/signals/repository'
-import { networkRepository } from './repository'
+import { networkRepository, type MessageAccess } from './repository'
 import { PEOPLE_SUGGESTION_LIMITS, scoreRecommendation } from './recommendations'
 import type {
   NetworkConnectionRow,
@@ -106,6 +107,18 @@ function withRelationship(
   }))
 }
 
+/** Round H (H7): may the viewer message each person? The same rule the messaging service enforces. */
+export function withMessageAccess(profiles: NetworkProfile[], access: ReadonlyMap<string, MessageAccess>): NetworkProfile[] {
+  return profiles.map((profile) => {
+    const entry = access.get(profile.id)
+    const connected = profile.relationship.connection.kind === 'connected'
+    return {
+      ...profile,
+      canMessage: entry ? canMessageMember({ permission: entry.permission, connected, blocked: entry.blocked }) : connected,
+    }
+  })
+}
+
 export async function getRelationshipState(targetId: string): Promise<RelationshipState> {
   const user = await requireAwsUser()
   const graph = await loadViewerGraph(user.id)
@@ -197,12 +210,16 @@ export async function getNetworkHub(
       ? await networkRepository.loadFollowerIds(user.id)
       : [...graph.followedIds]
     const loaded = await getAwsPublicProfilesByIds(ids)
-    const profiles = withRelationship(
+    const related = withRelationship(
       user.id,
       profilesInIdOrder(loaded, ids),
       graph.followedIds,
       graph.connections,
     )
+    // Round H (H7): the Following list offers Message where the member's privacy choice allows it.
+    const profiles = followView === 'following'
+      ? withMessageAccess(related, await networkRepository.loadMessageAccess(user.id, related.map((profile) => profile.id)).catch(() => new Map<string, MessageAccess>()))
+      : related
 
     return {
       tab,

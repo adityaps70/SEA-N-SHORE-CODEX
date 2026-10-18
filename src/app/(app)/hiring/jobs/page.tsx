@@ -10,6 +10,7 @@ import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
 import { hiringRepository, managedJobLifecycle, type ManagedHiringJobSummary } from '@/features/jobs/hiring-repository'
 import { jobStatusPresentation, todayIsoDate, type JobStatusKey } from '@/features/jobs/job-lifecycle'
+import { urgentWindowLabel } from '@/features/jobs/urgent'
 
 export const metadata: Metadata = { title: 'Your job posts' }
 
@@ -69,7 +70,7 @@ export default async function HiringJobsPage({
   const visible = filter === 'all' ? withStatus : withStatus.filter((item) => filterFor(item.presentation.key) === filter)
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+    <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
       <MobilePageBar
         backHref="/hiring"
         title="Your jobs"
@@ -141,6 +142,8 @@ export default async function HiringJobsPage({
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${presentation.badgeClassName}`}>{presentation.label}</span>
                     {job.urgent ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">Urgent</span> : null}
                   </div>
+                  {/* Round H (H7): urgent lasts 14 days from when it was set. */}
+                  {urgentWindowLabel(job.urgent, job.urgentSince) ? <p className="mt-1 text-xs font-semibold text-amber-800">{urgentWindowLabel(job.urgent, job.urgentSince)}</p> : null}
                   <p className="mt-1 text-sm text-muted max-md:hidden">{presentation.description}</p>
                   {job.hiddenForPlan ? <PlanHiddenBanner companyId={job.companyId} className="mt-3" /> : null}
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted max-md:hidden">

@@ -33,7 +33,7 @@ export default async function PrivacySettingsPage() {
   const offerOpenToWork = canBeOpenToRecruiters(profile?.persona)
 
   return (
-    <main className="mx-auto w-full max-w-3xl space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Privacy" />
       <header className="max-md:hidden">
         <Link href="/settings" className={backLinkClass}>
@@ -104,6 +104,6 @@ export default async function PrivacySettingsPage() {
       <p className="text-sm leading-6 text-muted">
         How we use your data: <Link href="/privacy" className="font-semibold text-ocean-700 hover:underline">Privacy policy</Link>.
       </p>
-    </main>
+    </div>
   )
 }

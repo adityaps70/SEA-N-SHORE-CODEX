@@ -4,10 +4,12 @@ import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ShieldCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAccessContext } from '@/features/access/server'
-import { planPriceLine } from '@/features/billing/billing-view'
+import { planPriceLine, trialOfferLabel } from '@/features/billing/billing-view'
 import { CollapsiblePlanSection } from '@/features/billing/components/collapsible-plan-section'
 import { OrganizationProChooser } from '@/features/billing/components/organization-pro-chooser'
-import { BillingHistory, CheckoutNotice, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { CheckoutNotice, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { PaymentHistory } from '@/features/billing/components/payment-history'
+import { paymentHistoryRepository, paymentHistoryRows, type PaymentHistoryEntry } from '@/features/billing/payment-history'
 import { organizationProCandidates, resolveOrganizationProPath } from '@/features/billing/organization-pro-path'
 import { loadCheckoutNotice, loadPlanBillingView } from '@/features/billing/page-data'
 import { subscriptionRepository } from '@/features/billing/subscription-repository'
@@ -41,7 +43,7 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
   const params = (await searchParams) ?? {}
   const requestedPlan = first(params.plan)
   const subject = { kind: 'profile' as const, profileId: user.id }
-  const [access, organizationData, view, checkoutNotice, prices] = await Promise.all([
+  const [access, organizationData, view, checkoutNotice, prices, payments] = await Promise.all([
     getAccessContext(user.id),
     Promise.all([
       organizationRepository.listUserOrganizations(user.id),
@@ -53,6 +55,11 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
     loadPlanBillingView(subject),
     loadCheckoutNotice(first(params.checkout), subject),
     subscriptionRepository.listActivePrices().catch(() => [] as PlanPrice[]),
+    // Round H (H7): read-only payment records for Payment history; the page still renders without them.
+    paymentHistoryRepository.listForProfile(user.id).catch((error: unknown) => {
+      console.error('payment_history_unavailable', { message: error instanceof Error ? error.message : null })
+      return null as PaymentHistoryEntry[] | null
+    }),
   ])
   const [organizations, application] = organizationData ?? [[], { kind: 'none' as const }]
   const organizationPath = organizationData ? resolveOrganizationProPath({ access, organizations, application }) : null
@@ -82,10 +89,13 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
     <CollapsiblePlanSection
       anchorId="creator-pro"
       eyebrow="Personal plan"
-      title={view.planLabel}
+      title={view.headline}
       statusLabel={view.statusLabel}
-      summary="For independent recruiters, trainers, consultants, coaches and event organizers who publish under their own name."
+      summary={view.state === 'free'
+        ? 'Creator Pro is for independent recruiters, trainers, consultants, coaches and event organizers who publish under their own name.'
+        : 'For independent recruiters, trainers, consultants, coaches and event organizers who publish under their own name.'}
       priceLine={view.state === 'free' ? planPriceLine(prices, 'creator_pro') : view.current?.priceLabel ?? null}
+      note={view.state === 'free' ? view.trialOffer : null}
       openLabel={view.state === 'free' ? 'Get Creator Pro' : 'Manage Creator Pro'}
       defaultOpen={creatorOpen}
     >
@@ -97,13 +107,21 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
       path={organizationPath}
       candidates={candidates}
       priceLine={planPriceLine(prices, 'organization_pro')}
+      trialLine={trialOfferLabel('organization_pro')}
       highlight={wantsOrganizationPro}
     />
   )
-  const history = view.history.length ? <BillingHistory rows={view.history} /> : null
+  const paymentRows = payments ? paymentHistoryRows(payments) : []
+  const history = paymentRows.length || !payments ? (
+    <PaymentHistory
+      rows={paymentRows}
+      unavailable={!payments}
+      description="Your Creator Pro payments, courses you bought and event tickets. Course purchases have a GST tax invoice; subscription payments and event tickets have a payment receipt."
+    />
+  ) : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+    <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
       <MobilePageBar backHref="/settings" title="Plan & billing" />
       {/* Phones: the page bar is the title; your plan and its status are the first card below. */}
       <header className="max-md:hidden">
@@ -144,6 +162,6 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
           </div>
         </div>
       </section>
-    </main>
+    </div>
   )
 }

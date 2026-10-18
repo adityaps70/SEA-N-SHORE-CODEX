@@ -476,7 +476,7 @@ export function ResumableLessonMedia({
       <select
         value={rate}
         onChange={(event) => changeRate(Number(event.target.value))}
-        className="cursor-pointer bg-transparent font-semibold text-navy-950 outline-none"
+        className="cursor-pointer bg-transparent font-semibold text-navy-950"
       >
         {PLAYBACK_RATES.map((value) => <option key={value} value={value}>{value}×</option>)}
       </select>

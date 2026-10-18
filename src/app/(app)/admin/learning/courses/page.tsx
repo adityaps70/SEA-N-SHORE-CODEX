@@ -21,6 +21,7 @@ import { renderArticleHtml } from '@/features/learning/article-html'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import type { CourseReviewChange } from '@/features/learning/course-review-snapshot'
 import type { CourseStatus } from '@/features/learning/course-workflow'
+import { formatMoney } from '@/features/payments/currency'
 
 export const metadata: Metadata = { title: 'Course review · Admin' }
 
@@ -65,11 +66,7 @@ function lessonTypeLabel(value: string) {
 
 function pricingLabel(course: CourseReviewItem) {
   if (course.accessType === 'free' || course.priceMinor === 0) return 'Free access'
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: course.currency,
-    maximumFractionDigits: 0,
-  }).format(course.priceMinor / 100)
+  return formatMoney(course.priceMinor, course.currency)
 }
 
 function isActionable(status: CourseStatus) {
@@ -271,7 +268,7 @@ function CurriculumEvidence({ course }: { course: CourseReviewItem }) {
                                 <li key={option.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-mist-50 px-3 py-2 text-sm text-navy-900">
                                   <span>{option.label}</span>
                                   {option.isCorrect ? (
-                                    <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-teal-900">Correct answer</span>
+                                    <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.08em] text-teal-900">Correct answer</span>
                                   ) : null}
                                 </li>
                               ))}

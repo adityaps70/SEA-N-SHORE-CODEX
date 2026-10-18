@@ -4,6 +4,7 @@ import { BookOpen, BriefcaseBusiness, Building2, CalendarDays, Clock3, FileText,
 import { useRouter } from 'next/navigation'
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import { clearRecentSearchesAction, getRecentSearchesAction, recordSearchAction } from '../search-actions'
+import { viewerInitials } from '@/components/navigation/viewer-avatar'
 import { createSearchClient, type SearchClientState, type SuggestItem } from '../search-client'
 import { highlightParts } from '../highlight'
 
@@ -227,8 +228,11 @@ export function LiveSearchBox({
                   {item.avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- a 32 px signed thumbnail; the optimizer link is already sized
                     <img src={item.avatarUrl} alt="" width={32} height={32} className={`size-8 shrink-0 object-cover ${item.kind === 'person' ? 'rounded-full' : 'rounded-lg'}`} />
+                  ) : item.kind === 'person' ? (
+                    // Round H (H6): people without a photo show their initials, as everywhere else.
+                    <span aria-hidden="true" data-testid="suggestion-initials" className="grid size-8 shrink-0 place-items-center rounded-full bg-mist-100 text-xs font-semibold text-navy-950">{viewerInitials(item.name)}</span>
                   ) : (
-                    <span aria-hidden="true" className={`grid size-8 shrink-0 place-items-center bg-mist-50 text-ocean-700 ${item.kind === 'person' ? 'rounded-full' : 'rounded-lg'}`}><Icon className="size-4" /></span>
+                    <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-lg bg-mist-50 text-ocean-700"><Icon className="size-4" /></span>
                   )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-navy-950"><Highlighted text={item.name} query={query} /></span>

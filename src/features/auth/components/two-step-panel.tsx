@@ -19,7 +19,7 @@ export type TwoStepPanelStatus = {
 type Setup = { secret: string; otpauthUri: string; qrDataUrl: string }
 type Step = 'view' | 'setup' | 'confirm-disable'
 
-const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3 text-sm font-medium text-ink outline-none focus:border-ocean-500 focus-visible:ring-2 focus-visible:ring-ocean-500/30'
+const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3 text-sm font-medium text-ink outline-none focus:border-ocean-500'
 const NETWORK_ERROR = 'We could not reach Sea N Shore. Check your connection and try again.'
 
 /** Groups the setup key in fours so it is easier to type into an authenticator app. */
