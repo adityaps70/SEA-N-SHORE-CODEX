@@ -170,6 +170,8 @@ describe('one primary button colour', () => {
     expect(files.some((file) => file.includes(`${path.sep}landing${path.sep}`) && file.includes('marketing'))).toBe(false)
   })
 
+  // Each scan reads every source file: about 2 s alone, several times that on a loaded CI runner.
+  const SCAN_TIMEOUT_MS = 30_000
   const allOffenders = () => sourceFiles().flatMap((file) => fileOffenders(file, readFileSync(file, 'utf8')))
 
   it('has no teal, ocean or blue filled primary buttons outside the allow-list', () => {
@@ -177,7 +179,7 @@ describe('one primary button colour', () => {
       .filter((offender) => !isCovered(ALLOW_LIST, offender) && !isCovered(PENDING_IN_OTHER_CHANGE, offender))
       .map((offender) => offender.where)
     expect(offenders).toEqual([])
-  })
+  }, SCAN_TIMEOUT_MS)
 
   it('keeps every allow-list and pending entry live, pointing at a real offender, with a reason', () => {
     const offenders = allOffenders()
@@ -185,5 +187,5 @@ describe('one primary button colour', () => {
       expect(entry.reason.length, entry.file).toBeGreaterThan(10)
       expect(offenders.some((offender) => isCovered([entry], offender)), `stale entry: ${entry.file} (${entry.contains})`).toBe(true)
     }
-  })
+  }, SCAN_TIMEOUT_MS)
 })
