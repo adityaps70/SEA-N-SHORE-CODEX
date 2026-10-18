@@ -186,15 +186,21 @@ describe('MessageComposer rich messaging', () => {
 
     await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, original)
 
+    // "Ready to send" appears only after the upload has finished.
     await waitFor(() => expect(screen.getByText('Ready to send')).toBeInTheDocument())
-    expect(mocks.downscaleImage).toHaveBeenCalledWith(original, 'message')
+    // The exact picked File object is passed on. Checked by identity: a deep equality check on a 9 MB File compares
+    // it byte by byte and took about 4 s, which made this test time out under load.
+    expect(mocks.downscaleImage).toHaveBeenCalledTimes(1)
+    expect(mocks.downscaleImage.mock.calls[0]?.[0]).toBe(original)
+    expect(mocks.downscaleImage.mock.calls[0]?.[1]).toBe('message')
     expect(mocks.createMessageAttachmentUploadAction).toHaveBeenCalledWith({
       conversationId: CONVERSATION_ID,
       name: 'IMG_0001.webp',
       mimeType: 'image/webp',
       size: 2048,
     })
-    expect(mocks.uploadMessageAttachmentFile).toHaveBeenCalledWith(expect.objectContaining({ file: shrunk }))
+    expect(mocks.uploadMessageAttachmentFile).toHaveBeenCalledTimes(1)
+    expect(mocks.uploadMessageAttachmentFile.mock.calls[0]?.[0]?.file).toBe(shrunk)
   })
 
   it('uploads a photo, shows a preview state, and sends it even without text', async () => {
