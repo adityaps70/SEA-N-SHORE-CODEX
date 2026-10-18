@@ -3,21 +3,26 @@
 import { useId, useState, useTransition } from 'react'
 import { setPrivacyChoice } from '@/features/profiles/privacy-actions'
 
-/** Round H (H2): one privacy choice (a radio group) that saves as soon as it changes. */
+/**
+ * Round H (H2): one privacy choice (a radio group) that saves as soon as it changes.
+ * Every prop is plain data: the Server Component page renders this, and React cannot pass functions to a Client
+ * Component (that failed every load of Settings › Privacy in production). After saving it says
+ * "Saved: <label>." unless `savedMessages` has a message for that value.
+ */
 export function PrivacyChoice<T extends string>({
   setting,
   legend,
   description,
   options,
   initialValue,
-  savedMessage,
+  savedMessages,
 }: {
   setting: 'messagePermission' | 'connectionsVisibility'
   legend: string
   description: string
   options: ReadonlyArray<{ value: T; label: string }>
   initialValue: T
-  savedMessage: (value: T) => string
+  savedMessages?: Partial<Record<T, string>>
 }) {
   const [value, setValue] = useState(initialValue)
   const [status, setStatus] = useState<string | null>(null)
@@ -30,7 +35,7 @@ export function PrivacyChoice<T extends string>({
     setStatus(null)
     startTransition(async () => {
       const result = await setPrivacyChoice(setting, next)
-      if (result.ok) setStatus(savedMessage(next))
+      if (result.ok) setStatus(savedMessages?.[next] ?? `Saved: ${options.find((option) => option.value === next)?.label ?? next}.`)
       else {
         setValue(previous)
         setStatus(result.error)

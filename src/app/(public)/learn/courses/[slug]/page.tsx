@@ -163,7 +163,7 @@ const EMPTY_REVIEWS: PublicCourseReviews = { averageRating: null, reviewCount: 0
 /** Round H (H7): a scaled-down sample of the certificate, for courses that issue one. */
 function CertificatePreviewSection({ settings, course }: { settings: CertificatePreviewSettings; course: MarketplaceCourse }) {
   return (
-    <section aria-labelledby="certificate-preview-heading" className={`${PHONE_FLAT_SECTION} lg:order-5`}>
+    <section aria-labelledby="certificate-preview-heading" className={`${PHONE_FLAT_SECTION} max-lg:order-3`}>
       <h2 id="certificate-preview-heading" className="flex items-center gap-2 text-section-title font-bold text-navy-950 max-md:text-lg">
         <Award aria-hidden="true" className="size-5 text-teal-700" /> Certificate
       </h2>
@@ -556,28 +556,49 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           </section>
         ) : null}
 
-        {requirements.length ? (
-          <section
-            aria-label="Requirements"
-            className={`${PHONE_FLAT_SECTION} lg:order-4`}
-          >
-            <h2 className="text-section-title font-bold text-navy-950">Requirements</h2>
-            <div className="mt-5">
-              <EvidenceList items={requirements} />
+        {/* Hotfix (Oct 2026): below the curriculum, each desktop column is its own stack, so a tall box on one side
+            (About the organization) no longer leaves a gap above the next box on the other (Certificate). Below lg the
+            stacks dissolve (contents) and max-lg:order keeps the phone order: requirements, publisher, certificate. */}
+        <div data-testid="course-detail-lower" className="flex flex-col gap-6 max-md:gap-2 lg:order-4 lg:col-span-2 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
+          {requirements.length || certificateSettings ? (
+            <div data-testid="course-detail-lower-left" className="contents lg:flex lg:flex-col lg:gap-6">
+              {requirements.length ? (
+                <section
+                  aria-label="Requirements"
+                  className={`${PHONE_FLAT_SECTION} max-lg:order-1`}
+                >
+                  <h2 className="text-section-title font-bold text-navy-950">Requirements</h2>
+                  <div className="mt-5">
+                    <EvidenceList items={requirements} />
+                  </div>
+                </section>
+              ) : null}
+
+              {certificateSettings ? <CertificatePreviewSection settings={certificateSettings} course={course} /> : null}
             </div>
-          </section>
-        ) : null}
+          ) : null}
 
-        {publisher ? (
-          <CoursePublisherCard
-            course={course}
-            publisher={publisher}
-            photoUrl={publisherPhotoUrl}
-            className={`${PHONE_FLAT_SECTION} lg:order-4`}
-          />
-        ) : null}
+          <div data-testid="course-detail-lower-right" className="contents lg:flex lg:flex-col lg:gap-6">
+            {publisher ? (
+              <CoursePublisherCard
+                course={course}
+                publisher={publisher}
+                photoUrl={publisherPhotoUrl}
+                className={`${PHONE_FLAT_SECTION} max-lg:order-2`}
+              />
+            ) : null}
 
-        {certificateSettings ? <CertificatePreviewSection settings={certificateSettings} course={course} /> : null}
+            <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7 max-lg:order-4">
+              <span className="grid size-11 place-items-center rounded-2xl bg-navy-950 text-white">
+                <GraduationCap aria-hidden="true" className="size-5" />
+              </span>
+              <h2 className="mt-4 text-card-title font-bold text-navy-950">Built for professional maritime development</h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Published courses pass through Sea N Shore review so the marketplace stays focused on credible, role-relevant maritime learning.
+              </p>
+            </section>
+          </div>
+        </div>
 
         {alsoTook?.length ? (
           <section aria-labelledby="also-took-heading" className={`${PHONE_FLAT_SECTION} lg:order-7 lg:col-span-2`}>
@@ -602,16 +623,6 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
           ownerView={replyOwnerView}
           className={`${PHONE_FLAT_SECTION} scroll-mt-20 lg:order-6 lg:col-span-2`}
         />
-
-        <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7 lg:order-5">
-          <span className="grid size-11 place-items-center rounded-2xl bg-navy-950 text-white">
-            <GraduationCap aria-hidden="true" className="size-5" />
-          </span>
-          <h2 className="mt-4 text-card-title font-bold text-navy-950">Built for professional maritime development</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            Published courses pass through Sea N Shore review so the marketplace stays focused on credible, role-relevant maritime learning.
-          </p>
-        </section>
       </div>
 
       {barMode ? <CourseActionBar course={{ id: course.id, slug: course.slug, title: course.title }} mode={barMode} /> : null}

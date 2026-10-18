@@ -226,6 +226,48 @@ describe('/learn/courses/[slug]', () => {
     expect(grid.className).not.toMatch(/items-stretch/)
   })
 
+  it('stacks each desktop column on its own, so a tall publisher card leaves no gap above Certificate (hotfix)', async () => {
+    mocks.getPublisherCard.mockResolvedValueOnce({
+      kind: 'person', name: 'Placeholder Trainer', href: '/people/placeholder-trainer', bio: 'Master Mariner and SIRE inspector.',
+      photoPath: null, logoUrl: null, otherCourses: [{ id: 'c2', slug: 'ballast-basics', title: 'Ballast basics' }],
+    })
+    mocks.getCertificatePreviewSettings.mockResolvedValueOnce({ template: 'modern', signatoryName: null, signatoryTitle: null, serialPrefix: null, validityMonths: null })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    const requirements = screen.getByRole('region', { name: 'Requirements' })
+    const certificate = screen.getByRole('region', { name: 'Certificate' })
+    const publisher = screen.getByRole('region', { name: 'About the trainer' })
+    const promo = screen.getByRole('heading', { name: 'Built for professional maritime development' }).closest('section')!
+
+    // Desktop: Requirements then Certificate in the left stack, the publisher card then the promo in the right stack.
+    const left = screen.getByTestId('course-detail-lower-left')
+    const right = screen.getByTestId('course-detail-lower-right')
+    expect(left).toHaveClass('contents', 'lg:flex', 'lg:flex-col')
+    expect(right).toHaveClass('contents', 'lg:flex', 'lg:flex-col')
+    expect([...left.children]).toEqual([requirements, certificate])
+    expect([...right.children]).toEqual([publisher, promo])
+    const lower = screen.getByTestId('course-detail-lower')
+    expect(lower).toHaveClass('lg:grid', 'lg:col-span-2', 'lg:items-start')
+    expect(screen.getByTestId('course-detail-sections')).toContainElement(lower)
+    // Below lg the stacks dissolve and the phone order stays: requirements, publisher, certificate.
+    expect(requirements).toHaveClass('max-lg:order-1')
+    expect(publisher).toHaveClass('max-lg:order-2')
+    expect(certificate).toHaveClass('max-lg:order-3')
+    expect(promo).toHaveClass('max-lg:order-4', 'max-md:hidden')
+  })
+
+  it('moves the publisher card into the left column when there are no requirements and no certificate (hotfix)', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...freeCourse, requirements: [] })
+    mocks.getPublisherCard.mockResolvedValueOnce({
+      kind: 'person', name: 'Placeholder Trainer', href: '/people/placeholder-trainer', bio: null, photoPath: null, logoUrl: null, otherCourses: [],
+    })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    expect(screen.queryByTestId('course-detail-lower-left')).not.toBeInTheDocument()
+    expect(screen.getByTestId('course-detail-lower').firstElementChild).toBe(screen.getByTestId('course-detail-lower-right'))
+    expect(screen.getByTestId('course-detail-lower-right')).toContainElement(screen.getByRole('region', { name: 'About the trainer' }))
+  })
+
   it('shows the publishing organization\'s logo beside the trainer name when it has one (round H, H6)', async () => {
     mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...freeCourse, mentorName: 'Placeholder Academy', publisherLogoUrl: '/api/company-logo/c1?v=logo.png' })
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
