@@ -213,6 +213,23 @@ resource "aws_iam_role_policy" "github_deploy" {
         Action   = ["ecr:GetAuthorizationToken"]
         Resource = "*"
       },
+      # Round H: signed-in base-image pulls from Amazon ECR Public (anonymous pulls from shared runner IPs hit
+      # 429 "Data limit exceeded"). Neither action supports resource-level permissions.
+      {
+        Sid      = "EcrPublicPullAuth"
+        Effect   = "Allow"
+        Action   = ["ecr-public:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        Sid      = "EcrPublicBearerToken"
+        Effect   = "Allow"
+        Action   = ["sts:GetServiceBearerToken"]
+        Resource = "*"
+        Condition = {
+          StringEquals = { "sts:AWSServiceName" = "ecr-public.amazonaws.com" }
+        }
+      },
       {
         Sid    = "EcrPush"
         Effect = "Allow"

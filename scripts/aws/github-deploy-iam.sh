@@ -75,7 +75,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   --arg ciCheckouts "$CI_CHECKOUT_ARN" \
   --argjson temporaryProductionAccess "$TEMP_PRODUCTION_ACCESS" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
@@ -125,6 +125,17 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
       Effect: "Allow",
       Action: ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
       Resource: $ciCheckouts
+    }, {
+      Sid: "EcrPublicPullAuth",
+      Effect: "Allow",
+      Action: ["ecr-public:GetAuthorizationToken"],
+      Resource: "*"
+    }, {
+      Sid: "EcrPublicBearerToken",
+      Effect: "Allow",
+      Action: ["sts:GetServiceBearerToken"],
+      Resource: "*",
+      Condition: {StringEquals: {"sts:AWSServiceName": "ecr-public.amazonaws.com"}}
     }]
     + (if $temporaryProductionAccess then [{
       Sid: "Phase5bSesProductionAccessRequest",
@@ -135,7 +146,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles"))' "$CURRENT" > "$CURRENT_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -240,6 +251,25 @@ verify_ci_checkout_statement() {
   ' "$file" >/dev/null
 }
 
+# Round H: signed-in base-image pulls from Amazon ECR Public during the deploy build.
+verify_ecr_public_pull_statements() {
+  local file="$1"
+  jq -e '
+    [.Statement[] | select(.Sid == "EcrPublicPullAuth")] as $auth
+    | [.Statement[] | select(.Sid == "EcrPublicBearerToken")] as $bearer
+    | ($auth | length) == 1
+    and $auth[0].Effect == "Allow"
+    and $auth[0].Action == ["ecr-public:GetAuthorizationToken"]
+    and $auth[0].Resource == "*"
+    and ($auth[0] | has("Condition") | not)
+    and ($bearer | length) == 1
+    and $bearer[0].Effect == "Allow"
+    and $bearer[0].Action == ["sts:GetServiceBearerToken"]
+    and $bearer[0].Resource == "*"
+    and $bearer[0].Condition == {"StringEquals": {"sts:AWSServiceName": "ecr-public.amazonaws.com"}}
+  ' "$file" >/dev/null
+}
+
 verify_phase5b_ses_production_access_request_statement() {
   local file="$1"
   jq -e '
@@ -268,6 +298,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_phase5b_ses_identity_manage_statement "$CURRENT"
   verify_phase5b_ses_configuration_set_create_statement "$CURRENT"
   verify_ci_checkout_statement "$CURRENT"
+  verify_ecr_public_pull_statements "$CURRENT"
   if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
     verify_phase5b_ses_production_access_request_statement "$CURRENT"
   else
@@ -281,7 +312,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest,CiCheckoutBundles resource=${MEDIA_BUCKET_ARN} ci_checkouts=${CI_CHECKOUT_ARN} cognito_pool=${COGNITO_POOL_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest,CiCheckoutBundles,EcrPublicPullAuth,EcrPublicBearerToken resource=${MEDIA_BUCKET_ARN} ci_checkouts=${CI_CHECKOUT_ARN} cognito_pool=${COGNITO_POOL_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
@@ -309,12 +340,13 @@ verify_phase5b_ses_identity_create_statement "$VERIFIED" || { echo "Phase 5B SES
 verify_phase5b_ses_identity_manage_statement "$VERIFIED" || { echo "Phase 5B SES identity-manage IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_configuration_set_create_statement "$VERIFIED" || { echo "Phase 5B SES configuration-set-create IAM verification failed." >&2; exit 1; }
 verify_ci_checkout_statement "$VERIFIED" || { echo "CI checkout bundle IAM verification failed." >&2; exit 1; }
+verify_ecr_public_pull_statements "$VERIFIED" || { echo "ECR Public pull IAM verification failed." >&2; exit 1; }
 if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
   verify_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request IAM verification failed." >&2; exit 1; }
 else
   verify_no_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request permission was not removed." >&2; exit 1; }
 fi
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
 cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"
