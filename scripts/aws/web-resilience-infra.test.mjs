@@ -65,7 +65,8 @@ test('Round H (H1) adds operations alerts: app 5xx rate, CPU, per-API server err
   assert.match(terraform, /HTTPCode_Target_5XX_Count/)
   assert.match(terraform, /metric_name\s*=\s*"CPUUtilization"/)
   assert.match(terraform, /namespace\s*=\s*"SeaNShore\/App"[\s\S]*?metric_name\s*=\s*"ServerErrors"/)
-  assert.match(terraform, /metric_name\s*=\s*"SiteUp"[\s\S]*?treat_missing_data\s*=\s*"breaching"/)
+  // Only a failed check pages; a pause in the probe (missing data) never alarms while the site is up.
+  assert.match(terraform, /metric_name\s*=\s*"SiteUp"[\s\S]*?treat_missing_data\s*=\s*"notBreaching"/)
   for (const area of ['feed', 'impressions', 'messaging', 'jobs', 'learning', 'payments-webhooks']) {
     assert.match(terraform, new RegExp(`"${area}"`), area)
     assert.match(script, new RegExp(`api-${area}-server-errors`), area)
