@@ -36,6 +36,7 @@ export function LessonActionBar({
   nextHref,
   finishHref,
   phoneStart,
+  docked = true,
 }: {
   slug: string
   lessonId: string
@@ -49,6 +50,11 @@ export function LessonActionBar({
   finishHref: string
   /** Phones: the "Curriculum n/N" button, at the start of the bar. */
   phoneStart?: ReactNode
+  /**
+   * Sticky at the bottom of the lesson (fixed on phones), the default. S2: a full-height SCORM lesson puts the
+   * bar in the page flow under the frame instead, so it can never cover the package.
+   */
+  docked?: boolean
 }) {
   const router = useRouter()
   const [completedHere, setCompletedHere] = useState(false)
@@ -116,7 +122,10 @@ export function LessonActionBar({
   return (
     <div
       data-lesson-action-bar=""
-      className="sticky bottom-0 z-20 -mx-6 mt-8 border-t border-mist-200 bg-white/95 px-6 py-3 backdrop-blur sm:-mx-8 sm:px-8 max-md:fixed max-md:inset-x-0 max-md:mx-0 max-md:mt-0 max-md:px-4 max-md:pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+      data-docked={docked ? 'on' : 'off'}
+      className={docked
+        ? 'sticky bottom-0 z-20 -mx-6 mt-8 border-t border-mist-200 bg-white/95 px-6 py-3 backdrop-blur sm:-mx-8 sm:px-8 max-md:fixed max-md:inset-x-0 max-md:mx-0 max-md:mt-0 max-md:px-4 max-md:pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
+        : 'relative border-t border-mist-200 bg-white px-4 py-2.5 sm:px-5 max-md:pb-[calc(0.625rem+env(safe-area-inset-bottom))] md:rounded-b-3xl'}
     >
       {error ? (
         <p role="status" className="mb-2 flex items-start gap-2 text-sm text-rose-800">

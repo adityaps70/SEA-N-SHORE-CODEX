@@ -50,4 +50,19 @@ describe('SCORM runtime bridge (Round 14, 2.3)', () => {
       { type: 'commit', values: { 'cmi.core.lesson_status': 'completed' }, source: 'sns-scorm' },
     ])
   })
+
+  it('forwards Esc pressed inside the package to the player (S2: leaving focus mode), and nothing else', () => {
+    const posted: unknown[] = []
+    const listeners: Record<string, Array<(event: unknown) => void>> = {}
+    const top = { postMessage: (message: unknown, target: string) => posted.push({ message, target }) }
+    const frame: Record<string, unknown> = {
+      top,
+      addEventListener: (type: string, listener: (event: unknown) => void) => { (listeners[type] ??= []).push(listener) },
+    }
+    new Function('window', scormBridgeScript(origin).replace(/^<script>|<\/script>$/g, ''))(frame)
+    posted.length = 0
+    listeners.keydown!.forEach((listener) => listener({ key: 'Enter' }))
+    listeners.keydown!.forEach((listener) => listener({ key: 'Escape' }))
+    expect(posted).toEqual([{ message: { type: 'escape', source: 'sns-scorm' }, target: origin }])
+  })
 })
