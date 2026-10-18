@@ -191,8 +191,9 @@ describe('MessageComposer rich messaging', () => {
     // The exact picked File object is passed on. Checked by identity: a deep equality check on a 9 MB File compares
     // it byte by byte and took about 4 s, which made this test time out under load.
     expect(mocks.downscaleImage).toHaveBeenCalledTimes(1)
-    expect(mocks.downscaleImage.mock.calls[0]?.[0]).toBe(original)
-    expect(mocks.downscaleImage.mock.calls[0]?.[1]).toBe('message')
+    const [pickedFile, purpose] = (mocks.downscaleImage.mock.calls[0] ?? []) as unknown[]
+    expect(pickedFile).toBe(original)
+    expect(purpose).toBe('message')
     expect(mocks.createMessageAttachmentUploadAction).toHaveBeenCalledWith({
       conversationId: CONVERSATION_ID,
       name: 'IMG_0001.webp',
