@@ -81,7 +81,8 @@ describe('proxy Content Security Policy for API responses (Round H, H4)', () => 
     const response = await proxy(new NextRequest('https://seanshore.in/home', { headers: { 'sec-fetch-dest': 'document' } }))
     const policy = response.headers.get('content-security-policy-report-only') ?? ''
     expect(policy).not.toMatch(/(?:^|\s)https:(?:\s|;|$)/)
-    expect(policy).toContain('https://fonts.gstatic.com')
+    expect(policy).toContain("font-src 'self' data:;")
+    expect(policy).not.toMatch(/fonts\.(googleapis|gstatic)\.com/)
   })
 
   it('serves security.txt without a sign-in redirect', async () => {

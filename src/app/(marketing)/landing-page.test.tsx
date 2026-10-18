@@ -14,6 +14,10 @@ vi.mock('@/features/billing/public-prices', () => ({ loadPublicPlanPrices: mocks
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_GOOGLE_ENABLED: mocks.googleEnabled }),
 }))
+// next/font/local is compiled by Next.js; under vitest each call returns its variable class name.
+vi.mock('next/font/local', () => ({
+  default: (options: { variable: string }) => ({ className: 'font', variable: `font-var${options.variable}`, style: {} }),
+}))
 vi.mock('@/features/newsletter/components/newsletter-footer-signup', () => ({
   NewsletterFooterSignup: () => <form aria-label="Newsletter sign-up" />,
 }))
@@ -46,6 +50,15 @@ afterEach(() => {
 const SECTION_IDS = ['jobs', 'passport', 'learn', 'events', 'feed', 'organizations', 'pricing'] as const
 
 describe('public landing page', () => {
+  it('uses its self-hosted fonts and links nothing from Google Fonts', async () => {
+    const { container } = await renderHome()
+
+    const root = container.querySelector('.lp')
+    expect(root).toHaveClass('font-var--font-landing-display', 'font-var--font-landing-body')
+    expect(document.querySelector('link[href*="fonts.googleapis.com"], link[href*="fonts.gstatic.com"]')).toBeNull()
+    expect(container.querySelector('link[href*="fonts.googleapis.com"], link[href*="fonts.gstatic.com"]')).toBeNull()
+  })
+
   it('leads with the approved headline and the section headings in order', async () => {
     await renderHome()
 
