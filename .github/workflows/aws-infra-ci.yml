@@ -315,6 +315,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Round H: PR CI has no AWS sign-in, and anonymous Amazon ECR Public pulls from shared runner IPs sometimes
+      # fail with 429 "Data limit exceeded". Pull the base image first; if ECR Public refuses, use Google's mirror of
+      # the same official Docker image and tag it locally, so the build below finds it without a registry call.
+      - name: Pull the node base image
+        run: |
+          image=public.ecr.aws/docker/library/node:22-bookworm-slim
+          for wait_seconds in 10 30; do
+            if docker pull --quiet "$image"; then exit 0; fi
+            sleep "$wait_seconds"
+          done
+          if docker pull --quiet "$image"; then exit 0; fi
+          echo "::warning::Amazon ECR Public refused the anonymous base image pull; using the mirror.gcr.io copy of the official node image."
+          docker pull --quiet mirror.gcr.io/library/node:22-bookworm-slim
+          docker tag mirror.gcr.io/library/node:22-bookworm-slim "$image"
       - name: Build production image
         run: |
           docker build \

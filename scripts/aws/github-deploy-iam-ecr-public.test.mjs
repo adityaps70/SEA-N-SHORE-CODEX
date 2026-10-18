@@ -6,6 +6,7 @@ const bootstrap = readFileSync(new URL('../../infra/aws/bootstrap/main.tf', impo
 const reconcile = readFileSync(new URL('./github-deploy-iam.sh', import.meta.url), 'utf8')
 const deploy = readFileSync(new URL('../../.github/workflows/aws-staging-deploy.yml', import.meta.url), 'utf8')
 const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8')
+const ci = readFileSync(new URL('../../.github/workflows/aws-infra-ci.yml', import.meta.url), 'utf8')
 
 // Round H: the deploy build pulls its node base image from Amazon ECR Public. Anonymous pulls from shared runner IPs
 // failed twice with 429 "Data limit exceeded", so the deploy role may sign in to ECR Public, and nothing more.
@@ -39,4 +40,20 @@ test('the deploy build signs in to ECR Public before building, without logging t
   assert.doesNotMatch(step, /echo "\$\(aws ecr-public|--password [^-]|PASSWORD=/)
   // A failed sign-in warns and lets the build try an anonymous pull.
   assert.match(step, /::warning::Could not sign in to Amazon ECR Public/)
+})
+
+test('the CI image build pulls the base image first and falls back to the official image mirror', () => {
+  const pull = ci.indexOf('- name: Pull the node base image')
+  const build = ci.indexOf('- name: Build production image')
+  assert.ok(pull > 0 && build > pull, 'the pull step runs right before the CI image build')
+  const step = ci.slice(pull, build)
+  // Every FROM line uses the image the step pulls, so the build finds it locally.
+  const froms = dockerfile.match(/^FROM \S+/gm)
+  assert.ok(froms.length > 0)
+  for (const from of froms) assert.equal(from, 'FROM public.ecr.aws/docker/library/node:22-bookworm-slim')
+  assert.match(step, /image=public\.ecr\.aws\/docker\/library\/node:22-bookworm-slim\n/)
+  assert.match(step, /docker pull --quiet mirror\.gcr\.io\/library\/node:22-bookworm-slim\n/)
+  assert.match(step, /docker tag mirror\.gcr\.io\/library\/node:22-bookworm-slim "\$image"\n/)
+  // The build itself keeps the local image: no --pull.
+  assert.doesNotMatch(ci.slice(build, build + 300), /--pull/)
 })
