@@ -9,16 +9,17 @@ import { signIn } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
 import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
 import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim";
+import { SignInNotice } from "@/features/account-security/components/sign-in-notice";
 
 export const metadata: Metadata = { title: 'Sign in' }
 
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ oauthError?: string | string[]; error?: string | string[]; email?: string | string[] }>;
+  searchParams: Promise<{ oauthError?: string | string[]; error?: string | string[]; email?: string | string[]; notice?: string | string[] }>;
 }) {
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
-  const { oauthError, error, email } = await searchParams;
+  const { oauthError, error, email, notice } = await searchParams;
   const claimEmail = (await cookies()).get(LEGACY_CLAIM_EMAIL_COOKIE)?.value;
   const queryEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (queryEmail) {
@@ -30,6 +31,7 @@ export default async function SignInPage({
   return (
     <AuthShell>
       <OAuthErrorNotice code={oauthError ?? error} />
+      <SignInNotice notice={notice} />
       {/* Phones: Google first (when enabled), then "or" and the email form. Desktop keeps it below the form. */}
       {claimEmail ? (
         <p className="mt-4 rounded-lg bg-mist-50 px-4 py-3 text-sm leading-6 text-ocean-800" role="status">

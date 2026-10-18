@@ -55,7 +55,8 @@ type CognitoActionsApi = {
     code: string
     newPassword: string
   }): Promise<void>
-  globalSignOut(accessToken: string): Promise<void>
+  /** Round H (H3): per-device sign-out (Cognito RevokeToken). Other devices stay signed in. */
+  revokeToken(refreshToken: string): Promise<void>
 }
 
 const emailSchema = z.string().trim().toLowerCase().email().max(254)
@@ -112,6 +113,8 @@ export function createCognitoAuthActions(input: {
   emailLimiter?: AuthEmailLimiter
   /** The trusted client IP of this request (see trustedClientIp), used only for the limiter. */
   clientIp?: string | null
+  /** Round H (H3): signs the MFA challenge to its user, so a backup code is only checked for that member. */
+  signMfaChallenge?: (challenge: { session: string; username: string }) => string | null
 }) {
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl, {
     allowInsecureHttp: input.allowInsecureHttpCookies === true,
@@ -169,6 +172,7 @@ export function createCognitoAuthActions(input: {
           cookies.setMfaChallenge({
             session: result.session,
             username: result.username,
+            binding: input.signMfaChallenge?.({ session: result.session, username: result.username }) ?? null,
           })
           return { next: 'mfa' }
         }
@@ -366,9 +370,11 @@ export function createCognitoAuthActions(input: {
     },
 
     async signOut(): Promise<void> {
-      const accessToken = input.cookieStore.get(COGNITO_COOKIE_NAMES.access)?.value
+      // Round H (H3): sign-out is per device. Revoking this device's refresh token also ends every access token
+      // issued from it; GlobalSignOut would have signed out the member's other devices too.
+      const refreshToken = input.cookieStore.get(COGNITO_COOKIE_NAMES.refresh)?.value
       try {
-        if (accessToken) await input.api.globalSignOut(accessToken)
+        if (refreshToken) await input.api.revokeToken(refreshToken)
       } catch {
         // Local sign-out must complete even when Cognito has already invalidated the token.
       } finally {

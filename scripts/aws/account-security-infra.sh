@@ -4,6 +4,9 @@
 # - 2.7 the outbox worker may list the user pool and delete abandoned sign-ups;
 # - 2.12 the least-privilege app role's own secret, its Data API rotation Lambda (30 days) and read
 #   access for ECS (execution role, web and worker task roles).
+# - Round H (H3): one in-place update, the web task's Cognito admin policy gains exactly
+#   cognito-idp:AdminSetUserMFAPreference on the user pool (a 2FA backup code resets the member's authenticator app).
+#   Nothing else in that policy may change.
 # Needs migration 0066 (the sea_n_shore_app role) first: the first rotation sets its password.
 # The action file holds "plan" or "apply-once".
 set -euo pipefail
@@ -32,6 +35,7 @@ export PUBLIC_SITE_URL
 [[ "$(git rev-parse HEAD)" == "$ACCOUNT_SECURITY_INFRA_EXPECTED_SHA" ]]
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
 git diff --quiet HEAD -- \
+  infra/aws/app/auth.tf \
   infra/aws/app/email-dns.tf \
   infra/aws/app/unconfirmed-user-cleanup.tf \
   infra/aws/app/aurora-app-role.tf \
@@ -84,6 +88,7 @@ TARGETS=(
   aws_iam_role_policy.outbox_worker_cognito_cleanup
   aws_secretsmanager_secret_rotation.aurora_app
   aws_iam_role_policy.aurora_app_secret_read
+  aws_iam_role_policy.ecs_task_cognito_admin
 )
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
@@ -112,9 +117,47 @@ allowed = {
   'aws_iam_role_policy.aurora_app_secret_read["outbox_worker"]',
   'aws_iam_role_policy.aurora_app_secret_read["notification_worker"]',
 }
+# Round H (H3): the only resource this runner may update in place, and the only change allowed in it.
+updates = {'aws_iam_role_policy.ecs_task_cognito_admin'}
+cognito_admin_before = sorted([
+  'cognito-idp:AdminCreateUser',
+  'cognito-idp:AdminDeleteUser',
+  'cognito-idp:AdminDisableUser',
+  'cognito-idp:AdminEnableUser',
+  'cognito-idp:AdminSetUserPassword',
+  'cognito-idp:AdminUpdateUserAttributes',
+  'cognito-idp:AdminUserGlobalSignOut',
+  'cognito-idp:ListUsers',
+])
+cognito_admin_after = sorted(cognito_admin_before + ['cognito-idp:AdminSetUserMFAPreference'])
+def statements(policy):
+    return json.loads(policy or '{}').get('Statement', [])
+def as_list(value):
+    return value if isinstance(value, list) else [value]
 plan = json.load(open(sys.argv[1]))
 changes = [r for r in plan.get('resource_changes', []) if r.get('mode') != 'data' and r['change']['actions'] != ['no-op']]
 for r in changes:
+    if r['address'] in updates:
+        if r['change']['actions'] != ['update']:
+            raise SystemExit(f"unexpected account security change refused: {r['address']} {r['change']['actions']}")
+        before = r['change']['before'] or {}
+        after = r['change']['after'] or {}
+        for field in ('name', 'role'):
+            if before.get(field) != after.get(field):
+                raise SystemExit(f'The Cognito admin policy {field} must not change')
+        old, new = statements(before.get('policy')), statements(after.get('policy'))
+        if len(old) != 1 or len(new) != 1:
+            raise SystemExit('The Cognito admin policy must keep exactly one statement')
+        if sorted(as_list(old[0]['Action'])) != cognito_admin_before:
+            raise SystemExit('The live Cognito admin policy is not the expected one; refusing to update it')
+        if sorted(as_list(new[0]['Action'])) != cognito_admin_after:
+            raise SystemExit('The Cognito admin policy may only gain cognito-idp:AdminSetUserMFAPreference')
+        if {k: v for k, v in old[0].items() if k != 'Action'} != {k: v for k, v in new[0].items() if k != 'Action'}:
+            raise SystemExit('The Cognito admin policy resource, effect and sid must not change')
+        resources = as_list(new[0]['Resource'])
+        if len(resources) != 1 or ':userpool/' not in resources[0]:
+            raise SystemExit('The Cognito admin policy must stay scoped to the one user pool')
+        continue
     if r['address'] not in allowed or r['change']['actions'] != ['create']:
         raise SystemExit(f"unexpected account security change refused: {r['address']} {r['change']['actions']}")
     after = r['change']['after'] or {}
@@ -127,8 +170,15 @@ for r in changes:
             raise SystemExit('Unexpected cleanup permissions: ' + ','.join(actions))
 print('ACCOUNT_SECURITY_INFRA_PLAN_CHANGES=' + str(len(changes)))
 for r in changes:
-    print(f"ACCOUNT_SECURITY_INFRA_CHANGE={r['address']}|create")
+    print(f"ACCOUNT_SECURITY_INFRA_CHANGE={r['address']}|{'+'.join(r['change']['actions'])}")
 PY
+
+# Round H (H3), read-only evidence: per-device sign-out keys sessions on the access token's origin_jti claim and
+# revokes a device's own refresh token, both of which need token revocation on the web client (on by default).
+USER_POOL_ID="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_cognito_user_pool" and .name=="app") | .instances[0].attributes.id][0] // empty' "$WORK_DIR/state.json")"
+CLIENT_ID="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_cognito_user_pool_client" and .name=="web") | .instances[0].attributes.id][0] // empty' "$WORK_DIR/state.json")"
+TOKEN_REVOCATION="$(aws cognito-idp describe-user-pool-client --region "$AWS_REGION" --user-pool-id "$USER_POOL_ID" --client-id "$CLIENT_ID" --query 'UserPoolClient.EnableTokenRevocation' --output text 2>/dev/null || echo unknown)"
+echo "COGNITO_WEB_CLIENT_TOKEN_REVOCATION=$TOKEN_REVOCATION"
 
 
 CLUSTER_JSON="$(aws rds describe-db-clusters --region "$AWS_REGION" --db-cluster-identifier "$CLUSTER_ID" --output json)"
@@ -171,6 +221,9 @@ aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" --query "Resou
 echo "DMARC_QUARANTINE_VERIFIED=true"
 aws iam get-role-policy --role-name sea-n-shore-staging-outbox-worker --policy-name sea-n-shore-staging-outbox-worker-cognito-cleanup >/dev/null
 echo "OUTBOX_WORKER_CLEANUP_POLICY_VERIFIED=true"
+aws iam get-role-policy --role-name sea-n-shore-staging-ecs-task --policy-name sea-n-shore-staging-cognito-admin-runtime --output json \
+  | jq -e '[.PolicyDocument.Statement[] | (.Action | if type == "array" then .[] else . end)] | index("cognito-idp:AdminSetUserMFAPreference") != null' >/dev/null
+echo "ECS_TASK_COGNITO_MFA_RESET_POLICY_VERIFIED=true"
 APP_SECRET_ARN="$(aws secretsmanager describe-secret --region "$AWS_REGION" --secret-id "$APP_SECRET_NAME" --query ARN --output text)"
 # Enabling rotation starts the first rotation, which sets the role's password and LOGIN.
 for attempt in $(seq 1 36); do

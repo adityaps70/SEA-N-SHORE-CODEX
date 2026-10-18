@@ -37,6 +37,7 @@ function fakeApi() {
     forgotPassword: vi.fn(async () => undefined),
     confirmForgotPassword: vi.fn(async () => undefined),
     globalSignOut: vi.fn(async () => undefined),
+    revokeToken: vi.fn(async () => undefined),
   }
 }
 
@@ -275,14 +276,16 @@ describe('Cognito auth actions', () => {
 
   it('clears local cookies even if remote sign-out fails', async () => {
     const api = fakeApi()
-    api.globalSignOut.mockRejectedValueOnce(new CognitoApiError('NotAuthorizedException'))
+    api.revokeToken.mockRejectedValueOnce(new CognitoApiError('NotAuthorizedException'))
     const cookies = fakeCookies({
       [COGNITO_COOKIE_NAMES.access]: 'a1',
       [COGNITO_COOKIE_NAMES.refresh]: 'r1',
     })
     const { actions } = setup(api, cookies)
     await expect(actions.signOut()).resolves.toBeUndefined()
-    expect(api.globalSignOut).toHaveBeenCalledWith('a1')
+    // Round H (H3): per-device sign-out revokes this device's refresh token; GlobalSignOut would end every device.
+    expect(api.revokeToken).toHaveBeenCalledWith('r1')
+    expect(api.globalSignOut).not.toHaveBeenCalled()
     expect(cookies.values.size).toBe(0)
   })
 })
@@ -306,6 +309,18 @@ describe('Cognito sign-in with an authenticator app (Round 14, 2.11)', () => {
     expect(cookies.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
     // The new-password challenge cookies are not reused for MFA.
     expect(cookies.values.has(COGNITO_COOKIE_NAMES.challenge)).toBe(false)
+  })
+
+  it('signs the MFA challenge to its user (Round H, H3), so a backup code is only checked for that member', async () => {
+    const api = fakeApi()
+    api.signIn.mockResolvedValueOnce({ kind: 'software-token-mfa', session: 'mfa-session', username: 'internal-user-1' })
+    const cookies = fakeCookies()
+    const signMfaChallenge = vi.fn(() => 'f'.repeat(64))
+    const actions = createCognitoAuthActions({ api, cookieStore: cookies.store, siteUrl: 'https://staging.example.com', signMfaChallenge })
+
+    await expect(actions.signIn({}, form({ email: 'captain@example.com', password: 'LongEnoughPass1' }))).resolves.toEqual({ next: 'mfa' })
+    expect(signMfaChallenge).toHaveBeenCalledWith({ session: 'mfa-session', username: 'internal-user-1' })
+    expect(cookies.values.get(COGNITO_COOKIE_NAMES.mfaChallengeBinding)).toBe('f'.repeat(64))
   })
 
   it('clears a pending MFA challenge on sign-out', async () => {

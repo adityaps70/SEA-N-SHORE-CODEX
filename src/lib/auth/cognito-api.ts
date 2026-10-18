@@ -86,6 +86,11 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   TooManyRequestsException: 'Too many Cognito requests. Please try again later.',
   EnableSoftwareTokenMFAException: 'The authenticator code is invalid.',
   SoftwareTokenMFANotFoundException: 'No authenticator app is set up for this user.',
+  AliasExistsException: 'Another account already uses this value.',
+  CodeDeliveryFailureException: 'The verification code could not be delivered.',
+  InvalidParameterException: 'Cognito rejected a parameter.',
+  UnsupportedTokenTypeException: 'This token cannot be revoked.',
+  UnsupportedOperationException: 'This Cognito operation is not enabled.',
 }
 
 function normalizeErrorCode(value: unknown) {
@@ -114,6 +119,16 @@ export class CognitoApiError extends Error {
 function lambdaRefusalReason(code: string, message: unknown) {
   if (code !== 'UserLambdaValidationException' || typeof message !== 'string') return null
   return /\b(otp_[a-z_]{2,40})\b/.exec(message)?.[1] ?? null
+}
+
+/**
+ * Round H (H3): for NotAuthorizedException, 'token' when Cognito refused the access token itself (expired, revoked
+ * or invalid) rather than a password, so "your current password is wrong" is never shown for an expired session.
+ * The raw message is never kept.
+ */
+export function notAuthorizedReason(code: string, message: unknown) {
+  if (code !== 'NotAuthorizedException' || typeof message !== 'string') return null
+  return /access token|token has been revoked|token has expired|invalid token/i.test(message) ? 'token' : null
 }
 
 /**
@@ -203,7 +218,11 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
     if (!response.ok) {
       const error = payload as { __type?: unknown; code?: unknown; message?: unknown }
       const code = normalizeErrorCode(error.__type ?? error.code)
-      throw new CognitoApiError(code, undefined, lambdaRefusalReason(code, error.message) ?? passwordRuleReason(code, error.message))
+      throw new CognitoApiError(
+        code,
+        undefined,
+        lambdaRefusalReason(code, error.message) ?? passwordRuleReason(code, error.message) ?? notAuthorizedReason(code, error.message),
+      )
     }
 
     return payload as T
@@ -407,6 +426,46 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
     async globalSignOut(accessToken: string): Promise<void> {
       await request('GlobalSignOut', {
         AccessToken: accessToken,
+      })
+    },
+
+    /**
+     * Round H (H3): per-device sign-out. Revokes this refresh token and every access token issued from it (the
+     * pool client has token revocation on), and leaves the member's other devices signed in.
+     */
+    async revokeToken(refreshToken: string): Promise<void> {
+      await request('RevokeToken', {
+        ClientId: config.clientId,
+        Token: refreshToken,
+      })
+    },
+
+    /** Round H (H3): Settings › Account › Change password, with the member's own access token. */
+    async changePassword(input: { accessToken: string; previousPassword: string; proposedPassword: string }): Promise<void> {
+      await request('ChangePassword', {
+        AccessToken: input.accessToken,
+        PreviousPassword: input.previousPassword,
+        ProposedPassword: input.proposedPassword,
+      })
+    },
+
+    /**
+     * Round H (H3): asks Cognito to change the member's email. The pool keeps the old address until the new one is
+     * verified (AttributesRequireVerificationBeforeUpdate), and Cognito sends the code to the new address.
+     */
+    async requestEmailChange(input: { accessToken: string; email: string }): Promise<void> {
+      await request('UpdateUserAttributes', {
+        AccessToken: input.accessToken,
+        UserAttributes: [{ Name: 'email', Value: input.email }],
+      })
+    },
+
+    /** Round H (H3): confirms the pending email change with the code sent to the new address. */
+    async verifyEmailChange(input: { accessToken: string; code: string }): Promise<void> {
+      await request('VerifyUserAttribute', {
+        AccessToken: input.accessToken,
+        AttributeName: 'email',
+        Code: input.code,
       })
     },
   }

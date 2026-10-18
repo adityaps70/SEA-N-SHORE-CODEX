@@ -510,3 +510,39 @@ describe('passwordRuleReason', () => {
     expect(passwordRuleReason('NotAuthorizedException', 'Password must have uppercase characters')).toBeNull()
   })
 })
+
+describe('Round H (H3) account security calls', () => {
+  function capture() {
+    const calls: Array<{ target: string | null; body: Record<string, unknown> }> = []
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ target: new Headers(init?.headers).get('x-amz-target'), body: requestBody(init) })
+      return jsonResponse({})
+    })
+    return { calls, api: createCognitoApi(config, transport) }
+  }
+
+  it('revokes one refresh token (per-device sign-out), changes the password and changes the email with the member\'s own token', async () => {
+    const { calls, api } = capture()
+    await api.revokeToken('refresh-token')
+    await api.changePassword({ accessToken: 'access-token', previousPassword: 'OldPlaceholder1', proposedPassword: 'NewPlaceholder22' })
+    await api.requestEmailChange({ accessToken: 'access-token', email: 'new@example.com' })
+    await api.verifyEmailChange({ accessToken: 'access-token', code: '123456' })
+
+    expect(calls).toEqual([
+      { target: 'AWSCognitoIdentityProviderService.RevokeToken', body: { ClientId: config.clientId, Token: 'refresh-token' } },
+      { target: 'AWSCognitoIdentityProviderService.ChangePassword', body: { AccessToken: 'access-token', PreviousPassword: 'OldPlaceholder1', ProposedPassword: 'NewPlaceholder22' } },
+      { target: 'AWSCognitoIdentityProviderService.UpdateUserAttributes', body: { AccessToken: 'access-token', UserAttributes: [{ Name: 'email', Value: 'new@example.com' }] } },
+      { target: 'AWSCognitoIdentityProviderService.VerifyUserAttribute', body: { AccessToken: 'access-token', AttributeName: 'email', Code: '123456' } },
+    ])
+  })
+
+  it('tells a refused access token apart from a wrong password, without keeping Cognito\'s message', async () => {
+    const refused = (message: string) => createCognitoApi(config, vi.fn(async () => jsonResponse({ __type: 'NotAuthorizedException', message }, 400)))
+    const expired = await refused('Access Token has expired').changePassword({ accessToken: 'a', previousPassword: 'b', proposedPassword: 'c' }).catch((error) => error)
+    expect(expired).toMatchObject({ code: 'NotAuthorizedException', reason: 'token' })
+    expect(expired.message).not.toContain('Access Token')
+    const wrong = await refused('Incorrect username or password.').changePassword({ accessToken: 'a', previousPassword: 'b', proposedPassword: 'c' }).catch((error) => error)
+    expect(wrong).toBeInstanceOf(CognitoApiError)
+    expect(wrong).toMatchObject({ code: 'NotAuthorizedException', reason: null })
+  })
+})

@@ -92,4 +92,55 @@ assert.match(workflow, /I_APPROVE_SITE_FIXES_ROUND_H_RELEASE_2_STAGING_MIGRATION
 assert.match(workflow, /bash scripts\/aws\/site-fixes-round-h-release-2-migration\.sh/)
 assert.match(workflow, /trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM/)
 
+// Round H release 2, H3 email notifications: the 0088 section is additive and idempotent, and the runner checks it.
+{
+  const sql = fs.readFileSync('infra/aws/database/migrations/0088_site_fixes_round_h_release_2_seo.sql', 'utf8')
+  const start = sql.indexOf('-- Round H release 2, H3 email notifications')
+  assert.ok(start > 0, '0088 has the H3 email notifications section')
+  const end = sql.indexOf('\n-- Round H release 2, ', start + 1)
+  const section = end > 0 ? sql.slice(start, end) : sql.slice(start)
+  const h3Objects = /member_notification_emails|member_message_digests|email_messages_digest|notifications_email_candidates_idx|messages_created_at_idx/
+  const h3Statements = statementsOf(section).filter((statement) => h3Objects.test(statement))
+  assert.equal(h3Statements.length, 9, 'the H3 section has its nine statements')
+  for (const statement of h3Statements) {
+    assert.match(statement, /^(alter table public\.member_preferences\s+add column if not exists|create table if not exists|create index if not exists)/i, `H3 statement is additive and idempotent: ${norm(statement).slice(0, 80)}`)
+    if (/^alter table/i.test(statement)) {
+      assert.equal(statement.match(/add column if not exists/gi).length, statement.match(/add column/gi).length, 'every H3 column is added with if not exists')
+    }
+  }
+  for (const column of ['email_messages_digest', 'email_connection_requests', 'email_comments', 'email_mentions']) {
+    assert.match(section, new RegExp(`add column if not exists ${column} boolean not null default true`), `${column} defaults to on`)
+  }
+  assert.match(section, /create table if not exists public\.member_message_digests/)
+  assert.match(section, /create table if not exists public\.member_notification_emails/)
+  assert.match(section, /dedupe_key text not null unique/)
+  assert.match(script, /H_RELEASE_2_H3_EMAIL_NOTIFICATIONS_SCHEMA_VERIFIED=true/)
+  for (const name of ['email_messages_digest', 'member_message_digests', 'member_notification_emails', 'notifications_email_candidates_idx', 'messages_created_at_idx']) {
+    assert.ok(script.includes(name), `the runner checks ${name} after apply`)
+  }
+}
+
+// Round H release 2, H3 account security: new tables and indexes only, idempotent, and checked by the runner.
+{
+  const sql = fs.readFileSync('infra/aws/database/migrations/0088_site_fixes_round_h_release_2_seo.sql', 'utf8')
+  const start = sql.indexOf('-- Round H release 2, H3 account security')
+  assert.ok(start > 0, '0088 has the H3 account security section')
+  const end = sql.indexOf('\n-- Round H release 2, ', start + 1)
+  const section = end > 0 ? sql.slice(start, end) : sql.slice(start)
+  const statements = statementsOf(section)
+  assert.equal(statements.length, 9, 'the H3 account security section has its nine statements')
+  for (const statement of statements) {
+    assert.match(statement, /^(create table if not exists public\.|create index if not exists )/i, `H3 account security statement only creates: ${norm(statement).slice(0, 80)}`)
+  }
+  for (const table of ['auth_sessions', 'mfa_backup_codes', 'account_security_attempts', 'account_security_emails']) {
+    assert.match(section, new RegExp(`create table if not exists public\\.${table} \\(`), `${table} is created`)
+    assert.ok(script.includes(`table_name = '${table}'`), `the runner checks ${table} after apply`)
+  }
+  // Only hashes of tokens, codes and addresses; no raw user agent or IP column.
+  assert.match(section, /token_origin_hash text not null unique check \(token_origin_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/)
+  assert.match(section, /code_hash text not null check \(code_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/)
+  assert.doesNotMatch(section, /\b(ip_address|user_agent|refresh_token|access_token|code_plain)\b\s+text/)
+  assert.match(script, /H_RELEASE_2_H3_ACCOUNT_SECURITY_SCHEMA_VERIFIED=true/)
+}
+
 console.log('SITE_FIXES_ROUND_H_RELEASE_2_MIGRATION_CONTRACT_VERIFIED=true')

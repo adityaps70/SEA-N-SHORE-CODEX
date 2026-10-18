@@ -162,6 +162,7 @@ describe('Cognito server session verification', () => {
       COGNITO_COOKIE_NAMES.oauthIntent,
       COGNITO_COOKIE_NAMES.mfaChallenge,
       COGNITO_COOKIE_NAMES.mfaChallengeUser,
+      COGNITO_COOKIE_NAMES.mfaChallengeBinding,
     ])
   })
 

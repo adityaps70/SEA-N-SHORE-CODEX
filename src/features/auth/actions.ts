@@ -11,6 +11,10 @@ import { createAuthActionHandlers, type AuthActionState } from './action-handler
 import { createCognitoAuthActions } from './cognito-actions'
 import { createProductionAuthEmailLimiter } from './email-limits-runtime'
 import { createMfaSignInActions, createMfaSignInHandler } from './mfa-sign-in'
+import { getAwsVerifiedUser } from './aws-queries'
+import { accountSecurityKey } from '@/features/account-security/keys'
+import { signMfaChallenge } from '@/features/account-security/mfa-challenge-binding'
+import { currentSessionId, sessionControls } from '@/features/account-security/session-runtime'
 
 export type { AuthActionState } from './action-handlers'
 
@@ -33,7 +37,20 @@ async function getProductionActions(): Promise<CognitoActions> {
     allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
     emailLimiter: authEmailLimiter,
     clientIp: trustedClientIp(await headers()),
+    signMfaChallenge: (challenge) => signMfaChallenge(accountSecurityKey('mfa-challenge-binding'), challenge),
   })
+}
+
+/** Round H (H3): sign-out is per device: this device's session row is signed out before the cookies go. */
+async function signOutThisDevice() {
+  try {
+    const user = await getAwsVerifiedUser()
+    if (!user) return
+    const sessionId = await currentSessionId(user.id)
+    if (sessionId) await sessionControls.signOutSession(user.id, sessionId, 'signed_out')
+  } catch {
+    // Signing out must always finish; the Cognito refresh token is still revoked and the cookies cleared.
+  }
 }
 
 const handlers = createAuthActionHandlers({
@@ -92,6 +109,7 @@ export async function updatePassword(state: AuthActionState, formData: FormData)
 }
 
 export async function signOut(): Promise<void> {
+  await signOutThisDevice()
   return handlers.signOut()
 }
 
@@ -109,6 +127,7 @@ export async function signOutToSignUp(): Promise<void> {
     path: '/',
     maxAge: AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS,
   })
+  await signOutThisDevice()
   return handlers.signOut()
 }
 

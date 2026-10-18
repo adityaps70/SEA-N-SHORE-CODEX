@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
-import { backLinkClass, primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
+import { backLinkClass, primaryButtonClass, secondaryButtonClass, textLinkClass } from '@/components/ui/interactive-styles'
 import { adminRepository } from '@/features/admin/repository'
 import { signOut } from '@/features/auth/actions'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -98,6 +98,12 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
         isAdministrator={isAdministrator}
         returnTo={returnTo}
       />
+
+      {/* Round H (H3): backup codes for a lost authenticator app live with the other account security settings. */}
+      <p className="text-sm leading-6 text-muted">
+        Lost access to your authenticator app? Keep backup codes in{' '}
+        <Link href="/settings/account#backup-codes-heading" className={textLinkClass}>Settings › Account</Link>.
+      </p>
     </main>
   )
 }

@@ -12,6 +12,7 @@ import {
   Landmark,
   LockKeyhole,
   Mail,
+  MonitorSmartphone,
   ShieldCheck,
   SquarePlus,
   Wallet,
@@ -144,7 +145,7 @@ export default async function SettingsPage() {
               <BellRing aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Email notifications</p>
             </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Choose whether course and learning updates also come by email.</p>
+            <p className="mt-1 text-sm leading-5 text-muted">Choose which emails you get: messages, connection requests, comments, mentions, jobs and learning.</p>
             <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
@@ -183,6 +184,17 @@ export default async function SettingsPage() {
           >
             <p className="font-semibold text-navy-950">Privacy policy</p>
             <p className="mt-1 text-sm leading-5 text-muted">Read how profile, community, jobs, learning, and messaging data is used.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
+          </Link>
+          <Link
+            href="/settings/account"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <MonitorSmartphone aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Password, email &amp; sessions</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Change your password or email, sign out other devices and get 2FA backup codes.</p>
             <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
