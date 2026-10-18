@@ -79,6 +79,13 @@ test('Round H (H1) adds operations alerts: app 5xx rate, CPU, per-API server err
   // Instances of the per-area alarms may only be created, and only for the known areas and checks.
   assert.match(script, /allowed_instances = \{/)
   assert.match(script, /r\.get\('index'\) not in allowed_instances\[base\] or actions != \('create',\)/)
+  // The one exception: a site check may be updated in place, only to switch treat_missing_data to notBreaching.
+  assert.match(script, /base == 'aws_cloudwatch_metric_alarm\.site_health' and r\.get\('index'\) in allowed_instances\[base\] and actions == \('update',\)/)
+  assert.match(script, /if changed != \['treat_missing_data'\] or after\.get\('treat_missing_data'\) != 'notBreaching':/)
+  assert.match(script, /site health alarm change outside treat_missing_data refused/)
+  // After apply, both site checks really read notBreaching.
+  assert.match(script, /select\(\.TreatMissingData == "notBreaching"\)\] \| length == 1/)
+  assert.match(script, /SITE_HEALTH_MISSING_DATA_VERIFIED=/)
   assert.match(script, /site-home-down site-api-health-down/)
 })
 
