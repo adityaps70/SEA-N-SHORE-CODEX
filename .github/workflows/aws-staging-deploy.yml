@@ -245,6 +245,19 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
+      # Round H: the Dockerfile's node base image comes from Amazon ECR Public. Anonymous pulls from shared runner IPs
+      # hit 429 "Data limit exceeded"; signed-in pulls count against the account instead (free). The token comes from
+      # us-east-1 (the only ECR Public auth region) and goes to docker on stdin, never to the log. If sign-in fails
+      # (for example before the deploy role has the permission), the build still tries an anonymous pull.
+      - name: Sign in to Amazon ECR Public for the base image
+        run: |
+          set -euo pipefail
+          if aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws >/dev/null; then
+            echo "ECR_PUBLIC_SIGNED_IN=true"
+          else
+            echo "::warning::Could not sign in to Amazon ECR Public; the base image will be pulled anonymously."
+          fi
+
       - name: Build and push immutable application image
         id: image
         env:

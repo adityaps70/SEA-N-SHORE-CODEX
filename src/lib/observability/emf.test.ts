@@ -32,10 +32,14 @@ describe('server error areas', () => {
 
   it('records only the area, never the path or query', () => {
     const lines: string[] = []
-    recordServerError('/api/jobs/123?email=someone@example.com', (line) => lines.push(line))
+    // A path id made of letters: a numeric one could also appear inside the line's own timestamp.
+    recordServerError('/api/jobs/job-qzxv?email=someone@example.com', (line) => lines.push(line))
     expect(lines).toHaveLength(1)
     expect(lines[0]).not.toContain('example.com')
-    expect(lines[0]).not.toContain('123')
-    expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ Area: 'jobs', ServerErrors: 1 })
+    expect(lines[0]).not.toContain('job-qzxv')
+    expect(lines[0]).not.toContain('/api/')
+    const line = JSON.parse(lines[0] ?? '{}')
+    expect(line).toMatchObject({ Area: 'jobs', ServerErrors: 1 })
+    expect(Object.keys(line).sort()).toEqual(['Area', 'ServerErrors', '_aws'])
   })
 })
