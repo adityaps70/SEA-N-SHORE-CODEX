@@ -658,10 +658,12 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
    * Round H (H7): up to `limit` live jobs like this one for the job page: the same rank / role first,
    * then the same department, then a shared vessel type, newest first. Only jobs still taking
    * applications (LIVE_JOB_SQL), never the job itself, and only jobs related in at least one of those ways.
+   * Hotfix (Oct 2026): the CTE was called `similar`, a reserved word in PostgreSQL (SIMILAR TO), so every call failed
+   * with a syntax error and the job page showed no similar jobs.
    */
   async function listSimilarJobs(job: Pick<JobListing, 'id' | 'acceptedRoleKeys' | 'rank' | 'departmentKey' | 'department' | 'vesselTypes'>, limit = 4): Promise<JobListing[]> {
     const rows = await queryRows(
-      `with similar as (
+      `with similar_jobs as (
          select j.id,
                 (cardinality($2::text[]) > 0 and coalesce(j.accepted_role_keys, '{}'::text[]) && $2::text[])
                   or coalesce(lower(j.rank) = lower($3::text), false) as same_role,
@@ -673,7 +675,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
            and j.id <> $1
        )
        ${JOB_SELECT}
-       join similar s on s.id = j.id
+       join similar_jobs s on s.id = j.id
        where s.same_role or s.same_department or s.same_vessel
        order by s.same_role desc, s.same_department desc, s.same_vessel desc,
                 coalesce(j.published_at, j.created_at) desc, j.id desc

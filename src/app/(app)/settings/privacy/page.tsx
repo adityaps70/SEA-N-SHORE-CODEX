@@ -77,7 +77,7 @@ export default async function PrivacySettingsPage() {
           description="Members you block can never message you, whatever you choose here."
           options={MESSAGE_PERMISSIONS.map((value) => ({ value, label: MESSAGE_PERMISSION_LABELS[value] }))}
           initialValue={choices.messagePermission}
-          savedMessage={(value) => value === 'nobody' ? 'Nobody can message you now.' : `Saved: ${MESSAGE_PERMISSION_LABELS[value]}.`}
+          savedMessages={{ nobody: 'Nobody can message you now.' }}
         />
         <div className="border-t border-mist-100 pt-4">
           <PrivacyChoice
@@ -86,7 +86,6 @@ export default async function PrivacySettingsPage() {
             description="Your connections, followers and following lists. Everyone can still see how many you have."
             options={CONNECTIONS_VISIBILITIES.map((value) => ({ value, label: CONNECTIONS_VISIBILITY_LABELS[value] }))}
             initialValue={choices.connectionsVisibility}
-            savedMessage={(value) => `Saved: ${CONNECTIONS_VISIBILITY_LABELS[value]}.`}
           />
         </div>
       </section>

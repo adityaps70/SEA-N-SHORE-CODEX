@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { isValidElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +24,19 @@ vi.mock('@/features/profiles/privacy-preferences', async (importOriginal) => {
 vi.mock('@/components/navigation/mobile-page-bar', () => ({ MobilePageBar: () => null }))
 
 import PrivacySettingsPage from './page'
+import { PrivacyChoice } from './privacy-choice'
+import { PrivacyToggle } from './privacy-toggle'
+
+/** Every prop the page passes to one of these Client Components, found by walking the page's element tree. */
+function clientProps(node: ReactNode, clientComponents: readonly unknown[], found: Array<{ name: string; props: Record<string, unknown> }> = []) {
+  if (Array.isArray(node)) {
+    for (const child of node) clientProps(child, clientComponents, found)
+  } else if (isValidElement<Record<string, unknown>>(node)) {
+    if (clientComponents.includes(node.type)) found.push({ name: (node.type as { name: string }).name, props: node.props })
+    clientProps(node.props.children as ReactNode, clientComponents, found)
+  }
+  return found
+}
 
 /** Round H (H5): "Let search engines show my profile" on Settings › Privacy. */
 describe('Settings › Privacy: search engines', () => {
@@ -63,5 +77,45 @@ describe('Settings › Privacy: search engines', () => {
     mocks.get.mockRejectedValueOnce(new Error('db down'))
     render(await PrivacySettingsPage())
     expect(searchSwitch()).not.toBeChecked()
+  })
+})
+
+/**
+ * Hotfix (Oct 2026): the page failed on every load in production (React error #441) because it passed a function
+ * (savedMessage) to PrivacyChoice, a Client Component. React only passes plain data across that boundary. Rendering
+ * in a test does not go through that boundary, so this checks the props themselves.
+ */
+describe('Settings › Privacy: Server Component to Client Component props', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
+    mocks.getOwnProfile.mockResolvedValue({ persona: 'seafarer' })
+    mocks.get.mockResolvedValue({ showInPeopleSuggestions: true, openToRecruiters: false, allowSearchIndexing: false })
+    mocks.getChoices.mockResolvedValue({ messagePermission: 'everyone', connectionsVisibility: 'everyone' })
+    mocks.setPrivacyChoice.mockResolvedValue({ ok: true })
+  })
+
+  afterEach(() => cleanup())
+
+  it('passes only plain data to the privacy Client Components', async () => {
+    const found = clientProps(await PrivacySettingsPage(), [PrivacyChoice, PrivacyToggle])
+    // Three switches (suggestions, open to recruiters, search engines) and two choices.
+    expect(found.map((component) => component.name).sort()).toEqual(['PrivacyChoice', 'PrivacyChoice', 'PrivacyToggle', 'PrivacyToggle', 'PrivacyToggle'])
+    for (const { name, props } of found) {
+      // structuredClone throws on functions, symbols and class instances React cannot send either.
+      expect(() => structuredClone(props), `${name} ${String(props.setting)}`).not.toThrow()
+    }
+  })
+
+  it('says what was saved: the special message for Nobody, otherwise the chosen label', async () => {
+    render(await PrivacySettingsPage())
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Nobody' }))
+    await waitFor(() => expect(mocks.setPrivacyChoice).toHaveBeenCalledWith('messagePermission', 'nobody'))
+    expect(await screen.findByText('Nobody can message you now.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Only me' }))
+    await waitFor(() => expect(mocks.setPrivacyChoice).toHaveBeenCalledWith('connectionsVisibility', 'only_me'))
+    expect(await screen.findByText('Saved: Only me.')).toBeInTheDocument()
   })
 })
