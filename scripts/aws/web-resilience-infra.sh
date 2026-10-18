@@ -138,6 +138,13 @@ for r in changes:
     actions = tuple(r['change']['actions'])
     base = r['address'].split('[', 1)[0]
     if base in allowed_instances:
+        # Round H: the site checks may switch to notBreaching in place (missing probe data never pages), nothing else.
+        if base == 'aws_cloudwatch_metric_alarm.site_health' and r.get('index') in allowed_instances[base] and actions == ('update',):
+            before, after = r['change']['before'] or {}, r['change']['after'] or {}
+            changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
+            if changed != ['treat_missing_data'] or after.get('treat_missing_data') != 'notBreaching':
+                raise SystemExit(f"site health alarm change outside treat_missing_data refused: {r['address']} {','.join(changed)}")
+            continue
         if r.get('index') not in allowed_instances[base] or actions != ('create',):
             raise SystemExit(f"unexpected web resilience change refused: {r['address']} {list(actions)}")
         continue
@@ -199,6 +206,12 @@ for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-co
   jq -e --arg name "sea-n-shore-staging-$alarm" --arg topic "$TOPIC_ARN" \
     '[.MetricAlarms[] | select(.AlarmName == $name) | select(.AlarmActions | index($topic))] | length == 1' "$WORK_DIR/alarms.json" >/dev/null
   echo "ALARM_VERIFIED=sea-n-shore-staging-$alarm state=$(jq -r --arg name "sea-n-shore-staging-$alarm" '.MetricAlarms[] | select(.AlarmName == $name) | .StateValue' "$WORK_DIR/alarms.json")"
+done
+# Round H: the site checks page only on a failed check, never on missing probe data.
+for alarm in site-home-down site-api-health-down; do
+  jq -e --arg name "sea-n-shore-staging-$alarm" \
+    '[.MetricAlarms[] | select(.AlarmName == $name) | select(.TreatMissingData == "notBreaching")] | length == 1' "$WORK_DIR/alarms.json" >/dev/null
+  echo "SITE_HEALTH_MISSING_DATA_VERIFIED=sea-n-shore-staging-$alarm notBreaching"
 done
 aws events list-targets-by-rule --region "$AWS_REGION" --rule sea-n-shore-staging-ecs-out-of-memory --output json \
   | jq -e --arg topic "$TOPIC_ARN" '[.Targets[] | select(.Arn == $topic)] | length == 1' >/dev/null
