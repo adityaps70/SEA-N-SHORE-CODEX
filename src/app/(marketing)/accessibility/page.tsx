@@ -1,6 +1,12 @@
 import type { Metadata } from 'next'
+import { metaDescription } from '@/lib/seo/meta'
 
-export const metadata: Metadata = { title: 'Accessibility' }
+// Round H (H5): a canonical address and a plain-text search description.
+export const metadata: Metadata = {
+  title: 'Accessibility',
+  description: metaDescription('How Sea N Shore designs for keyboard access, clear focus, readable contrast and responsive layouts, and how to report an accessibility barrier.'),
+  alternates: { canonical: '/accessibility' },
+}
 
 export default function AccessibilityPage() {
   return (

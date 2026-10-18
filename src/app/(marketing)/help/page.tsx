@@ -6,10 +6,13 @@ import { faqGroups, faqJsonLd, jsonLdScript } from '@/components/marketing/faq/f
 import { SUPPORT_EMAIL } from '@/components/navigation/social-links'
 import { BUSINESS, OPERATOR_LINE, telHref } from '@/config/business'
 import { getCognitoEnvironment } from '@/lib/env'
+import { metaDescription } from '@/lib/seo/meta'
 
+// Round H (H5): a canonical address and a plain-text search description.
 export const metadata: Metadata = {
   title: 'Help',
-  description: 'Help and frequently asked questions about Sea N Shore: membership, jobs, company pages, courses, events, payments and your account.',
+  description: metaDescription('Help and frequently asked questions about Sea N Shore: membership, jobs, company pages, courses, events, payments and your account.'),
+  alternates: { canonical: '/help' },
 }
 // The FAQ mentions Google sign-in only when it is switched on at runtime.
 export const dynamic = 'force-dynamic'

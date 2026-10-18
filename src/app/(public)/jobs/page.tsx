@@ -8,10 +8,14 @@ import { JobsDiscoveryControls } from '@/features/jobs/components/jobs-discovery
 import { JobsMobileToolbar } from '@/features/jobs/components/jobs-mobile-toolbar'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { NotInterestedItem } from '@/features/jobs/components/not-interested'
+import { getVerifiedUser } from '@/features/auth/queries'
 import { JOB_DISCOVERY_MODES } from '@/features/jobs/catalog'
-import { getJobsDiscovery, type JobDiscoveryItem } from '@/features/jobs/queries'
+import { jobsIndexMetadata } from '@/features/jobs/job-seo'
+import { getJobsDiscovery, getSignedOutJobsDiscovery, type JobDiscoveryItem } from '@/features/jobs/queries'
+import { authHrefWithReturn } from '@/lib/auth/return-path'
 
-export const metadata: Metadata = { title: 'Jobs' }
+// Round H (H5): public and indexable, with /jobs as the canonical address of every list view.
+export const metadata: Metadata = jobsIndexMetadata()
 
 type RawParams = Record<string, string | string[] | undefined>
 
@@ -32,11 +36,11 @@ function pageHref(params: RawParams, page: number) {
 }
 
 /** Round G (G3): Jobs for you rows and cards carry "Not interested" (with Undo). */
-function JobItems({ items, notInterested }: { items: JobDiscoveryItem[]; notInterested: boolean }) {
+function JobItems({ items, notInterested, signedOut = false }: { items: JobDiscoveryItem[]; notInterested: boolean; signedOut?: boolean }) {
   // Round G: applications from Jobs for you and from the jobs list are counted apart (Ranking health).
   const source = notInterested ? 'for_you' : 'jobs'
-  const row = ({ job, match, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} source={source} />
-  const card = ({ job, match, gateMatch, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobCard key={job.id} job={job} match={match} gateMatch={gateMatch} isSaved={isSaved} alreadyApplied={alreadyApplied} source={source} />
+  const row = ({ job, match, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} source={source} signedOut={signedOut} />
+  const card = ({ job, match, gateMatch, isSaved, alreadyApplied }: JobDiscoveryItem) => <JobCard key={job.id} job={job} match={match} gateMatch={gateMatch} isSaved={isSaved} alreadyApplied={alreadyApplied} source={source} signedOut={signedOut} />
   return (
     <>
       <div className="-mx-4 bg-white md:hidden">
@@ -57,10 +61,14 @@ function JobItems({ items, notInterested }: { items: JobDiscoveryItem[]; notInte
 
 export default async function JobsPage({ searchParams }: { searchParams: Promise<RawParams> }) {
   const rawParams = await searchParams
-  const discovery = await getJobsDiscovery(rawParams)
+  // Round H (H5): signed-out visitors (and search engines) see live jobs without a match.
+  const viewer = await getVerifiedUser()
+  const signedOut = !viewer
+  const discovery = viewer ? await getJobsDiscovery(rawParams) : await getSignedOutJobsDiscovery(rawParams)
   const { filters, items, profileReady, page, hasMore, applied, version } = discovery
-  const ranked = version === 2 && (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you')
+  const ranked = !signedOut && version === 2 && (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you')
   const alertQuery = serialize(rawParams) || 'mode=for-you'
+  const alertHref = signedOut ? authHrefWithReturn('/auth/sign-in', `/jobs/alerts?${alertQuery}`) : `/jobs/alerts?${alertQuery}`
   const activeFilterCount = [filters.department ? 1 : 0, filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
   const hasSearchConstraints = Boolean(filters.query || activeFilterCount || filters.mode !== 'for-you')
   const sortLabel = filters.sort === 'recommended'
@@ -84,13 +92,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
   return (
     <section className="pb-2 pt-0 md:py-5">
-      <JobsMobileToolbar filters={filters} resultCount={items.length} />
+      <JobsMobileToolbar filters={filters} resultCount={items.length} signedOut={signedOut} />
 
       <PremiumPageHero
         className="max-md:hidden"
         eyebrow="Sea N Shore Jobs Intelligence"
         title="Find your next sea or shore role"
-        description="Every listing shows how well it matches your rank, experience, vessels and certificates."
+        description={signedOut ? 'Live sea and shore roles from maritime employers. Sign in to see how well each one matches your rank, experience, vessels and certificates.' : 'Every listing shows how well it matches your rank, experience, vessels and certificates.'}
       >
         <form action="/jobs" method="get" role="search" className="mt-4 grid gap-2 rounded-2xl bg-white p-2 sm:grid-cols-[1fr_180px_auto]">
           <input type="hidden" name="mode" value={filters.mode} />
@@ -104,13 +112,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         </form>
       </PremiumPageHero>
 
-      <JobsSubnav active="discover" className="max-md:hidden" />
+      {signedOut ? null : <JobsSubnav active="discover" className="max-md:hidden" />}
 
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1 max-md:hidden">
-        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{mode.label}</Link>)}
+        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{signedOut && mode.value === 'for-you' ? 'All jobs' : mode.label}</Link>)}
       </div>
 
-      {!profileReady ? <div className="mt-4 rounded-2xl max-md:mt-2 border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
+      {!profileReady && !signedOut ? <div className="mt-4 rounded-2xl max-md:mt-2 border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
 
       <div className="mt-5 grid gap-5 max-md:mt-2 lg:grid-cols-[280px_minmax(0,1fr)]">
         <JobsDiscoveryControls filters={filters} resultCount={items.length} className="max-md:hidden" />
@@ -118,15 +126,15 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 max-md:mb-0 max-md:-mx-4 max-md:flex-nowrap max-md:border-t max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:pt-4">
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-navy-950 md:hidden">{filters.mode === 'for-you' ? 'Top picks for you' : 'Jobs for you'}</h2>
+              <h2 className="text-lg font-bold text-navy-950 md:hidden">{signedOut ? 'Latest jobs' : filters.mode === 'for-you' ? 'Top picks for you' : 'Jobs for you'}</h2>
               <p className="text-sm font-semibold text-navy-950 max-md:text-[13px] max-md:font-normal max-md:text-muted">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}<span className="md:hidden"> · {sortLabel}</span></p>
               <p className="mt-0.5 text-xs font-semibold text-navy-700 max-md:hidden">Sort by: {sortLabel}</p>
               <p className="mt-0.5 text-xs text-muted max-md:hidden">{sortCaption}</p>
             </div>
-            <div className="flex shrink-0 items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:min-h-11 max-md:rounded-full max-md:border-0 max-md:px-2 max-md:text-ocean-700"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
+            <div className="flex shrink-0 items-center gap-2"><Link href={alertHref} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:min-h-11 max-md:rounded-full max-md:border-0 max-md:px-2 max-md:text-ocean-700"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
           </div>
           {items.length ? (
-            <JobItems items={items} notInterested={ranked} />
+            <JobItems items={items} notInterested={ranked} signedOut={signedOut} />
           ) : page > 1 ? (
             <p className="rounded-2xl border border-dashed border-mist-100 bg-white px-6 py-8 text-center text-sm text-muted">No more jobs on this page. <Link href={pageHref(rawParams, 1)} className="font-semibold text-ocean-700 underline">Back to the first page</Link></p>
           ) : (
@@ -136,7 +144,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">{hasSearchConstraints ? 'Try widening the rank, vessel, joining-date or salary requirements—or clear filters to see more opportunities.' : 'New verified maritime opportunities will appear here as employers publish them.'}</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {hasSearchConstraints ? <Link href="/jobs?mode=for-you" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear all filters</Link> : null}
-                <Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Create job alert</Link>
+                <Link href={alertHref} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Create job alert</Link>
               </div>
             </div>
           )}

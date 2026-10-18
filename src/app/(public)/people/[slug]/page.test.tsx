@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
-import PublicProfilePage from './page'
+import PublicProfilePage, { generateMetadata } from './page'
 
 const mocks = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
@@ -13,6 +13,12 @@ const mocks = vi.hoisted(() => ({
   getProfileNetworkSummary: vi.fn(),
   getViewableDgProfileDocument: vi.fn(),
   getProfileOrganizations: vi.fn(),
+  allowsSearchIndexing: vi.fn(),
+}))
+
+// Round H (H5): the owner's "Let search engines show my profile" switch.
+vi.mock('@/features/profiles/privacy-preferences', () => ({
+  privacyPreferences: { allowsSearchIndexing: mocks.allowsSearchIndexing },
 }))
 
 vi.mock('@/features/profiles/profile-network-stats', () => ({
@@ -138,6 +144,7 @@ vi.mock('@/features/profiles/components/profile-passport-overview', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getProfileOrganizations.mockResolvedValue([])
+  mocks.allowsSearchIndexing.mockResolvedValue(false)
   mocks.getVerifiedUser.mockResolvedValue({
     id: '11111111-1111-4111-8111-111111111111',
     cognitoSub: 'viewer-sub',
@@ -388,6 +395,54 @@ describe('Public Profile page', () => {
     // Signed out, only the posts the author shows to anyone.
     expect(mocks.getPublicPostsByAuthor).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(mocks.getPostsByAuthor).not.toHaveBeenCalled()
+  })
+
+  describe('search engines (round H, H5)', () => {
+    const params = () => Promise.resolve({ slug: 'captain-public' })
+    const personData = (container: HTMLElement) => container.querySelector('script[type="application/ld+json"]')
+
+    it('asks search engines not to index or follow a profile whose owner has not opted in, with no Person data', async () => {
+      const metadata = await generateMetadata({ params: params() })
+      expect(metadata.robots).toEqual({ index: false, follow: false })
+      expect(metadata.alternates).toBeUndefined()
+      expect(metadata.title).toBe('Captain Public · Master Mariner')
+
+      mocks.getVerifiedUser.mockResolvedValueOnce(null)
+      const { container } = render(await PublicProfilePage({ params: params() }))
+      expect(personData(container)).toBeNull()
+    })
+
+    it('treats a failed preference read as not allowed', async () => {
+      mocks.allowsSearchIndexing.mockRejectedValue(new Error('db down'))
+      expect((await generateMetadata({ params: params() })).robots).toEqual({ index: false, follow: false })
+    })
+
+    it('gives an opted-in profile a canonical address, a description and Person data without contact details', async () => {
+      mocks.allowsSearchIndexing.mockResolvedValue(true)
+      vi.stubEnv('NEXT_PUBLIC_SITE_URL', 'https://seanshore.in')
+
+      const metadata = await generateMetadata({ params: params() })
+      expect(metadata.robots).toBeUndefined()
+      expect(metadata.alternates).toEqual({ canonical: '/people/captain-public' })
+      expect(metadata.description).toBe('Experienced tanker master.')
+
+      mocks.getVerifiedUser.mockResolvedValueOnce(null)
+      const { container } = render(await PublicProfilePage({ params: params() }))
+      const script = personData(container)
+      expect(script).not.toBeNull()
+      const person = JSON.parse(script!.textContent!)
+      expect(person).toEqual({
+        '@context': 'https://schema.org',
+        '@type': 'Person',
+        name: 'Captain Public',
+        url: 'https://seanshore.in/people/captain-public',
+        jobTitle: 'Master',
+        description: 'Experienced tanker master.',
+        worksFor: { '@type': 'Organization', name: 'Oceanic Shipping' },
+      })
+      expect(script!.textContent).not.toMatch(/email|telephone|phone|@example/i)
+      vi.unstubAllEnvs()
+    })
   })
 
   it('shows no DG profile section to other members', async () => {

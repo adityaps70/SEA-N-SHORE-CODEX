@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { setPrivacyPreference } from '@/features/profiles/privacy-actions'
+import type { PrivacyPreferenceKey } from '@/features/profiles/privacy-preferences'
 
 /** One privacy switch that saves as soon as it changes (round G). */
 export function PrivacyToggle({
@@ -12,7 +13,7 @@ export function PrivacyToggle({
   onMessage,
   offMessage,
 }: {
-  setting: 'showInPeopleSuggestions' | 'openToRecruiters'
+  setting: PrivacyPreferenceKey
   label: string
   description: string
   initiallyOn: boolean

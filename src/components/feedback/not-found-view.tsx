@@ -1,5 +1,16 @@
+import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { Anchor } from 'lucide-react'
+
+/**
+ * Round H (H5): the tab title and robots tag of every not-found.tsx (`export const metadata = NOT_FOUND_METADATA`).
+ * Next reads metadata from not-found files, and the deepest one replaces the root's, so each file exports it.
+ * Absolute, so the root '%s | Sea N Shore' template does not add a second brand.
+ */
+export const NOT_FOUND_METADATA: Metadata = {
+  title: { absolute: 'Page not found · Sea N Shore' },
+  robots: { index: false },
+}
 
 export type NotFoundLink = { href: string; label: string }
 

@@ -452,6 +452,9 @@ export function mapCandidateProfileRow(row: CandidateRow): JobCandidateProfile {
 
 export type { CandidateRow as JobCandidateRow }
 
+/** Round H (H5): `liveOnly` leaves out published jobs past their apply-by date or joining window. */
+export type JobSearchOptions = { liveOnly?: boolean }
+
 export type JobPoolOptions = {
   viewerId: string
   departmentKeys: string[]
@@ -478,7 +481,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
    * member's "Not interested" jobs, ordered by the SQL prefilter (same department, then rank band,
    * then vessel group, then newest) and capped at JOB_WEIGHTS.pool.maxScored for scoring in the app.
    */
-  async function searchJobs(filters: JobSearchFilters, limit = 60, offset = 0, pool?: JobPoolOptions): Promise<JobListing[]> {
+  async function searchJobs(filters: JobSearchFilters, limit = 60, offset = 0, pool?: JobPoolOptions, options: JobSearchOptions = {}): Promise<JobListing[]> {
     const values: unknown[] = []
     const where: string[] = [OPEN_JOB_WHERE]
     const bind = (value: unknown) => {
@@ -546,8 +549,9 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       where.push(`coalesce(j.published_at, j.created_at) > ${bind(filters.postedSince)}::timestamptz`)
     }
 
+    // Round H (H5): the signed-out jobs list shows live jobs only (none past apply-by or joining).
+    if (pool || options.liveOnly) where.push(JOB_ACCEPTING_SQL)
     if (pool) {
-      where.push(JOB_ACCEPTING_SQL)
       where.push(`not exists (
         select 1 from public.suggestion_dismissals sd
         where sd.viewer_id = ${bind(pool.viewerId)}::uuid and sd.kind = 'job' and sd.target_id = j.id
@@ -602,6 +606,22 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       [jobId],
     ) as JobRow[]
     return rows[0] ? mapJob(rows[0]) : null
+  }
+
+  /**
+   * Round H (H5): every live job (LIVE_JOB_SQL: published, not deleted, owner's plan active, still taking
+   * applications) for the sitemap, as { id, updatedAt }. Closed, deleted and expired jobs are left out.
+   */
+  async function listSitemapJobs(limit = 50_000): Promise<Array<{ id: string; updatedAt: string }>> {
+    const rows = await queryRows(
+      `select j.id, greatest(j.updated_at, j.published_at) as updated_at
+       from public.jobs j
+       where ${LIVE_JOB_SQL}
+       order by coalesce(j.published_at, j.created_at) desc, j.id desc
+       limit $1`,
+      [Math.min(Math.max(Math.trunc(limit), 1), 50_000)],
+    ) as Array<QueryResultRow & { id: string; updated_at: string | Date }>
+    return rows.map((row) => ({ id: row.id, updatedAt: timestampValue(row.updated_at) }))
   }
 
   async function isAcceptingApplications(jobId: string): Promise<boolean> {
@@ -877,6 +897,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     searchJobs,
     listPublishedJobsForCompany,
     getPublishedJob,
+    listSitemapJobs,
     isAcceptingApplications,
     getCandidateProfile,
     listApplications,
@@ -900,3 +921,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
 export type JobsRepository = ReturnType<typeof createJobsRepository>
 
 export const jobsRepository = createJobsRepository()
+
+/** Round H (H5): live jobs for the sitemap, { id, updatedAt } (see the repository method). */
+export function listSitemapJobs(limit?: number) {
+  return jobsRepository.listSitemapJobs(limit)
+}

@@ -4,10 +4,13 @@ import { Inbox, LockKeyhole, MailCheck } from 'lucide-react'
 import { NewsletterPreferencesForm } from '@/features/newsletter/components/newsletter-preferences-form'
 import { NewsletterSignupForm } from '@/features/newsletter/components/newsletter-signup-form'
 import { getViewerNewsletterState } from '@/features/newsletter/queries'
+import { metaDescription } from '@/lib/seo/meta'
 
+// Round H (H5): a canonical address and a plain-text search description.
 export const metadata: Metadata = {
   title: 'Newsletter',
-  description: 'Subscribe to the Sea N Shore newsletter for maritime news, jobs, learning and events.',
+  description: metaDescription('Subscribe to the Sea N Shore newsletter for maritime news, jobs, learning and events.'),
+  alternates: { canonical: '/newsletter' },
 }
 
 export const dynamic = 'force-dynamic'

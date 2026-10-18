@@ -1,10 +1,13 @@
 import type { Metadata } from 'next'
 import { LegalList, LegalPage, LegalSection, RelatedPolicies, TextLink } from '@/components/legal/legal-page'
 import { BUSINESS } from '@/config/business'
+import { metaDescription } from '@/lib/seo/meta'
 
+// Round H (H5): a canonical address and a plain-text search description.
 export const metadata: Metadata = {
   title: 'Refund & cancellation policy',
-  description: `How refunds and cancellations work for event tickets, courses and plans on ${BUSINESS.brandName}.`,
+  description: metaDescription(`How refunds and cancellations work for event tickets, courses and plans on ${BUSINESS.brandName}.`),
+  alternates: { canonical: '/refunds' },
 }
 
 export default function RefundsPage() {

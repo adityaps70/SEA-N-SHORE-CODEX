@@ -10,21 +10,26 @@ const companyIdSchema = z.string().uuid()
 const MAX_COMPANY_LOGO_BYTES = 5 * 1024 * 1024
 const ALLOWED_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
+/**
+ * Organization logos. Round H (H5): the logo of a verified organization is a public brand image, served to anyone
+ * (signed-out job pages and the JobPosting data search engines read); other logos still need a signed-in member.
+ */
 export async function GET(
   _request: Request,
   context: { params: Promise<{ companyId: string }> },
 ): Promise<Response> {
   const viewer = await getVerifiedUser()
-  if (!viewer) return new Response(null, { status: 401 })
 
   const { companyId } = await context.params
   const parsed = companyIdSchema.safeParse(companyId)
-  if (!parsed.success) return new Response(null, { status: 404 })
+  if (!parsed.success) return new Response(null, { status: viewer ? 404 : 401 })
 
-  const rows = await query<{ logo_path: string | null }>(
-    'select logo_path from public.companies where id = $1 limit 1',
+  const rows = await query<{ logo_path: string | null; is_verified: boolean | null }>(
+    'select logo_path, is_verified from public.companies where id = $1 limit 1',
     [parsed.data],
   )
+  const publicLogo = rows[0]?.is_verified === true
+  if (!viewer && !publicLogo) return new Response(null, { status: 401 })
   const storagePath = rows[0]?.logo_path?.trim()
   if (!storagePath) return new Response(null, { status: 404 })
 
@@ -39,7 +44,7 @@ export async function GET(
     return new Response(Uint8Array.from(object.body).buffer, {
       status: 200,
       headers: {
-        'cache-control': 'private, max-age=3600',
+        'cache-control': publicLogo ? 'public, max-age=3600' : 'private, max-age=3600',
         'content-length': String(object.contentLength),
         'content-type': contentType,
         'x-content-type-options': 'nosniff',

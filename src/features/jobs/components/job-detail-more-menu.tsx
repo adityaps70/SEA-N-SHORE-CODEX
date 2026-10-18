@@ -18,11 +18,14 @@ export function JobDetailMoreMenu({
   jobTitle,
   companyName,
   companyHref,
+  reportHref,
 }: {
   jobId: string
   jobTitle: string
   companyName: string
   companyHref: string | null
+  /** Round H (H5): signed-out visitors sign in (coming back to the job) before reporting. */
+  reportHref?: string
 }) {
   const [open, setOpen] = useState(false)
   const [reporting, setReporting] = useState(false)
@@ -63,16 +66,23 @@ export function JobDetailMoreMenu({
           ) : null}
           <SheetRow role="menuitem" icon={<Share2 aria-hidden="true" />} label="Share" onClick={share} />
           <SheetRow role="menuitem" icon={<Link2 aria-hidden="true" />} label="Copy link" onClick={copy} />
-          <SheetRow
-            role="menuitem"
-            tone="danger"
-            icon={<Flag aria-hidden="true" />}
-            label="Report job"
-            onClick={() => {
-              setOpen(false)
-              setReporting(true)
-            }}
-          />
+          {reportHref ? (
+            <Link role="menuitem" href={reportHref} className={ROW_LINK_CLASS.replace('text-navy-950 hover:bg-mist-50', 'text-red-700 hover:bg-red-50')}>
+              <Flag aria-hidden="true" />
+              Report job
+            </Link>
+          ) : (
+            <SheetRow
+              role="menuitem"
+              tone="danger"
+              icon={<Flag aria-hidden="true" />}
+              label="Report job"
+              onClick={() => {
+                setOpen(false)
+                setReporting(true)
+              }}
+            />
+          )}
         </div>
         <p role="status" className="min-h-5 px-4 text-sm font-medium text-ocean-700">{message}</p>
         <div className="px-2"><MobileSheetCancel onClick={() => setOpen(false)} /></div>

@@ -1,6 +1,7 @@
 import Link from '@/components/navigation/intent-link'
 import { ArrowRight, BadgeCheck, CalendarClock, MapPin, Ship, WalletCards } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { authHrefWithReturn } from '@/lib/auth/return-path'
 import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
@@ -36,6 +37,7 @@ export function JobCard({
   isSaved = false,
   alreadyApplied = false,
   source,
+  signedOut = false,
 }: {
   job: JobListing
   match?: JobMatchResult | null
@@ -45,8 +47,11 @@ export function JobCard({
   alreadyApplied?: boolean
   /** Round G: 'for_you' or 'search', carried to the job page and the Apply button. */
   source?: string
+  /** Round H (H5): a signed-out visitor; Save and Apply link to sign-in, coming back to the job. */
+  signedOut?: boolean
 }) {
   const salary = formatSalary(job)
+  const signInHref = signedOut ? authHrefWithReturn('/auth/sign-in', `/jobs/${job.id}`) : undefined
   // Round H (H2): past the apply-by date or the joining window, the job is closed.
   const closedReason = jobClosedReason(job, todayIsoDate())
   const acceptingApplications = closedReason === null
@@ -65,7 +70,8 @@ export function JobCard({
   return (
     <Card className="group flex h-full min-w-0 flex-col border border-mist-100 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-ocean-200 hover:shadow-lg">
       <div className="flex items-start gap-3.5">
-        <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={job.companyLogoPath} size="md" />
+        {/* Round H (H5): the logo route serves signed-in members only, so visitors see the initials. */}
+        <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} size="md" />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -173,7 +179,7 @@ export function JobCard({
             {closedReason ? JOB_CLOSED_LABELS[closedReason] : null}
           </span>
         ) : job.easyApply ? (
-          <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact gate={gate} {...(source ? { source } : {})} />
+          <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact gate={gate} {...(source ? { source } : {})} signInHref={signInHref} />
         ) : (
           <Link
             href={source ? `/jobs/${job.id}?src=${source}` : `/jobs/${job.id}`}
@@ -182,7 +188,7 @@ export function JobCard({
             View opportunity <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
         )}
-        <SaveJobButton jobId={job.id} initialSaved={isSaved} compact />
+        <SaveJobButton jobId={job.id} initialSaved={isSaved} compact signInHref={signInHref} />
         <NotInterestedButton jobId={job.id} jobTitle={job.title} />
       </div>
     </Card>

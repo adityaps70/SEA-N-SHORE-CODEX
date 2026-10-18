@@ -12,10 +12,13 @@ import {
 } from '@/features/billing/components/plan-cards'
 import { ORGANIZATION_PRO_CHOOSER_HREF } from '@/features/billing/organization-pro-path'
 import { loadPublicPlanPrices } from '@/features/billing/public-prices'
+import { metaDescription } from '@/lib/seo/meta'
 
+// Round H (H5): a canonical address and a plain-text search description.
 export const metadata: Metadata = {
   title: 'Pricing',
-  description: `${BUSINESS.brandName} plans and prices in Indian rupees: free membership, Creator Pro and Organization Pro.`,
+  description: metaDescription(`${BUSINESS.brandName} plans and prices in Indian rupees: free membership, Creator Pro and Organization Pro.`),
+  alternates: { canonical: '/pricing' },
 }
 // Rendered per request (Round 14, 3.8 kept this dynamic on purpose): the buy buttons follow the
 // visitor's session and the per-request Report-Only CSP nonce (src/proxy.ts) is only stamped on

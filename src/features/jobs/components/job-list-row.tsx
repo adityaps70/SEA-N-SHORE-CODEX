@@ -1,5 +1,6 @@
 import Link from '@/components/navigation/intent-link'
 import type { ReactNode } from 'react'
+import { authHrefWithReturn } from '@/lib/auth/return-path'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { JOB_CLOSED_LABELS, jobClosedReason, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
@@ -32,6 +33,7 @@ export function JobListRow({
   alreadyApplied = false,
   className = '',
   source,
+  signedOut = false,
 }: {
   job: JobListing
   match?: JobMatchResult | null
@@ -40,6 +42,8 @@ export function JobListRow({
   className?: string
   /** Round G: 'for_you' or 'search', carried to the job page. */
   source?: string
+  /** Round H (H5): a signed-out visitor; Save links to sign-in, coming back to the job. */
+  signedOut?: boolean
 }) {
   const closedReason = jobClosedReason(job, todayIsoDate())
   const place = [job.location, formatJoining(job)].filter(Boolean).join(' · ')
@@ -50,7 +54,8 @@ export function JobListRow({
 
   return (
     <li className={`relative flex gap-3 px-4 py-3.5 hover:bg-mist-50/70 ${className}`} data-job-row>
-      <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={job.companyLogoPath} size="md" />
+      {/* Round H (H5): the logo route serves signed-in members only, so visitors see the initials. */}
+      <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} size="md" />
       <div className="min-w-0 flex-1">
         <Link
           href={source ? `/jobs/${job.id}?src=${source}` : `/jobs/${job.id}`}
@@ -72,7 +77,7 @@ export function JobListRow({
         </p>
       </div>
       <div className="-mr-2 -mt-1.5 flex shrink-0 flex-col items-center">
-        <SaveJobButton jobId={job.id} initialSaved={isSaved} variant="icon" jobTitle={job.title} />
+        <SaveJobButton jobId={job.id} initialSaved={isSaved} variant="icon" jobTitle={job.title} signInHref={signedOut ? authHrefWithReturn('/auth/sign-in', `/jobs/${job.id}`) : undefined} />
         <NotInterestedButton jobId={job.id} jobTitle={job.title} variant="icon" />
       </div>
     </li>

@@ -161,4 +161,32 @@ describe('jobs for you without the ranking switch (Round H, H2)', () => {
     expect(forYou.items.map((item) => item.job.id)).toEqual([])
     expect(search.items.map((item) => item.job.id)).toEqual(['sea-job'])
   })
+
+  it('gives signed-out visitors live jobs by newest, without a match or member state (round H, H5)', async () => {
+    const repository = makeRepository()
+    const requireUser = vi.fn(async () => { throw new Error('signed out') })
+    const queries = createJobsQueries({ requireUser, repository: repository as never })
+
+    const result = await queries.getSignedOutJobsDiscovery({ mode: 'sea', page: '2' })
+
+    expect(requireUser).not.toHaveBeenCalled()
+    expect(repository.searchJobs).toHaveBeenCalledWith(expect.objectContaining({ mode: 'sea', sort: 'recent' }), 21, 20, undefined, { liveOnly: true })
+    expect(repository.getCandidateProfile).not.toHaveBeenCalled()
+    expect(repository.getSavedJobIds).not.toHaveBeenCalled()
+    expect(result.items).toEqual([{ job, isSaved: false, alreadyApplied: false, match: null, gateMatch: null }])
+    expect(result).toMatchObject({ page: 2, hasMore: false, profileReady: false, applied: [] })
+
+    await queries.getSignedOutJobsDiscovery({ sort: 'salary' })
+    expect(repository.searchJobs).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'salary' }), 21, 0, undefined, { liveOnly: true })
+  })
+
+  it('gives signed-out visitors the published job alone (round H, H5)', async () => {
+    const repository = makeRepository()
+    const requireUser = vi.fn(async () => { throw new Error('signed out') })
+    const queries = createJobsQueries({ requireUser, repository: repository as never })
+
+    await expect(queries.getSignedOutJobDetailState('job-1')).resolves.toEqual({ job, alreadyApplied: false, isSaved: false, match: null, gateMatch: null, profileReady: false })
+    expect(requireUser).not.toHaveBeenCalled()
+    expect(repository.hasApplied).not.toHaveBeenCalled()
+  })
 })

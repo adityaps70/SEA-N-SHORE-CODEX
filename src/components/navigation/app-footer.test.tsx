@@ -157,7 +157,7 @@ describe('RailFooter (compact right-rail footer)', () => {
     expect(source('src/app/(app)/activities/page.tsx')).toContain('<RailFooter visibleFrom="xl" />')
     expect(source('src/app/(app)/profile/page.tsx')).toContain('<RailFooter visibleFrom="lg" />')
     expect(source('src/app/(public)/people/[slug]/page.tsx')).toContain('<RailFooter visibleFrom="lg" />')
-    expect(source('src/app/(app)/jobs/[id]/page.tsx')).toContain('<RailFooter visibleFrom="lg" />')
+    expect(source('src/app/(public)/jobs/[id]/page.tsx')).toContain('<RailFooter visibleFrom="lg" />')
   })
 
   it('keeps the compact footer in both signed-in shells, which provide the group/shell hook', () => {

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from '@/components/navigation/intent-link'
 import { useState, useTransition } from 'react'
 import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { saveJob, unsaveJob } from '../actions'
@@ -21,6 +22,7 @@ export function SaveJobButton({
   compact = false,
   variant,
   jobTitle,
+  signInHref,
 }: {
   jobId: string
   initialSaved: boolean
@@ -28,6 +30,8 @@ export function SaveJobButton({
   variant?: SaveJobButtonVariant
   /** Names the job in the icon button's accessible label. */
   jobTitle?: string
+  /** Round H (H5): signed-out visitors get a link to sign in (coming back to the job) instead. */
+  signInHref?: string
 }) {
   const appearance: SaveJobButtonVariant = variant ?? (compact ? 'compact' : 'default')
   const [saved, setSaved] = useState(initialSaved)
@@ -37,6 +41,16 @@ export function SaveJobButton({
   const iconOnly = appearance === 'icon'
   // aria-pressed announces the saved state, so the label stays the same.
   const iconLabel = `Save ${jobTitle ?? 'job'}`
+
+  if (signInHref) {
+    return (
+      <div className={iconOnly ? 'relative z-10 inline-flex flex-col items-end' : 'inline-flex flex-col items-start'}>
+        <Link href={signInHref} aria-label={iconOnly ? iconLabel : undefined} className={VARIANT_CLASS[appearance]}>
+          {iconOnly ? <Bookmark aria-hidden="true" /> : <><Bookmark aria-hidden="true" className="size-4" /> Save</>}
+        </Link>
+      </div>
+    )
+  }
 
   return (
     <div className={iconOnly ? 'relative z-10 inline-flex flex-col items-end' : 'inline-flex flex-col items-start'}>

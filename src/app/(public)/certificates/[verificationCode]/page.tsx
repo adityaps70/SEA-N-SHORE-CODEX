@@ -1,9 +1,32 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { BadgeCheck, Info, ShieldCheck } from 'lucide-react'
 import { certificateRepository } from '@/features/learning/certificate-repository'
 import { certificateDisplayNumber, certificateValidity } from '@/features/learning/certificate-settings'
-import { CertificateNotVerified, isVerificationCode, isVisitor, JoinBar } from './certificate-verification-view'
+import { metaDescription } from '@/lib/seo/meta'
+import { CERTIFICATE_NOT_FOUND_METADATA, CertificateNotVerified, isVerificationCode, isVisitor, JoinBar } from './certificate-verification-view'
+
+type PageProps = { params: Promise<{ verificationCode: string }> }
+
+/** One lookup per request, shared by the metadata and the page. */
+const loadCertificate = cache((verificationCode: string) => certificateRepository.getCertificateByVerificationCode(verificationCode))
+
+/**
+ * Round H (H5): the tab and share title names the course, never the holder. Certificates are personal, so they are
+ * shareable but never indexed (no canonical either). The root '%s | Sea N Shore' template is replaced, hence absolute.
+ */
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { verificationCode } = await params
+  const certificate = isVerificationCode(verificationCode) ? await loadCertificate(verificationCode) : null
+  if (!certificate) return CERTIFICATE_NOT_FOUND_METADATA
+  return {
+    title: { absolute: `Certificate · ${certificate.courseTitle} · Sea N Shore` },
+    description: metaDescription(`Certificate of completion for ${certificate.courseTitle} issued on Sea N Shore Learning.`),
+    robots: { index: false },
+  }
+}
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat('en-IN', {
@@ -14,16 +37,12 @@ function dateLabel(value: string) {
   }).format(new Date(value))
 }
 
-export default async function CertificateVerificationPage({
-  params,
-}: {
-  params: Promise<{ verificationCode: string }>
-}) {
+export default async function CertificateVerificationPage({ params }: PageProps) {
   const { verificationCode } = await params
   // A malformed code can never match (and would make the uuid comparison fail): 404 with the same page.
   if (!isVerificationCode(verificationCode)) notFound()
   const [certificate, visitor] = await Promise.all([
-    certificateRepository.getCertificateByVerificationCode(verificationCode),
+    loadCertificate(verificationCode),
     isVisitor(),
   ])
   const joinBar = visitor ? <JoinBar /> : null

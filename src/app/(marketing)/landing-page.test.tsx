@@ -47,8 +47,7 @@ describe('public landing page', () => {
     await renderHome()
 
     const h1 = screen.getByRole('heading', { level: 1 })
-    expect(h1).toHaveTextContent('Welcome to the global community for')
-    expect(h1).toHaveTextContent('seafarers, shore staff, recruiters, trainers and ship managers')
+    expect(h1).toHaveAccessibleName('Welcome to the global community for seafarers, shore staff, recruiters, trainers and ship managers')
 
     const h2s = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)
     expect(h2s).toEqual([
@@ -225,6 +224,23 @@ describe('public landing page', () => {
     const blocks = [...container.querySelectorAll('script[type="application/ld+json"]')].map((script) => JSON.parse(script.textContent ?? '{}'))
     expect(blocks.map((block) => block['@type'])).toEqual(['Organization', 'FAQPage'])
     expect(blocks[1].mainEntity.length).toBeGreaterThanOrEqual(8)
+  })
+
+  it('gives the h1 one clean sentence, with the rotating word as decoration outside it (Round H, H5)', async () => {
+    const { container } = await renderHome()
+    const h1 = screen.getByRole('heading', { level: 1 })
+    // Search engines read the text itself: one sentence, no rotating words run together.
+    expect(h1.textContent).toBe('Welcome to the global community for seafarers, shore staff, recruiters, trainers and ship managers')
+    expect(h1.querySelectorAll('.sr-only')).toHaveLength(1)
+    expect(container.querySelectorAll('.hero2 .sr-only')).toHaveLength(1)
+
+    const rotator = container.querySelector('[data-rotating-words]')!
+    expect(h1.contains(rotator)).toBe(false)
+    expect(rotator).toHaveAttribute('aria-hidden', 'true')
+    expect(rotator.querySelector('.sr-only')).toBeNull()
+    // Still shown right after the h1, on the same heading line.
+    expect(h1.nextElementSibling).toBe(rotator)
+    expect(rotator.querySelector('.rw.on')).toHaveTextContent('seafarers')
   })
 
   it('has page metadata for search and sharing', () => {

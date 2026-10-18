@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { XCircle } from 'lucide-react'
@@ -8,6 +9,12 @@ const VERIFICATION_CODE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 export function isVerificationCode(value: string) {
   return VERIFICATION_CODE_PATTERN.test(value)
+}
+
+/** Round H (H5): the title of the "Certificate not verified" state, for an unknown code and for a malformed one (404). */
+export const CERTIFICATE_NOT_FOUND_METADATA: Metadata = {
+  title: { absolute: 'Certificate not found · Sea N Shore' },
+  robots: { index: false },
 }
 
 /** Signed-out visitor? Fails open to "visitor" so the page still renders if auth is down. */

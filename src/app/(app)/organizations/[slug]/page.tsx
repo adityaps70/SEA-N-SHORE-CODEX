@@ -49,17 +49,21 @@ import {
   parseOrganizationPageTab,
   websiteLabel,
 } from '@/features/organizations/organization-page-profile'
+import { organizationJsonLd, organizationMetadata } from '@/features/organizations/organization-seo'
 import { isWellbeingType, organizationTypeHasField, wellbeingServiceLabel } from '@/features/organizations/organization-types'
 import { organizationRepository } from '@/features/organizations/repository'
 import { getRelatedOrganizations } from '@/features/ranking/suggestions'
 import { organizationWorkspaceRepository, type OrganizationWorkspace } from '@/features/organizations/workspace-repository'
+import { siteOrigin } from '@/features/learning/course-seo'
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
+import { jsonLd } from '@/lib/seo/meta'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
   const workspace = await organizationWorkspaceRepository.getBySlug(slug).catch(() => null)
   if (!workspace) return { title: 'Organization' }
-  return { title: workspace.name, description: organizationTagline(workspace) ?? undefined }
+  // Round H (H5): canonical address (no ?tab=) and a plain-text description.
+  return organizationMetadata(workspace)
 }
 
 type Settled<T> = { ok: true; value: T } | { ok: false }
@@ -280,6 +284,8 @@ export default async function OrganizationPage({
 
   return (
     <div className="mx-auto w-full max-w-6xl py-2 sm:py-4 max-md:py-0">
+      {/* Round H (H5): schema.org Organization data (public page fields only). */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(organizationJsonLd(workspace, siteOrigin())) }} />
       <MobilePageBar
         backHref="/organizations"
         className="max-md:mb-0"

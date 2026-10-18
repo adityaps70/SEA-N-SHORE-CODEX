@@ -2,10 +2,13 @@ import type { Metadata } from 'next'
 import { BusinessContactDetails } from '@/components/legal/business-contact-details'
 import { LegalList, LegalPage, LegalSection, RelatedPolicies, TextLink } from '@/components/legal/legal-page'
 import { BUSINESS, grievanceContact } from '@/config/business'
+import { metaDescription } from '@/lib/seo/meta'
 
+// Round H (H5): a canonical address and a plain-text search description.
 export const metadata: Metadata = {
   title: 'Contact us',
-  description: `Contact ${BUSINESS.brandName}, operated by ${BUSINESS.legalName}, ${BUSINESS.city}.`,
+  description: metaDescription(`Contact ${BUSINESS.brandName}, operated by ${BUSINESS.legalName}, ${BUSINESS.city}.`),
+  alternates: { canonical: '/contact' },
 }
 
 export default function ContactPage() {

@@ -12,8 +12,8 @@ vi.mock('@/features/learning/certificate-repository', () => ({
   certificateRepository: { getCertificateByVerificationCode: mocks.getCertificateByVerificationCode },
 }))
 
-import CertificateVerificationPage from './page'
-import CertificateNotFound from './not-found'
+import CertificateVerificationPage, { generateMetadata } from './page'
+import CertificateNotFound, { metadata as notFoundMetadata } from './not-found'
 
 const verificationCode = '55555555-5555-4555-8555-555555555555'
 const certificate = {
@@ -137,5 +137,31 @@ describe('/certificates/[verificationCode]', () => {
     render(await CertificateVerificationPage({ params: Promise.resolve({ verificationCode }) }))
     expect(screen.getByRole('heading', { name: 'Certificate verified' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Join now' })).toBeInTheDocument()
+  })
+
+  describe('metadata (Round H, H5)', () => {
+    it('names the course, not the holder, ignores the root title template and is not indexed', async () => {
+      mocks.getCertificateByVerificationCode.mockResolvedValue(certificate)
+      const metadata = await generateMetadata({ params: Promise.resolve({ verificationCode }) })
+      expect(metadata.title).toEqual({ absolute: 'Certificate · SIRE 2.0 Readiness · Sea N Shore' })
+      expect(metadata.description).toBe('Certificate of completion for SIRE 2.0 Readiness issued on Sea N Shore Learning.')
+      expect(JSON.stringify(metadata)).not.toContain('Aarav Mehta')
+      expect(metadata.robots).toEqual({ index: false })
+      expect(metadata.alternates).toBeUndefined()
+    })
+
+    it('says "Certificate not found" for an unknown code, and for a malformed one without querying', async () => {
+      mocks.getCertificateByVerificationCode.mockResolvedValue(null)
+      const unknown = await generateMetadata({ params: Promise.resolve({ verificationCode }) })
+      expect(unknown.title).toEqual({ absolute: 'Certificate not found · Sea N Shore' })
+      expect(unknown.robots).toEqual({ index: false })
+
+      mocks.getCertificateByVerificationCode.mockClear()
+      const malformed = await generateMetadata({ params: Promise.resolve({ verificationCode: 'abc' }) })
+      expect(malformed.title).toEqual({ absolute: 'Certificate not found · Sea N Shore' })
+      expect(mocks.getCertificateByVerificationCode).not.toHaveBeenCalled()
+      // The 404 page (malformed codes) shows the same "not verified" state under the same title.
+      expect(notFoundMetadata).toEqual(unknown)
+    })
   })
 })

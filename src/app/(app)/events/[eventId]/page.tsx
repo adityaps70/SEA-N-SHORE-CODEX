@@ -15,11 +15,14 @@ import { EventNav } from '@/features/events/components/event-nav'
 import { EventShareButton } from '@/features/events/components/event-share-button'
 import { eventDetailDateLine } from '@/features/events/event-dates'
 import { eventFormatLabel, eventPlaceShort, eventPriceLabel, eventPublisherHref } from '@/features/events/event-labels'
+import { eventJsonLd, eventMetadata } from '@/features/events/event-seo'
+import { siteOrigin } from '@/features/learning/course-seo'
 import { EventCheckoutButton } from '@/features/payments/components/event-checkout-button'
 import { CURRENCY_UNAVAILABLE_BUYER_MESSAGE } from '@/features/payments/event-payment-rules'
 import { getPaymentCapabilities } from '@/features/payments/provider'
 import { isPaymentCurrency } from '@/features/payments/currency'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
+import { jsonLd } from '@/lib/seo/meta'
 
 function dateTime(value: string, timeZone: string) {
   try {
@@ -66,7 +69,9 @@ export async function generateMetadata({ params }: { params: Promise<{ eventId: 
   const user = await requireAwsUser()
   const { eventId } = await params
   const event = await loadEvent(eventId, user.id)
-  return { title: event ? event.title : 'Event not found' }
+  if (!event) return { title: 'Event not found' }
+  // Round H (H5): drafts keep a bare title; published and cancelled events get a canonical address and description.
+  return event.status === 'draft' ? { title: event.title } : eventMetadata(event)
 }
 
 export default async function EventDetailPage({ params }: { params: Promise<{ eventId: string }> }) {
@@ -124,6 +129,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-0 max-md:py-0">
+      {/* Round H (H5): schema.org Event data for listed events only (not drafts or plan-hidden events). */}
+      {event.status !== 'draft' && !event.hiddenForPlan ? (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(eventJsonLd(event, siteOrigin())) }} />
+      ) : null}
       <MobilePageBar
         backHref="/events"
         className="max-md:mb-0"

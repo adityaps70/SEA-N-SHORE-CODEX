@@ -395,7 +395,9 @@
 .lp .h2pill{display:inline-flex;align-items:center;gap:10px;padding:8px 14px 8px 12px;border-radius:99px;background:#fff;border:1px solid #D6E6E7;font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--teal-d);box-shadow:0 8px 24px -16px rgba(6,24,43,.4)}
 .lp .h2pill .dot{width:8px;height:8px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 0 rgba(25,195,177,.6);animation:lp-ping 2s infinite}
 @keyframes lp-ping{70%{box-shadow:0 0 0 10px rgba(25,195,177,0)}100%{box-shadow:0 0 0 0 rgba(25,195,177,0)}}
-.lp .hero2 h1{margin-top:22px;font-size:clamp(40px,5.2vw,68px);line-height:1.02;font-weight:800;color:var(--navy);letter-spacing:-.03em}
+/* Round H (H5): the heading line is .h2title (the h1 plus the aria-hidden rotating word after it); the h1 flows inline in it. */
+.lp .hero2 .h2title{margin-top:22px;font-family:var(--display);font-size:clamp(40px,5.2vw,68px);line-height:1.02;font-weight:800;color:var(--navy);letter-spacing:-.03em;text-wrap:balance}
+.lp .hero2 .h2title h1{display:inline;font:inherit;letter-spacing:inherit;color:inherit}
 .lp .rot{position:relative;display:inline-grid;vertical-align:bottom;color:var(--teal-d)}
 .lp .rot .rw{grid-area:1/1;white-space:nowrap;opacity:0;transform:translateY(.45em);filter:blur(6px);transition:opacity .55s cubic-bezier(.22,1,.36,1),transform .55s cubic-bezier(.22,1,.36,1),filter .55s}
 .lp .rot .rw.on{opacity:1;transform:none;filter:none}
@@ -561,7 +563,7 @@
   /* Hero: headline, sign-in options and one product card. */
   .lp .h2grid{padding-block:24px 36px;gap:24px}
   .lp .h2pill,.lp .h2lead{display:none}
-  .lp .hero2 h1{margin-top:0;font-size:34px;line-height:1.08}
+  .lp .hero2 .h2title{margin-top:0;font-size:34px;line-height:1.08}
   .lp .signin{margin-top:22px;gap:10px}
   .lp .sbtn{min-height:52px}
   .lp .terms{margin-top:4px}

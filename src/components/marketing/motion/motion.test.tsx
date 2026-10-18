@@ -157,6 +157,15 @@ describe('RotatingWords', () => {
     await waitFor(() => expect(screen.getByText('seafarers')).toHaveClass('on'))
   })
 
+  it('is decoration only, hidden from assistive technology, without a label (Round H, H5)', () => {
+    stubMatchMedia()
+    const { container } = render(<RotatingWords words={['seafarers', 'trainers']} />)
+    const rotator = container.querySelector('[data-rotating-words]')!
+    expect(rotator).toHaveAttribute('aria-hidden', 'true')
+    expect(rotator.querySelector('.sr-only')).toBeNull()
+    expect(screen.getByText('seafarers')).toHaveClass('rw', 'on')
+  })
+
   it('stays on the first word with reduced motion', async () => {
     stubMatchMedia({ reduce: true })
     render(<RotatingWords words={['seafarers', 'trainers']} label="seafarers and trainers" interval={10} />)

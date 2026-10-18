@@ -16,6 +16,7 @@ export function ApplyJobButton({
   label,
   gate,
   source,
+  signInHref,
 }: {
   jobId: string
   alreadyApplied: boolean
@@ -28,6 +29,8 @@ export function ApplyJobButton({
   label?: string
   /** Round G: where the member found the job (counted on Admin › Ranking health). */
   source?: string
+  /** Round H (H5): signed-out visitors get a link to sign in (coming back to the job) instead. */
+  signInHref?: string
 }) {
   const bar = variant === 'bar'
   const [submitted, setSubmitted] = useState(alreadyApplied)
@@ -49,6 +52,15 @@ export function ApplyJobButton({
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [open, pending])
+
+  const triggerClass = bar
+    ? 'inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-wait disabled:opacity-60'
+    : compact
+    ? 'inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'
+    : 'inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'
+  const triggerContent = <>{bar ? <Zap aria-hidden="true" className="size-4" /> : <Send aria-hidden="true" className="size-4" />} {label ?? (compact || bar ? 'Easy Apply' : 'Apply now')}</>
+
+  if (signInHref) return <Link href={signInHref} className={triggerClass}>{triggerContent}</Link>
 
   if (submitted) {
     return (
@@ -176,13 +188,9 @@ export function ApplyJobButton({
           setError('')
           setOpen(true)
         }}
-        className={bar
-          ? 'inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-wait disabled:opacity-60'
-          : compact
-          ? 'inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'
-          : 'inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'}
+        className={triggerClass}
       >
-        {bar ? <Zap aria-hidden="true" className="size-4" /> : <Send aria-hidden="true" className="size-4" />} {label ?? (compact || bar ? 'Easy Apply' : 'Apply now')}
+        {triggerContent}
       </button>
 
       {open ? (

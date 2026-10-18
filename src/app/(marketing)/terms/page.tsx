@@ -2,8 +2,14 @@ import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { LegalList, LegalPage, LegalSection, RelatedPolicies, TextLink } from '@/components/legal/legal-page'
 import { BUSINESS, businessAddressLine } from '@/config/business'
+import { metaDescription } from '@/lib/seo/meta'
 
-export const metadata: Metadata = { title: 'Terms' }
+// Round H (H5): a canonical address and a plain-text search description.
+export const metadata: Metadata = {
+  title: 'Terms',
+  description: metaDescription(`The terms for using ${BUSINESS.brandName}: professional and lawful use, your content, our materials, copyright complaints, payments and plans.`),
+  alternates: { canonical: '/terms' },
+}
 
 export default function TermsPage() {
   return (

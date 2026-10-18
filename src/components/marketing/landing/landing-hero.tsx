@@ -7,6 +7,8 @@ import { JobCardPreview, ProfileCardPreview } from './app-cards'
 import { LANDING_LINKS } from './landing-links'
 
 const AUDIENCE_WORDS = ['seafarers', 'shore staff', 'recruiters', 'trainers', 'ship managers'] as const
+const HERO_TITLE_START = 'Welcome to the global community for'
+const HERO_AUDIENCE = 'seafarers, shore staff, recruiters, trainers and ship managers'
 
 function SignInOptions({ googleEnabled }: { googleEnabled: boolean }) {
   return (
@@ -61,9 +63,17 @@ export function LandingHero({ signedIn, googleEnabled }: { signedIn: boolean; go
             <span className="dot" aria-hidden="true" />
             The professional network for maritime
           </Enter>
-          <Enter as="h1" id="hero-title" delay={1}>
-            Welcome to the global community for{' '}
-            <RotatingWords words={AUDIENCE_WORDS} label="seafarers, shore staff, recruiters, trainers and ship managers" />
+          {/*
+            Round H (H5): the h1 holds one clean sentence (search engines read its text, not the screen-reader list):
+            the visible start plus the audience list, visually hidden. The rotating word sits right after the h1
+            (shown inline, so it still reads "…community for seafarers") as aria-hidden decoration.
+          */}
+          <Enter className="h2title" delay={1}>
+            <h1 id="hero-title">
+              {HERO_TITLE_START}{' '}
+              <span className="sr-only">{HERO_AUDIENCE}</span>
+            </h1>
+            <RotatingWords words={AUDIENCE_WORDS} />
           </Enter>
           <Enter as="p" className="h2lead" delay={2}>
             Build your Maritime Passport, see your fit for every job, learn from verified trainers and follow the companies that crew the world’s fleet.

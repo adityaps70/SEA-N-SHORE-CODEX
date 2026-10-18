@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
+import { metaDescription } from '@/lib/seo/meta'
 import { coursePrice, isPaidCourse } from './course-pricing'
 import type { MarketplaceCourse } from './marketplace-repository'
 
@@ -22,12 +23,13 @@ export function courseCoverPath(thumbnailPath: string | null) {
   return thumbnailPath ? `/api/learning-media/${thumbnailPath}` : null
 }
 
-/** One or two sentences for search results and share cards. */
+/**
+ * One or two sentences for search results and share cards.
+ * Round H (H5): plain text via the shared metaDescription (Markdown markers and emoji removed, at most 160 characters);
+ * the description is used when the subtitle is empty or has nothing left once those are removed.
+ */
 export function courseMetaDescription(course: Pick<MarketplaceCourse, 'subtitle' | 'description'>) {
-  const text = (course.subtitle?.trim() || course.description).replace(/\s+/g, ' ').trim()
-  if (text.length <= 160) return text
-  const cut = text.slice(0, 157)
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 120)).trimEnd()}…`
+  return metaDescription(course.subtitle, course.description)
 }
 
 export function courseMetadata(course: MarketplaceCourse): Metadata {

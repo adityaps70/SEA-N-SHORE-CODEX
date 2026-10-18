@@ -22,7 +22,7 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
     for (const page of [
       'src/components/product/product-surface.tsx',
       'src/app/(app)/events/page.tsx',
-      'src/app/(app)/jobs/page.tsx',
+      'src/app/(public)/jobs/page.tsx',
       'src/app/(app)/network/page.tsx',
       'src/app/(app)/activities/page.tsx',
     ]) {
@@ -31,7 +31,7 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
   })
 
   it('uses sea-green for the prominent Jobs hero action', () => {
-    const jobs = source('src/app/(app)/jobs/page.tsx')
+    const jobs = source('src/app/(public)/jobs/page.tsx')
     expect(jobs).toContain('bg-teal-400')
     expect(jobs).toContain('hover:bg-teal-300')
   })
