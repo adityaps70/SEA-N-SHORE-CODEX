@@ -63,7 +63,8 @@ describe('Settings › Account › Active sessions (Round H, H3)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out of other devices' }))
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Your session expired. Please sign in again.'))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sign out of other devices' }))
+    // The error can render a beat before the transition ends and the button leaves "Signing out…".
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign out of other devices' }))
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Signed out of 2 other devices.'))
     expect(mocks.signOutOtherSessionsAction).toHaveBeenCalledTimes(2)
   })
