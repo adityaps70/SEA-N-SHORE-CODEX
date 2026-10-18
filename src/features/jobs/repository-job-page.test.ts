@@ -36,6 +36,7 @@ describe('jobs repository: job page extras (Round H, H7)', () => {
     const text = seen[0]!.text
     expect(text).toContain(LIVE_JOB_SQL)
     expect(text).toContain('j.id <> $1')
+    expect(text).toMatch(/^with similar_jobs as \(/)
     expect(text).toContain('where s.same_role or s.same_department or s.same_vessel')
     expect(text).toMatch(/order by s\.same_role desc, s\.same_department desc, s\.same_vessel desc,\s+coalesce\(j\.published_at, j\.created_at\) desc/)
     expect(seen[0]?.values).toEqual(['job-1', ['chief_officer'], 'Chief Officer', 'deck_officers', null, ['Oil Tanker'], 4])

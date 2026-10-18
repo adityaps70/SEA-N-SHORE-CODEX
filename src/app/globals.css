@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 :root {
+  /* Self-hosted faces (src/app/layout.tsx): each joins its latin and latin-ext files. The latin-ext variable ends
+     with the size-adjusted fallback face, so it goes last. */
+  --font-body: var(--font-body-latin), var(--font-body-latin-ext);
+  --font-heading-face: var(--font-heading-latin), var(--font-heading-latin-ext);
   --navy-950: #071b2d;
   --navy-900: #0b2740;
   --navy-800: #11314d;

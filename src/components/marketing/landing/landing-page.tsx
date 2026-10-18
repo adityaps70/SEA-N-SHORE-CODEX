@@ -1,3 +1,4 @@
+import localFont from 'next/font/local'
 import { MainLandmark } from '@/components/layout/main-landmark'
 import type { FaqItem } from '@/components/marketing/faq/faq-data'
 import { MotionRoot, ScrollProgress } from '@/components/marketing/motion'
@@ -16,8 +17,24 @@ export type LandingPageProps = {
   faqs: FaqItem[]
 }
 
-const FONTS_HREF =
-  'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&display=swap'
+/*
+ * The landing faces, self-hosted from ./fonts (latin subset, SIL OFL 1.1) so the page makes no request to Google and the
+ * CSP needs no Google Fonts hosts. Bricolage Grotesque (variable, optical size and weight) for display headings, Figtree
+ * (variable weight) for body text. landing.css reads them as --display and --body; the app's own Inter (--font-body,
+ * from the root layout) covers the product mock-ups.
+ */
+const landingDisplayFont = localFont({
+  src: './fonts/bricolage-grotesque-latin-opsz-normal.woff2',
+  weight: '200 800',
+  variable: '--font-landing-display',
+  display: 'swap',
+})
+const landingBodyFont = localFont({
+  src: './fonts/figtree-latin-wght-normal.woff2',
+  weight: '300 900',
+  variable: '--font-landing-body',
+  display: 'swap',
+})
 
 /**
  * The public Sea N Shore landing page (approved design, Sept 2026).
@@ -26,12 +43,7 @@ const FONTS_HREF =
  */
 export function LandingPage({ signedIn, googleEnabled, prices, faqs }: LandingPageProps) {
   return (
-    <MotionRoot className="lp">
-      {/* React hoists these into <head>. Fonts fall back to system faces if blocked. */}
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-      <link rel="stylesheet" href={FONTS_HREF} precedence="default" />
-
+    <MotionRoot className={`lp ${landingDisplayFont.variable} ${landingBodyFont.variable}`}>
       {/* Round H (H8): members get "Skip to content" from the app chrome, before its header. */}
       {signedIn ? null : <a className="skip" href="#main-content">Skip to content</a>}
       {/* Round H (H6): members get the fixed app header, so the landing's own header and top progress bar are left out. */}

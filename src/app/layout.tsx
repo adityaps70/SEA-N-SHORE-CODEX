@@ -1,16 +1,56 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Plus_Jakarta_Sans } from 'next/font/google'
+import localFont from 'next/font/local'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import './globals.css'
 
 /*
- * Self-hosted by next/font (downloaded at build time, served from our own origin: no request to
- * Google at runtime). Inter is the body and UI face; Plus Jakarta Sans is the heading face. Both are
- * exposed as CSS variables and mapped to Tailwind's `font-sans` and `font-heading` in globals.css.
- * To try another heading face, change only `headingFont` below.
+ * Self-hosted from the repo (src/app/fonts, SIL OFL 1.1), so a build never fetches from Google and the site makes no
+ * request to Google at runtime. Inter is the body and UI face; Plus Jakarta Sans is the heading face.
+ *
+ * Each face comes in two files: latin (preloaded) and latin-ext (accented names such as Ł, Ş or ő; the browser fetches
+ * it only when a page shows one of those characters). next/font applies `declarations` to every file in a call, so each
+ * subset is its own call with its own unicode-range. globals.css joins each pair into --font-body and
+ * --font-heading-face, which Tailwind's `font-sans` and `font-heading` use. Only the latin-ext call carries the
+ * size-adjusted fallback face, so it comes last in the joined list. To try another heading face, change the two
+ * heading calls below. next/font only reads literal values, so the two unicode ranges are written out in each call.
  */
-const bodyFont = Inter({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
-const headingFont = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['600', '700'], variable: '--font-heading-face', display: 'swap' })
+const bodyLatin = localFont({
+  src: './fonts/inter-latin-wght-normal.woff2',
+  weight: '100 900',
+  variable: '--font-body-latin',
+  display: 'swap',
+  adjustFontFallback: false,
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
+})
+const bodyLatinExt = localFont({
+  src: './fonts/inter-latin-ext-wght-normal.woff2',
+  weight: '100 900',
+  variable: '--font-body-latin-ext',
+  display: 'swap',
+  preload: false,
+  declarations: [{ prop: 'unicode-range', value: 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF' }],
+})
+const headingLatin = localFont({
+  src: [
+    { path: './fonts/plus-jakarta-sans-latin-600-normal.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/plus-jakarta-sans-latin-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-heading-latin',
+  display: 'swap',
+  adjustFontFallback: false,
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
+})
+const headingLatinExt = localFont({
+  src: [
+    { path: './fonts/plus-jakarta-sans-latin-ext-600-normal.woff2', weight: '600', style: 'normal' },
+    { path: './fonts/plus-jakarta-sans-latin-ext-700-normal.woff2', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-heading-latin-ext',
+  display: 'swap',
+  preload: false,
+  declarations: [{ prop: 'unicode-range', value: 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF' }],
+})
+const fontVariables = [bodyLatin, bodyLatinExt, headingLatin, headingLatinExt].map((font) => font.variable).join(' ')
 
 function siteUrl() {
   try {
@@ -54,7 +94,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${bodyFont.variable} ${headingFont.variable}`}>
+    <html lang="en" className={fontVariables}>
       <body>{children}</body>
     </html>
   )
