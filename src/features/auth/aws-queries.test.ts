@@ -99,6 +99,31 @@ describe('AWS auth queries', () => {
     }
   })
 
+  it('refuses a device whose session was signed out (Round H, H3), and accepts untracked and active sessions', async () => {
+    const { createAwsAuthQueries } = await import('./aws-queries')
+    const base = {
+      getPrincipal: vi.fn(async () => principal),
+      resolveProfileId: vi.fn(async () => '11111111-1111-4111-8111-111111111111'),
+      provisionProfileId: vi.fn(async () => '22222222-2222-4222-8222-222222222222'),
+      getProfileAccountStatus: vi.fn(async () => 'active' as const),
+    }
+
+    const revoked = createAwsAuthQueries({ ...base, checkSession: vi.fn(async () => ({ status: 'revoked' as const })) })
+    await expect(revoked.getAwsVerifiedUser()).resolves.toBeNull()
+    await expect(revoked.getAwsVerification()).resolves.toEqual({ user: null, sessionRevoked: true })
+    await expect(revoked.requireAwsUser()).rejects.toThrow('Authentication required.')
+
+    for (const status of ['active', 'untracked'] as const) {
+      const checkSession = vi.fn(async () => ({ status }))
+      const queries = createAwsAuthQueries({ ...base, checkSession })
+      await expect(queries.getAwsVerifiedUser()).resolves.toMatchObject({ id: '11111111-1111-4111-8111-111111111111' })
+      expect(checkSession).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111')
+    }
+
+    const signedOut = createAwsAuthQueries({ ...base, getPrincipal: vi.fn(async () => null), checkSession: vi.fn() })
+    await expect(signedOut.getAwsVerification()).resolves.toEqual({ user: null, sessionRevoked: false })
+  })
+
   it('treats only a real Cognito authorization failure as an unauthenticated principal', async () => {
     const { resolveCognitoPrincipalFromAccessToken } = await import('./aws-queries')
     const api = {

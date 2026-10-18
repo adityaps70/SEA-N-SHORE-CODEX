@@ -12,6 +12,7 @@ import {
   Landmark,
   LockKeyhole,
   Mail,
+  MonitorSmartphone,
   ShieldCheck,
   SquarePlus,
   Wallet,
@@ -35,11 +36,12 @@ const SETTINGS_CARDS: Array<{ href: string; title: string; description: string; 
   { href: '/settings/verifications', title: 'Professional verifications', icon: BadgeCheck, description: 'Apply for or review Recruiter, Trainer and Event Host verification.' },
   { href: '/organizations', title: 'Organizations', icon: Building2, description: 'Create, claim or manage organization workspaces and roles.' },
   { href: '/creator', title: 'Creator access', icon: SquarePlus, description: 'See publishing readiness for Jobs, Events and LMS in one place.' },
-  { href: '/settings/notifications', title: 'Email notifications', icon: BellRing, description: 'Choose whether course and learning updates also come by email.' },
+  { href: '/settings/notifications', title: 'Email notifications', icon: BellRing, description: 'Choose which emails you get: messages, connection requests, comments, mentions, jobs and learning.' },
   { href: '/newsletter', title: 'Newsletter', icon: Mail, description: 'Subscribe, choose topics or unsubscribe from Sea N Shore emails.' },
   { href: '/settings/blocked', title: 'Blocked & muted', icon: Ban, description: 'See the people you blocked or muted, and undo either.' },
   { href: '/settings/privacy', title: 'Privacy settings', description: 'Choose who can find you, message you and see your connections.' },
   { href: '/privacy', title: 'Privacy policy', description: 'Read how profile, community, jobs, learning, and messaging data is used.' },
+  { href: '/settings/account', title: 'Password, email & sessions', icon: MonitorSmartphone, description: 'Change your password or email, sign out other devices and get 2FA backup codes.' },
   { href: '/settings/security', title: 'Two-step verification', icon: KeyRound, description: 'Add an authenticator app code to your password sign-in.' },
 ]
 

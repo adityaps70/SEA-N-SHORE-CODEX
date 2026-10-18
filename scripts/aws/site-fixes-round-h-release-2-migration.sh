@@ -208,4 +208,28 @@ done
   || { echo "member_preferences.allow_search_indexing is missing after apply." >&2; exit 1; }
 echo "H_RELEASE_2_SCHEMA_VERIFIED=true"
 
+# Round H release 2, H3 email notifications: checks after apply (schema only; no row is rewritten).
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'member_preferences' AND column_name IN ('email_messages_digest', 'email_connection_requests', 'email_comments', 'email_mentions') AND data_type = 'boolean' AND is_nullable = 'NO' AND column_default = 'true'")" == "4" ]] \
+  || { echo "The four member_preferences email switches (boolean, not null, default true) are missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'member_message_digests' AND column_name IN ('profile_id', 'last_sent_at', 'covered_until', 'updated_at')")" == "4" ]] \
+  || { echo "public.member_message_digests is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'member_notification_emails' AND column_name IN ('id', 'dedupe_key', 'recipient_id', 'kind', 'notification_id', 'payload', 'status', 'attempts', 'next_attempt_at', 'sent_at')")" == "10" ]] \
+  || { echo "public.member_notification_emails is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('member_notification_emails_dedupe_key_key', 'member_notification_emails_due_idx', 'notifications_email_candidates_idx', 'messages_created_at_idx')")" == "4" ]] \
+  || { echo "The H3 email notification indexes are missing after apply." >&2; exit 1; }
+echo "H_RELEASE_2_H3_EMAIL_NOTIFICATIONS_SCHEMA_VERIFIED=true"
+
+# Round H release 2, H3 account security: checks after apply (schema only; new tables, no row is rewritten).
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'auth_sessions' AND column_name IN ('id', 'profile_id', 'token_origin_hash', 'sign_in_method', 'created_at', 'last_seen_at', 'revoked_at', 'revoke_reason', 'user_agent_summary', 'approx_city', 'approx_country', 'ip_hash')")" == "12" ]] \
+  || { echo "public.auth_sessions is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'mfa_backup_codes' AND column_name IN ('id', 'profile_id', 'batch_id', 'code_salt', 'code_hash', 'created_at', 'used_at')")" == "7" ]] \
+  || { echo "public.mfa_backup_codes is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'account_security_attempts' AND column_name IN ('id', 'profile_id', 'action', 'created_at')")" == "4" ]] \
+  || { echo "public.account_security_attempts is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'account_security_emails' AND column_name IN ('id', 'profile_id', 'kind', 'recipient_email', 'payload', 'status', 'attempts', 'next_attempt_at', 'sent_at')")" == "9" ]] \
+  || { echo "public.account_security_emails is missing after apply." >&2; exit 1; }
+[[ "$(read_count "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('auth_sessions_token_origin_hash_key', 'auth_sessions_profile_active_idx', 'mfa_backup_codes_profile_unused_idx', 'account_security_attempts_lookup_idx', 'account_security_emails_due_idx')")" == "5" ]] \
+  || { echo "The H3 account security indexes are missing after apply." >&2; exit 1; }
+echo "H_RELEASE_2_H3_ACCOUNT_SECURITY_SCHEMA_VERIFIED=true"
+
 echo "SITE_FIXES_ROUND_H_RELEASE_2_MIGRATION_APPLY_VERIFIED=true"

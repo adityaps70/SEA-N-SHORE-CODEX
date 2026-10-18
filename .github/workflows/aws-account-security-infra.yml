@@ -5,6 +5,7 @@ on:
     branches:
       - feat/aws-native-phase-0-1
     paths:
+      - infra/aws/app/auth.tf
       - infra/aws/app/email-dns.tf
       - infra/aws/app/unconfirmed-user-cleanup.tf
       - infra/aws/app/aurora-app-role.tf
@@ -74,7 +75,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/account-security-infra-action.txt
-          RUNNER_FILES: "infra/aws/app/email-dns.tf infra/aws/app/unconfirmed-user-cleanup.tf infra/aws/app/aurora-app-role.tf infra/aws/app/lambda/aurora-app-secret-rotation.mjs scripts/aws/account-security-infra.sh scripts/aws/account-security-infra.test.mjs"
+          RUNNER_FILES: "infra/aws/app/auth.tf infra/aws/app/email-dns.tf infra/aws/app/unconfirmed-user-cleanup.tf infra/aws/app/aurora-app-role.tf infra/aws/app/lambda/aurora-app-secret-rotation.mjs scripts/aws/account-security-infra.sh scripts/aws/account-security-infra.test.mjs"
         shell: bash
         run: |
           set -euo pipefail

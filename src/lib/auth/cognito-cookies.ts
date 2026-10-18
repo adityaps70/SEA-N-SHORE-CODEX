@@ -10,6 +10,8 @@ export const COGNITO_COOKIE_NAMES = {
   oauthIntent: 'sns_cognito_oauth_intent',
   mfaChallenge: 'sns_cognito_mfa_challenge',
   mfaChallengeUser: 'sns_cognito_mfa_challenge_user',
+  /** Round H (H3): a server-keyed signature tying the MFA challenge to its user, for the backup code step. */
+  mfaChallengeBinding: 'sns_cognito_mfa_binding',
 } as const
 
 type CookieOptions = {
@@ -92,7 +94,7 @@ export function createCognitoCookieManager(
     },
 
     /** Round 14 (2.11): the Cognito session between the password and the authenticator code (HTTP-only, 10 min). */
-    setMfaChallenge(input: { session: string; username: string }) {
+    setMfaChallenge(input: { session: string; username: string; binding?: string | null }) {
       const challengeOptions = {
         ...baseOptions,
         maxAge: CHALLENGE_MAX_AGE_SECONDS,
@@ -100,11 +102,15 @@ export function createCognitoCookieManager(
 
       store.set(COGNITO_COOKIE_NAMES.mfaChallenge, input.session, challengeOptions)
       store.set(COGNITO_COOKIE_NAMES.mfaChallengeUser, input.username, challengeOptions)
+      // Round H (H3): only the server can make this value, so a backup code is only ever checked for the member
+      // whose password step just succeeded on this browser.
+      if (input.binding) store.set(COGNITO_COOKIE_NAMES.mfaChallengeBinding, input.binding, challengeOptions)
     },
 
     clearMfaChallenge() {
       store.delete(COGNITO_COOKIE_NAMES.mfaChallenge)
       store.delete(COGNITO_COOKIE_NAMES.mfaChallengeUser)
+      store.delete(COGNITO_COOKIE_NAMES.mfaChallengeBinding)
     },
 
     setPhoneChallenge(input: { session: string; username: string }) {
@@ -151,6 +157,7 @@ export function createCognitoCookieManager(
       store.delete(COGNITO_COOKIE_NAMES.oauthIntent)
       store.delete(COGNITO_COOKIE_NAMES.mfaChallenge)
       store.delete(COGNITO_COOKIE_NAMES.mfaChallengeUser)
+      store.delete(COGNITO_COOKIE_NAMES.mfaChallengeBinding)
     },
   }
 }

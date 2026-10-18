@@ -4,7 +4,7 @@ import { emitMetric } from '@/lib/observability/emf'
  * Round H (H1): a small outside-in health check with no paid service. Once a minute the outbox worker
  * (which always runs) requests the home page and /api/health through the public site, like a
  * visitor, and writes SiteUp (1 or 0) and the response time as CloudWatch metrics. The alarm fires
- * when a check fails for 3 minutes in a row, and also when the metric stops arriving.
+ * when a check fails for 3 minutes in a row; a pause in the probe itself (missing data) does not page.
  */
 export const SITE_HEALTH_PROBE_MS = 60_000
 export const SITE_HEALTH_TIMEOUT_MS = 10_000

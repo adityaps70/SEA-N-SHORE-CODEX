@@ -1,14 +1,26 @@
 import { redirect } from 'next/navigation'
 import { cache } from 'react'
-import { getAwsVerifiedUser } from '@/features/auth/aws-queries'
+import { getAwsVerification, getAwsVerifiedUser } from '@/features/auth/aws-queries'
 import { getOnboardingProfileFromAurora } from '@/features/profiles/onboarding-repository'
+import { SESSION_ENDED_PATH } from '@/features/account-security/paths'
 
 export const getVerifiedUser = cache(getAwsVerifiedUser)
 
 export async function requireUser() {
   const user = await getVerifiedUser()
-  if (!user) redirect('/auth/sign-in')
+  if (!user) {
+    // Round H (H3): a device signed out from another device has its auth cookies cleared on the way to sign-in.
+    redirect((await sessionWasSignedOut()) ? SESSION_ENDED_PATH : '/auth/sign-in')
+  }
   return user
+}
+
+async function sessionWasSignedOut() {
+  try {
+    return (await getAwsVerification()).sessionRevoked
+  } catch {
+    return false
+  }
 }
 
 export async function getOwnProfileOnboardingState(userId: string) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const storagePath = 'infra/aws/app/storage.tf'
 const bootstrapPath = 'infra/aws/bootstrap/main.tf'
@@ -70,9 +71,10 @@ test('GitHub staging deploy role can apply and verify CORS only on the staging m
 test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and guarded', () => {
   const workflow = readFileSync(iamWorkflowPath, 'utf8')
   const script = readFileSync(iamScriptPath, 'utf8')
-  const action = readFileSync(iamActionPath, 'utf8').trim()
+  // The guard reads "plan", or "<action> <40-hex SHA it arms>" (scripts/aws/arm-commit-guard.sh).
+  const action = guardAction(readFileSync(iamActionPath, 'utf8'))
 
-  assert.ok(['plan', 'apply-once', 'apply-production-access-once'].includes(action))
+  assert.ok(['plan', 'apply-once', 'apply-production-access-once'].includes(action), `Unexpected deploy IAM guard: ${action}`)
 
   assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
   assert.match(workflow, /environment:\s*staging/)

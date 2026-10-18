@@ -4,6 +4,7 @@ import { CognitoApiError, createCognitoApi, type CognitoPrincipal } from '@/lib/
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { createCognitoPrincipalResolver } from '@/lib/auth/cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
+import { checkCurrentSession } from '@/features/account-security/session-runtime'
 import {
   getProfileAccountStatus,
   provisionProfileForCognitoPrincipal,
@@ -21,6 +22,14 @@ type ResolveProfileId = (sub: string) => Promise<string | null>
 type ProvisionProfileId = (principal: CognitoPrincipal) => Promise<string>
 type GetProfileAccountStatus = (profileId: string) => Promise<'active' | 'restricted' | 'suspended' | 'deletion_requested' | null>
 type CacheVerifiedUser = <T>(loader: () => Promise<T>) => () => Promise<T>
+/** Round H (H3): this device's session state (see features/account-security/session-guard). */
+type CheckSession = (profileId: string) => Promise<{ status: 'active' | 'revoked' | 'untracked' }>
+
+export type AwsVerification = {
+  user: AwsVerifiedUser | null
+  /** True when the Cognito tokens are valid but this device was signed out (Settings › Account). */
+  sessionRevoked: boolean
+}
 
 export class AwsAuthenticationRequiredError extends Error {
   constructor() {
@@ -35,28 +44,43 @@ export function createAwsAuthQueries(input: {
   provisionProfileId: ProvisionProfileId
   getProfileAccountStatus: GetProfileAccountStatus
   cacheVerifiedUser?: CacheVerifiedUser
+  checkSession?: CheckSession
 }) {
-  async function loadAwsVerifiedUser(): Promise<AwsVerifiedUser | null> {
+  const signedOut: AwsVerification = { user: null, sessionRevoked: false }
+
+  async function loadAwsVerification(): Promise<AwsVerification> {
     const principal = await input.getPrincipal()
-    if (!principal?.sub) return null
+    if (!principal?.sub) return signedOut
 
     const existingProfileId = await input.resolveProfileId(principal.sub)
     const profileId = existingProfileId ?? await input.provisionProfileId(principal)
     const accountStatus = await input.getProfileAccountStatus(profileId)
     if (!accountStatus || accountStatus === 'suspended' || accountStatus === 'deletion_requested') {
-      return null
+      return signedOut
+    }
+
+    // Round H (H3): a device signed out from Settings › Account is refused here, on every page, action and API.
+    if (input.checkSession && (await input.checkSession(profileId)).status === 'revoked') {
+      return { user: null, sessionRevoked: true }
     }
 
     return {
-      id: profileId,
-      cognitoSub: principal.sub,
-      email: principal.email,
+      user: {
+        id: profileId,
+        cognitoSub: principal.sub,
+        email: principal.email,
+      },
+      sessionRevoked: false,
     }
   }
 
-  const getAwsVerifiedUser = input.cacheVerifiedUser
-    ? input.cacheVerifiedUser(loadAwsVerifiedUser)
-    : loadAwsVerifiedUser
+  const getAwsVerification = input.cacheVerifiedUser
+    ? input.cacheVerifiedUser(loadAwsVerification)
+    : loadAwsVerification
+
+  async function getAwsVerifiedUser(): Promise<AwsVerifiedUser | null> {
+    return (await getAwsVerification()).user
+  }
 
   async function requireAwsUser(): Promise<AwsVerifiedUser> {
     const user = await getAwsVerifiedUser()
@@ -64,7 +88,7 @@ export function createAwsAuthQueries(input: {
     return user
   }
 
-  return { getAwsVerifiedUser, requireAwsUser }
+  return { getAwsVerifiedUser, requireAwsUser, getAwsVerification }
 }
 
 export async function resolveCognitoPrincipalFromAccessToken(
@@ -107,7 +131,10 @@ const productionQueries = createAwsAuthQueries({
   provisionProfileId: provisionProfileForCognitoPrincipal,
   getProfileAccountStatus,
   cacheVerifiedUser: (loader) => cache(loader),
+  checkSession: checkCurrentSession,
 })
 
 export const getAwsVerifiedUser = productionQueries.getAwsVerifiedUser
 export const requireAwsUser = productionQueries.requireAwsUser
+/** Round H (H3): the verified user plus whether this device's session was signed out. */
+export const getAwsVerification = productionQueries.getAwsVerification

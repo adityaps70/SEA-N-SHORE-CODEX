@@ -353,7 +353,9 @@ resource "aws_cloudwatch_metric_alarm" "api_server_errors" {
 }
 
 # Outside-in check from the outbox worker once a minute (src/features/ops/site-health-probe.ts).
-# Missing data counts as down, so a stopped probe also alerts.
+# Only a failed check pages: missing data (the probe paused, for example while the outbox worker restarts) is
+# not treated as down, so the alarm never fires while the site is up. A real outage still shows as SiteUp 0,
+# and the ALB 5xx, 502/503/504 and running-tasks alarms cover the web service itself.
 resource "aws_cloudwatch_metric_alarm" "site_health" {
   for_each = local.site_health_checks
 
@@ -367,7 +369,7 @@ resource "aws_cloudwatch_metric_alarm" "site_health" {
   evaluation_periods  = 3
   threshold           = 1
   comparison_operator = "LessThanThreshold"
-  treat_missing_data  = "breaching"
+  treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
   tags                = local.common_tags

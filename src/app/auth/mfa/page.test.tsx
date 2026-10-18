@@ -36,6 +36,12 @@ describe('/auth/mfa (Round 14, 2.11)', () => {
     expect(screen.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('href', '/auth/sign-in')
   })
 
+  it('offers a backup code when the authenticator app is lost (Round H, H3)', async () => {
+    mocks.cookies = { sns_cognito_mfa_challenge: 'opaque-session-value', sns_cognito_mfa_challenge_user: 'internal-user-1' }
+    render(await MfaSignInPage())
+    expect(screen.getByRole('link', { name: 'Use a backup code' })).toHaveAttribute('href', '/auth/mfa/backup')
+  })
+
   it('explains an expired sign-in session and links back to sign in', async () => {
     render(await MfaSignInPage())
 
