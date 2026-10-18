@@ -18,6 +18,8 @@ import { batchRepository } from '../../src/features/learning/batches/batch-repos
 import { SESSION_REMINDER_SWEEP_MS, sweepSessionReminders } from '../../src/features/learning/sessions/session-reminders'
 import { createRankingSweeps } from '../../src/features/ranking/worker'
 import { SITE_HEALTH_PROBE_MS, runSiteHealthProbe } from '../../src/features/ops/site-health-probe'
+import { createNotificationEmailWorker } from '../../src/features/notification-emails/sending'
+import { createProductionAccountSecurityEmailWorker } from '../../src/features/account-security/security-email-runtime'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -86,6 +88,19 @@ let nextSessionReminderSweepAt = 0
 const rankingSweeps = createRankingSweeps()
 // Round H (H1): the outside-in site check (home page and /api/health) once a minute, as CloudWatch metrics.
 let nextSiteHealthProbeAt = 0
+// Round H (H3): member activity emails. Every minute: queue emails for new connection requests, comments and
+// mentions (from the in-app notification rows) and send due ones. Every 5 minutes: queue the unread messages digest
+// for members due one (each member at most once an hour, under a row lock). Both are idempotent; counts-only logs.
+const NOTIFICATION_EMAIL_SWEEP_MS = 60 * 1000
+const MESSAGE_DIGEST_SWEEP_MS = 5 * 60 * 1000
+let nextNotificationEmailSweepAt = 0
+let nextMessageDigestSweepAt = 0
+let notificationEmailDisabledLogged = false
+const notificationEmailWorker = createNotificationEmailWorker()
+// Round H (H3): account security notices (the old address after an email change), every minute. Idempotent.
+const ACCOUNT_SECURITY_EMAIL_SWEEP_MS = 60 * 1000
+let nextAccountSecurityEmailSweepAt = 0
+const accountSecurityEmailWorker = createProductionAccountSecurityEmailWorker()
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -331,6 +346,45 @@ async function runSiteHealthProbeIfDue() {
   }
 }
 
+async function runNotificationEmailSweepIfDue() {
+  const now = Date.now()
+  if (now >= nextMessageDigestSweepAt) {
+    nextMessageDigestSweepAt = now + MESSAGE_DIGEST_SWEEP_MS
+    try {
+      // Counts only: no names, addresses or message text in the logs.
+      const result = await notificationEmailWorker.runDigestSweep(50)
+      if (result.queued > 0 || result.locked > 0) console.info('[message_digest_sweep]', result)
+    } catch (error) {
+      console.error('[message_digest_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+    }
+  }
+  if (now < nextNotificationEmailSweepAt) return
+  nextNotificationEmailSweepAt = now + NOTIFICATION_EMAIL_SWEEP_MS
+  try {
+    const result = await notificationEmailWorker.runSweep(10)
+    if (result.queued > 0 || result.claimed > 0) console.info('[notification_email_sweep]', result)
+    if (result.disabled && !notificationEmailDisabledLogged) {
+      notificationEmailDisabledLogged = true
+      console.info('[notification_email_sweep]', { disabled: result.disabled })
+    }
+  } catch (error) {
+    console.error('[notification_email_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
+async function runAccountSecurityEmailSweepIfDue() {
+  const now = Date.now()
+  if (now < nextAccountSecurityEmailSweepAt) return
+  nextAccountSecurityEmailSweepAt = now + ACCOUNT_SECURITY_EMAIL_SWEEP_MS
+  try {
+    // Counts only: no addresses in the logs.
+    const result = await accountSecurityEmailWorker.runSweep(10)
+    if (result.claimed > 0) console.info('[account_security_email_sweep]', result)
+  } catch (error) {
+    console.error('[account_security_email_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -356,6 +410,8 @@ async function main() {
       await runSessionReminderSweepIfDue()
       await rankingSweeps.runDue()
       await runSiteHealthProbeIfDue()
+      await runNotificationEmailSweepIfDue()
+      await runAccountSecurityEmailSweepIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

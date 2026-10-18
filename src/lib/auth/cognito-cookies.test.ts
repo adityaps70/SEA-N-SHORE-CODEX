@@ -51,6 +51,7 @@ describe('Cognito cookie primitives', () => {
       oauthIntent: 'sns_cognito_oauth_intent',
       mfaChallenge: 'sns_cognito_mfa_challenge',
       mfaChallengeUser: 'sns_cognito_mfa_challenge_user',
+      mfaChallengeBinding: 'sns_cognito_mfa_binding',
     })
 
     for (const name of Object.values(COGNITO_COOKIE_NAMES)) {
@@ -196,6 +197,7 @@ describe('Cognito cookie primitives', () => {
       COGNITO_COOKIE_NAMES.oauthIntent,
       COGNITO_COOKIE_NAMES.mfaChallenge,
       COGNITO_COOKIE_NAMES.mfaChallengeUser,
+      COGNITO_COOKIE_NAMES.mfaChallengeBinding,
     ])
   })
 
@@ -220,5 +222,21 @@ describe('Cognito cookie primitives', () => {
     cookies.clearMfaChallenge()
     expect(fake.values.has(COGNITO_COOKIE_NAMES.mfaChallenge)).toBe(false)
     expect(fake.values.has(COGNITO_COOKIE_NAMES.mfaChallengeUser)).toBe(false)
+  })
+
+  it('keeps the server signature of the MFA challenge with it, for the same 10 minutes (Round H, H3)', () => {
+    const fake = createFakeCookieStore()
+    const cookies = createCognitoCookieManager(fake.store, 'https://staging.example.com')
+
+    cookies.setMfaChallenge({ session: 'mfa-session', username: 'user-1', binding: 'a'.repeat(64) })
+    expect(fake.writes.find((write) => write.name === COGNITO_COOKIE_NAMES.mfaChallengeBinding)?.options).toEqual({
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: true,
+      path: '/',
+      maxAge: 600,
+    })
+    cookies.clearMfaChallenge()
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.mfaChallengeBinding)).toBe(false)
   })
 })

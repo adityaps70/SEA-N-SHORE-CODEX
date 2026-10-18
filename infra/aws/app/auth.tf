@@ -258,7 +258,9 @@ resource "aws_iam_role_policy" "ecs_task_cognito_admin" {
           "cognito-idp:ListUsers",
           "cognito-idp:AdminCreateUser",
           "cognito-idp:AdminSetUserPassword",
-          "cognito-idp:AdminUpdateUserAttributes"
+          "cognito-idp:AdminUpdateUserAttributes",
+          # Round H (H3): a 2FA backup code turns the member's authenticator app off (resetting 2FA).
+          "cognito-idp:AdminSetUserMFAPreference"
         ]
         Resource = aws_cognito_user_pool.app.arn
       }

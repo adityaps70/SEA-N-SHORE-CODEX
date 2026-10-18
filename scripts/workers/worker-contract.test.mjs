@@ -74,3 +74,21 @@ test('outbox worker backs off to 5-10 s when idle and logs a batch only when it 
   assert.doesNotMatch(publisher, /sleep\(1000\)/)
   assert.match(publisher, /console\.error\('\[social_outbox_error\]'/)
 })
+
+test('outbox worker sends the round H member activity emails and the hourly messages digest (H3)', () => {
+  assert.match(publisher, /import \{ createNotificationEmailWorker \} from '\.\.\/\.\.\/src\/features\/notification-emails\/sending'/)
+  assert.match(publisher, /NOTIFICATION_EMAIL_SWEEP_MS = 60 \* 1000/)
+  assert.match(publisher, /notificationEmailWorker\.runSweep\(10\)/)
+  assert.match(publisher, /notificationEmailWorker\.runDigestSweep\(50\)/)
+  assert.match(publisher, /await runNotificationEmailSweepIfDue\(\)/)
+  // Counts only: the logged results never carry addresses, names or message text.
+  assert.doesNotMatch(publisher, /console\.(info|error)\('\[(notification_email|message_digest)_sweep[^\n]*(email|address|name|body)/i)
+})
+
+test('outbox worker sends the round H account security notices (H3)', () => {
+  assert.match(publisher, /import \{ createProductionAccountSecurityEmailWorker \} from '\.\.\/\.\.\/src\/features\/account-security\/security-email-runtime'/)
+  assert.match(publisher, /ACCOUNT_SECURITY_EMAIL_SWEEP_MS = 60 \* 1000/)
+  assert.match(publisher, /accountSecurityEmailWorker\.runSweep\(10\)/)
+  assert.match(publisher, /await runAccountSecurityEmailSweepIfDue\(\)/)
+  assert.doesNotMatch(publisher, /console\.(info|error)\('\[account_security_email_sweep[^\n]*(email|address|recipient)/i)
+})

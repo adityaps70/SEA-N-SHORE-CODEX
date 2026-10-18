@@ -10,17 +10,23 @@ import { RankingEmailToggle } from './ranking-email-toggle'
 import { createRankingEmailPreferences } from '@/features/ranking/ranking-email-sending'
 import { memberTimeZoneRepository } from '@/features/learning/sessions/member-time-zone'
 import { TimeZoneSetting } from '@/features/learning/sessions/components/time-zone-setting'
+import { createNotificationEmailPreferences } from '@/features/notification-emails/preferences'
+import { NOTIFICATION_EMAIL_DEFAULTS, NOTIFICATION_EMAIL_KINDS } from '@/features/notification-emails/kinds'
+import { NotificationEmailToggle } from './notification-email-toggle'
 
 export const metadata: Metadata = { title: 'Email notifications · Settings' }
 export const dynamic = 'force-dynamic'
 
 const preferences = createLearningEmailPreferences()
 const topicPreferences = createRankingEmailPreferences()
+const activityPreferences = createNotificationEmailPreferences()
 
 /** Settings → Email notifications (learning round A): which notifications also come by email. */
 export default async function EmailNotificationsPage() {
   const user = await requireAwsUser()
-  const [learningEnabled, topics, timeZone] = await Promise.all([
+  const [activity, learningEnabled, topics, timeZone] = await Promise.all([
+    // Round H (H3): before migration 0088 there are no switch columns; show the defaults (on).
+    activityPreferences.get(user.id).catch(() => ({ ...NOTIFICATION_EMAIL_DEFAULTS })),
     preferences.learningEmailsEnabled(user.id),
     // Round G: before migration 0085 there is no topic table; show the defaults (on).
     topicPreferences.topics(user.id).catch(() => ({ job_alerts: true, weekly_digest: true })),
@@ -40,6 +46,17 @@ export default async function EmailNotificationsPage() {
         </p>
       </header>
       <p className="text-sm leading-6 text-muted md:hidden">Everything still appears in Notifications on Sea N Shore.</p>
+      <section aria-labelledby="activity-emails-heading" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
+        <h2 id="activity-emails-heading" className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Messages and activity</h2>
+        <div className="mt-2 divide-y divide-mist-100">
+          {NOTIFICATION_EMAIL_KINDS.map((kind) => (
+            <div key={kind} className="py-2 first:pt-0 last:pb-0">
+              <NotificationEmailToggle kind={kind} initiallyEnabled={activity[kind]} />
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs leading-5 text-muted">Each of these emails has a link that turns that kind of email off. Nothing is emailed about your own actions or about people you have blocked.</p>
+      </section>
       <section aria-label="Jobs" className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-4 max-md:shadow-none">
         <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700">Jobs</h2>
         <div className="mt-2">

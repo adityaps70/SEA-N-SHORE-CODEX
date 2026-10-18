@@ -41,7 +41,13 @@ export default async function MfaSignInPage() {
           </p>
         </div>
       )}
-      <p className="mt-6 text-sm">
+      {pending ? (
+        <p className="mt-6 text-sm">
+          {/* Round H (H3): a lost authenticator app is handled with a backup code. */}
+          <Link href="/auth/mfa/backup" className={linkClass}>Use a backup code</Link>
+        </p>
+      ) : null}
+      <p className="mt-3 text-sm">
         <Link href="/auth/sign-in" className={linkClass}>Back to sign in</Link>
       </p>
     </AuthShell>
