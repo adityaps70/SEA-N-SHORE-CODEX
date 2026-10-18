@@ -89,8 +89,9 @@ describe('tightened Content Security Policy (Round H, H4)', () => {
       'https://checkout.razorpay.com',
     ])
     expect(policy.get('script-src')).toEqual(["'self'", "'nonce-n0nce=='", "'strict-dynamic'", 'https://sdk.cashfree.com', 'https://checkout.razorpay.com'])
-    expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'])
-    expect(policy.get('font-src')).toEqual(["'self'", 'data:', 'https://fonts.gstatic.com'])
+    // Fonts are self-hosted: no Google Fonts hosts.
+    expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'"])
+    expect(policy.get('font-src')).toEqual(["'self'", 'data:'])
     expect(policy.get('form-action')).toEqual(["'self'", 'https://auth.seanshore.in'])
     expect(policy.get('frame-ancestors')).toEqual(["'none'"])
   })

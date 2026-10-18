@@ -27,9 +27,8 @@ export function createCspNonce(): string {
   return btoa(binary)
 }
 
-// Round H (H4): the third-party hosts pages actually use, replacing the old blanket `https:`.
-const GOOGLE_FONTS_STYLESHEETS = 'https://fonts.googleapis.com'
-const GOOGLE_FONTS_FILES = 'https://fonts.gstatic.com'
+// Round H (H4): the third-party hosts pages actually use, replacing the old blanket `https:`. Fonts are self-hosted
+// (next/font/local), so no font or stylesheet host is listed.
 // Cashfree JS SDK v3 (sdk.cashfree.com) opens its `_modal` checkout in an iframe and calls the
 // Cashfree API (api., sandbox., payments.cashfree.com) from the page.
 const CASHFREE_SDK = 'https://sdk.cashfree.com'
@@ -113,12 +112,11 @@ export function pageContentSecurityPolicy(nonce: string, sources?: ContentSecuri
   return [
     "default-src 'self'",
     directive('script-src', "'self'", `'nonce-${nonce}'`, "'strict-dynamic'", development ? ["'unsafe-eval'"] : [], CASHFREE_SDK, RAZORPAY_SCRIPT),
-    // Tailwind and component style attributes are inline; styles cannot run code. The landing page
-    // loads the Google Fonts stylesheet.
-    directive('style-src', "'self'", "'unsafe-inline'", GOOGLE_FONTS_STYLESHEETS),
+    // Tailwind and component style attributes are inline; styles cannot run code.
+    directive('style-src', "'self'", "'unsafe-inline'"),
     // data: and blob: cover inline icons and local previews of photos before they upload.
     directive('img-src', "'self'", 'data:', 'blob:', mediaOrigins),
-    directive('font-src', "'self'", 'data:', GOOGLE_FONTS_FILES),
+    directive('font-src', "'self'", 'data:'),
     directive('connect-src', "'self'", mediaOrigins, realtimeOrigins, CASHFREE_HOSTS, RAZORPAY_CONNECT, development ? ['ws:'] : []),
     // Feed videos redirect from /api/feed-media to S3; lesson audio and video are pre-signed S3
     // GETs; blob: plays local previews of videos before they upload.
