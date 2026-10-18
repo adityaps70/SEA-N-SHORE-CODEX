@@ -163,7 +163,7 @@ const EMPTY_REVIEWS: PublicCourseReviews = { averageRating: null, reviewCount: 0
 /** Round H (H7): a scaled-down sample of the certificate, for courses that issue one. */
 function CertificatePreviewSection({ settings, course }: { settings: CertificatePreviewSettings; course: MarketplaceCourse }) {
   return (
-    <section aria-labelledby="certificate-preview-heading" className={`${PHONE_FLAT_SECTION} max-lg:order-3`}>
+    <section aria-labelledby="certificate-preview-heading" className={PHONE_FLAT_SECTION}>
       <h2 id="certificate-preview-heading" className="flex items-center gap-2 text-section-title font-bold text-navy-950 max-md:text-lg">
         <Award aria-hidden="true" className="size-5 text-teal-700" /> Certificate
       </h2>
@@ -558,14 +558,15 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
 
         {/* Hotfix (Oct 2026): below the curriculum, each desktop column is its own stack, so a tall box on one side
             (About the organization) no longer leaves a gap above the next box on the other (Certificate). Below lg the
-            stacks dissolve (contents) and max-lg:order keeps the phone order: requirements, publisher, certificate. */}
+            stacks dissolve (contents) into one column in source order, so what is seen, tabbed through and read aloud
+            match: requirements, certificate, publisher. */}
         <div data-testid="course-detail-lower" className="flex flex-col gap-6 max-md:gap-2 lg:order-4 lg:col-span-2 lg:grid lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
           {requirements.length || certificateSettings ? (
             <div data-testid="course-detail-lower-left" className="contents lg:flex lg:flex-col lg:gap-6">
               {requirements.length ? (
                 <section
                   aria-label="Requirements"
-                  className={`${PHONE_FLAT_SECTION} max-lg:order-1`}
+                  className={PHONE_FLAT_SECTION}
                 >
                   <h2 className="text-section-title font-bold text-navy-950">Requirements</h2>
                   <div className="mt-5">
@@ -584,11 +585,11 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
                 course={course}
                 publisher={publisher}
                 photoUrl={publisherPhotoUrl}
-                className={`${PHONE_FLAT_SECTION} max-lg:order-2`}
+                className={PHONE_FLAT_SECTION}
               />
             ) : null}
 
-            <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7 max-lg:order-4">
+            <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7">
               <span className="grid size-11 place-items-center rounded-2xl bg-navy-950 text-white">
                 <GraduationCap aria-hidden="true" className="size-5" />
               </span>

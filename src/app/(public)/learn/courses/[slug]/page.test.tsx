@@ -249,11 +249,12 @@ describe('/learn/courses/[slug]', () => {
     const lower = screen.getByTestId('course-detail-lower')
     expect(lower).toHaveClass('lg:grid', 'lg:col-span-2', 'lg:items-start')
     expect(screen.getByTestId('course-detail-sections')).toContainElement(lower)
-    // Below lg the stacks dissolve and the phone order stays: requirements, publisher, certificate.
-    expect(requirements).toHaveClass('max-lg:order-1')
-    expect(publisher).toHaveClass('max-lg:order-2')
-    expect(certificate).toHaveClass('max-lg:order-3')
-    expect(promo).toHaveClass('max-lg:order-4', 'max-md:hidden')
+    // Below lg the stacks dissolve into one column in source order, so the order seen, tabbed through and read aloud
+    // is the same: requirements, certificate, publisher. No CSS reordering.
+    const sections = [...lower.querySelectorAll('section')]
+    expect(sections.slice(0, 3)).toEqual([requirements, certificate, publisher])
+    for (const section of [requirements, certificate, publisher, promo]) expect(section.className).not.toMatch(/(^|\s)([a-z-]+:)*order-/)
+    expect(promo).toHaveClass('max-md:hidden')
   })
 
   it('moves the publisher card into the left column when there are no requirements and no certificate (hotfix)', async () => {
