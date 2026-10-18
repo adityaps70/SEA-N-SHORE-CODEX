@@ -25,6 +25,7 @@ export function PlayerTabs({
   sessions,
   leading,
   trailing,
+  compact = false,
 }: {
   initialTab?: PlayerTab
   announcementCount: number
@@ -35,6 +36,8 @@ export function PlayerTabs({
   /** Round E: the slim toolbar around the tabs (breadcrumb before, focus mode after). */
   leading?: ReactNode
   trailing?: ReactNode
+  /** S2: a tighter gap under the toolbar (full-height SCORM lessons). */
+  compact?: boolean
 }) {
   const TABS = ALL_TABS.filter((tab) => tab.id !== 'sessions' || Boolean(sessions))
   const [active, setActive] = useState<PlayerTab>(initialTab === 'sessions' && !sessions ? 'lesson' : initialTab)
@@ -73,7 +76,7 @@ export function PlayerTabs({
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 max-md:-mx-4 max-md:mb-0 max-md:border-b max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:py-2">
+      <div className={`${compact ? 'mb-2' : 'mb-4'} flex flex-wrap items-center gap-x-3 gap-y-2 max-md:-mx-4 max-md:mb-0 max-md:border-b max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:py-2`}>
       {leading}
       <div
         role="tablist"

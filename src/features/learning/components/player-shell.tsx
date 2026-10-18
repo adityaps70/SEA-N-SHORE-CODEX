@@ -51,8 +51,17 @@ export function usePlayerPref(key: PrefKey) {
   return [value, set] as const
 }
 
-export function PlayerShell({ children, className = '' }: { children: ReactNode; className?: string }) {
-  const [focus] = usePlayerPref('focus')
+export function PlayerShell({ children, className = '', focusModeAvailable = true }: {
+  children: ReactNode
+  className?: string
+  /**
+   * S2: false on a full-height SCORM lesson, whose own Focus mode fills the whole window with the package.
+   * The remembered page focus mode is then not applied there (it still applies on the other lessons).
+   */
+  focusModeAvailable?: boolean
+}) {
+  const [focusPref] = usePlayerPref('focus')
+  const focus = focusModeAvailable && focusPref
   const [rail] = usePlayerPref('rail')
   const [focusSidebar] = usePlayerPref('focusSidebar')
 

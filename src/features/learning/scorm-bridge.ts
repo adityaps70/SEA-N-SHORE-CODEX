@@ -6,6 +6,9 @@
  * window.API_1484_11 (SCORM 2004) backed by a value cache, and mirrors every write to the player
  * with postMessage. The player answers "hello" with the attempt's current values and saves on
  * commit/finish exactly as before.
+ *
+ * S2: Esc pressed inside the package is forwarded too ("escape"), so it leaves the player's focus mode even
+ * while the keyboard focus is in the frame. It only notifies the player; the package still gets the key.
  */
 export const SCORM_BRIDGE_SOURCE = 'sns-scorm'
 export const SCORM_HOST_SOURCE = 'sns-scorm-host'
@@ -22,6 +25,7 @@ function save(type){post({type:type,values:values});return 'true'}
 function ok(){return 'true'}function none(){return ''}function zero(){return '0'}
 window.API={LMSInitialize:ok,LMSFinish:function(){return save('finish')},LMSGetValue:get,LMSSetValue:set,LMSCommit:function(){return save('commit')},LMSGetLastError:zero,LMSGetErrorString:none,LMSGetDiagnostic:none};
 window.API_1484_11={Initialize:ok,Terminate:function(){return save('finish')},GetValue:get,SetValue:set,Commit:function(){return save('commit')},GetLastError:zero,GetErrorString:none,GetDiagnostic:none};
+window.addEventListener('keydown',function(e){if(e&&e.key==='Escape')post({type:'escape'})});
 post({type:'hello'});
 })();</script>`
 }

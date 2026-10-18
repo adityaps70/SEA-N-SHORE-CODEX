@@ -8,7 +8,7 @@ import { ArticleReader } from './article-reader'
 import { AssignmentActivity } from './assignment-activity'
 import { QuizLessonActivity } from './quiz-lesson-activity'
 import { ResumableLessonMedia } from './resumable-lesson-media'
-import { ScormPlayer } from './scorm-player'
+import { ScormPlayer, type ScormLessonHeader } from './scorm-player'
 import { ViewCompletionBeacon } from './view-completion-beacon'
 import { buttonClass } from '@/components/ui/interactive-styles'
 import { cn } from '@/lib/cn'
@@ -27,6 +27,8 @@ type Props = {
   mediaExpiresAt?: string | null
   /** Round E: the faint video watermark (member code and date; never a name or email). */
   watermark?: string | null
+  /** S2: a SCORM lesson's compact header (breadcrumb and duration), drawn by the player above the package. */
+  scormHeader?: ScormLessonHeader | null
 }
 
 function safeEmbedUrl(url: string, kind: LearnerLesson['embedKind']) {
@@ -84,7 +86,7 @@ function LockedMaterial({ lesson }: { lesson: LearnerLesson }) {
 }
 
 /** The material itself (no completion controls). Also used on its own for free previews. */
-export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false, mediaExpiresAt = null, watermark = null }: Props) {
+export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false, mediaExpiresAt = null, watermark = null, scormHeader = null }: Props) {
   switch (lesson.lessonType) {
     case 'article': {
       // Round E (E5): a readable measure (68ch) at the article size (17/30), with the reading time.
@@ -234,6 +236,7 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           maxAttempts={lesson.maxAttempts}
           attemptsUsed={lesson.attemptsUsed}
           initiallyCompleted={lesson.completed}
+          header={scormHeader}
         />
       ) : (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

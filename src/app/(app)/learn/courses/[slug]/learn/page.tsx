@@ -25,6 +25,7 @@ import { FocusModeToggle, FocusSidebarToggle, PlayerShell, SidebarRailToggle } f
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 import { moduleCrumb } from '@/features/learning/module-label'
 import { readingMinutes } from '@/features/learning/reading-time'
+import { isFullHeightScormLesson, lessonDurationLabel } from '@/features/learning/scorm-lesson-layout'
 import { courseAnnouncementRepository, type CourseAnnouncement } from '@/features/learning/course-announcement-repository'
 import { courseCommunityRepository } from '@/features/learning/course-community-repository'
 import { courseRatingRepository } from '@/features/learning/course-rating-repository'
@@ -208,6 +209,9 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     />
   )
   const sequentialNote = course.navigationMode === 'sequential' ? 'Lessons unlock in order.' : null
+  // S2: a ready SCORM package fills the window (compact header, no page scroll); other lessons are unchanged.
+  const scormLayout = isFullHeightScormLesson(selectedLesson)
+  const ratingWidget = ratingEligibility ? <CourseRatingWidget courseId={course.courseId} eligibility={ratingEligibility} /> : null
 
   const breadcrumb = selectedLesson && selectedModuleIndex >= 0 ? (
     <nav aria-label="Breadcrumb" className="min-w-0 flex-1 max-md:hidden">
@@ -220,7 +224,13 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   ) : <span className="flex-1 max-md:hidden" />
 
   return (
-    <div className="mx-auto w-full max-w-page-wide px-4 py-2 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 max-md:pb-32 sm:px-6 lg:px-8">
+    <div
+      className={scormLayout
+        // S2: the lesson bar sits in the flow (no space kept for a fixed bar) and most of the app layout's
+        // vertical padding is taken back, so header, frame and bar fit the window.
+        ? 'mx-auto w-full max-w-page-wide px-4 max-md:-mb-4 max-md:flex max-md:flex-col max-md:px-0 sm:px-6 md:-my-4 lg:px-8'
+        : 'mx-auto w-full max-w-page-wide px-4 py-2 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 max-md:pb-32 sm:px-6 lg:px-8'}
+    >
       <MobilePageBar
         backHref={`/learn/courses/${course.slug}`}
         title={course.title}
@@ -234,7 +244,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
           />
         )}
       />
-      <PlayerShell className="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-6 lg:data-[sidebar=hidden]:grid-cols-[minmax(0,1fr)] lg:data-[sidebar=rail]:grid-cols-[64px_minmax(0,1fr)]">
+      <PlayerShell focusModeAvailable={!scormLayout} className="lg:grid lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start lg:gap-6 lg:data-[sidebar=hidden]:grid-cols-[minmax(0,1fr)] lg:data-[sidebar=rail]:grid-cols-[64px_minmax(0,1fr)]">
         {/* Desktop sidebar (round E): the course block, then the curriculum, scrolling on its own. */}
         <aside
           aria-label="Course"
@@ -313,16 +323,55 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
             initialTab={query.tab === 'announcements' ? 'announcements' : query.tab === 'sessions' ? 'sessions' : 'lesson'}
             announcementCount={courseAnnouncements.length}
             sessions={batchSessions ? <LearnerSessionsPanel data={batchSessions} joinNotice={query.join ?? null} /> : undefined}
-            leading={breadcrumb}
-            trailing={(
+            // S2: on a full-height SCORM lesson the breadcrumb and Focus mode live in the package's own header.
+            leading={scormLayout ? <span className="flex-1 max-md:hidden" /> : breadcrumb}
+            trailing={scormLayout ? null : (
               <div className="flex items-center gap-1 max-md:hidden">
                 <FocusSidebarToggle />
                 <FocusModeToggle />
               </div>
             )}
+            compact={scormLayout}
             lesson={(
               <>
-                {selectedLesson ? (
+                {selectedLesson && scormLayout ? (
+                  <section
+                    aria-label="Current lesson"
+                    data-scorm-lesson=""
+                    className="rounded-3xl border border-mist-200 bg-white shadow-sm max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:shadow-none"
+                  >
+                    {/* The package shows its own title; the compact header carries the breadcrumb and duration. */}
+                    <h1 className="sr-only">{selectedLesson.title}</h1>
+                    {selectedLesson.summary ? <p className="sr-only">{selectedLesson.summary}</p> : null}
+                    <MaterialPlayer
+                      lesson={selectedLesson}
+                      mediaUrl={null}
+                      mediaExpiresAt={null}
+                      watermark={null}
+                      slug={course.slug}
+                      quiz={null}
+                      articleHtml={null}
+                      scormHeader={{
+                        crumb: selectedModuleIndex >= 0 ? moduleCrumb(selectedModuleIndex, course.sections[selectedModuleIndex]?.title ?? '') : null,
+                        title: selectedLesson.title,
+                        duration: lessonDurationLabel(selectedLesson),
+                      }}
+                    />
+                    <LessonActionBar
+                      slug={course.slug}
+                      lessonId={selectedLesson.id}
+                      completionRule={selectedLesson.completionRule}
+                      completionThreshold={selectedLesson.completionThreshold}
+                      completed={selectedLesson.completed}
+                      available={selectedLesson.isAvailable}
+                      previousHref={previousLesson ? lessonHref(course.slug, previousLesson.id) : null}
+                      nextHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
+                      finishHref="/learn/my-learning"
+                      phoneStart={curriculumSheet}
+                      docked={false}
+                    />
+                  </section>
+                ) : selectedLesson ? (
                   <section aria-label="Current lesson" className="rounded-3xl border border-mist-200 bg-white p-6 pb-0 shadow-sm max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8 sm:pb-0">
                     <p className="text-meta text-muted">
                       <span className="md:hidden">Lesson {lessonPosition} of {lessons.length} · </span>
@@ -365,11 +414,14 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                     {lessons.length ? <div className="mt-4 flex lg:hidden">{curriculumSheet}</div> : null}
                   </section>
                 )}
-                {ratingEligibility ? <CourseRatingWidget courseId={course.courseId} eligibility={ratingEligibility} /> : null}
-                {discussButton ? <div className="mt-2 border-t border-mist-200 px-4 py-4 lg:hidden">{discussButton}</div> : null}
+                {/* S2: nothing under a full-height SCORM lesson (the page must not scroll): rating moves to the
+                    Announcements tab, and Discuss is already there and in the sidebar. */}
+                {scormLayout ? null : ratingWidget}
+                {discussButton && !scormLayout ? <div className="mt-2 border-t border-mist-200 px-4 py-4 lg:hidden">{discussButton}</div> : null}
               </>
             )}
             announcements={(
+              <>
               <section aria-label="Course announcements" className="rounded-3xl border border-mist-200 bg-white p-6 shadow-sm max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
@@ -382,6 +434,8 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                   <CourseAnnouncementsList announcements={courseAnnouncements} />
                 </div>
               </section>
+              {scormLayout ? ratingWidget : null}
+              </>
             )}
           />
         </div>

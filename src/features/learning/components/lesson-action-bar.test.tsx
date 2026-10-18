@@ -69,4 +69,24 @@ describe('LessonActionBar (learning round E, E4)', () => {
     expect(await screen.findByText('This lesson cannot be completed yet.')).toBeInTheDocument()
     expect(mocks.push).not.toHaveBeenCalled()
   })
+
+  it('is sticky (fixed on phones) by default, and sits in the page flow when not docked (S2: SCORM lessons)', () => {
+    const { unmount } = render(<LessonActionBar {...base} completionRule="scorm_completion" />)
+    const docked = bar().closest('[data-lesson-action-bar]')
+    expect(docked).toHaveAttribute('data-docked', 'on')
+    expect(docked).toHaveClass('sticky', 'bottom-0', 'max-md:fixed')
+    unmount()
+
+    render(<LessonActionBar {...base} completionRule="scorm_completion" docked={false} />)
+    const inFlow = bar().closest('[data-lesson-action-bar]') as HTMLElement
+    expect(inFlow).toHaveAttribute('data-docked', 'off')
+    // Nothing that could lift it over the frame: no sticky or fixed positioning, no negative margins.
+    expect(inFlow.className).not.toMatch(/(^|\s)(max-md:)?(sticky|fixed)(\s|$)/)
+    expect(inFlow.className).not.toMatch(/-mx-|bottom-0/)
+    // The same gating as everywhere else.
+    expect(within(bar()).getByRole('button', { name: /Complete & next/ })).toBeDisabled()
+    expect(screen.getAllByText('Finish the module to continue.').length).toBeGreaterThan(0)
+    act(() => announceLessonCompleted('lesson-2'))
+    expect(within(bar()).getByRole('link', { name: /Next lesson/ })).toHaveAttribute('href', base.nextHref)
+  })
 })

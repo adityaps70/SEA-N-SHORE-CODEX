@@ -439,6 +439,127 @@ describe('/learn/courses/[slug]/learn', () => {
   })
 })
 
+describe('/learn/courses/[slug]/learn full-height SCORM lessons (S2)', () => {
+  const scormId = '99999999-aaaa-4aaa-8aaa-999999999999'
+  const scormLesson = lesson({
+    id: scormId,
+    title: 'Inclusiveness and Consideration of Others · Interactive guide',
+    lessonType: 'scorm',
+    position: 2,
+    summary: 'Work through the guide and the quick check.',
+    durationSeconds: 240,
+    completionRule: 'scorm_completion',
+    scorm: { status: 'ready', version: '1.2', launchPath: 'index.html', contentToken: 'token' },
+  })
+  const scormCourse: LearnerCourse = {
+    ...course,
+    totalLessons: 4,
+    sections: [{ ...course.sections[0]!, lessons: [articleLesson, videoLesson, scormLesson] }, course.sections[1]!],
+  }
+  const eligibility = { canReview: false, reason: 'progress', progressPercent: 10, review: null }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
+    mocks.getLearnerCourse.mockResolvedValue(scormCourse)
+    mocks.getQuizForLearner.mockResolvedValue(null)
+    mocks.createMediaReadUrl.mockResolvedValue('https://signed.example.com/bridge-readiness.mp4')
+  })
+
+  it('keeps an sr-only h1 and hands the compact header (Module › lesson, duration) to the player', async () => {
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: scormId }) }))
+    const player = screen.getByRole('region', { name: 'Current lesson' })
+    expect(within(player).getByRole('heading', { level: 1, name: scormLesson.title })).toHaveClass('sr-only')
+    // No big title block or "Interactive module · 4 min" line above the package.
+    expect(within(player).queryByText(/Interactive module · 4 min/)).not.toBeInTheDocument()
+    expect(within(player).queryByText(/% complete ·/)).not.toBeInTheDocument()
+    expect(mocks.materialPlayer).toHaveBeenCalledWith({
+      lesson: scormLesson,
+      mediaUrl: null,
+      mediaExpiresAt: null,
+      watermark: null,
+      slug: course.slug,
+      quiz: null,
+      articleHtml: null,
+      scormHeader: { crumb: 'Module 1', title: scormLesson.title, duration: '4 min' },
+    })
+    // The toolbar's own breadcrumb and page focus mode give way to the package header's.
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /focus mode/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('tablist', { name: 'Course player' })).toBeInTheDocument()
+  })
+
+  it('puts the lesson bar in the flow under the frame (never over it), still gated until the module is finished', async () => {
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: scormId }) }))
+    const player = screen.getByRole('region', { name: 'Current lesson' })
+    const nav = within(player).getByRole('navigation', { name: 'Lesson navigation' })
+    const bar = nav.closest('[data-lesson-action-bar]') as HTMLElement
+    expect(bar).toHaveAttribute('data-docked', 'off')
+    expect(bar.className).not.toMatch(/(^|\s)(sticky|fixed|max-md:fixed)(\s|$)/)
+    // Header, frame (inside the player) and bar follow one another in the lesson card.
+    expect(within(player).getByTestId('material-player').compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(nav).getByRole('button', { name: /Complete & next/ })).toBeDisabled()
+    expect(within(player).getAllByText('Finish the module to continue.').length).toBeGreaterThan(0)
+    expect(within(nav).getByRole('link', { name: 'Previous lesson' })).toHaveAttribute('href', `/learn/courses/${course.slug}/learn?lesson=${videoId}`)
+    // No room is kept for a fixed phone bar, and the page's padding is taken back so it does not scroll.
+    const root = screen.getByRole('complementary', { name: 'Course' }).closest('[data-sidebar]')!.parentElement!
+    expect(root.className).not.toContain('max-md:pb-32')
+    expect(root).toHaveClass('md:-my-4')
+  })
+
+  it('moves "Rate this course" to the Announcements tab so nothing sits under the package', async () => {
+    mocks.getEligibility.mockResolvedValueOnce(eligibility)
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: scormId }) }))
+    // The Lesson tab is open, so the Announcements panel (and the rating in it) is hidden until chosen.
+    expect(screen.queryByRole('heading', { name: 'Rate this course' })).not.toBeInTheDocument()
+    const rating = screen.getByRole('heading', { name: 'Rate this course', hidden: true })
+    expect(rating.closest('[role="tabpanel"]')?.id).toMatch(/-panel-announcements$/)
+    fireEvent.click(screen.getByRole('tab', { name: /Announcements/ }))
+    expect(screen.getByRole('heading', { name: 'Rate this course' })).toBeVisible()
+  })
+
+  it('ignores the remembered page focus mode on a SCORM lesson (its own Focus mode fills the window)', async () => {
+    window.localStorage.setItem('sea-n-shore.learn.focus-mode', 'on')
+    try {
+      render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: scormId }) }))
+      expect(document.querySelector('[data-sidebar]')).toHaveAttribute('data-focus', 'off')
+      expect(document.documentElement.dataset.learnFocus).toBeUndefined()
+    } finally {
+      window.localStorage.removeItem('sea-n-shore.learn.focus-mode')
+    }
+  })
+
+  it('keeps the regular layout for a SCORM package that is not ready yet', async () => {
+    const preparing = lesson({ ...scormLesson, scorm: { status: 'processing', version: null, launchPath: null } as LearnerLesson['scorm'] })
+    mocks.getLearnerCourse.mockResolvedValueOnce({ ...scormCourse, sections: [{ ...course.sections[0]!, lessons: [articleLesson, videoLesson, preparing] }, course.sections[1]!] })
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: scormId }) }))
+    const player = screen.getByRole('region', { name: 'Current lesson' })
+    expect(within(player).getByRole('heading', { level: 1, name: preparing.title })).not.toHaveClass('sr-only')
+    expect(mocks.materialPlayer.mock.calls[0]![0]).not.toHaveProperty('scormHeader')
+    expect(within(player).getByRole('navigation', { name: 'Lesson navigation' }).closest('[data-lesson-action-bar]')).toHaveAttribute('data-docked', 'on')
+  })
+
+  it('leaves every other lesson type exactly as before (title block, breadcrumb, focus mode, sticky bar, rating under the lesson)', async () => {
+    mocks.getEligibility.mockResolvedValueOnce(eligibility)
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }), searchParams: Promise.resolve({ lesson: videoId }) }))
+    const player = screen.getByRole('region', { name: 'Current lesson' })
+    const title = within(player).getByRole('heading', { level: 1, name: videoLesson.title })
+    expect(title).not.toHaveClass('sr-only')
+    expect(title).toHaveClass('text-page-title')
+    expect(within(player).getByText(/Video · 13 min/)).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Focus mode' })).toBeInTheDocument()
+    expect(player.hasAttribute('data-scorm-lesson')).toBe(false)
+    const bar = within(player).getByRole('navigation', { name: 'Lesson navigation' }).closest('[data-lesson-action-bar]')
+    expect(bar).toHaveAttribute('data-docked', 'on')
+    expect(bar).toHaveClass('sticky', 'bottom-0', 'max-md:fixed')
+    const root = screen.getByRole('complementary', { name: 'Course' }).closest('[data-sidebar]')!.parentElement!
+    expect(root).toHaveClass('py-2', 'max-md:pb-32')
+    const rating = screen.getByRole('heading', { name: 'Rate this course' })
+    expect(rating.closest('[role="tabpanel"]')).toBe(screen.getByRole('tabpanel', { name: 'Lesson' }))
+  })
+})
+
 describe('/learn/courses/[slug]/learn course team access', () => {
   it('lets a learner with a free or purchased enrollment in without any team check', async () => {
     vi.clearAllMocks()

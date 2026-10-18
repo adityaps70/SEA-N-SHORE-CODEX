@@ -31,6 +31,20 @@ describe('PlayerShell (learning round E, E1/E4)', () => {
     expect(document.documentElement.dataset.learnPlayer).toBeUndefined()
   })
 
+  it('does not apply the remembered focus mode where focus mode is not available (S2: SCORM lessons)', () => {
+    window.localStorage.setItem('sea-n-shore.learn.focus-mode', 'on')
+    const { unmount } = render(<PlayerShell focusModeAvailable={false}><span>Lesson</span></PlayerShell>)
+    expect(shell().dataset.focus).toBe('off')
+    expect(shell().dataset.sidebar).toBe('open')
+    expect(document.documentElement.dataset.learnFocus).toBeUndefined()
+    unmount()
+    // The preference is kept for the other lessons.
+    expect(window.localStorage.getItem('sea-n-shore.learn.focus-mode')).toBe('on')
+    render(<PlayerShell><span>Lesson</span></PlayerShell>)
+    expect(shell().dataset.focus).toBe('on')
+    expect(document.documentElement.dataset.learnFocus).toBe('on')
+  })
+
   it('collapses the sidebar into a rail and remembers it', () => {
     render(<PlayerShell><SidebarRailToggle collapsed={false} /></PlayerShell>)
     fireEvent.click(screen.getByRole('button', { name: 'Collapse the curriculum' }))
