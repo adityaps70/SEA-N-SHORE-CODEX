@@ -131,6 +131,8 @@ jobs:
         run: node --test scripts/aws/apply-approval-gate.test.mjs
       - name: Verify CI checkout bundle IAM contract
         run: node --test scripts/aws/github-deploy-iam-ci-checkouts.test.mjs
+      - name: Verify ECR Public sign-in IAM and deploy step contract
+        run: node --test scripts/aws/github-deploy-iam-ecr-public.test.mjs
       - name: Verify bootstrap host checkout contract (no GitHub access on the host)
         run: node --test scripts/aws/host-checkout.test.mjs
       - name: Verify owner-merged arm guard contract
