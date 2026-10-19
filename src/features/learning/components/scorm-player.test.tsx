@@ -48,8 +48,13 @@ function fromPackage(data: Record<string, unknown>) {
 }
 
 async function startAttempt() {
+  const listen = vi.spyOn(window, 'addEventListener')
   fireEvent.click(screen.getByRole('button', { name: /Start SCORM material/ }))
   await screen.findByTitle('SCORM learning material')
+  // The player starts listening to the bridge in an effect, which can run after the frame is on screen: wait for it,
+  // or a message sent right away would be lost.
+  await waitFor(() => expect(listen.mock.calls.some(([type]) => type === 'message')).toBe(true))
+  listen.mockRestore()
 }
 
 describe('ScormPlayer (S2: full-height SCORM lessons)', () => {
