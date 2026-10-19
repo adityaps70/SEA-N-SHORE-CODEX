@@ -93,6 +93,9 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   UnsupportedOperationException: 'This Cognito operation is not enabled.',
 }
 
+/** Errors meaning "this endpoint does not know GetTokensFromRefreshToken", never "this token is not valid". */
+const REFRESH_FALLBACK_CODES = new Set(['UnknownOperationException', 'UnsupportedOperationException', 'InvalidAction'])
+
 function normalizeErrorCode(value: unknown) {
   if (typeof value !== 'string' || value.length === 0) return 'CognitoRequestError'
   return value.includes('#') ? value.slice(value.lastIndexOf('#') + 1) : value
@@ -278,7 +281,23 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
       return mapAuthenticationTokens(response)
     },
 
+    /**
+     * Round I (I3): GetTokensFromRefreshToken, which works with refresh token rotation on (it then returns a new
+     * refresh token and retires the old one after the grace period) and off (no new refresh token). Only when
+     * Cognito does not offer that operation does it fall back to REFRESH_TOKEN_AUTH; an expired, revoked or
+     * rotated-out token (NotAuthorizedException) is never retried.
+     */
     async refresh(refreshToken: string): Promise<CognitoAuthenticationResult> {
+      try {
+        const rotated = await request<CognitoAuthenticationResponse>('GetTokensFromRefreshToken', {
+          ClientId: config.clientId,
+          RefreshToken: refreshToken,
+        })
+        return mapAuthenticationTokens(rotated)
+      } catch (error) {
+        if (!(error instanceof CognitoApiError) || !REFRESH_FALLBACK_CODES.has(error.code)) throw error
+      }
+
       const response = await request<CognitoAuthenticationResponse>('InitiateAuth', {
         AuthFlow: 'REFRESH_TOKEN_AUTH',
         ClientId: config.clientId,

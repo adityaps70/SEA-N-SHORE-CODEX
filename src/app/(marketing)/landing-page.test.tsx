@@ -7,9 +7,17 @@ const mocks = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
   loadPublicPlanPrices: vi.fn(),
   googleEnabled: false,
+  cookies: new Map<string, string>(),
+  redirect: vi.fn((href: string) => {
+    throw new Error(`NEXT_REDIRECT ${href}`)
+  }),
 }))
 
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.getVerifiedUser }))
+vi.mock('next/headers', () => ({
+  cookies: async () => ({ get: (name: string) => (mocks.cookies.has(name) ? { name, value: mocks.cookies.get(name) } : undefined) }),
+}))
+vi.mock('next/navigation', async (importOriginal) => ({ ...(await importOriginal<typeof import('next/navigation')>()), redirect: mocks.redirect }))
 vi.mock('@/features/billing/public-prices', () => ({ loadPublicPlanPrices: mocks.loadPublicPlanPrices }))
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_GOOGLE_ENABLED: mocks.googleEnabled }),
@@ -37,6 +45,7 @@ async function renderHome() {
 }
 
 beforeEach(() => {
+  mocks.cookies.clear()
   mocks.getVerifiedUser.mockResolvedValue(null)
   mocks.loadPublicPlanPrices.mockResolvedValue({ prices: SEEDED_PRICES, available: true })
   mocks.googleEnabled = false
@@ -116,6 +125,20 @@ describe('public landing page', () => {
     expect(screen.queryByRole('link', { name: /Sign in with email/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Join now' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Go to Home' })[0]).toHaveAttribute('href', '/home')
+  })
+
+  it('opens the feed for a signed-in member launching the Home Screen app, and only then (Round I, I3)', async () => {
+    mocks.cookies.set('sns_display_mode', 'standalone')
+    mocks.getVerifiedUser.mockResolvedValue({ id: 'user-1' })
+    await expect(renderHome()).rejects.toThrow('NEXT_REDIRECT /home')
+    expect(mocks.redirect).toHaveBeenCalledWith('/home')
+
+    // Signed out in the app: the landing page, with its sign-in buttons.
+    mocks.redirect.mockClear()
+    mocks.getVerifiedUser.mockResolvedValue(null)
+    await renderHome()
+    expect(mocks.redirect).not.toHaveBeenCalled()
+    expect(screen.getAllByRole('link', { name: 'Join now' }).length).toBeGreaterThan(0)
   })
 
   it('leaves the header and footer to the member app chrome for signed-in visitors (Round H, H6)', async () => {

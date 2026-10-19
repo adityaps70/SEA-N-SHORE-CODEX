@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { CognitoApiError, createCognitoApi } from './cognito-api'
-import { createCognitoSessionManager } from './cognito-session'
+import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
+import { createCognitoSessionManager, type RefreshTokenLedger } from './cognito-session'
 import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
@@ -83,6 +84,21 @@ export function signInRedirectUrl(request: NextRequest) {
 
 const allowPublicPostView = createPublicPageRateLimiter()
 
+/**
+ * Round I (I3): pages that renew a session but never require one. The Home Screen app opens at "/" and members often
+ * land on sign-in, so an access token that expired while the app was closed (it lasts 60 minutes) is renewed there
+ * from the 30-day refresh cookie, and the member is still signed in. The other auth pages (Google callback, session
+ * ended, MFA) handle their own cookies, and health checks never carry a session.
+ */
+const NO_RENEW_PREFIXES = ['/auth/', '/api/auth/', '/api/health'] as const
+
+export function renewsSessionOnPublicRoute(request: Pick<NextRequest, 'nextUrl' | 'cookies'>) {
+  const { pathname } = request.nextUrl
+  const blocked = !AUTH_ENTRY_PATHS.has(pathname) && NO_RENEW_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  if (blocked) return false
+  return !request.cookies.has(COGNITO_COOKIE_NAMES.access) && request.cookies.has(COGNITO_COOKIE_NAMES.refresh)
+}
+
 export function isCognitoProtectedRoute(pathname: string) {
   if (isPublicLearnRoute(pathname) || isSoftAuthRoute(pathname)) return false
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
@@ -98,7 +114,9 @@ export function createCognitoProxyHandler(session: RouteSession, options: { allo
   return async function handle(request: NextRequest) {
     const soft = isSoftAuthRoute(request.nextUrl.pathname)
     if (!soft && !isCognitoProtectedRoute(request.nextUrl.pathname)) {
-      return NextResponse.next({ request })
+      // A failed renewal never blocks a public page: it renders signed out, as before.
+      if (renewsSessionOnPublicRoute(request)) await session.refreshSession().catch(() => false)
+      return AUTH_ENTRY_PATHS.has(request.nextUrl.pathname) ? rememberReturnPath(request) : NextResponse.next({ request })
     }
 
     const principal = await session.getVerifiedPrincipal()
@@ -140,10 +158,16 @@ type CookieMutation =
   | { kind: 'set'; name: string; value: string; options?: Record<string, unknown> }
   | { kind: 'delete'; name: string }
 
+/** Round I (I3): set once by src/proxy.ts, so this module stays free of database imports (and its tests too). */
+let refreshTokenLedger: RefreshTokenLedger | undefined
+export function setRefreshTokenLedger(ledger: RefreshTokenLedger) {
+  refreshTokenLedger = ledger
+}
+
 export async function updateCognitoRouteSession(request: NextRequest) {
-  if (AUTH_ENTRY_PATHS.has(request.nextUrl.pathname)) return rememberReturnPath(request)
-  if (!isCognitoProtectedRoute(request.nextUrl.pathname) && !isSoftAuthRoute(request.nextUrl.pathname)) {
-    return NextResponse.next({ request })
+  const routed = isCognitoProtectedRoute(request.nextUrl.pathname) || isSoftAuthRoute(request.nextUrl.pathname)
+  if (!routed && !renewsSessionOnPublicRoute(request)) {
+    return AUTH_ENTRY_PATHS.has(request.nextUrl.pathname) ? rememberReturnPath(request) : NextResponse.next({ request })
   }
 
   const mutations: CookieMutation[] = []
@@ -177,6 +201,7 @@ export async function updateCognitoRouteSession(request: NextRequest) {
       refresh: api.refresh,
     },
     siteUrl: request.nextUrl.origin,
+    ledger: refreshTokenLedger,
   })
 
   const response = await createCognitoProxyHandler(session)(request)

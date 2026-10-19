@@ -94,8 +94,8 @@ describe('sessions (auth_sessions)', () => {
 
     expect((await repository.listActive(id)).map((session) => session.id)).toEqual([current.sessionId])
     await expect(guard.check({ accessToken: current.token, profileId: id, context })).resolves.toEqual({ status: 'active', sessionId: current.sessionId })
-    await expect(guard.check({ accessToken: laptop.token, profileId: id, context })).resolves.toEqual({ status: 'revoked', sessionId: laptop.sessionId })
-    await expect(guard.check({ accessToken: phone.token, profileId: id, context })).resolves.toEqual({ status: 'revoked', sessionId: phone.sessionId })
+    await expect(guard.check({ accessToken: laptop.token, profileId: id, context })).resolves.toEqual({ status: 'revoked', sessionId: laptop.sessionId, reason: 'signed_out' })
+    await expect(guard.check({ accessToken: phone.token, profileId: id, context })).resolves.toEqual({ status: 'revoked', sessionId: phone.sessionId, reason: 'signed_out' })
     // Another server (its own cache) sees the revocation from the database.
     const otherServer = createSessionGuard({ repository: createSessionRepository({ query }) })
     await expect(otherServer.check({ accessToken: laptop.token, profileId: id, context })).resolves.toMatchObject({ status: 'revoked' })
@@ -136,7 +136,7 @@ describe('sessions (auth_sessions)', () => {
     await controls.signOutSession(id, String(row!.id))
 
     await expect(queries.getAwsVerifiedUser()).resolves.toBeNull()
-    await expect(queries.getAwsVerification()).resolves.toEqual({ user: null, sessionRevoked: true })
+    await expect(queries.getAwsVerification()).resolves.toEqual({ user: null, sessionRevoked: true, sessionEndReason: 'signed_out' })
     await expect(queries.requireAwsUser()).rejects.toThrow('Authentication required.')
 
     // A new sign-in on that device is a new session and works again.

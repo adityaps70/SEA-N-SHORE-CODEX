@@ -22,6 +22,16 @@ type CognitoSessionApi = {
   refresh(refreshToken: string): Promise<CognitoAuthenticationResult>
 }
 
+/**
+ * Round I (I3): the server-side record of refresh tokens (features/account-security/refresh-token-ledger). `check`
+ * runs before Cognito is asked: 'reused' means this token was already exchanged for a newer one more than the grace
+ * period ago, so the sign-in it belongs to is ended. `record` runs after a successful refresh.
+ */
+export type RefreshTokenLedger = {
+  check(refreshToken: string): Promise<'ok' | 'reused'>
+  record(input: { previousRefreshToken: string; authentication: CognitoAuthenticationResult }): Promise<void>
+}
+
 export class CognitoUnauthenticatedError extends Error {
   constructor() {
     super('Authentication required.')
@@ -37,6 +47,7 @@ export function createCognitoSessionManager(input: {
   cookieStore: CookieStore
   api: CognitoSessionApi
   siteUrl: string
+  ledger?: RefreshTokenLedger
 }) {
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl)
 
@@ -64,9 +75,18 @@ export function createCognitoSessionManager(input: {
       const refreshToken = input.cookieStore.get(COGNITO_COOKIE_NAMES.refresh)?.value
       if (!refreshToken) return false
 
+      if (input.ledger && (await input.ledger.check(refreshToken)) === 'reused') {
+        cookies.clearCognitoCookies()
+        return false
+      }
+
       try {
         const authentication = await input.api.refresh(refreshToken)
-        cookies.setAuthentication(authentication)
+        // Round I (I3): the refresh cookie is written again on every refresh, with a fresh 30-day Max-Age, so the
+        // sign-in lasts until 30 days pass without the site being opened. With rotation on, Cognito returns a new
+        // refresh token; without it the same token is kept.
+        cookies.setAuthentication({ ...authentication, refreshToken: authentication.refreshToken ?? refreshToken })
+        await input.ledger?.record({ previousRefreshToken: refreshToken, authentication })
         return true
       } catch (error) {
         if (isAuthorizationFailure(error)) {

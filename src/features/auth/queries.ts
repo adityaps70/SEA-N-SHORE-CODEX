@@ -31,3 +31,19 @@ export async function getOwnProfileOnboardingState(userId: string) {
   if (!profile) throw new Error('Unable to load profile progress.')
   return Boolean(profile.onboardingCompletedAt)
 }
+
+/**
+ * Round I (I3): sign-in and sign-up send a member who is still signed in (their session was just renewed from the
+ * 30-day refresh cookie by src/proxy.ts) on to the page they came for, instead of asking for the password again.
+ * Not after a post-sign-in failure (`?error=`), which would loop back here.
+ */
+export async function continueIfSignedIn(params: { error?: string | string[] }) {
+  if (params.error) return
+  let signedIn = false
+  try {
+    signedIn = Boolean(await getVerifiedUser())
+  } catch {
+    signedIn = false
+  }
+  if (signedIn) redirect('/auth/post-sign-in')
+}

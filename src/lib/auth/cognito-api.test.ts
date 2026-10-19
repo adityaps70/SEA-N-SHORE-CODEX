@@ -124,20 +124,17 @@ describe('createCognitoApi', () => {
     })
   })
 
-  it('refreshes authentication using REFRESH_TOKEN_AUTH', async () => {
+  it('refreshes with GetTokensFromRefreshToken and returns the rotated refresh token when Cognito sends one (Round I, I3)', async () => {
     const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('x-amz-target')).toBe(
-        'AWSCognitoIdentityProviderService.InitiateAuth',
+        'AWSCognitoIdentityProviderService.GetTokensFromRefreshToken',
       )
-      expect(requestBody(init)).toEqual({
-        AuthFlow: 'REFRESH_TOKEN_AUTH',
-        ClientId: config.clientId,
-        AuthParameters: { REFRESH_TOKEN: 'refresh-token' },
-      })
+      expect(requestBody(init)).toEqual({ ClientId: config.clientId, RefreshToken: 'refresh-token' })
       return jsonResponse({
         AuthenticationResult: {
           AccessToken: 'new-access-token',
           IdToken: 'new-id-token',
+          RefreshToken: 'rotated-refresh-token',
           ExpiresIn: 3600,
         },
       })
@@ -147,8 +144,45 @@ describe('createCognitoApi', () => {
     await expect(api.refresh('refresh-token')).resolves.toEqual({
       accessToken: 'new-access-token',
       idToken: 'new-id-token',
+      refreshToken: 'rotated-refresh-token',
       expiresIn: 3600,
     })
+    expect(transport).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to REFRESH_TOKEN_AUTH only when Cognito does not offer GetTokensFromRefreshToken', async () => {
+    const targets: string[] = []
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const target = new Headers(init?.headers).get('x-amz-target') ?? ''
+      targets.push(target)
+      if (target.endsWith('.GetTokensFromRefreshToken')) {
+        return jsonResponse({ __type: 'UnknownOperationException', message: 'Unknown operation' }, 400)
+      }
+      expect(requestBody(init)).toEqual({
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        ClientId: config.clientId,
+        AuthParameters: { REFRESH_TOKEN: 'refresh-token' },
+      })
+      return jsonResponse({ AuthenticationResult: { AccessToken: 'new-access-token', IdToken: 'new-id-token', ExpiresIn: 3600 } })
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(api.refresh('refresh-token')).resolves.toEqual({
+      accessToken: 'new-access-token',
+      idToken: 'new-id-token',
+      expiresIn: 3600,
+    })
+    expect(targets).toEqual([
+      'AWSCognitoIdentityProviderService.GetTokensFromRefreshToken',
+      'AWSCognitoIdentityProviderService.InitiateAuth',
+    ])
+  })
+
+  it('never retries an expired, revoked or rotated-out refresh token another way', async () => {
+    const transport = vi.fn(async () => jsonResponse({ __type: 'NotAuthorizedException', message: 'Invalid Refresh Token' }, 400))
+    const api = createCognitoApi(config, transport)
+    await expect(api.refresh('old-refresh-token')).rejects.toMatchObject({ code: 'NotAuthorizedException' })
+    expect(transport).toHaveBeenCalledTimes(1)
   })
 
   it('completes NEW_PASSWORD_REQUIRED using RespondToAuthChallenge', async () => {

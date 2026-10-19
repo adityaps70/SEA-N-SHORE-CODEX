@@ -110,7 +110,7 @@ describe('AWS auth queries', () => {
 
     const revoked = createAwsAuthQueries({ ...base, checkSession: vi.fn(async () => ({ status: 'revoked' as const })) })
     await expect(revoked.getAwsVerifiedUser()).resolves.toBeNull()
-    await expect(revoked.getAwsVerification()).resolves.toEqual({ user: null, sessionRevoked: true })
+    await expect(revoked.getAwsVerification()).resolves.toEqual({ user: null, sessionRevoked: true, sessionEndReason: 'signed_out' })
     await expect(revoked.requireAwsUser()).rejects.toThrow('Authentication required.')
 
     for (const status of ['active', 'untracked'] as const) {

@@ -1,4 +1,5 @@
 import { trustedClientIp } from '@/lib/http/client-ip'
+import { standaloneFromCookieHeader } from '@/lib/pwa/display-mode'
 import { summarizeUserAgent } from './user-agent'
 
 /**
@@ -36,7 +37,7 @@ function cleanCountry(value: string | null) {
 
 export function sessionRequestContext(headers: HeaderSource): SessionRequestContext {
   return {
-    userAgentSummary: summarizeUserAgent(headers.get('user-agent')).summary,
+    userAgentSummary: summarizeUserAgent(headers.get('user-agent'), { standalone: standaloneFromCookieHeader(headers.get('cookie')) }).summary,
     city: cleanCity(headers.get('cloudfront-viewer-city')),
     country: cleanCountry(headers.get('cloudfront-viewer-country')),
     ip: trustedClientIp(headers),

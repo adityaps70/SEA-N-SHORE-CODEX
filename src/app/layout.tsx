@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
 import { connection } from 'next/server'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
+import { DisplayModeMarker } from '@/components/pwa/display-mode-marker'
 import './globals.css'
 
 /*
@@ -77,6 +78,8 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   applicationName: 'Sea N Shore',
   manifest: BRAND_ICONS.manifest,
+  // Round I (I3): the iPhone Home Screen app tags (mobile-web-app-capable, apple-mobile-web-app-title and status bar).
+  appleWebApp: { capable: true, title: 'Sea N Shore', statusBarStyle: 'default' },
   icons: {
     icon: [
       { url: BRAND_ICONS.favicon, sizes: '48x48' },
@@ -100,7 +103,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   await connection()
   return (
     <html lang="en" className={fontVariables}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <DisplayModeMarker />
+      </body>
     </html>
   )
 }
