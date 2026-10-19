@@ -31,19 +31,21 @@ read_count() {
     --database "$DATABASE_NAME" --sql "$1" --output json | jq -r '.records[0][0].longValue'
 }
 
-# The old fixed values (the CHECK constraint of migration 0061); no category is counted as "none".
+# The old fixed values (the CHECK constraint of migration 0061); no category is counted as "none". 0093 never
+# changes community_groups.category, so this line reads the same before and after the migration.
 LEGACY_VALUES=(maritime_news technical_discussion vetting_sire_2_0 career_advice safety_lessons achievement learning industry_opinion)
-GROUPS="public.community_groups g WHERE true"
-LIVE="public.community_groups g WHERE g.archived_at IS NULL"
+# Not GROUPS: that is a read-only Bash variable (the user's group ids), so "FROM $GROUPS" became "FROM 1001".
+ALL_GROUPS="public.community_groups g WHERE true"
+LIVE_GROUPS="public.community_groups g WHERE g.archived_at IS NULL"
 
-echo "COMMUNITY_CATEGORY_COUNTS_COMMUNITIES total=$(read_count "SELECT count(*)::bigint FROM $GROUPS") live=$(read_count "SELECT count(*)::bigint FROM $LIVE")"
+echo "COMMUNITY_CATEGORY_COUNTS_COMMUNITIES total=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS") live=$(read_count "SELECT count(*)::bigint FROM $LIVE_GROUPS")"
 line="COMMUNITY_CATEGORY_COUNTS_BEFORE"
 for value in "${LEGACY_VALUES[@]}"; do
-  line+=" $value=$(read_count "SELECT count(*)::bigint FROM $GROUPS AND g.category = '$value'")/$(read_count "SELECT count(*)::bigint FROM $LIVE AND g.category = '$value'")"
+  line+=" $value=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS AND g.category = '$value'")/$(read_count "SELECT count(*)::bigint FROM $LIVE_GROUPS AND g.category = '$value'")"
 done
-line+=" none=$(read_count "SELECT count(*)::bigint FROM $GROUPS AND g.category IS NULL")/$(read_count "SELECT count(*)::bigint FROM $LIVE AND g.category IS NULL")"
+line+=" none=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS AND g.category IS NULL")/$(read_count "SELECT count(*)::bigint FROM $LIVE_GROUPS AND g.category IS NULL")"
 # Anything outside the fixed list (the CHECK constraint makes this 0; free text would show here).
-line+=" other_text=$(read_count "SELECT count(*)::bigint FROM $GROUPS AND g.category IS NOT NULL AND g.category NOT IN ('maritime_news','technical_discussion','vetting_sire_2_0','career_advice','safety_lessons','achievement','learning','industry_opinion')")"
+line+=" other_text=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS AND g.category IS NOT NULL AND g.category NOT IN ('maritime_news','technical_discussion','vetting_sire_2_0','career_advice','safety_lessons','achievement','learning','industry_opinion')")"
 echo "$line (all/live)"
 
 TABLE_PRESENT="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'community_groups' AND column_name = 'category_id'")"
@@ -52,10 +54,10 @@ if [[ "$TABLE_PRESENT" == "1" ]]; then
   echo "COMMUNITY_CATEGORY_COUNTS_CATEGORIES total=$(read_count "SELECT count(*)::bigint FROM public.community_categories c WHERE true") hidden=$(read_count "SELECT count(*)::bigint FROM public.community_categories c WHERE c.hidden_at IS NOT NULL") added_in_admin=$(read_count "SELECT count(*)::bigint FROM public.community_categories c WHERE c.legacy_key IS NULL")"
   line="COMMUNITY_CATEGORY_COUNTS_AFTER"
   for value in "${LEGACY_VALUES[@]}" other; do
-    line+=" $value=$(read_count "SELECT count(*)::bigint FROM $GROUPS AND g.category_id = (SELECT c.id FROM public.community_categories c WHERE c.legacy_key = '$value')")/$(read_count "SELECT count(*)::bigint FROM $LIVE AND g.category_id = (SELECT c.id FROM public.community_categories c WHERE c.legacy_key = '$value')")"
+    line+=" $value=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS AND g.category_id = (SELECT c.id FROM public.community_categories c WHERE c.legacy_key = '$value')")/$(read_count "SELECT count(*)::bigint FROM $LIVE_GROUPS AND g.category_id = (SELECT c.id FROM public.community_categories c WHERE c.legacy_key = '$value')")"
   done
-  line+=" admin_added=$(read_count "SELECT count(*)::bigint FROM $GROUPS AND g.category_id IN (SELECT c.id FROM public.community_categories c WHERE c.legacy_key IS NULL)")"
-  line+=" unset=$(read_count "SELECT count(*)::bigint FROM $GROUPS AND g.category_id IS NULL")"
+  line+=" admin_added=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS AND g.category_id IN (SELECT c.id FROM public.community_categories c WHERE c.legacy_key IS NULL)")"
+  line+=" unset=$(read_count "SELECT count(*)::bigint FROM $ALL_GROUPS AND g.category_id IS NULL")"
   echo "$line (all/live)"
 fi
 echo "COMMUNITY_CATEGORY_COUNTS_READ_ONLY_VERIFIED=true"
