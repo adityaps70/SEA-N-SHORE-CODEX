@@ -9,6 +9,7 @@ vi.mock('@/features/site-settings/images', () => ({ signedAboutImageUrls: async 
 vi.mock('@/features/site-settings/admin-actions', () => ({
   saveGrievanceOfficerAction: vi.fn(),
   saveAboutPageAction: vi.fn(),
+  saveSocialHandlesAction: vi.fn(),
   createSiteImageUploadAction: vi.fn(),
 }))
 
@@ -21,9 +22,15 @@ const ABOUT = {
   memberNumbers: { enabled: false, members: true, organizations: true, courses: true },
 }
 
+const SOCIALS = { instagram: 'placeholder.handle', linkedin: '', facebook: '', x: 'placeholder_x', youtube: '' }
+
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.get.mockImplementation(async (key: string) => (key === 'about_page' ? ABOUT : { name: '', email: '', responseTime: '' }))
+  mocks.get.mockImplementation(async (key: string) => {
+    if (key === 'about_page') return ABOUT
+    if (key === 'social_handles') return SOCIALS
+    return { name: '', email: '', responseTime: '' }
+  })
   mocks.getMemberNumbers.mockResolvedValue([{ key: 'members', value: 120, label: 'members' }])
 })
 afterEach(() => cleanup())
@@ -43,6 +50,15 @@ describe('Admin › Site settings (round H, H7)', () => {
     expect(within(partners).getByRole('button', { name: 'Remove Placeholder Partner' })).toBeEnabled()
     expect(screen.getByRole('checkbox', { name: /Show live member numbers/ })).not.toBeChecked()
     expect(screen.getByText(/currently 120/)).toBeInTheDocument()
+  })
+
+  it('edits the social handles shown on job share images (Round I, I1)', async () => {
+    render(await AdminSiteSettingsPage())
+    expect(screen.getByRole('heading', { name: 'Social handles (job share images)' })).toBeVisible()
+    expect(screen.getByLabelText('Instagram')).toHaveValue('placeholder.handle')
+    expect(screen.getByLabelText('X')).toHaveValue('placeholder_x')
+    expect(screen.getByLabelText('LinkedIn')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Save social handles' })).toBeEnabled()
   })
 
   it('refuses to show editable forms when the settings cannot be read', async () => {
