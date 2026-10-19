@@ -262,6 +262,17 @@ export type FeedPost = {
   commentsComplete?: boolean
   /** Round G "Top for you": why the post is shown, and the collapsed reposts label. */
   rank?: FeedPostRank | null
+  /** Round I (I1): the job this post shares ("Share to feed"), shown as a job card with an Apply button. */
+  jobShare?: FeedJobShare | null
+}
+
+export type FeedJobShare = {
+  jobId: string
+  title: string
+  companyName: string
+  location: string | null
+  /** False once the job is closed, expired, deleted or hidden: the card says "This job is closed". */
+  open: boolean
 }
 
 export type FeedPostRank = {

@@ -40,9 +40,30 @@ export function jobMetaDescription(job: Pick<JobListing, 'summary' | 'descriptio
 }
 
 /** Title, description and canonical for a job page; noindex once the job no longer takes applications. */
+/**
+ * Round I (I1): the job's Portrait share image is its og:image while the job is public and open. The version is a
+ * hash of what the image shows, so link previews fetch a new image after an edit.
+ */
+export function jobOpenGraphImagePath(job: JobListing) {
+  const shown = JSON.stringify([
+    job.title, job.companyName, job.companyLogoPath ?? null, job.location, job.salaryMin, job.salaryMax, job.salaryCurrency, job.salaryPeriod,
+    job.urgent, job.vesselTypes, job.experienceMinYears, job.joiningFrom, job.joiningUntil, job.applyUntil, job.publishedAt,
+  ])
+  // FNV-1a: short and stable; only a cache key, not a secret.
+  let hash = 0x811c9dc5
+  for (let index = 0; index < shown.length; index += 1) hash = Math.imul(hash ^ shown.charCodeAt(index), 0x01000193)
+  return `/api/jobs/${job.id}/og-image?v=${(hash >>> 0).toString(36)}`
+}
+
 export function jobMetadata(job: JobListing, today: string): Metadata {
-  const metadata = indexableMetadata({ title: `${job.title} at ${job.companyName}`, description: jobMetaDescription(job), path: jobPath(job.id) })
-  return jobClosedReason(job, today) ? { ...metadata, robots: { index: false, follow: true } } : metadata
+  const closed = jobClosedReason(job, today)
+  const metadata = indexableMetadata({
+    title: `${job.title} at ${job.companyName}`,
+    description: jobMetaDescription(job),
+    path: jobPath(job.id),
+    images: closed ? undefined : [jobOpenGraphImagePath(job)],
+  })
+  return closed ? { ...metadata, robots: { index: false, follow: true } } : metadata
 }
 
 /** The last day the job takes applications: the earlier of the apply-by date and the joining window end. */

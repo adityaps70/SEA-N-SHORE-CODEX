@@ -205,7 +205,7 @@ describe('jobs repository', () => {
       sizeBytes: 2048,
     }
 
-    await repository.createApplication('job-1', 'viewer-1', cv, 'Available from 1 November.')
+    await repository.createApplication('job-1', 'viewer-1', cv, 'Available from 1 November.', 'share_image')
 
     expect(seen[0]?.text).toContain('cv_storage_path')
     expect(seen[0]?.text).toContain('cv_file_name')
@@ -219,6 +219,7 @@ describe('jobs repository', () => {
       cv.mimeType,
       cv.sizeBytes,
       'Available from 1 November.',
+      'share_image',
     ])
   })
 

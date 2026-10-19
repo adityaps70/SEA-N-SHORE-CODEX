@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { AboutContentForm } from '@/features/site-settings/components/about-content-form'
 import { GrievanceOfficerForm } from '@/features/site-settings/components/grievance-officer-form'
+import { SocialHandlesForm } from '@/features/site-settings/components/social-handles-form'
 import { getMemberNumbers } from '@/features/site-settings/queries'
 import { siteSettingsRepository } from '@/features/site-settings/repository'
 import { signedAboutImageUrls } from '@/features/site-settings/images'
@@ -17,12 +18,13 @@ const PAGE_WIDTH = 'max-w-4xl' // Round H (H6) width token: switch to max-w-page
  * loudly here (unlike the public pages) so an administrator never overwrites settings they could not see.
  */
 export default async function AdminSiteSettingsPage() {
-  const [officer, about] = await Promise.all([
+  const [officer, about, socials] = await Promise.all([
     siteSettingsRepository.get('grievance_officer').catch(() => null),
     siteSettingsRepository.get('about_page').catch(() => null),
+    siteSettingsRepository.get('social_handles').catch(() => null),
   ])
 
-  if (!officer || !about) {
+  if (!officer || !about || !socials) {
     return (
       <div className={`w-full ${PAGE_WIDTH} space-y-5`}>
         <AdminPageHeader title="Site settings" />
@@ -63,6 +65,13 @@ export default async function AdminSiteSettingsPage() {
             imageUrls={imageUrls}
             liveCounts={{ members: liveCount('members'), organizations: liveCount('organizations'), courses: liveCount('courses') }}
           />
+        </div>
+      </AdminPanel>
+      <AdminPanel className="p-4 sm:p-5">
+        <h3 className="text-base font-semibold text-navy-950">Social handles (job share images)</h3>
+        <p className="mt-1 text-sm text-muted">Shown in the footer of the images posters make with Share job. The partner strip on those images uses the About page partner logos.</p>
+        <div className="mt-4">
+          <SocialHandlesForm initial={socials} />
         </div>
       </AdminPanel>
     </div>

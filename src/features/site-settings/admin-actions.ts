@@ -7,7 +7,17 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { createMediaUploadUrl } from '@/lib/aws/storage'
 import { plainIssueMessage } from '@/lib/validation/plain-messages'
 import { siteSettingsRepository, SiteSettingValidationError } from './repository'
-import { aboutPageSchema, grievanceOfficerSchema, SITE_IMAGE_MAX_BYTES, SITE_IMAGE_TYPES, type AboutPageContent, type GrievanceOfficer } from './schemas'
+import {
+  aboutPageSchema,
+  grievanceOfficerSchema,
+  SITE_IMAGE_MAX_BYTES,
+  SITE_IMAGE_TYPES,
+  SOCIAL_HANDLE_NETWORKS,
+  socialHandlesSchema,
+  type AboutPageContent,
+  type GrievanceOfficer,
+  type SocialHandles,
+} from './schemas'
 
 /**
  * Round H (H7): Admin › Site settings. Every action is for platform administrators with admin MFA
@@ -73,6 +83,33 @@ export async function saveGrievanceOfficerAction(
   } catch (error) {
     if (error instanceof SiteSettingValidationError) return { status: 'error', message: error.issues[0] ?? SAVE_FAILED, values }
     console.error('[site_settings_save_failed]', { key: 'grievance_officer', code: (error as { code?: string } | null)?.code ?? null })
+    return { status: 'error', message: SAVE_FAILED, values }
+  }
+}
+
+/** Round I (I1): the social handles in the footer of job share images. */
+export async function saveSocialHandlesAction(
+  _previous: SiteSettingsFormState<SocialHandles>,
+  formData: FormData,
+): Promise<SiteSettingsFormState<SocialHandles>> {
+  const values = Object.fromEntries(SOCIAL_HANDLE_NETWORKS.map((network) => [network, String(formData.get(network) ?? '')])) as SocialHandles
+  let adminId: string
+  try {
+    adminId = (await requireSiteSettingsAdmin()).id
+  } catch {
+    return { status: 'error', message: NOT_ALLOWED, values }
+  }
+  const parsed = socialHandlesSchema.safeParse(values)
+  if (!parsed.success) {
+    return { status: 'error', message: 'Please fix the highlighted fields and try again.', fieldErrors: fieldErrorsFrom(parsed.error), values }
+  }
+  try {
+    const saved = await siteSettingsRepository.set('social_handles', parsed.data, adminId)
+    revalidatePath('/admin/settings')
+    return { status: 'success', message: 'Saved. New job share images show these handles.', values: saved }
+  } catch (error) {
+    if (error instanceof SiteSettingValidationError) return { status: 'error', message: error.issues[0] ?? SAVE_FAILED, values }
+    console.error('[site_settings_save_failed]', { key: 'social_handles', code: (error as { code?: string } | null)?.code ?? null })
     return { status: 'error', message: SAVE_FAILED, values }
   }
 }

@@ -201,7 +201,8 @@ export function HiringJobForm(props: HiringJobFormProps) {
 
       if (props.mode === 'create') {
         setMessage(intent === 'publish' ? 'Job published.' : 'Draft saved.')
-        router.push(`/hiring/jobs?notice=${intent === 'publish' ? 'published' : 'draft'}`)
+        // Round I (I1): a published job opens "Your job is live: share it" on the jobs list.
+        router.push(intent === 'publish' && 'jobId' in result && result.jobId ? `/hiring/jobs?notice=published&share=${result.jobId}` : `/hiring/jobs?notice=${intent === 'publish' ? 'published' : 'draft'}`)
       } else {
         setMessage(intent === 'publish' ? 'Changes saved and the job is live.' : 'Changes saved.')
       }

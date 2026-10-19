@@ -37,6 +37,7 @@ import { PostActionsMenu } from './post-actions-menu'
 import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
 import { PhotoTagsLine } from './photo-tags-line'
 import { PostMedia, type FocusPhoto } from './post-media'
+import { SharedJobCard } from './shared-job-card'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
 import { ReactionSummaryTrigger } from './reaction-summary'
@@ -671,6 +672,7 @@ export function PostCard({
               ) : null}
               {post.photoTags?.length ? <PhotoTagsLine tags={post.photoTags} highlightProfileId={focusPhoto?.profileId ?? null} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
+              {post.jobShare ? <SharedJobCard job={post.jobShare} /> : null}
             </>
           )}
         </div>

@@ -9,6 +9,8 @@ import { HiringJobRowMenu } from '@/features/jobs/components/hiring-job-row-menu
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
 import { hiringRepository, managedJobLifecycle, type ManagedHiringJobSummary } from '@/features/jobs/hiring-repository'
+import { JobShareButton } from '@/features/jobs/share/components/job-share-button'
+import { jobShareService } from '@/features/jobs/share/share-runtime'
 import { jobStatusPresentation, todayIsoDate, type JobStatusKey } from '@/features/jobs/job-lifecycle'
 import { urgentWindowLabel } from '@/features/jobs/urgent'
 
@@ -68,6 +70,14 @@ export default async function HiringJobsPage({
   const counts: Record<JobsFilter, number> = { all: jobs.length, live: 0, draft: 0, archived: 0 }
   for (const item of withStatus) counts[filterFor(item.presentation.key)] += 1
   const visible = filter === 'all' ? withStatus : withStatus.filter((item) => filterFor(item.presentation.key) === filter)
+  // Round I (I1): "Share" for the live jobs this member may share (verified recruiter or organization, or admin).
+  const shareable = await jobShareService
+    .shareableJobIds(user.id, withStatus.map(({ job, presentation }) => ({ id: job.id, live: presentation.key === 'live' })))
+    .catch(() => new Set<string>())
+  const shareParam = firstValue(query.share)
+  const justPublished = notice && firstValue(query.notice) === 'published' && shareParam && shareable.has(shareParam)
+    ? withStatus.find(({ job }) => job.id === shareParam)?.job ?? null
+    : null
 
   return (
     <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
@@ -95,7 +105,12 @@ export default async function HiringJobsPage({
 
       <HiringSubnav active="jobs" />
 
-      {notice ? (
+      {justPublished ? (
+        <div role="status" className="flex flex-col gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="job-live-share">
+          <p className="text-sm font-semibold text-emerald-900">Your job is live: share it. <span className="font-medium">Make an image for social media or post it to the Sea N Shore feed.</span></p>
+          <JobShareButton jobId={justPublished.id} label="Share it" />
+        </div>
+      ) : notice ? (
         <p role="status" className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">{notice}</p>
       ) : null}
 
@@ -158,6 +173,7 @@ export default async function HiringJobsPage({
                     <ChevronRight aria-hidden="true" className="size-4" />
                   </Link>
                   {dateLine ? <p className="text-[13px] text-muted md:hidden">{dateLine}</p> : null}
+                  {shareable.has(job.id) ? <div className="mt-2 md:hidden"><JobShareButton jobId={job.id} label="Share" /></div> : null}
                   <p className="mt-3 text-sm text-muted max-md:hidden">
                     <span className="font-bold text-navy-950">{job.applicantCount}</span> applicant{job.applicantCount === 1 ? '' : 's'}
                     {job.newApplicantCount ? <span className="ml-2 rounded-full bg-ocean-50 px-2 py-0.5 text-xs font-bold text-ocean-800">{job.newApplicantCount} new</span> : null}
@@ -177,6 +193,7 @@ export default async function HiringJobsPage({
                       View live job
                     </Link>
                   ) : null}
+                  {shareable.has(job.id) ? <JobShareButton jobId={job.id} label="Share" className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500" /> : null}
                 </div>
               </div>
               <div className="mt-4 border-t border-mist-100 pt-4 max-md:hidden">

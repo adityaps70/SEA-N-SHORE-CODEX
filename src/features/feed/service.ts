@@ -38,6 +38,12 @@ type StandardPostInput = {
   groupId?: string
   /** Who can see the post (round F). Group posts are always members only; missing means members only. */
   audience?: PostAudience
+  /**
+   * Round I (I1): a job shared to the feed from the organization page. The job share rules (features/jobs/share)
+   * already allowed it (the organization's hiring roles, or a platform administrator), so the organization posting
+   * roles are not checked again. Only server code sets this; no form or action passes it through.
+   */
+  organizationJobShare?: true
 }
 
 type UpdatePostInput = {
@@ -331,7 +337,7 @@ export function createFeedService(input: {
   async function createStandardPost(actorId: string, post: StandardPostInput) {
     return input.withTransaction(async (repository, social, quotas) => {
       await assertMemberReady(repository, actorId)
-      if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
+      if (post.companyId && !post.organizationJobShare) await assertCanPostAsOrganization(actorId, post.companyId)
       if (post.groupId) await assertCanPostInGroup(repository, actorId, post.groupId)
       // Organization and group posts count against the member who publishes them.
       await quotas?.consume({ profileId: actorId, action: 'post' })

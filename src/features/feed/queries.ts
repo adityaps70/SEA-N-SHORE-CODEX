@@ -13,13 +13,15 @@ import { feedPreferences, type createFeedPreferences } from './preferences'
 import { rankingSwitches } from '@/features/ranking/switches'
 import { incrementRankingMetric } from '@/features/signals/repository'
 import { topFeed, type createTopFeed } from '@/features/ranking/top-feed'
-import type { CursorPage, FeedComment, FeedCursor, FeedMode, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
+import { jobShareRepository } from '@/features/jobs/share/share-repository'
+import type { CursorPage, FeedComment, FeedCursor, FeedJobShare, FeedMode, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
 type GetPreferredAuthorIds = () => Promise<Iterable<string>>
 type ListAdministeredGroupIds = (viewerId: string) => Promise<string[]>
+type LoadJobShareCards = (postIds: string[]) => Promise<Map<string, FeedJobShare>>
 type TopFeed = ReturnType<typeof createTopFeed>
 type FeedPreferences = ReturnType<typeof createFeedPreferences>
 type RankingGate = { isEnabled(area: 'feed', profileId: string): Promise<boolean>; isAdministrator(profileId: string): Promise<boolean> }
@@ -105,12 +107,28 @@ export function createFeedQueries(input: {
   topFeed?: TopFeed
   preferences?: FeedPreferences
   ranking?: RankingGate
+  /** Round I (I1): job cards of posts made with "Share to feed", by post id. */
+  loadJobShareCards?: LoadJobShareCards
 }) {
   const rankedFeed = input.topFeed ?? topFeed
   const preferences = input.preferences ?? feedPreferences
   const ranking: RankingGate = input.ranking ?? rankingSwitches
   const loadAccessContext = input.loadAccessContext ?? getAccessContext
   const listAdministeredGroupIds = input.listAdministeredGroupIds ?? communityRepository.listAdministeredGroupIds
+  const loadJobShareCards = input.loadJobShareCards ?? jobShareRepository.listFeedJobCards
+
+  /** Round I (I1): the job card of each post shared from a job. A failure only leaves the cards out. */
+  async function applyJobShares(posts: FeedPost[]) {
+    if (!posts.length) return posts
+    let cards: Map<string, FeedJobShare>
+    try {
+      cards = await loadJobShareCards(posts.map((post) => post.id))
+    } catch {
+      return posts
+    }
+    if (!cards.size) return posts
+    return posts.map((post) => (cards.has(post.id) ? { ...post, jobShare: cards.get(post.id)! } : post))
+  }
 
   /** Group admins may remove posts from their group; only then do we load the viewer's admin groups. */
   async function applyGroupModeration(posts: FeedPost[], viewerId: string) {
@@ -186,7 +204,7 @@ export function createFeedQueries(input: {
       const loaded = (commentsByPost.get(row.id) ?? []).filter((comment) => !comment.deleted_at).length
       return { ...post, commentsComplete: loaded >= post.commentCount }
     })
-    return applyGroupModeration(await applyOrganizationPermissions(rows, posts, viewerId), viewerId)
+    return applyJobShares(await applyGroupModeration(await applyOrganizationPermissions(rows, posts, viewerId), viewerId))
   }
 
   /**
@@ -207,14 +225,14 @@ export function createFeedQueries(input: {
     const signedUrls = await input.resolveMediaUrls(paths)
     const sourceById = new Map(repostSources.map((row) => [row.id, row] as const))
     const emptyViewer = { postReactions: new Map(), likedPostIds: new Set<string>(), savedPostIds: new Set<string>(), pollVotes: new Map<string, string>() }
-    return rows.map((row) => ({
+    return applyJobShares(rows.map((row) => ({
       ...mapFeedPost({
         ...row,
         post_comments: [],
         repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
       }, emptyViewer, signedUrls),
       comments: [],
-    }))
+    })))
   }
 
   async function getFeedPage(request: FeedRequest = {}): Promise<FeedPage> {
