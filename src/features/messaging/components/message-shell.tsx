@@ -38,6 +38,8 @@ export type MessagingActiveConversation = {
   otherLastReadAt: string | null
   messages: MessagingMessageDto[]
   nextCursor: { createdAt: string; id: string } | null
+  /** Recruiter messaging exception: why the recruiter could write ("Sent because you applied to …"). */
+  recruiterContact?: { recruiterProfileId: string; line: string } | null
 }
 
 function peerCursorFromConversation(conversation: MessagingActiveConversation): MessagingReadCursor | null {
@@ -299,6 +301,7 @@ function ActiveConversationWorkspace({
         onConversationDeleted={onConversationDeleted}
         messages={displayedMessages}
         nextCursor={conversation.nextCursor}
+        recruiterContact={conversation.recruiterContact ?? null}
         peerReadCursor={effectivePeerReadCursor}
         onReply={setReplyTo}
         otherTyping={otherTyping}

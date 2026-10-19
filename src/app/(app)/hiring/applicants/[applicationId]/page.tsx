@@ -18,7 +18,7 @@ import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
 import { RecruiterNoteForm } from '@/features/jobs/components/recruiter-note-form'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
-import { getRelationshipState } from '@/features/network/queries'
+import { recruiterMessageAccess } from '@/features/messaging/recruiter-contact-queries'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { formatYears } from '@/lib/format'
 import { dgProfileDownloadHref } from '@/features/profiles/profile-document-policy'
@@ -71,11 +71,13 @@ export default async function HiringApplicantReviewPage({
     ? await profileDocumentRepository.getDocument(candidate.id, 'dg_profile').catch(() => null)
     : null
   const isPersonalJob = review.job.companyId === null
-  // Messaging follows the existing rule: accepted connections only. Inactive members can't be messaged.
-  const canMessage = candidate.accountActive && candidate.id !== user.id
-    ? await getRelationshipState(candidate.id).then((state) => state.connection.kind === 'connected').catch(() => false)
-    : false
-  const messageTarget = candidate.accountActive && candidate.id !== user.id ? { targetProfileId: candidate.id, canMessage } : null
+  // The member's "Who can message me" decides; a verified recruiter may also write about this application
+  // (recruiter messaging exception). Inactive members can't be messaged.
+  const access = candidate.accountActive && candidate.id !== user.id
+    ? await recruiterMessageAccess({ recruiterId: user.id, memberId: candidate.id, applicationId }).catch(() => ({ canMessage: false, contact: null }))
+    : { canMessage: false, contact: null }
+  const canMessage = access.canMessage
+  const messageTarget = candidate.accountActive && candidate.id !== user.id ? { targetProfileId: candidate.id, canMessage, contact: access.contact } : null
   const applicantsHref = `/hiring/jobs/${review.job.id}/applicants`
   const cvHref = review.cvAttachment ? hiringCvHref(applicationId) : null
   const dgHref = dgProfile ? dgProfileDownloadHref(candidate.id) : null
@@ -139,7 +141,7 @@ export default async function HiringApplicantReviewPage({
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 max-md:mt-3 max-md:justify-center">
                     {profileHref ? <Link href={profileHref} className="inline-flex text-sm font-bold text-teal-700 hover:underline max-md:min-h-10 max-md:items-center">View Maritime Profile</Link> : null}
-                    {messageTarget ? <MessageApplicantButton targetProfileId={candidate.id} candidateName={candidate.fullName} canMessage={canMessage} /> : null}
+                    {messageTarget ? <MessageApplicantButton targetProfileId={candidate.id} candidateName={candidate.fullName} canMessage={canMessage} contact={access.contact} /> : null}
                   </div>
                   {!candidate.accountActive ? <p className="mt-2 text-sm font-semibold text-amber-900">This member’s account is no longer active, so their profile can’t be opened. The application is kept for your records.</p> : null}
                 </div>

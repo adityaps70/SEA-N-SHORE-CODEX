@@ -33,8 +33,16 @@ describe('StartConversationButton', () => {
     render(<StartConversationButton targetProfileId={TARGET_ID} />)
     await user.click(screen.getByRole('button', { name: 'Message' }))
 
-    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID)
+    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID, undefined)
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/messages/${CONVERSATION_ID}`))
+  })
+
+  it('passes a recruiter\'s reason to the server action (recruiter messaging exception)', async () => {
+    const user = userEvent.setup()
+    mocks.startDirectConversationAction.mockResolvedValueOnce({ ok: true, conversationId: CONVERSATION_ID })
+    render(<StartConversationButton targetProfileId={TARGET_ID} contact={{ reason: 'open_to_recruiters' }} />)
+    await user.click(screen.getByRole('button', { name: 'Message' }))
+    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID, { reason: 'open_to_recruiters' })
   })
 
   it('shows a safe inline error instead of navigating when messaging is unavailable', async () => {

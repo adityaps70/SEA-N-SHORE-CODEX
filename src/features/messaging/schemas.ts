@@ -20,8 +20,15 @@ function isSingleEmoji(value: string) {
   return /\p{Extended_Pictographic}|\p{Regional_Indicator}|[#*0-9]\uFE0F?\u20E3/u.test(value)
 }
 
+// Recruiter messaging exception (Oct 2026): a recruiter's button says why it may reach the member.
+export const recruiterContactSchema = z.discriminatedUnion('reason', [
+  z.object({ reason: z.literal('applied'), applicationId: uuid }),
+  z.object({ reason: z.literal('open_to_recruiters') }),
+])
+
 export const directConversationInputSchema = z.object({
   targetProfileId: uuid,
+  contact: recruiterContactSchema.optional(),
 })
 
 export const sendMessageInputSchema = z.object({

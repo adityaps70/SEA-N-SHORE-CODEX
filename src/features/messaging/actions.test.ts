@@ -89,8 +89,31 @@ describe('messaging server actions', () => {
       conversationId: CONVERSATION_ID,
     })
 
-    expect(mocks.startDirectConversation).toHaveBeenCalledWith(VIEWER_ID, TARGET_ID)
+    expect(mocks.startDirectConversation).toHaveBeenCalledWith(VIEWER_ID, TARGET_ID, undefined)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/messages')
+  })
+
+  it('passes a recruiter\'s reason to the service, and refuses a malformed one before resolving identity', async () => {
+    const applicationId = '88888888-8888-4888-8888-888888888888'
+    await expect(startDirectConversationAction(TARGET_ID, { reason: 'applied', applicationId })).resolves.toEqual({ ok: true, conversationId: CONVERSATION_ID })
+    expect(mocks.startDirectConversation).toHaveBeenLastCalledWith(VIEWER_ID, TARGET_ID, { reason: 'applied', applicationId })
+    await startDirectConversationAction(TARGET_ID, { reason: 'open_to_recruiters' })
+    expect(mocks.startDirectConversation).toHaveBeenLastCalledWith(VIEWER_ID, TARGET_ID, { reason: 'open_to_recruiters' })
+
+    mocks.requireAwsUser.mockClear()
+    mocks.startDirectConversation.mockClear()
+    await expect(startDirectConversationAction(TARGET_ID, { reason: 'applied', applicationId: 'nope' } as never)).resolves.toEqual({ ok: false, error: 'Invalid member.' })
+    await expect(startDirectConversationAction(TARGET_ID, { reason: 'anyone' } as never)).resolves.toEqual({ ok: false, error: 'Invalid member.' })
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.startDirectConversation).not.toHaveBeenCalled()
+  })
+
+  it('explains the recruiter daily limit', async () => {
+    mocks.startDirectConversation.mockRejectedValueOnce(new Error('messaging_recruiter_daily_limit'))
+    await expect(startDirectConversationAction(TARGET_ID, { reason: 'open_to_recruiters' })).resolves.toEqual({
+      ok: false,
+      error: 'You’ve started 20 new conversations with candidates in the last 24 hours. Try again later.',
+    })
   })
 
   it('refuses a conversation with yourself on the server before calling the service', async () => {

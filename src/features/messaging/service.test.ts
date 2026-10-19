@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { OutboxRepository } from '@/features/events/outbox-repository'
 import type { NetworkRepository } from '@/features/network/repository'
 import type { MessagingRepository } from './repository'
+import type { RecruiterContactRepository } from './recruiter-contact-repository'
 
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
 const TARGET_ID = '22222222-2222-4222-8222-222222222222'
@@ -67,6 +68,19 @@ function makeNetworkRepository(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function makeRecruiterRepository(overrides: Record<string, unknown> = {}) {
+  return {
+    isVerifiedRecruiter: vi.fn(async () => false),
+    findApplicationForRecruiter: vi.fn(async () => null),
+    isOpenToRecruiters: vi.fn(async () => false),
+    lockRecruiter: vi.fn(async () => undefined),
+    countSince: vi.fn(async () => 0),
+    findByConversation: vi.fn(async () => null),
+    insert: vi.fn(async () => undefined),
+    ...overrides,
+  }
+}
+
 function makeOutbox() {
   const enqueue = vi.fn<OutboxRepository['enqueue']>()
   enqueue.mockResolvedValue(undefined)
@@ -77,11 +91,13 @@ async function service(input: {
   messaging?: ReturnType<typeof makeMessagingRepository>
   network?: ReturnType<typeof makeNetworkRepository>
   outbox?: ReturnType<typeof makeOutbox>
+  recruiters?: ReturnType<typeof makeRecruiterRepository>
   now?: () => Date
 } = {}) {
   const messaging = input.messaging ?? makeMessagingRepository()
   const network = input.network ?? makeNetworkRepository()
   const outbox = input.outbox ?? makeOutbox()
+  const recruiters = input.recruiters ?? makeRecruiterRepository()
   const transactionSpy = vi.fn()
   const { createMessagingService } = await import('./service')
   const withTransaction = async <T>(
@@ -89,6 +105,7 @@ async function service(input: {
       messaging: MessagingRepository
       network: NetworkRepository
       outbox: OutboxRepository
+      recruiters: RecruiterContactRepository
     }) => Promise<T>,
   ) => {
     transactionSpy()
@@ -96,6 +113,7 @@ async function service(input: {
       messaging: messaging as unknown as MessagingRepository,
       network: network as unknown as NetworkRepository,
       outbox: outbox as unknown as OutboxRepository,
+      recruiters: recruiters as unknown as RecruiterContactRepository,
     })
   }
   return {
@@ -103,6 +121,7 @@ async function service(input: {
     messaging,
     network,
     outbox,
+    recruiters,
     transactionSpy,
   }
 }
@@ -523,5 +542,145 @@ describe('messaging authorization and durability service', () => {
       context.service.deleteConversationForParticipant(VIEWER_ID, CONVERSATION_ID),
       'messaging_not_participant',
     )
+  })
+})
+
+/**
+ * Recruiter messaging exception (Oct 2026): VIEWER is the recruiter, TARGET the member, who keeps the default
+ * "connections only" and is not connected. One test per rule.
+ */
+describe('recruiter messaging exception', () => {
+  const APPLICATION_ID = '88888888-8888-4888-8888-888888888888'
+  const JOB_ID = '99999999-9999-4999-8999-999999999999'
+  const NOW = new Date('2026-10-19T09:00:00.000Z')
+  const notConnected = () => makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null) })
+  const verified = (overrides: Record<string, unknown> = {}) => makeRecruiterRepository({ isVerifiedRecruiter: vi.fn(async () => true), ...overrides })
+  const applied = { reason: 'applied' as const, applicationId: APPLICATION_ID }
+  const openToRecruiters = { reason: 'open_to_recruiters' as const }
+  const theirApplication = vi.fn(async () => ({ application_id: APPLICATION_ID, job_id: JOB_ID, job_title: 'Placeholder Chief Officer' }))
+
+  it('gives no exception to an unverified recruiter: the member\'s setting decides', async () => {
+    const context = await service({
+      network: notConnected(),
+      recruiters: makeRecruiterRepository({ findApplicationForRecruiter: theirApplication, isOpenToRecruiters: vi.fn(async () => true) }),
+    })
+    await expectCode(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied), 'messaging_not_allowed')
+    await expectCode(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, openToRecruiters), 'messaging_not_allowed')
+    expect(context.messaging.insertDirectConversation).not.toHaveBeenCalled()
+    expect(context.recruiters.insert).not.toHaveBeenCalled()
+  })
+
+  it('lets a verified recruiter message a member who applied to one of their jobs, about that application', async () => {
+    const context = await service({ network: notConnected(), recruiters: verified({ findApplicationForRecruiter: theirApplication }), now: () => NOW })
+    await expect(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied)).resolves.toBe(CONVERSATION_ID)
+    expect(context.recruiters.findApplicationForRecruiter).toHaveBeenCalledWith(VIEWER_ID, TARGET_ID, APPLICATION_ID)
+    expect(context.recruiters.insert).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID, recruiterId: VIEWER_ID, memberId: TARGET_ID, reason: 'applied', applicationId: APPLICATION_ID, jobId: JOB_ID,
+    })
+  })
+
+  it('refuses an application that is not to one of the recruiter\'s jobs (or is withdrawn)', async () => {
+    const context = await service({ network: notConnected(), recruiters: verified() })
+    await expectCode(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied), 'messaging_not_allowed')
+    expect(context.recruiters.insert).not.toHaveBeenCalled()
+  })
+
+  it('lets a verified recruiter message a member who switched on "open to recruiters", and no one else', async () => {
+    const open = await service({ network: notConnected(), recruiters: verified({ isOpenToRecruiters: vi.fn(async () => true) }), now: () => NOW })
+    await expect(open.service.startDirectConversation(VIEWER_ID, TARGET_ID, openToRecruiters)).resolves.toBe(CONVERSATION_ID)
+    expect(open.recruiters.insert).toHaveBeenCalledWith(expect.objectContaining({ reason: 'open_to_recruiters', applicationId: null, jobId: null }))
+
+    const closed = await service({ network: notConnected(), recruiters: verified() })
+    await expectCode(closed.service.startDirectConversation(VIEWER_ID, TARGET_ID, openToRecruiters), 'messaging_not_allowed')
+  })
+
+  it('still refuses when either member blocked the other', async () => {
+    const context = await service({
+      network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null), isPairBlocked: vi.fn(async () => true) }),
+      recruiters: verified({ findApplicationForRecruiter: theirApplication }),
+    })
+    await expectCode(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied), 'messaging_not_allowed')
+    expect(context.recruiters.isVerifiedRecruiter).not.toHaveBeenCalled()
+  })
+
+  it('still refuses when the member chose "Nobody"', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ getMessagePermission: vi.fn(async () => 'nobody') }),
+      network: notConnected(),
+      recruiters: verified({ findApplicationForRecruiter: theirApplication, isOpenToRecruiters: vi.fn(async () => true) }),
+    })
+    await expectCode(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied), 'messaging_not_allowed')
+    await expectCode(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, openToRecruiters), 'messaging_not_allowed')
+    expect(context.recruiters.insert).not.toHaveBeenCalled()
+  })
+
+  it('caps new recruiter conversations at 20 in 24 hours, counted under a per-recruiter lock', async () => {
+    const atCap = await service({ network: notConnected(), recruiters: verified({ findApplicationForRecruiter: theirApplication, countSince: vi.fn(async () => 20) }), now: () => NOW })
+    await expectCode(atCap.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied), 'messaging_recruiter_daily_limit')
+    expect(atCap.recruiters.lockRecruiter).toHaveBeenCalledWith(VIEWER_ID)
+    expect(atCap.recruiters.countSince).toHaveBeenCalledWith(VIEWER_ID, new Date('2026-10-18T09:00:00.000Z'))
+    expect(atCap.messaging.insertDirectConversation).not.toHaveBeenCalled()
+
+    const underCap = await service({ network: notConnected(), recruiters: verified({ findApplicationForRecruiter: theirApplication, countSince: vi.fn(async () => 19) }), now: () => NOW })
+    await expect(underCap.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied)).resolves.toBe(CONVERSATION_ID)
+  })
+
+  it('over the cap, still opens a normal conversation with a member the recruiter may message anyway', async () => {
+    const context = await service({ recruiters: verified({ findApplicationForRecruiter: theirApplication, countSince: vi.fn(async () => 20) }) })
+    await expect(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied)).resolves.toBe(CONVERSATION_ID)
+    expect(context.recruiters.insert).not.toHaveBeenCalled()
+  })
+
+  it('reopens an existing recruiter conversation without counting it again', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ findDirectConversationByPair: vi.fn(async () => ({ id: CONVERSATION_ID })) }),
+      network: notConnected(),
+      recruiters: verified({ findByConversation: vi.fn(async () => ({ conversation_id: CONVERSATION_ID, recruiter_profile_id: VIEWER_ID, member_profile_id: TARGET_ID, reason: 'applied' })) }),
+    })
+    await expect(context.service.startDirectConversation(VIEWER_ID, TARGET_ID, applied)).resolves.toBe(CONVERSATION_ID)
+    expect(context.recruiters.countSince).not.toHaveBeenCalled()
+    expect(context.recruiters.insert).not.toHaveBeenCalled()
+  })
+
+  describe('sending in a recruiter conversation', () => {
+    const recruiterConversation = { conversation_id: CONVERSATION_ID, recruiter_profile_id: VIEWER_ID, member_profile_id: TARGET_ID, reason: 'applied', job_application_id: APPLICATION_ID, job_id: JOB_ID, job_title: 'Placeholder Chief Officer' }
+    const input = { conversationId: CONVERSATION_ID, clientMessageId: CLIENT_MESSAGE_ID, body: 'Good day, Captain.' }
+
+    it('lets the verified recruiter write to the "connections only" member', async () => {
+      const context = await service({ network: notConnected(), recruiters: verified({ findByConversation: vi.fn(async () => recruiterConversation) }) })
+      await expect(context.service.sendMessage(VIEWER_ID, input)).resolves.toMatchObject({ id: MESSAGE_ID })
+    })
+
+    it('lets the member reply even though the recruiter is "connections only" too', async () => {
+      const context = await service({
+        messaging: makeMessagingRepository({ findOtherParticipantId: vi.fn(async () => VIEWER_ID), insertMessage: vi.fn(async () => message({ sender_profile_id: TARGET_ID })) }),
+        network: notConnected(),
+        recruiters: makeRecruiterRepository({ findByConversation: vi.fn(async () => recruiterConversation) }),
+      })
+      await expect(context.service.sendMessage(TARGET_ID, input)).resolves.toMatchObject({ sender_profile_id: TARGET_ID })
+    })
+
+    it('stops when the member chooses "Nobody", when either side blocks, or when the recruiter is no longer verified', async () => {
+      const nobody = await service({
+        messaging: makeMessagingRepository({ getMessagePermission: vi.fn(async () => 'nobody') }),
+        network: notConnected(),
+        recruiters: verified({ findByConversation: vi.fn(async () => recruiterConversation) }),
+      })
+      await expectCode(nobody.service.sendMessage(VIEWER_ID, input), 'messaging_not_allowed')
+
+      const blocked = await service({
+        network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null), isPairBlocked: vi.fn(async () => true) }),
+        recruiters: verified({ findByConversation: vi.fn(async () => recruiterConversation) }),
+      })
+      await expectCode(blocked.service.sendMessage(VIEWER_ID, input), 'messaging_not_allowed')
+
+      const unverified = await service({ network: notConnected(), recruiters: makeRecruiterRepository({ findByConversation: vi.fn(async () => recruiterConversation) }) })
+      await expectCode(unverified.service.sendMessage(VIEWER_ID, input), 'messaging_not_allowed')
+    })
+
+    it('gives no exception in a conversation that was not started as a recruiter conversation', async () => {
+      const context = await service({ network: notConnected(), recruiters: verified() })
+      await expectCode(context.service.sendMessage(VIEWER_ID, input), 'messaging_not_allowed')
+    })
   })
 })

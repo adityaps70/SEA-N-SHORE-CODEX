@@ -4,6 +4,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
 import { getConversationInbox, getConversationThread, getUnreadMessageCount } from '@/features/messaging/queries'
 import { getConversationPeer } from '@/features/messaging/recipient-queries'
+import { getRecruiterContact } from '@/features/messaging/recruiter-contact-queries'
 import { createProductionMessagingService } from '@/features/messaging/service'
 
 export const metadata: Metadata = { title: 'Messages' }
@@ -40,9 +41,10 @@ export default async function MessageConversationPage({
     )
   }
 
-  const [inbox, authoritativeUnreadCount] = await Promise.all([
+  const [inbox, authoritativeUnreadCount, recruiterContact] = await Promise.all([
     getConversationInbox({ limit: 100 }),
     getUnreadMessageCount(),
+    getRecruiterContact(conversationId).catch(() => null),
   ])
   const peer = inbox.find((item) => item.conversationId === conversationId)
   // A conversation just started from New Message may sit beyond the first
@@ -59,6 +61,7 @@ export default async function MessageConversationPage({
     otherLastReadAt: peer?.otherLastReadAt ?? null,
     messages: thread.messages,
     nextCursor: thread.nextCursor,
+    recruiterContact,
   }
 
   return (

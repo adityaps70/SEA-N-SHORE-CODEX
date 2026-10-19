@@ -10,6 +10,8 @@ import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { jobsRepository } from '@/features/jobs/repository'
+import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
+import { isVerifiedRecruiter } from '@/features/messaging/recruiter-contact-queries'
 import { ConnectionPrimaryAction } from '@/features/network/components/connection-primary-action'
 import { jobCandidateSuggestions } from '@/features/ranking/job-candidates'
 import { isRankingEnabled } from '@/features/ranking/switches'
@@ -19,6 +21,8 @@ export const metadata: Metadata = { title: 'Suggested candidates' }
 /**
  * Round G (G3): members who chose "Let recruiters find me as open to work", best match first.
  * Behind the jobs ranking switch; live jobs only. Contact goes through Connect / Message.
+ * Recruiter messaging exception (Oct 2026): a verified recruiter may message these members without connecting first
+ * (they chose to be found), unless a member chose "Nobody".
  */
 export default async function SuggestedCandidatesPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params
@@ -29,6 +33,7 @@ export default async function SuggestedCandidatesPage({ params }: { params: Prom
   const job = await jobsRepository.getPublishedJob(jobId)
   const candidates = job ? await jobCandidateSuggestions.list(user.id, job) : []
   const photos = new Map(await Promise.all(candidates.map(async (candidate) => [candidate.id, await applicantPhotoUrl(candidate.avatarPath)] as const)))
+  const verifiedRecruiter = candidates.length ? await isVerifiedRecruiter(user.id).catch(() => false) : false
 
   return (
     <div className="mx-auto w-full max-w-page-wide space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
@@ -38,7 +43,9 @@ export default async function SuggestedCandidatesPage({ params }: { params: Prom
         <h1 className="mt-3 break-words text-2xl font-bold text-navy-950 sm:text-3xl">Suggested candidates · {managed.title}</h1>
       </div>
       <p className="max-w-3xl text-sm leading-6 text-muted">
-        Members who chose to let recruiters find them as open to work, best match first. Only eligible members are listed. Reach them by connecting or, once connected, by message.
+        Members who chose to let recruiters find them as open to work, best match first. Only eligible members are listed. {verifiedRecruiter
+          ? 'As a verified recruiter you can message them directly, up to 20 new conversations a day, or connect first.'
+          : 'Reach them by connecting or, once connected, by message.'}
       </p>
       <HiringSubnav active="jobs" />
 
@@ -65,7 +72,15 @@ export default async function SuggestedCandidatesPage({ params }: { params: Prom
                     ) : null}
                   </div>
                 </div>
-                <div className="shrink-0 self-center max-md:self-stretch">
+                <div className="flex shrink-0 items-center gap-2 self-center max-md:self-stretch">
+                  {candidate.relationship.connection.kind !== 'connected' && candidate.messagePermission !== 'nobody'
+                    && (verifiedRecruiter || candidate.messagePermission === 'everyone') ? (
+                      <StartConversationButton
+                        targetProfileId={candidate.id}
+                        contact={verifiedRecruiter ? { reason: 'open_to_recruiters' } : undefined}
+                        variant="pill"
+                      />
+                    ) : null}
                   <ConnectionPrimaryAction profileId={candidate.id} initialRelationship={candidate.relationship} variant="pill" fullName={candidate.fullName} />
                 </div>
               </li>

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getUnreadMessageCount: vi.fn(),
   markConversationRead: vi.fn(),
   getConversationPeer: vi.fn(),
+  getRecruiterContact: vi.fn(),
   notFound: vi.fn(),
 }))
 
@@ -25,6 +26,9 @@ vi.mock('@/features/messaging/queries', () => ({
 vi.mock('@/features/messaging/recipient-queries', () => ({
   getConversationPeer: mocks.getConversationPeer,
 }))
+vi.mock('@/features/messaging/recruiter-contact-queries', () => ({
+  getRecruiterContact: mocks.getRecruiterContact,
+}))
 vi.mock('@/features/messaging/service', () => ({
   createProductionMessagingService: () => ({
     markConversationRead: mocks.markConversationRead,
@@ -35,6 +39,7 @@ vi.mock('@/features/messaging/components/message-shell', () => ({
     activeConversation: null | {
       otherName: string | null
       messages: Array<{ body: string }>
+      recruiterContact?: { line: string } | null
     }
     authoritativeUnreadCount?: number
   }) => (
@@ -42,6 +47,7 @@ vi.mock('@/features/messaging/components/message-shell', () => ({
       <span>Messaging shell</span>
       <span>{activeConversation?.otherName}</span>
       <span>{activeConversation?.messages[0]?.body}</span>
+      <span data-testid="recruiter-contact">{activeConversation?.recruiterContact?.line ?? 'none'}</span>
       <span data-testid="authoritative-unread-count">{authoritativeUnreadCount ?? 'unset'}</span>
     </div>
   ),
@@ -55,6 +61,7 @@ const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.getRecruiterContact.mockResolvedValue(null)
   mocks.requireAwsUser.mockResolvedValue({ id: VIEWER_ID, email: 'viewer@example.com' })
   mocks.getConversationInbox.mockResolvedValue([{
     conversationId: CONVERSATION_ID,
@@ -180,5 +187,24 @@ describe('Message conversation page', () => {
 
     expect(mocks.getConversationPeer).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
     expect(screen.getByText('Chief Engineer Ravi Kumar')).toBeInTheDocument()
+  })
+})
+
+describe('recruiter messaging exception', () => {
+  it('passes the reason line of a recruiter conversation to the thread, and none for others', async () => {
+    mocks.getRecruiterContact.mockResolvedValueOnce({ recruiterProfileId: OTHER_ID, line: 'Sent because you applied to Placeholder Chief Officer' })
+    render(await MessageConversationPage({ params: Promise.resolve({ conversationId: CONVERSATION_ID }) }))
+    expect(mocks.getRecruiterContact).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(screen.getByTestId('recruiter-contact')).toHaveTextContent('Sent because you applied to Placeholder Chief Officer')
+    cleanup()
+
+    render(await MessageConversationPage({ params: Promise.resolve({ conversationId: CONVERSATION_ID }) }))
+    expect(screen.getByTestId('recruiter-contact')).toHaveTextContent('none')
+    cleanup()
+
+    // A failed lookup never breaks the conversation.
+    mocks.getRecruiterContact.mockRejectedValueOnce(new Error('db down'))
+    render(await MessageConversationPage({ params: Promise.resolve({ conversationId: CONVERSATION_ID }) }))
+    expect(screen.getByTestId('recruiter-contact')).toHaveTextContent('none')
   })
 })

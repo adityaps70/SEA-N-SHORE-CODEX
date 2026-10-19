@@ -20,8 +20,15 @@ describe('messaging an applicant', () => {
   it('opens the existing conversation flow for a connected applicant', async () => {
     render(<MessageApplicantButton targetProfileId="candidate-1" candidateName="Arjun Kapoor" canMessage />)
     fireEvent.click(screen.getByRole('button', { name: 'Message' }))
-    await waitFor(() => expect(mocks.startDirectConversationAction).toHaveBeenCalledWith('candidate-1'))
+    await waitFor(() => expect(mocks.startDirectConversationAction).toHaveBeenCalledWith('candidate-1', undefined))
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/messages/conv-1'))
+  })
+
+  it('sends a verified recruiter\'s reason (this application) with the request', async () => {
+    const applicationId = '33333333-3333-4333-8333-333333333333'
+    render(<MessageApplicantButton targetProfileId="candidate-1" candidateName="Arjun Kapoor" canMessage contact={{ reason: 'applied', applicationId }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Message' }))
+    await waitFor(() => expect(mocks.startDirectConversationAction).toHaveBeenCalledWith('candidate-1', { reason: 'applied', applicationId }))
   })
 
   it('follows the connections-only rule and says why Message is unavailable', () => {

@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getApplicationReview: vi.fn(),
   getDocument: vi.fn(),
-  getRelationshipState: vi.fn(),
+  recruiterMessageAccess: vi.fn(),
+  startDirectConversationAction: vi.fn(),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
 }))
 
@@ -16,8 +17,8 @@ vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: vi.fn().mockResolvedVa
 vi.mock('@/features/jobs/hiring-repository', () => ({ hiringRepository: { getApplicationReview: mocks.getApplicationReview } }))
 vi.mock('@/features/jobs/hiring-actions', () => ({ updateHiringApplicationStatus: vi.fn(), saveHiringRecruiterNote: vi.fn() }))
 vi.mock('@/features/profiles/profile-document-repository', () => ({ profileDocumentRepository: { getDocument: mocks.getDocument } }))
-vi.mock('@/features/network/queries', () => ({ getRelationshipState: mocks.getRelationshipState }))
-vi.mock('@/features/messaging/actions', () => ({ startDirectConversationAction: vi.fn() }))
+vi.mock('@/features/messaging/recruiter-contact-queries', () => ({ recruiterMessageAccess: mocks.recruiterMessageAccess }))
+vi.mock('@/features/messaging/actions', () => ({ startDirectConversationAction: mocks.startDirectConversationAction }))
 
 import HiringApplicantReviewPage from './page'
 
@@ -63,7 +64,9 @@ describe('applicant review page', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'recruiter-1' })
     mocks.getApplicationReview.mockResolvedValue(review())
     mocks.getDocument.mockResolvedValue({ fileName: 'dg.pdf' })
-    mocks.getRelationshipState.mockResolvedValue({ following: false, connection: { kind: 'connected', connectionId: 'c-1' } })
+    // A connected applicant: the member's own setting allows it, no recruiter reason needed.
+    mocks.recruiterMessageAccess.mockResolvedValue({ canMessage: true, contact: null })
+    mocks.startDirectConversationAction.mockResolvedValue({ ok: true, conversationId: 'conversation-1' })
   })
 
   it('gives phones a page bar, match / CV / DG chips and the sticky Reject · … · Shortlist bar', async () => {
@@ -88,12 +91,19 @@ describe('applicant review page', () => {
 
   it('lets the recruiter message a connected applicant', async () => {
     await renderPage()
-    expect(mocks.getRelationshipState).toHaveBeenCalledWith('candidate-1')
+    expect(mocks.recruiterMessageAccess).toHaveBeenCalledWith({ recruiterId: 'recruiter-1', memberId: 'candidate-1', applicationId })
     expect(within(screen.getByTestId('message-applicant')).getByRole('button', { name: 'Message' })).toBeEnabled()
   })
 
+  it('lets a verified recruiter message an unconnected applicant about this application (recruiter exception)', async () => {
+    mocks.recruiterMessageAccess.mockResolvedValue({ canMessage: true, contact: { reason: 'applied', applicationId } })
+    await renderPage()
+    within(screen.getByTestId('message-applicant')).getByRole('button', { name: 'Message' }).click()
+    await vi.waitFor(() => expect(mocks.startDirectConversationAction).toHaveBeenCalledWith('candidate-1', { reason: 'applied', applicationId }))
+  })
+
   it('explains why Message is unavailable before they are connected', async () => {
-    mocks.getRelationshipState.mockResolvedValue({ following: false, connection: { kind: 'none', connectionId: null } })
+    mocks.recruiterMessageAccess.mockResolvedValue({ canMessage: false, contact: null })
     await renderPage()
     const button = within(screen.getByTestId('message-applicant')).getByRole('button', { name: 'Message' })
     expect(button).toBeDisabled()

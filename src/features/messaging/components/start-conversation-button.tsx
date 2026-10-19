@@ -6,13 +6,17 @@ import { useState, useTransition } from 'react'
 import { secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { cn } from '@/lib/cn'
 import { startDirectConversationAction } from '../actions'
+import type { RecruiterContactRequest } from '../recruiter-contact'
 
 export function StartConversationButton({
   targetProfileId,
+  contact,
   className = '',
   variant = 'default',
 }: {
   targetProfileId: string
+  /** A recruiter's reason to reach a member on "connections only" (recruiter messaging exception). */
+  contact?: RecruiterContactRequest
   className?: string
   /** `pill`: compact ocean outline pill for list rows (phone search results). `secondary`: the shared bordered button (round H, H6). */
   variant?: 'default' | 'pill' | 'secondary'
@@ -24,7 +28,7 @@ export function StartConversationButton({
   function openConversation() {
     setError(null)
     startTransition(async () => {
-      const result = await startDirectConversationAction(targetProfileId)
+      const result = await startDirectConversationAction(targetProfileId, contact)
       if (!result.ok) {
         setError(result.error)
         return

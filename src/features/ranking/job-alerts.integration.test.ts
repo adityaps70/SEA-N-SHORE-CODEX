@@ -219,6 +219,8 @@ describe('Suggested candidates (round G)', () => {
     const found = await createJobCandidateSuggestions({ query }).list(recruiter, listing!)
     expect(found.map((candidate) => candidate.id)).toEqual([optedIn])
     expect(found[0]!.relationship.connection.kind).toBe('none')
+    // Recruiter messaging exception: the candidate's "Who can message me" (default connections only) comes along.
+    expect(found[0]!.messagePermission).toBe('connections')
     expect(found[0]!.match.reasons.join(' ')).not.toMatch(/visa/i)
   })
 })

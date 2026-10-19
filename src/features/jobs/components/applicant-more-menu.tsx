@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { BottomSheet, MobileSheetCancel, SheetRow } from '@/components/ui/mobile-sheet'
 import { startDirectConversationAction } from '@/features/messaging/actions'
+import type { RecruiterContactRequest } from '@/features/messaging/recruiter-contact'
 import { MORE_BUTTON_CLASS } from './mobile-chip'
 import { SheetPortal } from './sheet-portal'
 
@@ -24,7 +25,7 @@ export function ApplicantMoreMenu({
   candidateName: string
   profileHref: string | null
   /** Null when the member can't be messaged at all (inactive account). */
-  message: { targetProfileId: string; canMessage: boolean } | null
+  message: { targetProfileId: string; canMessage: boolean; contact?: RecruiterContactRequest | null } | null
   cvHref: string | null
   dgProfileHref: string | null
   applicantsHref: string
@@ -38,7 +39,7 @@ export function ApplicantMoreMenu({
     if (!message) return
     setError('')
     startTransition(async () => {
-      const result = await startDirectConversationAction(message.targetProfileId)
+      const result = await startDirectConversationAction(message.targetProfileId, message.contact ?? undefined)
       if (!result.ok) {
         setError(result.error)
         return
