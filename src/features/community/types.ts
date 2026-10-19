@@ -34,8 +34,9 @@ export const GROUP_ICON_NAMES = [
 export type GroupIconName = (typeof GROUP_ICON_NAMES)[number]
 
 /**
- * Round 10: a community's category is one of the feed's post categories (the former phone Home
- * chips). Migration 0061 seeds one community per category with the same name.
+ * Round 10: the fixed category list of migration 0061 (the feed's post categories). Round I (I2): categories are
+ * managed in Admin › Communities › Categories now (public.community_categories); these values only survive as each
+ * backfilled category's legacy_key, so old links such as /community?category=maritime_news keep working.
  */
 export const COMMUNITY_CATEGORIES = POST_CATEGORIES
 export type CommunityCategory = PostCategory
@@ -60,6 +61,31 @@ export function isCommunityCategoryFilter(value: unknown): value is CommunityCat
 export function communityCategoryFilterLabel(value: CommunityCategoryFilter) {
   return value === UNCATEGORISED_COMMUNITIES ? UNCATEGORISED_COMMUNITIES_LABEL : COMMUNITY_CATEGORY_LABELS[value]
 }
+
+/** Round I (I2): an admin-managed community category, as a community carries it. */
+export type CommunityCategoryRef = {
+  id: string
+  slug: string
+  name: string
+  /** A name from GROUP_ICON_NAMES, or null. */
+  icon: string | null
+  /** Hidden categories leave the picker, chips and facet, but stay on the communities that have them. */
+  hidden: boolean
+}
+
+/** Round I (I2): a category in the admin list (Admin › Communities › Categories). */
+export type CommunityCategoryRecord = CommunityCategoryRef & {
+  description: string | null
+  position: number
+  /** Communities (live and archived) that use it; a category in use cannot be deleted. */
+  communityCount: number
+}
+
+/** Round I (I2): a directory chip, search facet or "Browse by category" tile. */
+export type CommunityCategoryChip = CommunityCategoryRef & { count: number }
+
+export const COMMUNITY_CATEGORY_NAME_MAX_LENGTH = 40
+export const COMMUNITY_CATEGORY_DESCRIPTION_MAX_LENGTH = 160
 
 /** How the full directory is ordered (round 10). */
 export const DIRECTORY_SORTS = ['active', 'members', 'name', 'newest'] as const
@@ -102,8 +128,8 @@ export type CommunityGroup = {
   ownerOrganization: GroupOwnerOrganization | null
   /** The signed-in viewer's membership row, or null when they never joined (or left). */
   viewerMembership: ViewerMembership | null
-  /** Round 10: the community's category, or null when none is set. */
-  category?: CommunityCategory | null
+  /** Round I (I2): the community's admin-managed category, or null when none is set. */
+  category?: CommunityCategoryRef | null
   /** Round 10: live posts in the last 7 days ("Popular this week", new-post hints). */
   recentPostCount?: number
 }
@@ -140,8 +166,8 @@ export type AdminCommunityGroup = {
   ownerOrganization: GroupOwnerOrganization | null
   archivedAt: string | null
   createdAt: string
-  /** Round 10. */
-  category?: CommunityCategory | null
+  /** Round I (I2). */
+  category?: CommunityCategoryRef | null
 }
 
 /** Signals used to suggest groups to a member (see `suggestions.ts`). */

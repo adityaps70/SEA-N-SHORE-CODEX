@@ -8,6 +8,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CommunityIconEditor, CommunityMediaControls } from '@/features/community/components/community-media-controls'
 import { CommunityModerationPanel } from '@/features/community/components/community-moderation-panel'
 import { EditGroupForm } from '@/features/community/components/edit-group-form'
+import { communityCategoryRepository } from '@/features/community/category-repository'
 import { GroupCover, GroupIconTile } from '@/features/community/components/group-icon-tile'
 import { GroupMembersList } from '@/features/community/components/group-members-list'
 import { GroupMembershipButton } from '@/features/community/components/group-membership-button'
@@ -94,7 +95,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
   const memberQuery = single(search.q).trim().slice(0, 100)
   const pagePath = groupHref(group.slug)
 
-  const [admins, profile, feedPage, members, requests, moderators, pendingCount] = await Promise.all([
+  const [admins, profile, feedPage, members, requests, moderators, pendingCount, categories] = await Promise.all([
     tab === 'about' ? communityRepository.listMembers(group.id, { adminsOnly: true, limit: 20 }).then(withAvatars).catch((): GroupMember[] => []) : [],
     tab === 'posts' && isMember ? getOwnProfile() : null,
     tab === 'posts' && canSee ? getFeedPage({ groupId: group.id }) : null,
@@ -104,6 +105,8 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
     tab === 'posts' && canSee ? communityRepository.listMembers(group.id, { adminsOnly: true, limit: 200 }).catch((): GroupMember[] => []) : [],
     // Round H (H7): the Moderation panel's join-request count (the Members tab lists the requests themselves).
     isAdmin && tab !== 'members' ? communityRepository.countPendingRequests(group.id).catch(() => 0) : 0,
+    // Round I (I2): the edit form's category picker.
+    editing ? communityCategoryRepository.listPickerOptions() : [],
   ])
   // "Owner" / "Moderator" chips next to the author of posts inside the community.
   const roleBadges = Object.fromEntries(moderators.filter((entry) => entry.role !== 'member').map((entry) => [entry.profileId, GROUP_ROLE_LABELS[entry.role] as 'Owner' | 'Moderator']))
@@ -182,7 +185,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
           <>
             {editing ? (
               <PageSection id="edit-group-heading" title="Edit group">
-                <EditGroupForm group={group} doneHref={groupTabHref(group.slug, 'about')} />
+                <EditGroupForm group={group} doneHref={groupTabHref(group.slug, 'about')} categories={categories} />
               </PageSection>
             ) : null}
             <PageSection id="about-heading" title="About">

@@ -2,13 +2,13 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { categoryIdSchema } from './category-field'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { communityErrorMessage } from './actions'
 import { CREATE_AS_SELF, ELIGIBILITY_REASON_TEXT } from './eligibility'
 import { getCommunityCreationEligibility } from './eligibility-server'
 import { communityService } from './service'
 import {
-  COMMUNITY_CATEGORIES,
   GROUP_DESCRIPTION_MAX_LENGTH,
   GROUP_JOIN_POLICIES,
   GROUP_NAME_MAX_LENGTH,
@@ -26,8 +26,8 @@ const createSchema = z.object({
   rules: z.string().trim().max(GROUP_RULES_MAX_LENGTH, 'The rules are too long (4,000 characters at most).'),
   joinPolicy: z.enum(GROUP_JOIN_POLICIES, { message: 'Choose how members join: Open or Approval required.' }),
   visibility: z.enum(GROUP_VISIBILITIES, { message: 'Choose Public or Private.' }),
-  // Round 10: optional; '' means no category.
-  category: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(COMMUNITY_CATEGORIES, { message: 'Choose a category from the list.' }).nullable()),
+  // Round I (I2): one of the admin-managed categories.
+  categoryId: categoryIdSchema,
 })
 
 function readForm(formData: FormData, keys: string[]) {
@@ -41,7 +41,7 @@ function readForm(formData: FormData, keys: string[]) {
  */
 export async function createCommunity(_previous: CreateCommunityState, formData: FormData): Promise<CreateCommunityState> {
   const user = await requireAwsUser()
-  const parsed = createSchema.safeParse(readForm(formData, ['as', 'name', 'description', 'rules', 'joinPolicy', 'visibility', 'category']))
+  const parsed = createSchema.safeParse(readForm(formData, ['as', 'name', 'description', 'rules', 'joinPolicy', 'visibility', 'categoryId']))
   if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the community details and try again.') }
 
   const options = await getCommunityCreationEligibility(user.id)
@@ -69,7 +69,7 @@ export async function createCommunity(_previous: CreateCommunityState, formData:
       icon: null,
       ownerId: user.id,
       ownerCompanyId,
-      category: parsed.data.category,
+      categoryId: parsed.data.categoryId,
     })
   } catch (error) {
     return { ok: false, error: await communityErrorMessage(error, 'We could not create the community. Please try again.') }

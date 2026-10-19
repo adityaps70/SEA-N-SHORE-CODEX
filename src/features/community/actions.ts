@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CommunityServiceError, communityService, type CommunityServiceErrorCode } from './service'
+import { categoryIdSchema } from './category-field'
 import {
-  COMMUNITY_CATEGORIES,
   GROUP_DESCRIPTION_MAX_LENGTH,
   GROUP_ICON_NAMES,
   GROUP_JOIN_POLICIES,
@@ -30,11 +30,8 @@ const groupEditSchema = z.object({
   visibility: z.enum(GROUP_VISIBILITIES),
   joinPolicy: z.enum(GROUP_JOIN_POLICIES, { message: 'Choose Open or Approval required.' }),
   icon: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(GROUP_ICON_NAMES).nullable()),
-  // Round 10: omitted keeps the stored category; '' or null clears it.
-  category: z.preprocess(
-    (value) => (value === undefined ? undefined : typeof value === 'string' && value ? value : null),
-    z.enum(COMMUNITY_CATEGORIES, { message: 'Choose a category from the list.' }).nullable().optional(),
-  ),
+  // Round I (I2): omitted keeps the stored category; a sent one must be chosen from the admin list.
+  categoryId: categoryIdSchema.optional(),
 })
 
 const ERROR_MESSAGES: Record<CommunityServiceErrorCode, string> = {
@@ -48,6 +45,7 @@ const ERROR_MESSAGES: Record<CommunityServiceErrorCode, string> = {
   group_member_not_found: 'That member or request is no longer in the group.',
   group_post_not_found: 'This post is not in a group you moderate.',
   group_owner_not_found: 'No active member matches that email or handle.',
+  group_category_unavailable: 'That category is no longer offered. Choose another one from the list.',
 }
 
 export async function communityErrorMessage(error: unknown, fallback: string) {
@@ -155,7 +153,7 @@ export async function updateGroup(input: {
   visibility: string
   joinPolicy: string
   icon: string | null
-  category?: string | null
+  categoryId?: string
 }): Promise<CommunityActionResult> {
   const parsed = groupEditSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the group details and try again.') }

@@ -1,11 +1,12 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CommunityGroup } from '@/features/community/types'
+import type { CommunityCategoryChip, CommunityCategoryRef, CommunityGroup } from '@/features/community/types'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   browseDirectory: vi.fn(),
-  countByCategory: vi.fn(),
+  listDirectoryChips: vi.fn(),
+  findBySlug: vi.fn(),
   listViewerGroups: vi.fn(),
   suggestGroups: vi.fn(),
 }))
@@ -13,12 +14,29 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/community/repository', () => ({
-  communityRepository: { browseDirectory: mocks.browseDirectory, countByCategory: mocks.countByCategory, listViewerGroups: mocks.listViewerGroups },
+  communityRepository: { browseDirectory: mocks.browseDirectory, listViewerGroups: mocks.listViewerGroups },
+}))
+vi.mock('@/features/community/category-repository', () => ({
+  communityCategoryRepository: { listDirectoryChips: mocks.listDirectoryChips, findBySlug: mocks.findBySlug },
 }))
 vi.mock('@/features/community/service', () => ({ communityService: { suggestGroups: mocks.suggestGroups } }))
 vi.mock('@/features/community/actions', () => ({ joinGroup: vi.fn(), leaveGroup: vi.fn() }))
 
 import CommunityPage from './page'
+
+// Round I (I2): admin-managed categories (the backfilled ones keep the old values as legacy keys).
+const CATEGORIES: Array<CommunityCategoryRef & { legacyKey: string | null }> = [
+  { id: 'c-news', slug: 'maritime-news', name: 'Maritime News', icon: 'Newspaper', hidden: false, legacyKey: 'maritime_news' },
+  { id: 'c-vetting', slug: 'vetting-sire-2-0', name: 'Vetting & SIRE 2.0', icon: 'ShieldCheck', hidden: false, legacyKey: 'vetting_sire_2_0' },
+  { id: 'c-safety', slug: 'safety-lessons', name: 'Safety Lessons', icon: 'LifeBuoy', hidden: false, legacyKey: 'safety_lessons' },
+  { id: 'c-learning', slug: 'learning', name: 'Learning', icon: 'GraduationCap', hidden: false, legacyKey: 'learning' },
+  { id: 'c-other', slug: 'other', name: 'Other', icon: 'UsersRound', hidden: false, legacyKey: 'other' },
+]
+const ref = (slug: string): CommunityCategoryRef => {
+  const { id, name, icon, hidden } = CATEGORIES.find((entry) => entry.slug === slug)!
+  return { id, slug, name, icon, hidden }
+}
+const chip = (slug: string, count: number): CommunityCategoryChip => ({ ...ref(slug), count })
 
 function group(overrides: Partial<CommunityGroup> = {}): CommunityGroup {
   return {
@@ -37,7 +55,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAwsUser.mockResolvedValue({ id: 'viewer-1' })
   mocks.browseDirectory.mockResolvedValue({ groups: [group(), tankers, masters], total: 3 })
-  mocks.countByCategory.mockResolvedValue({ safety_lessons: 1, vetting_sire_2_0: 2 })
+  mocks.listDirectoryChips.mockResolvedValue([chip('vetting-sire-2-0', 2), chip('safety-lessons', 1)])
+  mocks.findBySlug.mockImplementation(async (value: string) => {
+    const found = CATEGORIES.find((entry) => entry.slug === value || entry.legacyKey === value)
+    return found ? ref(found.slug) : null
+  })
   mocks.listViewerGroups.mockResolvedValue([])
   mocks.suggestGroups.mockResolvedValue([])
 })
@@ -49,7 +71,7 @@ describe('/community landing (round 10, LinkedIn Groups style)', () => {
       { ...masters, viewerMembership: { role: 'member', status: 'pending' } },
     ])
     mocks.suggestGroups.mockResolvedValue([tankers])
-    mocks.browseDirectory.mockResolvedValue({ groups: [tankers, group({ id: 'g-safety', slug: 'safety-lessons', name: 'Safety Lessons', category: 'safety_lessons', recentPostCount: 4 })], total: 2 })
+    mocks.browseDirectory.mockResolvedValue({ groups: [tankers, group({ id: 'g-safety', slug: 'safety-lessons', name: 'Safety Lessons', category: ref('safety-lessons'), recentPostCount: 4 })], total: 2 })
     render(await CommunityPage({ searchParams: Promise.resolve({}) }))
 
     expect(screen.getByRole('heading', { level: 1, name: 'Communities' })).toBeInTheDocument()
@@ -69,9 +91,9 @@ describe('/community landing (round 10, LinkedIn Groups style)', () => {
     expect(within(suggested).getByRole('button', { name: 'Join Tanker Professionals' })).toBeInTheDocument()
 
     const categories = screen.getByRole('list', { name: 'Community categories' })
-    // Round H (H7): only categories with communities get a tile (was all eight, including "0 communities").
-    expect(within(categories).getAllByRole('listitem')).toHaveLength(2)
-    expect(within(categories).getByRole('link', { name: /Vetting & SIRE 2.0\s*2 communities/ })).toHaveAttribute('href', '/community?view=all&category=vetting_sire_2_0')
+    // Round H (H7): only categories with communities get a tile. Round I (I2): in admin order, linked by slug.
+    expect(within(categories).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['Vetting & SIRE 2.02 communities', 'Safety Lessons1 community'])
+    expect(within(categories).getByRole('link', { name: /Vetting & SIRE 2.0\s*2 communities/ })).toHaveAttribute('href', '/community?view=all&category=vetting-sire-2-0')
     expect(within(categories).queryByRole('link', { name: /Career Advice/ })).not.toBeInTheDocument()
 
     const popular = screen.getByRole('list', { name: 'Popular communities' })
@@ -109,16 +131,16 @@ describe('/community landing (round 10, LinkedIn Groups style)', () => {
     expect(screen.getByRole('heading', { level: 1 }).closest('header')).toHaveClass('md:justify-between')
   })
 
-  it('adds an Other topics tile for communities without a category and hides the section when nothing is counted (round H, H7)', async () => {
-    mocks.countByCategory.mockResolvedValue({ learning: 1, other: 2, maritime_news: 0 })
+  it('shows the Other tile like any category, leaves out empty ones and hides the section when nothing is counted (round H, H7; round I, I2)', async () => {
+    mocks.listDirectoryChips.mockResolvedValue([chip('maritime-news', 0), chip('learning', 1), chip('other', 2)])
     render(await CommunityPage({ searchParams: Promise.resolve({}) }))
     const categories = screen.getByRole('list', { name: 'Community categories' })
     expect(within(categories).getAllByRole('listitem')).toHaveLength(2)
-    expect(within(categories).getByRole('link', { name: /Other topics\s*2 communities/ })).toHaveAttribute('href', '/community?view=all&category=other')
+    expect(within(categories).getByRole('link', { name: /Other\s*2 communities/ })).toHaveAttribute('href', '/community?view=all&category=other')
     expect(within(categories).queryByRole('link', { name: /Maritime News/ })).not.toBeInTheDocument()
     cleanup()
 
-    mocks.countByCategory.mockResolvedValue({})
+    mocks.listDirectoryChips.mockResolvedValue([])
     render(await CommunityPage({ searchParams: Promise.resolve({}) }))
     expect(screen.queryByRole('heading', { name: 'Browse by category' })).not.toBeInTheDocument()
   })
@@ -145,7 +167,9 @@ describe('/community directory (Browse all / search)', () => {
     mocks.browseDirectory.mockResolvedValue({ groups: [group(), tankers, masters], total: 50 })
     render(await CommunityPage({ searchParams: Promise.resolve({ view: 'all', category: 'vetting_sire_2_0', join: 'approval', sort: 'members', page: '2' }) }))
 
-    expect(mocks.browseDirectory).toHaveBeenCalledWith('viewer-1', { search: '', category: 'vetting_sire_2_0', joinPolicy: 'approval', sort: 'members', limit: 24, offset: 24 })
+    // An old link with the fixed value still finds the category; the page then uses its slug.
+    expect(mocks.findBySlug).toHaveBeenCalledWith('vetting_sire_2_0')
+    expect(mocks.browseDirectory).toHaveBeenCalledWith('viewer-1', { search: '', category: 'vetting-sire-2-0', joinPolicy: 'approval', sort: 'members', limit: 24, offset: 24 })
     expect(screen.getByRole('heading', { level: 1, name: 'Browse communities' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'Vetting & SIRE 2.0' })).toBeInTheDocument()
     expect(screen.getByText('50 communities · Page 2 of 3')).toBeInTheDocument()
@@ -160,12 +184,13 @@ describe('/community directory (Browse all / search)', () => {
     expect(within(categories).getByRole('link', { name: 'Vetting & SIRE 2.0' })).toHaveAttribute('aria-current', 'true')
     expect(within(categories).getByRole('link', { name: 'All' })).toHaveAttribute('href', '/community?view=all&join=approval&sort=members')
     const join = screen.getByRole('navigation', { name: 'Filter by join setting' })
-    expect(within(join).getByRole('link', { name: 'Open to join' })).toHaveAttribute('href', '/community?view=all&category=vetting_sire_2_0&join=open&sort=members')
+    expect(within(categories).getAllByRole('link').map((link) => link.textContent)).toEqual(['All', 'Vetting & SIRE 2.0', 'Safety Lessons'])
+    expect(within(join).getByRole('link', { name: 'Open to join' })).toHaveAttribute('href', '/community?view=all&category=vetting-sire-2-0&join=open&sort=members')
     expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveValue('members')
 
     const pages = screen.getByRole('navigation', { name: 'Community pages' })
-    expect(within(pages).getByRole('link', { name: 'Previous' })).toHaveAttribute('href', '/community?view=all&category=vetting_sire_2_0&join=approval&sort=members')
-    expect(within(pages).getByRole('link', { name: 'Next' })).toHaveAttribute('href', '/community?view=all&category=vetting_sire_2_0&join=approval&sort=members&page=3')
+    expect(within(pages).getByRole('link', { name: 'Previous' })).toHaveAttribute('href', '/community?view=all&category=vetting-sire-2-0&join=approval&sort=members')
+    expect(within(pages).getByRole('link', { name: 'Next' })).toHaveAttribute('href', '/community?view=all&category=vetting-sire-2-0&join=approval&sort=members&page=3')
     expect(mocks.suggestGroups).not.toHaveBeenCalled()
   })
 
@@ -182,12 +207,20 @@ describe('/community directory (Browse all / search)', () => {
     expect(screen.getByRole('link', { name: 'Communities' })).toHaveAttribute('href', '/community')
   })
 
-  it('filters the directory to communities without a category under Other topics (round H, H7)', async () => {
-    mocks.browseDirectory.mockResolvedValue({ groups: [group({ category: null })], total: 1 })
+  it('filters the directory to the Other category (round H, H7; the backfill moved uncategorised communities there in round I)', async () => {
+    mocks.listDirectoryChips.mockResolvedValue([chip('vetting-sire-2-0', 2), chip('other', 1)])
+    mocks.browseDirectory.mockResolvedValue({ groups: [group({ category: ref('other') })], total: 1 })
     render(await CommunityPage({ searchParams: Promise.resolve({ view: 'all', category: 'other' }) }))
     expect(mocks.browseDirectory).toHaveBeenCalledWith('viewer-1', expect.objectContaining({ category: 'other' }))
-    expect(screen.getByRole('heading', { level: 2, name: 'Other topics' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Filter by category' })).getByRole('link', { name: 'Other topics' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('heading', { level: 2, name: 'Other' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Filter by category' })).getByRole('link', { name: 'Other' })).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('shows the directory chips in the admin order the repository returns (round I, I2)', async () => {
+    mocks.listDirectoryChips.mockResolvedValue([chip('safety-lessons', 1), chip('learning', 4), chip('vetting-sire-2-0', 2)])
+    render(await CommunityPage({ searchParams: Promise.resolve({ view: 'all' }) }))
+    const categories = screen.getByRole('navigation', { name: 'Filter by category' })
+    expect(within(categories).getAllByRole('link').map((link) => link.textContent)).toEqual(['All', 'Safety Lessons', 'Learning', 'Vetting & SIRE 2.0'])
   })
 
   it('ignores an unknown category or sort', async () => {

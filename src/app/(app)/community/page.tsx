@@ -13,18 +13,14 @@ import {
   yourCommunitiesSummary,
 } from '@/features/community/components/community-discover'
 import { GroupCard } from '@/features/community/components/group-card'
+import { communityCategoryRepository } from '@/features/community/category-repository'
 import { communityRepository } from '@/features/community/repository'
 import { communityService } from '@/features/community/service'
 import {
-  COMMUNITY_CATEGORIES,
-  COMMUNITY_CATEGORY_LABELS,
   DIRECTORY_SORTS,
   DIRECTORY_SORT_LABELS,
-  UNCATEGORISED_COMMUNITIES,
-  UNCATEGORISED_COMMUNITIES_LABEL,
-  communityCategoryFilterLabel,
-  isCommunityCategoryFilter,
-  type CommunityCategoryFilter,
+  type CommunityCategoryChip,
+  type CommunityCategoryRef,
   type CommunityGroup,
   type DirectorySort,
   type GroupJoinPolicy,
@@ -162,21 +158,22 @@ type DiscoverData = {
   mine: CommunityGroup[]
   suggestedBySignals: CommunityGroup[]
   active: CommunityGroup[]
-  categoryCounts: Partial<Record<CommunityCategoryFilter, number>>
+  /** Round I (I2): shown categories with live communities, in admin order. */
+  categoryChips: CommunityCategoryChip[]
 }
 
 async function loadDiscover(viewerId: string): Promise<DiscoverData> {
-  const [personal, mine, suggestedBySignals, activePage, categoryCounts] = await Promise.all([
+  const [personal, mine, suggestedBySignals, activePage, categoryChips] = await Promise.all([
     getSuggestedCommunities(SUGGESTED_COUNT).catch(() => null),
     communityRepository.listViewerGroups(viewerId),
     communityService.suggestGroups(viewerId).catch((): CommunityGroup[] => []),
     communityRepository.browseDirectory(viewerId, { notJoined: true, sort: 'active', limit: 12 }).catch(() => ({ groups: [] as CommunityGroup[], total: 0 })),
-    communityRepository.countByCategory().catch((): Partial<Record<CommunityCategoryFilter, number>> => ({})),
+    communityCategoryRepository.listDirectoryChips().catch((): CommunityCategoryChip[] => []),
   ])
-  return { personal, mine, suggestedBySignals, active: activePage.groups, categoryCounts }
+  return { personal, mine, suggestedBySignals, active: activePage.groups, categoryChips }
 }
 
-function DiscoverView({ personal, mine, suggestedBySignals, active, categoryCounts }: DiscoverData) {
+function DiscoverView({ personal, mine, suggestedBySignals, active, categoryChips }: DiscoverData) {
   const popular = active.slice(0, POPULAR_COUNT)
   const suggested: Array<CommunityGroup & { reason?: string | null }> = personal ?? pickSuggestions(suggestedBySignals, active, popular)
   const nothingYet = !mine.length && !suggested.length && !popular.length
@@ -224,10 +221,10 @@ function DiscoverView({ personal, mine, suggestedBySignals, active, categoryCoun
         ) : null}
 
         {/* Round H (H7): only categories that have communities; hidden when none do. */}
-        {Object.values(categoryCounts).some((count) => (count ?? 0) > 0) ? (
+        {categoryChips.some((chip) => chip.count > 0) ? (
           <section aria-labelledby="community-categories-heading">
             <SectionHeader id="community-categories-heading" title="Browse by category" />
-            <CommunityCategoryGrid counts={categoryCounts} />
+            <CommunityCategoryGrid chips={categoryChips} />
           </section>
         ) : null}
 
@@ -262,19 +259,20 @@ function DiscoverView({ personal, mine, suggestedBySignals, active, categoryCoun
 
 type DirectoryFilters = {
   query: string
-  category: CommunityCategoryFilter | null
+  /** Round I (I2): the chosen category (its slug), or null. */
+  category: CommunityCategoryRef | null
   joinPolicy: GroupJoinPolicy | null
   sort: DirectorySort
   page: number
 }
 
-function DirectoryView({ query, category, joinPolicy, sort, page, groups, total }: DirectoryFilters & { groups: CommunityGroup[]; total: number }) {
+function DirectoryView({ query, category, joinPolicy, sort, page, groups, total, chips }: DirectoryFilters & { groups: CommunityGroup[]; total: number; chips: CommunityCategoryChip[] }) {
   const totalPages = Math.max(1, Math.ceil(total / DIRECTORY_PAGE_SIZE))
-  const base = { view: 'all', q: query || null, category, join: joinPolicy, sort: sort === 'active' ? null : sort }
+  const base = { view: 'all', q: query || null, category: category?.slug ?? null, join: joinPolicy, sort: sort === 'active' ? null : sort }
   const href = (changes: Record<string, string | number | null>) => communityHref({ ...base, page: null, ...changes })
   const title = query
     ? `Communities matching “${query}”`
-    : category ? communityCategoryFilterLabel(category) : 'All communities'
+    : category ? category.name : 'All communities'
 
   return (
     <section aria-labelledby="directory-heading" className="space-y-4 max-md:space-y-3">
@@ -287,10 +285,10 @@ function DirectoryView({ query, category, joinPolicy, sort, page, groups, total 
         </div>
         <nav aria-label="Filter by category" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
           <FilterChip href={href({ category: null })} active={!category}>All</FilterChip>
-          {COMMUNITY_CATEGORIES.map((value) => (
-            <FilterChip key={value} href={href({ category: value })} active={category === value}>{COMMUNITY_CATEGORY_LABELS[value]}</FilterChip>
+          {/* Round I (I2): the admin's categories in admin order, only those with a live community. */}
+          {chips.map((chip) => (
+            <FilterChip key={chip.id} href={href({ category: chip.slug })} active={category?.id === chip.id}>{chip.name}</FilterChip>
           ))}
-          <FilterChip href={href({ category: UNCATEGORISED_COMMUNITIES })} active={category === UNCATEGORISED_COMMUNITIES}>{UNCATEGORISED_COMMUNITIES_LABEL}</FilterChip>
         </nav>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Filter by join setting" className="flex flex-wrap gap-2">
@@ -301,7 +299,7 @@ function DirectoryView({ query, category, joinPolicy, sort, page, groups, total 
           <form action="/community" method="get" className="flex items-center gap-2 text-sm">
             <input type="hidden" name="view" value="all" />
             {query ? <input type="hidden" name="q" value={query} /> : null}
-            {category ? <input type="hidden" name="category" value={category} /> : null}
+            {category ? <input type="hidden" name="category" value={category.slug} /> : null}
             {joinPolicy ? <input type="hidden" name="join" value={joinPolicy} /> : null}
             <label htmlFor="community-sort" className="text-muted">Sort</label>
             <select id="community-sort" name="sort" defaultValue={sort} className="min-h-9 rounded-lg border border-mist-200 bg-white px-2 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100">
@@ -359,8 +357,11 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
   const params = await searchParams
   const query = readSingle(params.q).slice(0, 100)
   const view = readSingle(params.view)
-  const rawCategory = readSingle(params.category)
-  const category = isCommunityCategoryFilter(rawCategory) ? rawCategory : null
+  // Round I (I2): a category slug, or an old fixed value from a link made before the admin list; unknown ones are ignored.
+  const rawCategory = readSingle(params.category).slice(0, 60)
+  const category = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(rawCategory)
+    ? await communityCategoryRepository.findBySlug(rawCategory).catch(() => null)
+    : null
   const rawJoin = readSingle(params.join)
   const joinPolicy: GroupJoinPolicy | null = rawJoin === 'open' || rawJoin === 'approval' ? rawJoin : null
   const rawSort = readSingle(params.sort)
@@ -370,12 +371,12 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
 
   const mode = view === 'mine' ? 'mine' : query || view === 'all' || category || joinPolicy ? 'directory' : 'discover'
   const filters: DirectoryFilters = { query, category, joinPolicy, sort, page }
-  const [discover, directory, mine] = await Promise.all([
+  const [discover, directory, mine, chips] = await Promise.all([
     mode === 'discover' ? loadDiscover(user.id) : null,
     mode === 'directory'
       ? communityRepository.browseDirectory(user.id, {
         search: query,
-        category,
+        category: category?.slug ?? null,
         joinPolicy,
         sort,
         limit: DIRECTORY_PAGE_SIZE,
@@ -383,6 +384,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
       })
       : null,
     mode === 'mine' ? communityRepository.listViewerGroups(user.id) : null,
+    mode === 'directory' ? communityCategoryRepository.listDirectoryChips().catch((): CommunityCategoryChip[] => []) : [],
   ])
 
   return (
@@ -391,10 +393,10 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
         query={query}
         title={mode === 'discover' ? 'Communities' : mode === 'mine' ? 'Your communities' : 'Browse communities'}
         back={mode !== 'discover'}
-        hidden={mode === 'directory' ? { view: 'all', ...(category ? { category } : {}), ...(joinPolicy ? { join: joinPolicy } : {}) } : undefined}
+        hidden={mode === 'directory' ? { view: 'all', ...(category ? { category: category.slug } : {}), ...(joinPolicy ? { join: joinPolicy } : {}) } : undefined}
       />
       {discover ? <DiscoverView {...discover} /> : null}
-      {directory ? <DirectoryView {...filters} groups={directory.groups} total={directory.total} /> : null}
+      {directory ? <DirectoryView {...filters} groups={directory.groups} total={directory.total} chips={chips} /> : null}
       {mine ? <YourCommunitiesView mine={mine} /> : null}
     </section>
   )

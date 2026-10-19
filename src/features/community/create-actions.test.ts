@@ -49,7 +49,9 @@ function image(bytes: number[], name: string, type: string) {
   return file
 }
 
-const validFields = { name: 'Tanker Cargo Officers', description: 'Cargo ops.', rules: 'Be kind.', joinPolicy: 'approval', visibility: 'public' }
+// Round I (I2): owners choose one of the admin-managed categories.
+const CATEGORY_ID = '33333333-3333-4333-8333-333333333333'
+const validFields = { name: 'Tanker Cargo Officers', description: 'Cargo ops.', rules: 'Be kind.', joinPolicy: 'approval', visibility: 'public', categoryId: CATEGORY_ID }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -63,7 +65,7 @@ describe('createCommunity', () => {
     await expect(createCommunity(null, form({ ...validFields, as: 'me' }))).resolves.toEqual({ ok: true, id: groupId, slug: 'tanker-cargo-officers' })
     expect(mocks.getCommunityCreationEligibility).toHaveBeenCalledWith(userId)
     expect(mocks.createGroup).toHaveBeenCalledWith(userId, {
-      name: 'Tanker Cargo Officers', description: 'Cargo ops.', rules: 'Be kind.', visibility: 'public', joinPolicy: 'approval', icon: null, ownerId: userId, ownerCompanyId: null, category: null,
+      name: 'Tanker Cargo Officers', description: 'Cargo ops.', rules: 'Be kind.', visibility: 'public', joinPolicy: 'approval', icon: null, ownerId: userId, ownerCompanyId: null, categoryId: CATEGORY_ID,
     })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/community')
   })
@@ -111,5 +113,12 @@ describe('createCommunity', () => {
     const cover = image([1, 2, 3], 'banner.webp', 'image/webp')
     await expect(createCommunity(null, form({ ...validFields, cover }))).resolves.toMatchObject({ ok: true, id: groupId })
     expect(mocks.createGroup).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks for a category from the admin list (round I, I2)', async () => {
+    const withoutCategory = Object.fromEntries(Object.entries(validFields).filter(([key]) => key !== 'categoryId'))
+    await expect(createCommunity(null, form(withoutCategory))).resolves.toEqual({ ok: false, error: 'Choose a category from the list.' })
+    await expect(createCommunity(null, form({ ...validFields, categoryId: 'maritime_news' }))).resolves.toEqual({ ok: false, error: 'Choose a category from the list.' })
+    expect(mocks.createGroup).not.toHaveBeenCalled()
   })
 })

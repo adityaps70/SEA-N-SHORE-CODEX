@@ -60,25 +60,33 @@ describe('community repository: directory and groups', () => {
     const calls: Call[] = []
     const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
       calls.push([text, values] as unknown as Call)
-      return text.includes('count(*)::int as total') ? [{ total: '50' }] : [groupRow({ category: 'safety_lessons', recent_post_count: '4' })]
+      return text.includes('count(*)::int as total')
+        ? [{ total: '50' }]
+        : [groupRow({ category_id: 'c-safety', category_slug: 'safety-lessons', category_name: 'Safety Lessons', category_icon: 'LifeBuoy', category_hidden_at: null, recent_post_count: '4' })]
     })
+    // Round I (I2): a category slug, or the old fixed value from an older link.
     const result = await createCommunityRepository({ query }).browseDirectory(viewerId, {
       search: 'safe', category: 'safety_lessons', joinPolicy: 'open', sort: 'members', limit: 24, offset: 24,
     })
 
     const [listSql, listValues] = calls[0] as unknown as [string, unknown[]]
     expect(listSql).toContain('g.archived_at is null')
-    expect(listSql).toContain('g.category = $3')
+    expect(listSql).toContain('left join public.community_categories cc on cc.id = g.category_id')
+    expect(listSql).toContain('(cc.slug = $3 or cc.legacy_key = $3)')
     expect(listSql).toContain('g.join_policy = $4')
     expect(listSql).toContain('order by member_count desc')
     expect(listSql).toContain('limit $5 offset $6')
     expect(listSql).toContain("interval '7 days'")
     expect(listValues).toEqual([viewerId, '%safe%', 'safety_lessons', 'open', 24, 24])
     const [countSql, countValues] = calls[1] as unknown as [string, unknown[]]
-    expect(countSql).toContain('g.category = $3')
+    expect(countSql).toContain('left join public.community_categories cc on cc.id = g.category_id')
+    expect(countSql).toContain('(cc.slug = $3 or cc.legacy_key = $3)')
     expect(countValues).toEqual([viewerId, '%safe%', 'safety_lessons', 'open'])
     expect(result.total).toBe(50)
-    expect(result.groups[0]).toMatchObject({ category: 'safety_lessons', recentPostCount: 4 })
+    expect(result.groups[0]).toMatchObject({
+      category: { id: 'c-safety', slug: 'safety-lessons', name: 'Safety Lessons', icon: 'LifeBuoy', hidden: false },
+      recentPostCount: 4,
+    })
   })
 
   it('leaves out joined and pending groups for "Popular this week" and ranks by activity', async () => {
@@ -94,20 +102,28 @@ describe('community repository: directory and groups', () => {
     expect(values).toEqual([viewerId, 12, 0])
   })
 
-  it('counts live communities per category and ignores unknown categories', async () => {
-    const { query } = fakeQuery([{ category: 'learning', total: '3' }, { category: 'gossip', total: 1 }])
-    await expect(createCommunityRepository({ query }).countByCategory()).resolves.toEqual({ learning: 3 })
-  })
-
-  it('counts communities without a category as Other topics so the tiles add up to every live community (round H, H7)', async () => {
-    const { query, calls } = fakeQuery([{ category: 'learning', total: '3' }, { category: null, total: 2 }])
-    await expect(createCommunityRepository({ query }).countByCategory()).resolves.toEqual({ learning: 3, other: 2 })
-    const [sql] = calls()[0]
+  it('counts the matching live communities per shown category for the search facet, in admin order (round I, I2)', async () => {
+    const { query, calls } = fakeQuery([{ id: 'c-learning', slug: 'learning', name: 'Learning', icon: 'GraduationCap', total: '3' }])
+    await expect(createCommunityRepository({ query }).countSearchGroupsByCategory('sire')).resolves.toEqual([
+      { id: 'c-learning', slug: 'learning', name: 'Learning', icon: 'GraduationCap', hidden: false, count: 3 },
+    ])
+    const [sql, values] = calls()[0]
     expect(sql).toContain('g.archived_at is null')
-    expect(sql).not.toContain('g.category is not null')
+    expect(sql).toContain('cc.hidden_at is null')
+    expect(sql).toContain('order by cc.position')
+    expect(values).toEqual(['%sire%'])
+    await expect(createCommunityRepository({ query }).countSearchGroupsByCategory('  ')).resolves.toEqual([])
   })
 
-  it('browses communities without a category for the Other topics filter (round H, H7)', async () => {
+  it('narrows a search to one shown category (round I, I2)', async () => {
+    const { query, calls } = fakeQuery([])
+    await createCommunityRepository({ query }).searchGroups(viewerId, 'sire', 20, 'learning')
+    const [sql, values] = calls()[0]
+    expect(sql).toContain('and cc.slug = $4 and cc.hidden_at is null')
+    expect(values).toEqual([viewerId, 20, '%sire%', 'learning'])
+  })
+
+  it('browses the Other category like any other (the round I backfill moved uncategorised communities there)', async () => {
     const calls: Call[] = []
     const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
       calls.push([text, values] as unknown as Call)
@@ -115,8 +131,8 @@ describe('community repository: directory and groups', () => {
     })
     await createCommunityRepository({ query }).browseDirectory(viewerId, { category: 'other' })
     const [sql, values] = calls[0] as unknown as [string, unknown[]]
-    expect(sql).toContain('g.category is null')
-    expect(values).toEqual([viewerId, 24, 0])
+    expect(sql).toContain('(cc.slug = $2 or cc.legacy_key = $2)')
+    expect(values).toEqual([viewerId, 'other', 24, 0])
   })
 
   it('counts members by the members-list rule: active membership and active account (round H, H7)', async () => {
