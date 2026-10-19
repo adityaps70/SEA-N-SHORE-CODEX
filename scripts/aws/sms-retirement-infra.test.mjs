@@ -87,7 +87,8 @@ test('post-apply evidence proves custom auth is gone without sending any SMS', (
 test('Terraform: no custom auth, no SMS, no OTP table; a random health token readable only by ECS', () => {
   assert.doesNotMatch(auth, /"ALLOW_CUSTOM_AUTH"|define_auth_challenge\s*=|create_auth_challenge\s*=|verify_auth_challenge_response\s*=/)
   assert.doesNotMatch(auth, /cognito_auth_challenge|cognito_(define|create|verify)_auth_challenge|sns:Publish/)
-  assert.match(auth, /explicit_auth_flows = \[\n    "ALLOW_USER_PASSWORD_AUTH",\n    "ALLOW_USER_SRP_AUTH",\n    "ALLOW_REFRESH_TOKEN_AUTH",\n  \]/)
+  // Round I (I3): REFRESH_TOKEN_AUTH went too, with refresh token rotation (refresh-rotation-infra).
+  assert.match(auth, /explicit_auth_flows = \[\n    "ALLOW_USER_PASSWORD_AUTH",\n    "ALLOW_USER_SRP_AUTH",\n  \]/)
   // write_attributes stay unset (Cognito rejected a phone-less list in Round 14).
   assert.doesNotMatch(auth, /write_attributes\s*=/)
   for (const lambda of ['define', 'create', 'verify']) {
@@ -142,6 +143,8 @@ const lambdaBefore = {
 const lambdaAfter = { ...lambdaBefore, define_auth_challenge: null, create_auth_challenge: null, verify_auth_challenge_response: null }
 const flowsBefore = ['ALLOW_USER_PASSWORD_AUTH', 'ALLOW_USER_SRP_AUTH', 'ALLOW_CUSTOM_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH']
 const flowsAfter = ['ALLOW_USER_PASSWORD_AUTH', 'ALLOW_USER_SRP_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH']
+// Round I (I3): the web client is planned by refresh-rotation-infra now, so any client change here is refused.
+const clientChange = (after = {}) => change('aws_cognito_user_pool_client.web', ['update'], { name: 'sea-n-shore-staging-web', explicit_auth_flows: flowsBefore }, { name: 'sea-n-shore-staging-web', explicit_auth_flows: flowsAfter, ...after })
 
 const change = (address, actions, before, after, afterUnknown = {}) => ({ address, mode: 'managed', change: { actions, before, after, after_unknown: afterUnknown } })
 function validPlan() {
@@ -153,7 +156,6 @@ function validPlan() {
     change('aws_secretsmanager_secret_version.health_check_token', ['create'], null, {}, { secret_string: true }),
     change('aws_iam_role_policy.ecs_execution_health_check_token_secret', ['create'], null, { role: 'sea-n-shore-staging-ecs-execution', name: 'sea-n-shore-staging-health-check-token-secret' }, { policy: true }),
     change('aws_cognito_user_pool.app', ['update'], { name: 'sea-n-shore-staging-users', mfa_configuration: 'OPTIONAL', lambda_config: [lambdaBefore] }, { name: 'sea-n-shore-staging-users', mfa_configuration: 'OPTIONAL', lambda_config: [lambdaAfter] }),
-    change('aws_cognito_user_pool_client.web', ['update'], { name: 'sea-n-shore-staging-web', explicit_auth_flows: flowsBefore }, { name: 'sea-n-shore-staging-web', explicit_auth_flows: flowsAfter }),
   ]
 }
 
@@ -176,12 +178,12 @@ const replace = (plan, address, edit) => plan.map((r) => (r.address === address 
 test('the classifier accepts exactly the SMS retirement and health token changes', async () => {
   const accepted = await classify(validPlan())
   assert.equal(accepted.ok, true, accepted.output)
-  assert.match(accepted.output, /SMS_RETIREMENT_PLAN_CHANGES=25/)
-  assert.match(accepted.output, /COGNITO_CLIENT_EXPLICIT_AUTH_FLOWS_PLANNED_AFTER=ALLOW_REFRESH_TOKEN_AUTH,ALLOW_USER_PASSWORD_AUTH,ALLOW_USER_SRP_AUTH/)
+  assert.match(accepted.output, /SMS_RETIREMENT_PLAN_CHANGES=24/)
+  assert.doesNotMatch(accepted.output, /COGNITO_CLIENT_EXPLICIT_AUTH_FLOWS_PLANNED_AFTER/)
   assert.match(accepted.output, /COGNITO_LAMBDA_TRIGGERS_PLANNED_AFTER=custom_email_sender,kms_key_id,pre_sign_up/)
   assert.match(accepted.output, /SMS_RETIREMENT_KEYS=aws_cognito_user_pool\.app\|lambda_config/)
 
-  // The pool and client may already have been updated by the multi-login auth runner.
+  // The pool may already have been updated by the multi-login auth runner.
   const alreadyUpdated = await classify(validPlan().filter((r) => !r.address.startsWith('aws_cognito_')))
   assert.equal(alreadyUpdated.ok, true, alreadyUpdated.output)
   assert.match(alreadyUpdated.output, /SMS_RETIREMENT_PLAN_CHANGES=23/)
@@ -195,9 +197,10 @@ test('the classifier refuses anything outside the allowlist', async () => {
     ['another pool attribute', replace(validPlan(), 'aws_cognito_user_pool.app', (r) => ((r.change.after.mfa_configuration = 'OFF'), r)), /user pool change outside lambda_config/],
     ['dropping the pre-sign-up trigger', replace(validPlan(), 'aws_cognito_user_pool.app', (r) => ((r.change.after.lambda_config[0].pre_sign_up = null), r)), /lambda_config change outside the custom auth triggers/],
     ['keeping a custom trigger', replace(validPlan(), 'aws_cognito_user_pool.app', (r) => ((r.change.after.lambda_config[0].create_auth_challenge = lambdaBefore.create_auth_challenge), r)), /custom auth triggers must be detached/],
-    ['another client attribute', replace(validPlan(), 'aws_cognito_user_pool_client.web', (r) => ((r.change.after.callback_urls = ['https://evil.example/cb']), r)), /web client change outside explicit_auth_flows/],
-    ['client write attributes', replace(validPlan(), 'aws_cognito_user_pool_client.web', (r) => ((r.change.after.write_attributes = ['email']), r)), /web client change outside explicit_auth_flows/],
-    ['dropping SRP sign-in', replace(validPlan(), 'aws_cognito_user_pool_client.web', (r) => ((r.change.after.explicit_auth_flows = ['ALLOW_REFRESH_TOKEN_AUTH', 'ALLOW_USER_PASSWORD_AUTH']), r)), /exactly password, SRP and refresh-token/],
+    ['the old client flow change', [...validPlan(), clientChange()], /unexpected change aws_cognito_user_pool_client\.web/],
+    ['another client attribute', [...validPlan(), clientChange({ callback_urls: ['https://evil.example/cb'] })], /unexpected change aws_cognito_user_pool_client\.web/],
+    ['client write attributes', [...validPlan(), clientChange({ write_attributes: ['email'] })], /unexpected change aws_cognito_user_pool_client\.web/],
+    ['dropping SRP sign-in', [...validPlan(), clientChange({ explicit_auth_flows: ['ALLOW_REFRESH_TOKEN_AUTH', 'ALLOW_USER_PASSWORD_AUTH'] })], /unexpected change aws_cognito_user_pool_client\.web/],
     ['destroying the SMS preferences', replace(validPlan(), 'aws_sns_sms_preferences.account', (r) => ((r.change.actions = ['delete']), r)), /may only be forgotten/],
     ['destroying a different table', replace(validPlan(), 'aws_dynamodb_table.otp_limits', (r) => ((r.change.before.name = 'sea-n-shore-staging-realtime-connections'), r)), /not the expected object/],
     ['replacing the OTP table', replace(validPlan(), 'aws_dynamodb_table.otp_limits', (r) => ((r.change.actions = ['delete', 'create']), r)), /may only be destroyed/],
