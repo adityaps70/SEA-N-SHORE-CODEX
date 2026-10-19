@@ -35,6 +35,8 @@ async function loadDocument(url: string): Promise<PdfDocument> {
     cached = loadPdfJs().then((pdfjs) => pdfjs.getDocument({
       url,
       withCredentials: true,
+      // CSP: no eval. pdf.js otherwise tests `new Function` and compiles glyph outlines with it.
+      isEvalSupported: false,
     }).promise as unknown as Promise<PdfDocument>)
     documentCache.set(url, cached)
   }

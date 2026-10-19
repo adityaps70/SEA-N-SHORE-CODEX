@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
+import { connection } from 'next/server'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import './globals.css'
 
@@ -92,7 +93,11 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', images: [BRAND_ICONS.ogImage] },
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // CSP: Next stamps the per-request nonce (src/proxy.ts) on its scripts only when a page renders per request, so
+  // no page may be prerendered. Before this, the 404 page and /account-deleted were static and every visit to a
+  // mistyped or probed URL reported our own scripts as blocked.
+  await connection()
   return (
     <html lang="en" className={fontVariables}>
       <body>{children}</body>

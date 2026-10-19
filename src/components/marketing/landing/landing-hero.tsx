@@ -14,10 +14,12 @@ function SignInOptions({ googleEnabled }: { googleEnabled: boolean }) {
   return (
     <>
       {googleEnabled ? (
-        <Link className="sbtn" href={LANDING_LINKS.googleSignIn}>
+        // A plain <a>: Google sign-in must not be prefetched or fetched by the app router. Its redirect to the
+        // sign-in host is not allowed by the CSP's connect-src (and each prefetch set a new OAuth state cookie).
+        <a className="sbtn" href={LANDING_LINKS.googleSignIn}>
           <GoogleMark />
           Continue with Google
-        </Link>
+        </a>
       ) : null}
       <Link className="sbtn primary" href={LANDING_LINKS.signIn}>
         <Mail size={20} aria-hidden="true" />
