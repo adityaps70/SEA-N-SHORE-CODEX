@@ -5,9 +5,12 @@
 #   bash scripts/aws/node-base-image.sh <registry>    e.g. 310356785722.dkr.ecr.ap-south-1.amazonaws.com
 # Writes NODE_BASE_IMAGE=<reference> to $GITHUB_ENV (or stdout) for docker build --build-arg NODE_BASE_IMAGE.
 # - Our copy holds the pinned digest: use it. A digest reference is content-addressed, so it is the same image.
-# - Otherwise copy that one manifest from ECR Public with skopeo (digest preserved, nothing rebuilt) and use it.
-# - If the copy fails (the repository is not created yet, or ECR Public refuses), warn and build from ECR Public at
-#   the same digest, as before. Only reads and image pushes: never deletes or retags anything.
+# - Otherwise copy that one manifest with skopeo (digest preserved, nothing rebuilt) and use it: from ECR Public,
+#   or, when ECR Public refuses (429 "Data limit exceeded" on shared runner IPs), from mirror.gcr.io, Google's
+#   mirror of Docker's official images, which serves the same manifest digest. The check after the copy reads our
+#   copy by that digest, so a different image can never be used.
+# - If every copy fails (the repository is not created yet, or both sources refuse), warn and build from ECR Public
+#   at the same digest, as before. Only reads and image pushes: never deletes or retags anything.
 set -euo pipefail
 
 REGISTRY="${1:-}"
@@ -17,6 +20,7 @@ source "$(dirname "$0")/node-base-image.env"
 [[ "$NODE_BASE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "NODE_BASE_DIGEST must be a sha256 digest." >&2; exit 1; }
 
 PUBLIC="public.ecr.aws/docker/library/node"
+MIRROR="mirror.gcr.io/library/node"
 PRIVATE="$REGISTRY/$NODE_BASE_REPOSITORY"
 COPY_TAG="$NODE_BASE_TAG-${NODE_BASE_DIGEST:7:12}"
 
@@ -38,14 +42,17 @@ if skopeo inspect --raw "docker://$PRIVATE@$NODE_BASE_DIGEST" >/dev/null 2>&1; t
   exit 0
 fi
 
-if skopeo copy --quiet --retry-times 2 --preserve-digests \
-  "docker://$PUBLIC@$NODE_BASE_DIGEST" "docker://$PRIVATE:$COPY_TAG"; then
-  skopeo inspect --raw "docker://$PRIVATE@$NODE_BASE_DIGEST" >/dev/null
-  echo "NODE_BASE_COPIED=$NODE_BASE_REPOSITORY:$COPY_TAG"
-  echo "NODE_BASE_SOURCE=private-ecr"
-  emit "$PRIVATE@$NODE_BASE_DIGEST"
-  exit 0
-fi
+for SOURCE in "$PUBLIC" "$MIRROR"; do
+  if skopeo copy --quiet --retry-times 2 --preserve-digests \
+    "docker://$SOURCE@$NODE_BASE_DIGEST" "docker://$PRIVATE:$COPY_TAG"; then
+    skopeo inspect --raw "docker://$PRIVATE@$NODE_BASE_DIGEST" >/dev/null
+    echo "NODE_BASE_COPIED=$NODE_BASE_REPOSITORY:$COPY_TAG from=${SOURCE%%/*}"
+    echo "NODE_BASE_SOURCE=private-ecr"
+    emit "$PRIVATE@$NODE_BASE_DIGEST"
+    exit 0
+  fi
+  echo "::warning::Could not copy the node base image from ${SOURCE%%/*}."
+done
 
 echo "::warning::Could not copy the node base image to $NODE_BASE_REPOSITORY; building from Amazon ECR Public at the pinned digest."
 echo "NODE_BASE_SOURCE=ecr-public"

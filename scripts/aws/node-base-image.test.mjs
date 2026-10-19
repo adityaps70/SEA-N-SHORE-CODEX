@@ -21,6 +21,7 @@ const DIGEST = value('NODE_BASE_DIGEST')
 const REGISTRY = '310356785722.dkr.ecr.ap-south-1.amazonaws.com'
 const PRIVATE = `${REGISTRY}/sea-n-shore-base/node`
 const PUBLIC = 'public.ecr.aws/docker/library/node'
+const MIRROR = 'mirror.gcr.io/library/node'
 
 test('one pin: the env file and the Dockerfile default name the same digest of node:22-bookworm-slim', () => {
   assert.match(DIGEST, /^sha256:[0-9a-f]{64}$/)
@@ -79,13 +80,32 @@ test('our copy is missing: copy the pinned manifest from ECR Public with its dig
   assert.equal(result.calls[1], `skopeo copy --quiet --retry-times 2 --preserve-digests docker://${PUBLIC}@${DIGEST} docker://${PRIVATE}:22-bookworm-slim-${DIGEST.slice(7, 19)}`)
   assert.equal(result.calls[2], `skopeo inspect --raw docker://${PRIVATE}@${DIGEST}`)
   assert.equal(result.githubEnv, `NODE_BASE_IMAGE=${PRIVATE}@${DIGEST}\n`)
-  assert.match(result.output, new RegExp(`NODE_BASE_COPIED=sea-n-shore-base/node:22-bookworm-slim-${DIGEST.slice(7, 19)}`))
+  assert.match(result.output, new RegExp(`NODE_BASE_COPIED=sea-n-shore-base/node:22-bookworm-slim-${DIGEST.slice(7, 19)} from=public\\.ecr\\.aws`))
 })
 
-test('the copy fails (no repository yet, or ECR Public refuses): warn and build from ECR Public at the same digest', () => {
+test('ECR Public refuses the copy (429 Data limit exceeded): copy the same digest from mirror.gcr.io instead, then build from our copy', () => {
+  // The first inspect misses; the copy from ECR Public fails; the copy from the mirror and the check after it succeed.
+  const result = run(`if [[ "$1" == inspect && ! -e "$(dirname "$0")/copied" ]]; then exit 1; fi; if [[ "$1" == copy && "$*" == *public.ecr.aws* ]]; then echo "toomanyrequests: Data limit exceeded" >&2; exit 1; fi; if [[ "$1" == copy ]]; then touch "$(dirname "$0")/copied"; fi`)
+  assert.equal(result.status, 0, result.output)
+  const tag = `${PRIVATE}:22-bookworm-slim-${DIGEST.slice(7, 19)}`
+  assert.deepEqual(result.calls, [
+    `skopeo inspect --raw docker://${PRIVATE}@${DIGEST}`,
+    `skopeo copy --quiet --retry-times 2 --preserve-digests docker://${PUBLIC}@${DIGEST} docker://${tag}`,
+    `skopeo copy --quiet --retry-times 2 --preserve-digests docker://${MIRROR}@${DIGEST} docker://${tag}`,
+    `skopeo inspect --raw docker://${PRIVATE}@${DIGEST}`,
+  ])
+  assert.match(result.output, /::warning::Could not copy the node base image from public\.ecr\.aws\./)
+  assert.match(result.output, /NODE_BASE_COPIED=sea-n-shore-base\/node:22-bookworm-slim-[0-9a-f]{12} from=mirror\.gcr\.io/)
+  assert.equal(result.githubEnv, `NODE_BASE_IMAGE=${PRIVATE}@${DIGEST}\n`)
+  assert.match(result.output, /NODE_BASE_SOURCE=private-ecr/)
+})
+
+test('every copy fails (no repository yet, or both sources refuse): warn and build from ECR Public at the same digest', () => {
   const result = run('exit 1')
   assert.equal(result.status, 0, result.output)
-  assert.equal(result.calls.length, 2)
+  assert.deepEqual(result.calls.map((call) => call.split(' ')[1]), ['inspect', 'copy', 'copy'])
+  assert.match(result.calls[1], new RegExp(`docker://${PUBLIC}@`))
+  assert.match(result.calls[2], new RegExp(`docker://${MIRROR}@`))
   assert.match(result.output, /::warning::Could not copy the node base image/)
   assert.equal(result.githubEnv, `NODE_BASE_IMAGE=${PUBLIC}@${DIGEST}\n`)
   assert.match(result.output, /NODE_BASE_SOURCE=ecr-public/)
