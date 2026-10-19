@@ -16,11 +16,20 @@ export type RecruiterContactRequest =
 export const RECRUITER_CONVERSATIONS_PER_DAY = 20
 export const RECRUITER_CONVERSATION_WINDOW_MS = 24 * 60 * 60 * 1000
 
-/** The line shown above the recruiter's first message in a conversation started through the exception. */
-export function recruiterContactLine(context: { reason: RecruiterContactReason; jobTitle: string | null }): string {
+/**
+ * The line shown above the recruiter's first message in a conversation started through the exception, worded for
+ * who reads it: the member ("you applied …") or the recruiter ("they applied …").
+ */
+export function recruiterContactLine(context: {
+  reason: RecruiterContactReason
+  jobTitle: string | null
+  viewer: 'member' | 'recruiter'
+}): string {
+  const member = context.viewer === 'member'
   if (context.reason === 'applied') {
     const title = context.jobTitle?.trim()
-    return title ? `Sent because you applied to ${title}` : 'Sent because you applied to one of their jobs'
+    if (title) return `Sent because ${member ? 'you' : 'they'} applied to ${title}`
+    return member ? 'Sent because you applied to one of their jobs' : 'Sent because they applied to one of your jobs'
   }
-  return 'Sent because you’re open to recruiters'
+  return member ? 'Sent because you’re open to recruiters' : 'Sent because they’re open to recruiters'
 }

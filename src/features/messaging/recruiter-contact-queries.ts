@@ -6,13 +6,15 @@ import { createRecruiterContactRepository } from './recruiter-contact-repository
 const recruiters = createRecruiterContactRepository()
 
 /**
- * Recruiter messaging exception: the reason line for a conversation a recruiter started that way, or null. Call
- * only after the viewer's participation was checked (getConversationThread refuses non-participants).
+ * Recruiter messaging exception: the reason line for a conversation a recruiter started that way, worded for the
+ * viewer, or null. Call only after the viewer's participation was checked (getConversationThread refuses
+ * non-participants).
  */
-export async function getRecruiterContact(conversationId: string): Promise<{ recruiterProfileId: string; line: string } | null> {
+export async function getRecruiterContact(conversationId: string, viewerId: string): Promise<{ recruiterProfileId: string; line: string } | null> {
   const row = await recruiters.findByConversation(conversationId)
   if (!row) return null
-  return { recruiterProfileId: row.recruiter_profile_id, line: recruiterContactLine({ reason: row.reason, jobTitle: row.job_title }) }
+  const viewer = row.recruiter_profile_id === viewerId ? 'recruiter' : 'member'
+  return { recruiterProfileId: row.recruiter_profile_id, line: recruiterContactLine({ reason: row.reason, jobTitle: row.job_title, viewer }) }
 }
 
 /** A personal recruiter verification, or an approved hiring role in a verified organization. */

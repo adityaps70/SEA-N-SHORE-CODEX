@@ -44,7 +44,7 @@ export default async function MessageConversationPage({
   const [inbox, authoritativeUnreadCount, recruiterContact] = await Promise.all([
     getConversationInbox({ limit: 100 }),
     getUnreadMessageCount(),
-    getRecruiterContact(conversationId).catch(() => null),
+    getRecruiterContact(conversationId, viewer.id).catch(() => null),
   ])
   const peer = inbox.find((item) => item.conversationId === conversationId)
   // A conversation just started from New Message may sit beyond the first

@@ -78,6 +78,7 @@ export default async function SuggestedCandidatesPage({ params }: { params: Prom
                       <StartConversationButton
                         targetProfileId={candidate.id}
                         contact={verifiedRecruiter ? { reason: 'open_to_recruiters' } : undefined}
+                        fullName={candidate.fullName}
                         variant="pill"
                       />
                     ) : null}

@@ -45,6 +45,19 @@ describe('StartConversationButton', () => {
     expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID, { reason: 'open_to_recruiters' })
   })
 
+  it('names the member for screen readers when given one, as in a list of candidates', async () => {
+    const user = userEvent.setup()
+    let resolve: (value: { ok: true; conversationId: string }) => void = () => {}
+    mocks.startDirectConversationAction.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    render(<StartConversationButton targetProfileId={TARGET_ID} fullName="Placeholder Member" variant="pill" />)
+    const button = screen.getByRole('button', { name: 'Message Placeholder Member' })
+    expect(button).toHaveTextContent('Message')
+    await user.click(button)
+    expect(screen.getByRole('button', { name: 'Opening conversation with Placeholder Member' })).toBeDisabled()
+    resolve({ ok: true, conversationId: CONVERSATION_ID })
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/messages/${CONVERSATION_ID}`))
+  })
+
   it('shows a safe inline error instead of navigating when messaging is unavailable', async () => {
     const user = userEvent.setup()
     mocks.startDirectConversationAction.mockResolvedValueOnce({

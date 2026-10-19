@@ -11,12 +11,15 @@ import type { RecruiterContactRequest } from '../recruiter-contact'
 export function StartConversationButton({
   targetProfileId,
   contact,
+  fullName,
   className = '',
   variant = 'default',
 }: {
   targetProfileId: string
   /** A recruiter's reason to reach a member on "connections only" (recruiter messaging exception). */
   contact?: RecruiterContactRequest
+  /** In a list of people: names the member for screen readers ("Message …"), like the Connect pill. */
+  fullName?: string
   className?: string
   /** `pill`: compact ocean outline pill for list rows (phone search results). `secondary`: the shared bordered button (round H, H6). */
   variant?: 'default' | 'pill' | 'secondary'
@@ -43,6 +46,7 @@ export function StartConversationButton({
         type="button"
         onClick={openConversation}
         disabled={pending}
+        aria-label={fullName ? `${pending ? 'Opening conversation with' : 'Message'} ${fullName}` : undefined}
         className={variant === 'secondary'
           ? cn(secondaryButtonClass, 'w-full whitespace-nowrap disabled:cursor-wait', className)
           : variant === 'pill'

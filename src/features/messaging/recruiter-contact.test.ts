@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { RECRUITER_CONVERSATIONS_PER_DAY, recruiterContactLine } from './recruiter-contact'
 
-vi.mock('./recruiter-contact-repository', () => ({ createRecruiterContactRepository: () => ({}) }))
+const repo = vi.hoisted(() => ({ findByConversation: vi.fn() }))
+vi.mock('./recruiter-contact-repository', () => ({ createRecruiterContactRepository: () => repo }))
 vi.mock('@/features/network/repository', () => ({ createNetworkRepository: () => ({}) }))
 vi.mock('./repository', () => ({ createMessagingRepository: () => ({}) }))
 
-const { recruiterMessageAccess } = await import('./recruiter-contact-queries')
+const { getRecruiterContact, recruiterMessageAccess } = await import('./recruiter-contact-queries')
 
 const RECRUITER = 'recruiter-1'
 const MEMBER = 'member-1'
@@ -28,10 +29,24 @@ function deps(input: { blocked?: boolean; connected?: boolean; permission?: stri
 
 describe('recruiter reason line', () => {
   it('names the job, falls back when it is gone, and says "open to recruiters" otherwise', () => {
-    expect(recruiterContactLine({ reason: 'applied', jobTitle: 'Placeholder Chief Officer' })).toBe('Sent because you applied to Placeholder Chief Officer')
-    expect(recruiterContactLine({ reason: 'applied', jobTitle: null })).toBe('Sent because you applied to one of their jobs')
-    expect(recruiterContactLine({ reason: 'open_to_recruiters', jobTitle: null })).toBe('Sent because you’re open to recruiters')
+    expect(recruiterContactLine({ reason: 'applied', jobTitle: 'Placeholder Chief Officer', viewer: 'member' })).toBe('Sent because you applied to Placeholder Chief Officer')
+    expect(recruiterContactLine({ reason: 'applied', jobTitle: null, viewer: 'member' })).toBe('Sent because you applied to one of their jobs')
+    expect(recruiterContactLine({ reason: 'open_to_recruiters', jobTitle: null, viewer: 'member' })).toBe('Sent because you’re open to recruiters')
     expect(RECRUITER_CONVERSATIONS_PER_DAY).toBe(20)
+  })
+
+  it('getRecruiterContact words the line for whoever is viewing the conversation', async () => {
+    repo.findByConversation.mockResolvedValue({ recruiter_profile_id: RECRUITER, member_profile_id: MEMBER, reason: 'applied', job_title: 'Placeholder Chief Officer' })
+    await expect(getRecruiterContact('conversation-1', MEMBER)).resolves.toEqual({ recruiterProfileId: RECRUITER, line: 'Sent because you applied to Placeholder Chief Officer' })
+    await expect(getRecruiterContact('conversation-1', RECRUITER)).resolves.toEqual({ recruiterProfileId: RECRUITER, line: 'Sent because they applied to Placeholder Chief Officer' })
+    repo.findByConversation.mockResolvedValue(null)
+    await expect(getRecruiterContact('conversation-2', MEMBER)).resolves.toBeNull()
+  })
+
+  it('is worded for the recruiter when the recruiter reads the thread', () => {
+    expect(recruiterContactLine({ reason: 'applied', jobTitle: 'Placeholder Chief Officer', viewer: 'recruiter' })).toBe('Sent because they applied to Placeholder Chief Officer')
+    expect(recruiterContactLine({ reason: 'applied', jobTitle: '  ', viewer: 'recruiter' })).toBe('Sent because they applied to one of your jobs')
+    expect(recruiterContactLine({ reason: 'open_to_recruiters', jobTitle: null, viewer: 'recruiter' })).toBe('Sent because they’re open to recruiters')
   })
 })
 

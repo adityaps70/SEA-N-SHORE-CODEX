@@ -194,7 +194,7 @@ describe('recruiter messaging exception', () => {
   it('passes the reason line of a recruiter conversation to the thread, and none for others', async () => {
     mocks.getRecruiterContact.mockResolvedValueOnce({ recruiterProfileId: OTHER_ID, line: 'Sent because you applied to Placeholder Chief Officer' })
     render(await MessageConversationPage({ params: Promise.resolve({ conversationId: CONVERSATION_ID }) }))
-    expect(mocks.getRecruiterContact).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(mocks.getRecruiterContact).toHaveBeenCalledWith(CONVERSATION_ID, VIEWER_ID)
     expect(screen.getByTestId('recruiter-contact')).toHaveTextContent('Sent because you applied to Placeholder Chief Officer')
     cleanup()
 

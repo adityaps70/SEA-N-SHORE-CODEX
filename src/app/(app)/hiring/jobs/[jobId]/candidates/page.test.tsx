@@ -63,19 +63,19 @@ describe('suggested candidates: messaging', () => {
     expect(screen.getByText(/As a verified recruiter you can message them directly, up to 20 new conversations a day/)).toBeInTheDocument()
     const rows = screen.getAllByRole('listitem').filter((row) => row.querySelector('h2'))
     const open = rows.find((row) => row.textContent?.includes('Placeholder Open'))!
-    within(open).getByRole('button', { name: 'Message' }).click()
+    within(open).getByRole('button', { name: 'Message Placeholder Open' }).click()
     await vi.waitFor(() => expect(mocks.startDirectConversationAction).toHaveBeenCalledWith('m-open', { reason: 'open_to_recruiters' }))
     const nobody = rows.find((row) => row.textContent?.includes('Placeholder Nobody'))!
-    expect(within(nobody).queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
+    expect(within(nobody).queryByRole('button', { name: /^Message/ })).not.toBeInTheDocument()
     // A connection's Message comes from the connection action, not a second button.
     const conn = rows.find((row) => row.textContent?.includes('Placeholder Connected'))!
-    expect(within(conn).queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
+    expect(within(conn).queryByRole('button', { name: /^Message/ })).not.toBeInTheDocument()
   })
 
   it('gives an unverified recruiter no Message button for "connections only" members', async () => {
     mocks.isVerifiedRecruiter.mockResolvedValue(false)
     await renderPage()
     expect(screen.getByText(/Reach them by connecting or, once connected, by message/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Message/ })).not.toBeInTheDocument()
   })
 })
