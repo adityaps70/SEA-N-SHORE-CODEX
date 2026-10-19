@@ -16,10 +16,14 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   let revoked = false
   let signedIn = false
+  let notice = 'session-ended'
   try {
     const verification = await getAwsVerification()
     revoked = verification.sessionRevoked
     signedIn = verification.user !== null
+    // Round I (I3): say why. Not opened for 30 days, or an old sign-in token was used again (possibly a copy).
+    if (verification.sessionEndReason === 'idle') notice = 'session-expired'
+    if (verification.sessionEndReason === 'refresh_reuse') notice = 'session-security'
   } catch {
     revoked = false
   }
@@ -40,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.redirect(siteUrlFor('/auth/sign-in?notice=session-ended'))
+  const response = NextResponse.redirect(siteUrlFor(`/auth/sign-in?notice=${notice}`))
   createCognitoCookieManager(response.cookies, publicEnvironment.NEXT_PUBLIC_SITE_URL, {
     allowInsecureHttp: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
   }).clearCognitoCookies()

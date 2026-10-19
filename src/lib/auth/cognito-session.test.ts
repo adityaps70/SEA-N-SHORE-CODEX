@@ -101,7 +101,7 @@ describe('Cognito server session verification', () => {
     expect(api.getUser).toHaveBeenCalledWith('access-token')
   })
 
-  it('refreshes with the refresh cookie and rotates only the access cookie when Cognito returns no new refresh token', async () => {
+  it('refreshes with the refresh cookie and writes it again for another 30 days when Cognito returns no new refresh token (Round I, I3)', async () => {
     const fake = createFakeCookieStore({
       [COGNITO_COOKIE_NAMES.access]: 'expired-access-token',
       [COGNITO_COOKIE_NAMES.refresh]: 'refresh-token',
@@ -117,7 +117,7 @@ describe('Cognito server session verification', () => {
     expect(api.refresh).toHaveBeenCalledWith('refresh-token')
     expect(fake.values.get(COGNITO_COOKIE_NAMES.access)).toBe('rotated-access-token')
     expect(fake.values.get(COGNITO_COOKIE_NAMES.refresh)).toBe('refresh-token')
-    expect(fake.writes).toHaveLength(1)
+    expect(fake.writes).toHaveLength(2)
     expect(fake.writes[0]).toMatchObject({
       name: COGNITO_COOKIE_NAMES.access,
       value: 'rotated-access-token',
@@ -129,6 +129,45 @@ describe('Cognito server session verification', () => {
         maxAge: 3600,
       },
     })
+    // The sliding session: every refresh moves the refresh cookie's expiry 30 days on.
+    expect(fake.writes[1]).toEqual({
+      name: COGNITO_COOKIE_NAMES.refresh,
+      value: 'refresh-token',
+      options: { httpOnly: true, sameSite: 'lax', secure: true, path: '/', maxAge: 60 * 60 * 24 * 30 },
+    })
+  })
+
+  it('keeps the rotated refresh token and records the rotation (Round I, I3)', async () => {
+    const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'refresh-token-1' })
+    const api = createFakeApi({
+      refresh: async () => ({ accessToken: 'access-2', refreshToken: 'refresh-token-2', expiresIn: 3600 }),
+    })
+    const ledger = { check: vi.fn(async () => 'ok' as const), record: vi.fn(async () => undefined) }
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger })
+
+    await expect(sessions.refreshSession()).resolves.toBe(true)
+    expect(fake.values.get(COGNITO_COOKIE_NAMES.refresh)).toBe('refresh-token-2')
+    expect(ledger.check).toHaveBeenCalledWith('refresh-token-1')
+    expect(ledger.record).toHaveBeenCalledWith({
+      previousRefreshToken: 'refresh-token-1',
+      authentication: { accessToken: 'access-2', refreshToken: 'refresh-token-2', expiresIn: 3600 },
+    })
+  })
+
+  it('ends the session without asking Cognito when an already-rotated refresh token comes back (Round I, I3)', async () => {
+    const fake = createFakeCookieStore({
+      [COGNITO_COOKIE_NAMES.access]: 'expired-access-token',
+      [COGNITO_COOKIE_NAMES.refresh]: 'stolen-old-refresh-token',
+    })
+    const api = createFakeApi()
+    const ledger = { check: vi.fn(async () => 'reused' as const), record: vi.fn(async () => undefined) }
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger })
+
+    await expect(sessions.refreshSession()).resolves.toBe(false)
+    expect(api.refresh).not.toHaveBeenCalled()
+    expect(ledger.record).not.toHaveBeenCalled()
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
   })
 
   it('clears every Cognito cookie when refresh authorization fails', async () => {

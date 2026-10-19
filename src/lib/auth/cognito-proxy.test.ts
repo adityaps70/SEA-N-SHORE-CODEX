@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-import { createCognitoProxyHandler, isCognitoProtectedRoute, rememberReturnPath } from './cognito-proxy'
+import { createCognitoProxyHandler, isCognitoProtectedRoute, rememberReturnPath, renewsSessionOnPublicRoute } from './cognito-proxy'
+import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
 import { RETURN_PATH_COOKIE } from './return-path'
 
 function request(path: string) {
@@ -27,6 +28,43 @@ describe('Cognito protected route proxy', () => {
     expect(deepHome.status).toBe(200)
     expect(getVerifiedPrincipal).not.toHaveBeenCalled()
     expect(refreshSession).not.toHaveBeenCalled()
+  })
+
+  it('renews an expired session on the landing page and sign-in, so the Home Screen app opens signed in (Round I, I3)', async () => {
+    const getVerifiedPrincipal = vi.fn(async () => null)
+    const refreshSession = vi.fn(async () => true)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal, refreshSession })
+    const withRefreshOnly = (path: string) => {
+      const incoming = request(path)
+      incoming.cookies.set(COGNITO_COOKIE_NAMES.refresh, 'refresh-token')
+      return incoming
+    }
+
+    for (const path of ['/', '/auth/sign-in', '/auth/sign-up', '/about', '/api/feed/impressions']) {
+      refreshSession.mockClear()
+      const response = await handler(withRefreshOnly(path))
+      expect(response.status, path).toBe(200)
+      expect(refreshSession, path).toHaveBeenCalledTimes(1)
+    }
+    // A public page never waits on, or is blocked by, a failed renewal.
+    refreshSession.mockRejectedValueOnce(new Error('Cognito down'))
+    expect((await handler(withRefreshOnly('/'))).status).toBe(200)
+  })
+
+  it('does not renew where nothing is to renew, or on auth steps that manage their own cookies', async () => {
+    const live = request('/')
+    live.cookies.set(COGNITO_COOKIE_NAMES.access, 'access-token')
+    live.cookies.set(COGNITO_COOKIE_NAMES.refresh, 'refresh-token')
+    expect(renewsSessionOnPublicRoute(live)).toBe(false)
+    expect(renewsSessionOnPublicRoute(request('/'))).toBe(false)
+    for (const path of ['/auth/google/callback', '/auth/session-ended', '/auth/mfa', '/api/auth/app-handoff', '/api/health/live']) {
+      const incoming = request(path)
+      incoming.cookies.set(COGNITO_COOKIE_NAMES.refresh, 'refresh-token')
+      expect(renewsSessionOnPublicRoute(incoming), path).toBe(false)
+    }
+    const signIn = request('/auth/sign-in')
+    signIn.cookies.set(COGNITO_COOKIE_NAMES.refresh, 'refresh-token')
+    expect(renewsSessionOnPublicRoute(signIn)).toBe(true)
   })
 
   it('allows protected routes with a verified Cognito principal', async () => {

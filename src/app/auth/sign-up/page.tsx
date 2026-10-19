@@ -10,6 +10,7 @@ import { getCognitoEnvironment } from "@/lib/env";
 import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
 import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim";
 import { AUTH_EMAIL_RATE_LIMITED_MESSAGE } from "@/lib/errors/user-messages";
+import { continueIfSignedIn } from "@/features/auth/queries";
 
 export const metadata: Metadata = { title: 'Create your account' }
 
@@ -20,6 +21,7 @@ export default async function SignUpPage({
 }) {
   const params = await searchParams;
   const confirming = params.confirm === "1";
+  if (!confirming) await continueIfSignedIn({ error: params.oauthError });
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
   const claimEmail = params.legacy === "1"
     ? (await cookies()).get(LEGACY_CLAIM_EMAIL_COOKIE)?.value

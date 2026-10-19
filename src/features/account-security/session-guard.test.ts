@@ -10,7 +10,7 @@ const PROFILE = '11111111-1111-4111-8111-111111111111'
 const context = () => ({ userAgentSummary: 'Safari on iPhone', city: null, country: null, ip: null })
 
 function fakeRepository(state: Partial<SessionState> = {}) {
-  const row: SessionState = { id: 'session-1', profileId: PROFILE, revoked: false, lastSeenAt: new Date(0), ...state }
+  const row: SessionState = { id: 'session-1', profileId: PROFILE, revoked: false, reuseDetected: false, lastSeenAt: new Date(0), ...state }
   return {
     row,
     findOrCreate: vi.fn(async () => ({ ...row })),
@@ -54,29 +54,54 @@ describe('session guard (Round H, H3)', () => {
 
   it('refuses a revoked session, and a revocation made on this server applies at once', async () => {
     const repository = fakeRepository()
-    const guard = createSessionGuard({ repository })
+    const guard = createSessionGuard({ repository, now: () => 1_000_000 })
     const token = accessToken({ origin_jti: 'origin-aaaa-0003' })
     await expect(guard.check({ accessToken: token, profileId: PROFILE, context })).resolves.toMatchObject({ status: 'active' })
 
     guard.markRevoked(['session-1'])
-    await expect(guard.check({ accessToken: token, profileId: PROFILE, context })).resolves.toEqual({ status: 'revoked', sessionId: 'session-1' })
+    await expect(guard.check({ accessToken: token, profileId: PROFILE, context })).resolves.toEqual({ status: 'revoked', sessionId: 'session-1', reason: 'signed_out' })
     expect(repository.findOrCreate).toHaveBeenCalledTimes(1)
 
     const revokedRepository = fakeRepository({ revoked: true })
-    await expect(createSessionGuard({ repository: revokedRepository }).check({ accessToken: token, profileId: PROFILE, context })).resolves.toMatchObject({ status: 'revoked' })
+    await expect(createSessionGuard({ repository: revokedRepository, now: () => 1_000_000 }).check({ accessToken: token, profileId: PROFILE, context })).resolves.toMatchObject({ status: 'revoked' })
     expect(revokedRepository.touch).not.toHaveBeenCalled()
+  })
+
+  it('keeps a session used within 30 days and ends one not used for longer (Round I, I3 sliding session)', async () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const now = 400 * DAY
+    const token = accessToken({ origin_jti: 'origin-aaaa-0101' })
+
+    const recent = fakeRepository({ lastSeenAt: new Date(now - 29 * DAY) })
+    await expect(createSessionGuard({ repository: recent, now: () => now }).check({ accessToken: token, profileId: PROFILE, context }))
+      .resolves.toEqual({ status: 'active', sessionId: 'session-1' })
+    // Using it moves last_seen_at on, which is what slides the 30 days.
+    expect(recent.touch).toHaveBeenCalledWith('session-1')
+
+    const idle = fakeRepository({ lastSeenAt: new Date(now - 30 * DAY - 60_000) })
+    await expect(createSessionGuard({ repository: idle, now: () => now }).check({ accessToken: token, profileId: PROFILE, context }))
+      .resolves.toEqual({ status: 'revoked', sessionId: 'session-1', reason: 'idle' })
+    expect(idle.touch).not.toHaveBeenCalled()
+  })
+
+  it('ends a sign-in whose old refresh token was used again (Round I, I3)', async () => {
+    const repository = fakeRepository({ reuseDetected: true })
+    const guard = createSessionGuard({ repository, now: () => 1_000_000 })
+    await expect(guard.check({ accessToken: accessToken({ origin_jti: 'origin-aaaa-0102' }), profileId: PROFILE, context }))
+      .resolves.toEqual({ status: 'revoked', sessionId: 'session-1', reason: 'refresh_reuse' })
+    expect(repository.touch).not.toHaveBeenCalled()
   })
 
   it('never accepts a sign-in that belongs to another profile', async () => {
     const repository = fakeRepository({ profileId: '22222222-2222-4222-8222-222222222222' })
-    const guard = createSessionGuard({ repository })
+    const guard = createSessionGuard({ repository, now: () => 1_000_000 })
     await expect(guard.check({ accessToken: accessToken({ origin_jti: 'origin-aaaa-0004' }), profileId: PROFILE, context })).resolves.toMatchObject({ status: 'revoked' })
   })
 
   it('leaves a token without origin_jti untracked, and fails open only while the table does not exist yet', async () => {
     const warn = vi.fn()
     const repository = fakeRepository()
-    const guard = createSessionGuard({ repository, warn })
+    const guard = createSessionGuard({ repository, warn, now: () => 1_000_000 })
     await expect(guard.check({ accessToken: accessToken({ scope: 'x' }), profileId: PROFILE, context })).resolves.toEqual({ status: 'untracked' })
     expect(repository.findOrCreate).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith('[auth_session_untracked]', { reason: 'no_origin_jti' })

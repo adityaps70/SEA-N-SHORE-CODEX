@@ -2,8 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ updateCognitoRouteSession: vi.fn() }))
-vi.mock('@/lib/auth/cognito-proxy', () => ({ updateCognitoRouteSession: mocks.updateCognitoRouteSession }))
+const mocks = vi.hoisted(() => ({ updateCognitoRouteSession: vi.fn(), setRefreshTokenLedger: vi.fn() }))
+vi.mock('@/lib/auth/cognito-proxy', () => ({
+  updateCognitoRouteSession: mocks.updateCognitoRouteSession,
+  setRefreshTokenLedger: mocks.setRefreshTokenLedger,
+}))
+vi.mock('@/lib/db/client', () => ({ query: vi.fn(async () => ({ rows: [] })) }))
 
 import { API_CONTENT_SECURITY_POLICY } from '@/lib/security/content-security-policy'
 import { proxy } from './proxy'

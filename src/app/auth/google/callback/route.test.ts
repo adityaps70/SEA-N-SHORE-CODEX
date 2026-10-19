@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
-const mocks = vi.hoisted(() => ({ exchangeCode: vi.fn() }))
+const mocks = vi.hoisted(() => ({ exchangeCode: vi.fn(), recordCallback: vi.fn(async () => null as { id: string; confirmSecret: string } | null) }))
 
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({
@@ -17,6 +17,8 @@ vi.mock('@/lib/auth/cognito-oauth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/cognito-oauth')>()),
   createCognitoOAuth: () => ({ exchangeCode: mocks.exchangeCode }),
 }))
+
+vi.mock('@/features/auth/app-handoff-runtime', () => ({ appHandoffService: () => ({ recordCallback: mocks.recordCallback }) }))
 
 import { GET } from './route'
 
@@ -54,5 +56,22 @@ describe('Google callback failures', () => {
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalledWith('[auth_callback_failed]', { provider: 'google', reason: 'exchange_failed' })
     expect(JSON.stringify(warn.mock.calls)).not.toContain('secret-code')
+  })
+
+  it('hands a Google sign-in started in the Home Screen app to its code step, without the app cookies (Round I, I3)', async () => {
+    mocks.recordCallback.mockResolvedValueOnce({ id: '6f1d2c4e-1111-4222-8333-444455556666', confirmSecret: 'c'.repeat(43) })
+    const response = await callback('code=cognito-code&state=app-state')
+    expect(mocks.recordCallback).toHaveBeenCalledWith({ state: 'app-state', authorizationCode: 'cognito-code' })
+    expect(response.headers.get('location')).toBe('https://seanshore.example/auth/app-handoff')
+    const cookie = response.cookies.get('sns_app_handoff_confirm')
+    expect(cookie).toMatchObject({ value: `6f1d2c4e-1111-4222-8333-444455556666.${'c'.repeat(43)}`, httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 600 })
+    // No session cookies land in Safari.
+    expect(response.headers.get('set-cookie')).not.toContain('sns_cognito_access')
+  })
+
+  it('keeps the verification error when the state belongs to no app handoff', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const response = await callback('code=cognito-code&state=unknown-state')
+    expect(response.headers.get('location')).toBe('https://seanshore.example/auth/sign-in?oauthError=verification')
   })
 })

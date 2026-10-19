@@ -4,6 +4,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   exchange: 'Google sign-in could not be completed. Please try again, or sign in with your email and password.',
   'post-sign-in-session': 'You signed in with Google, but Sea N Shore could not finish creating your session. Please try Google again.',
   'post-sign-in-profile': 'You signed in with Google, but Sea N Shore could not load your profile. Please try again.',
+  // Round I (I3): Google from the iPhone Home Screen app goes through the code step on the auth page.
+  'home-screen-app': 'In the Home Screen app, Google sign-in takes one extra step: tap Continue with Google below and follow the code steps, or continue with your email.',
 }
 
 export function oauthErrorMessage(code: string | null | undefined) {

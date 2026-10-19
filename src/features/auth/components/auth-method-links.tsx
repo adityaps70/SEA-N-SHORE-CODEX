@@ -1,4 +1,5 @@
 import { GoogleMark } from './google-mark'
+import { GoogleStartLink } from './google-start-link'
 
 type AuthMethodLinksProps = {
   intent: 'sign-in' | 'sign-up'
@@ -14,16 +15,13 @@ type AuthMethodLinksProps = {
 const phoneButtonClass =
   'inline-flex min-h-13 w-full items-center justify-center gap-3 rounded-full border border-mist-300 bg-white px-4 text-[15px] font-semibold text-navy-950 transition-colors hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
 
-function googleStartHref(intent: AuthMethodLinksProps['intent']) {
-  return `/auth/google/start?intent=${intent}`
-}
-
 /**
  * Alternative sign-in methods next to the email form.
  *
  * Google OAuth deliberately uses a native anchor rather than Next.js client-side
  * navigation. Starting OAuth is a full-document transition to Cognito/Google and
- * must not be intercepted or prefetched by the app router.
+ * must not be intercepted or prefetched by the app router. Round I (I3): in the iPhone
+ * Home Screen app the same anchor opens the app handoff instead (GoogleStartLink).
  */
 export function AuthMethodLinks({ intent, googleEnabled = true, placement = 'below' }: AuthMethodLinksProps) {
   if (!googleEnabled) return null
@@ -31,10 +29,10 @@ export function AuthMethodLinks({ intent, googleEnabled = true, placement = 'bel
   if (placement === 'above') {
     return (
       <div className="mt-6 grid gap-3 md:hidden" data-auth-methods="above">
-        <a href={googleStartHref(intent)} className={phoneButtonClass}>
+        <GoogleStartLink intent={intent} className={phoneButtonClass}>
           <GoogleMark />
           Continue with Google
-        </a>
+        </GoogleStartLink>
         <div className="mt-1 flex items-center gap-3 text-sm text-muted" role="separator" aria-label="or">
           <span aria-hidden="true" className="h-px flex-1 bg-mist-200" />
           <span aria-hidden="true">or</span>
@@ -52,8 +50,8 @@ export function AuthMethodLinks({ intent, googleEnabled = true, placement = 'bel
         <span className="h-px flex-1 bg-mist-100" />
       </div>
 
-      <a
-        href={googleStartHref(intent)}
+      <GoogleStartLink
+        intent={intent}
         className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl border border-mist-200 bg-white px-5 text-sm font-semibold text-navy-900 shadow-sm transition-colors hover:bg-mist-50"
       >
         <span
@@ -63,7 +61,7 @@ export function AuthMethodLinks({ intent, googleEnabled = true, placement = 'bel
           G
         </span>
         Continue with Google
-      </a>
+      </GoogleStartLink>
     </div>
   )
 }

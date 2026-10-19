@@ -10,6 +10,7 @@ import { getCognitoEnvironment } from "@/lib/env";
 import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
 import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim";
 import { SignInNotice } from "@/features/account-security/components/sign-in-notice";
+import { continueIfSignedIn } from "@/features/auth/queries";
 
 export const metadata: Metadata = { title: 'Sign in' }
 
@@ -20,6 +21,7 @@ export default async function SignInPage({
 }) {
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
   const { oauthError, error, email, notice } = await searchParams;
+  await continueIfSignedIn({ error: error ?? oauthError });
   const claimEmail = (await cookies()).get(LEGACY_CLAIM_EMAIL_COOKIE)?.value;
   const queryEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (queryEmail) {

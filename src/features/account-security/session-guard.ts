@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { decodeAccessTokenClaims } from '@/lib/auth/access-token-claims'
 import type { SessionRequestContext } from './request-context'
-import type { SessionRepository, SessionSignInMethod } from './session-repository'
+import { SESSION_LIST_WINDOW_DAYS, type SessionRepository, type SessionSignInMethod } from './session-repository'
 
 /**
  * Round H (H3): the revoked-session check, run where the verified user is resolved (getAwsVerifiedUser), so every
@@ -15,17 +15,25 @@ import type { SessionRepository, SessionSignInMethod } from './session-repositor
  *
  * Each server keeps the answer for 30 seconds, so a device signed out elsewhere is refused within 30 seconds;
  * revocations made by this server apply at once. last_seen_at moves at most every 5 minutes.
+ *
+ * Round I (I3): a sign-in also ends when it has not been used for 30 days (idle), or when one of its refresh tokens
+ * was used again after it had been exchanged for a newer one (refresh_reuse, see refresh-token-ledger).
  */
+
+/** Why a session is refused: signed out (from this or another device, or a password change), idle, or token reuse. */
+export type SessionEndReason = 'signed_out' | 'idle' | 'refresh_reuse'
 
 export type SessionCheck =
   | { status: 'active'; sessionId: string }
-  | { status: 'revoked'; sessionId: string }
+  | { status: 'revoked'; sessionId: string; reason: SessionEndReason }
   | { status: 'untracked' }
 
-type CacheEntry = { sessionId: string; profileId: string; revoked: boolean; expiresAt: number }
+type CacheEntry = { sessionId: string; profileId: string; ended: SessionEndReason | null; expiresAt: number }
 
 export const SESSION_CHECK_CACHE_MS = 30 * 1000
 export const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000
+/** Round I (I3): the sliding session. A sign-in not used for this long is refused. */
+export const SESSION_IDLE_LIMIT_MS = SESSION_LIST_WINDOW_DAYS * 24 * 60 * 60 * 1000
 const MAX_ENTRIES = 2000
 
 export function sessionOriginHash(originJti: string) {
@@ -52,12 +60,14 @@ export function createSessionGuard(input: {
   now?: () => number
   cacheTtlMs?: number
   touchIntervalMs?: number
+  idleLimitMs?: number
   hashIp?: (ip: string | null) => string | null
   warn?: (tag: string, context: Record<string, string>) => void
 }) {
   const now = input.now ?? Date.now
   const cacheTtlMs = input.cacheTtlMs ?? SESSION_CHECK_CACHE_MS
   const touchIntervalMs = input.touchIntervalMs ?? SESSION_TOUCH_INTERVAL_MS
+  const idleLimitMs = input.idleLimitMs ?? SESSION_IDLE_LIMIT_MS
   const warn = input.warn ?? ((tag, context) => console.warn(tag, context))
   const cache = new Map<string, CacheEntry>()
   let warnedUntracked = false
@@ -70,6 +80,10 @@ export function createSessionGuard(input: {
       if (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value as string)
     }
     cache.set(originHash, entry)
+  }
+
+  function checkOf(sessionId: string, ended: SessionEndReason | null): SessionCheck {
+    return ended ? { status: 'revoked', sessionId, reason: ended } : { status: 'active', sessionId }
   }
 
   return {
@@ -90,7 +104,7 @@ export function createSessionGuard(input: {
       const timestamp = now()
       const cached = cache.get(originHash)
       if (cached && cached.expiresAt > timestamp && cached.profileId === request.profileId) {
-        return cached.revoked ? { status: 'revoked', sessionId: cached.sessionId } : { status: 'active', sessionId: cached.sessionId }
+        return checkOf(cached.sessionId, cached.ended)
       }
 
       try {
@@ -105,10 +119,17 @@ export function createSessionGuard(input: {
           ipHash: input.hashIp ? input.hashIp(context.ip) : null,
         })
         // A sign-in that belongs to another profile is never accepted for this one.
-        const revoked = row.revoked || row.profileId !== request.profileId
-        if (!revoked && timestamp - row.lastSeenAt.getTime() >= touchIntervalMs) await input.repository.touch(row.id)
-        remember(originHash, { sessionId: row.id, profileId: request.profileId, revoked, expiresAt: now() + cacheTtlMs })
-        return revoked ? { status: 'revoked', sessionId: row.id } : { status: 'active', sessionId: row.id }
+        const idleFor = timestamp - row.lastSeenAt.getTime()
+        const ended: SessionEndReason | null = row.revoked || row.profileId !== request.profileId
+          ? 'signed_out'
+          : row.reuseDetected
+            ? 'refresh_reuse'
+            : idleFor > idleLimitMs
+              ? 'idle'
+              : null
+        if (!ended && idleFor >= touchIntervalMs) await input.repository.touch(row.id)
+        remember(originHash, { sessionId: row.id, profileId: request.profileId, ended, expiresAt: now() + cacheTtlMs })
+        return checkOf(row.id, ended)
       } catch (error) {
         // Until migration 0088 is applied the table does not exist: sessions are simply not tracked yet.
         if (isMissingTable(error)) {
@@ -126,7 +147,7 @@ export function createSessionGuard(input: {
     markRevoked(sessionIds: readonly string[]) {
       if (sessionIds.length === 0) return
       const ids = new Set(sessionIds)
-      for (const entry of cache.values()) if (ids.has(entry.sessionId)) entry.revoked = true
+      for (const entry of cache.values()) if (ids.has(entry.sessionId)) entry.ended = 'signed_out'
     },
 
     /** The cached session id for this access token, if this server checked it recently. */

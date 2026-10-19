@@ -32,11 +32,18 @@ function deviceOf(ua: string): { device: string | null; kind: DeviceKind } {
   return { device: null, kind: 'unknown' }
 }
 
-export function summarizeUserAgent(userAgent: string | null | undefined): UserAgentSummary {
+/**
+ * Round I (I3): `standalone` (the Home Screen app marker, lib/pwa/display-mode) names the app, not the browser:
+ * "Home Screen app on iPhone" (iPhone and iPad keep it apart from Safari, so it is its own device) or
+ * "Installed app on Android phone".
+ */
+export function summarizeUserAgent(userAgent: string | null | undefined, options: { standalone?: boolean } = {}): UserAgentSummary {
   const ua = (userAgent ?? '').slice(0, 512)
   if (!ua.trim()) return { browser: null, device: null, kind: 'unknown', summary: null }
-  const browser = browserOf(ua)
   const { device, kind } = deviceOf(ua)
+  const browser = options.standalone
+    ? device === 'iPhone' || device === 'iPad' ? 'Home Screen app' : 'Installed app'
+    : browserOf(ua)
   const summary = browser && device ? `${browser} on ${device}` : browser ?? device
   return { browser, device, kind, summary: summary ? summary.slice(0, 120) : null }
 }

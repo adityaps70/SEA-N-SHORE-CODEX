@@ -5,6 +5,7 @@ import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { createCognitoPrincipalResolver } from '@/lib/auth/cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import { checkCurrentSession } from '@/features/account-security/session-runtime'
+import type { SessionEndReason } from '@/features/account-security/session-guard'
 import {
   getProfileAccountStatus,
   provisionProfileForCognitoPrincipal,
@@ -23,12 +24,16 @@ type ProvisionProfileId = (principal: CognitoPrincipal) => Promise<string>
 type GetProfileAccountStatus = (profileId: string) => Promise<'active' | 'restricted' | 'suspended' | 'deletion_requested' | null>
 type CacheVerifiedUser = <T>(loader: () => Promise<T>) => () => Promise<T>
 /** Round H (H3): this device's session state (see features/account-security/session-guard). */
-type CheckSession = (profileId: string) => Promise<{ status: 'active' | 'revoked' | 'untracked' }>
+type CheckSession = (profileId: string) => Promise<
+  { status: 'active' | 'untracked' } | { status: 'revoked'; reason?: SessionEndReason }
+>
 
 export type AwsVerification = {
   user: AwsVerifiedUser | null
   /** True when the Cognito tokens are valid but this device was signed out (Settings › Account). */
   sessionRevoked: boolean
+  /** Round I (I3): why, when sessionRevoked: signed out, not used for 30 days, or an old refresh token was reused. */
+  sessionEndReason?: SessionEndReason
 }
 
 export class AwsAuthenticationRequiredError extends Error {
@@ -60,8 +65,9 @@ export function createAwsAuthQueries(input: {
     }
 
     // Round H (H3): a device signed out from Settings › Account is refused here, on every page, action and API.
-    if (input.checkSession && (await input.checkSession(profileId)).status === 'revoked') {
-      return { user: null, sessionRevoked: true }
+    const session = input.checkSession ? await input.checkSession(profileId) : null
+    if (session?.status === 'revoked') {
+      return { user: null, sessionRevoked: true, sessionEndReason: session.reason ?? 'signed_out' }
     }
 
     return {

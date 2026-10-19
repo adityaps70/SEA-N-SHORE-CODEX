@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { BRAND_ASSETS, BRAND_ICONS } from '@/components/brand/brand-assets'
 import { faqJsonLd, jsonLdScript, landingFaqs } from '@/components/marketing/faq/faq-data'
 import { LandingPage } from '@/components/marketing/landing/landing-page'
@@ -8,6 +10,7 @@ import { getVerifiedUser } from '@/features/auth/queries'
 import { summarizePlanPrices } from '@/features/billing/components/plan-cards'
 import { loadPublicPlanPrices } from '@/features/billing/public-prices'
 import { getCognitoEnvironment } from '@/lib/env'
+import { DISPLAY_MODE_COOKIE, isStandaloneCookie } from '@/lib/pwa/display-mode'
 
 const DESCRIPTION =
   'Sea N Shore is the professional network for seafarers and shore professionals: Maritime Passport, jobs with Maritime Match, courses, events and verified company pages.'
@@ -71,6 +74,8 @@ function organizationJsonLd() {
 export default async function Home() {
   const [viewer, { prices }] = await Promise.all([resolveViewer(), loadPublicPlanPrices()])
   const signedIn = Boolean(viewer)
+  // Round I (I3): the Home Screen app starts at "/". A member who is still signed in opens on their feed.
+  if (signedIn && isStandaloneCookie((await cookies()).get(DISPLAY_MODE_COOKIE)?.value)) redirect('/home')
   const googleEnabled = isGoogleSignInEnabled()
   const faqs = landingFaqs({ googleEnabled })
 

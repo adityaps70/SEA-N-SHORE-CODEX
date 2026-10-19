@@ -22,6 +22,8 @@ export type SessionState = {
   id: string
   profileId: string
   revoked: boolean
+  /** Round I (I3): a refresh token of this sign-in was used again after it had been exchanged for a newer one. */
+  reuseDetected: boolean
   lastSeenAt: Date
 }
 
@@ -35,7 +37,10 @@ export type ActiveSession = {
   approxCountry: string | null
 }
 
-/** Sessions not seen for this long are left off the list (their 30-day refresh token has expired). */
+/**
+ * Sessions not seen for this long are left off the list. Round I (I3): it is also the idle limit, so such a session
+ * is refused (the 30-day refresh cookie, renewed on every refresh, has gone from that browser by then too).
+ */
 export const SESSION_LIST_WINDOW_DAYS = 30
 export const SESSION_TOUCH_INTERVAL = '5 minutes'
 
@@ -52,6 +57,7 @@ function stateOf(row: Record<string, unknown>): SessionState {
     id: String(row.id),
     profileId: String(row.profile_id),
     revoked: row.revoked_at !== null && row.revoked_at !== undefined,
+    reuseDetected: row.reuse_detected_at !== null && row.reuse_detected_at !== undefined,
     lastSeenAt: toDate(row.last_seen_at),
   }
 }
@@ -67,12 +73,12 @@ export function createSessionRepository(input: { query: AccountQuery }) {
            (profile_id, token_origin_hash, sign_in_method, user_agent_summary, approx_city, approx_country, ip_hash)
          values ($1, $2, $3, $4, $5, $6, $7)
          on conflict (token_origin_hash) do nothing
-         returning id, profile_id, revoked_at, last_seen_at`,
+         returning id, profile_id, revoked_at, reuse_detected_at, last_seen_at`,
         [session.profileId, session.originHash, session.signInMethod, session.userAgentSummary, session.city, session.country, session.ipHash],
       )
       if (inserted[0]) return stateOf(inserted[0])
       const existing = await query(
-        `select id, profile_id, revoked_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
+        `select id, profile_id, revoked_at, reuse_detected_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
         [session.originHash],
       )
       if (!existing[0]) throw new Error('auth_session_unavailable')
@@ -81,7 +87,7 @@ export function createSessionRepository(input: { query: AccountQuery }) {
 
     async findByOrigin(originHash: string): Promise<SessionState | null> {
       const rows = await query(
-        `select id, profile_id, revoked_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
+        `select id, profile_id, revoked_at, reuse_detected_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
         [originHash],
       )
       return rows[0] ? stateOf(rows[0]) : null
@@ -105,6 +111,7 @@ export function createSessionRepository(input: { query: AccountQuery }) {
          from public.auth_sessions
          where profile_id = $1
            and revoked_at is null
+           and reuse_detected_at is null
            and last_seen_at > now() - make_interval(days => $2::int)
          order by last_seen_at desc, id
          limit 50`,

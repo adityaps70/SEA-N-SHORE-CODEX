@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
 import { ADMIN_RETURN_PATH_HEADER, adminReturnPathForRequest } from '@/lib/auth/admin-mfa-paths'
 import { afterSignOutRedirect } from '@/lib/auth/after-sign-out'
-import { updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
+import { setRefreshTokenLedger, updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
+import { createRefreshTokenLedger } from '@/features/account-security/refresh-token-ledger'
+import { query } from '@/lib/db/client'
 import { arrivedAtReturnPath, RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
 import {
   API_CONTENT_SECURITY_POLICY,
@@ -11,6 +13,9 @@ import {
   wantsApiContentSecurityPolicy,
   wantsContentSecurityPolicy,
 } from '@/lib/security/content-security-policy'
+
+// Round I (I3): refresh token reuse detection (Node.js runtime, the default for Proxy in Next 16).
+setRefreshTokenLedger(createRefreshTokenLedger({ query: (text, values) => query(text, values) }))
 
 export async function proxy(incoming: NextRequest) {
   // Round 14 (2.4): page loads carry a Report-Only CSP with a per-request nonce. Only body-less
