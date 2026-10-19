@@ -30,11 +30,13 @@ test('the deploy role may get an ECR Public sign-in token and an ECR Public bear
 })
 
 test('the deploy build signs in to ECR Public before building, without logging the token', () => {
-  assert.match(dockerfile, /^FROM public\.ecr\.aws\//m)
+  // Round I: the default base image is still ECR Public; the deploy copies it to private ECR (node-base-image.test.mjs).
+  assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=public\.ecr\.aws\//m)
   const signIn = deploy.indexOf('- name: Sign in to Amazon ECR Public for the base image')
+  const copy = deploy.indexOf('- name: Use our own copy of the node base image')
   const build = deploy.indexOf('- name: Build and push immutable application image')
-  assert.ok(signIn > 0 && build > signIn, 'the sign-in step runs right before the image build')
-  const step = deploy.slice(signIn, build)
+  assert.ok(signIn > 0 && copy > signIn && build > copy, 'the sign-in step runs before the base image copy and the image build')
+  const step = deploy.slice(signIn, copy)
   assert.match(step, /aws ecr-public get-login-password --region us-east-1 \| docker login --username AWS --password-stdin public\.ecr\.aws/)
   // The token never reaches the log or an environment variable.
   assert.doesNotMatch(step, /echo "\$\(aws ecr-public|--password [^-]|PASSWORD=/)
@@ -47,13 +49,14 @@ test('the CI image build pulls the base image first and falls back to the offici
   const build = ci.indexOf('- name: Build production image')
   assert.ok(pull > 0 && build > pull, 'the pull step runs right before the CI image build')
   const step = ci.slice(pull, build)
-  // Every FROM line uses the image the step pulls, so the build finds it locally.
+  // Round I: every FROM line uses NODE_BASE_IMAGE, and the build passes the reference the step pulled (the pinned
+  // digest from ECR Public, or the same digest from mirror.gcr.io), so the build finds it locally.
   const froms = dockerfile.match(/^FROM \S+/gm)
   assert.ok(froms.length > 0)
-  for (const from of froms) assert.equal(from, 'FROM public.ecr.aws/docker/library/node:22-bookworm-slim')
-  assert.match(step, /image=public\.ecr\.aws\/docker\/library\/node:22-bookworm-slim\n/)
-  assert.match(step, /docker pull --quiet mirror\.gcr\.io\/library\/node:22-bookworm-slim\n/)
-  assert.match(step, /docker tag mirror\.gcr\.io\/library\/node:22-bookworm-slim "\$image"\n/)
+  for (const from of froms) assert.equal(from, 'FROM ${NODE_BASE_IMAGE}')
+  assert.match(step, /image="public\.ecr\.aws\/docker\/library\/node@\$NODE_BASE_DIGEST"\n/)
+  assert.match(step, /image="mirror\.gcr\.io\/library\/node@\$NODE_BASE_DIGEST"\n\s+docker pull --quiet "\$image"\n/)
+  assert.match(ci.slice(build, build + 300), /--build-arg NODE_BASE_IMAGE="\$NODE_BASE_IMAGE"/)
   // The build itself keeps the local image: no --pull.
   assert.doesNotMatch(ci.slice(build, build + 300), /--pull/)
 })

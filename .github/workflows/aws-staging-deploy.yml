@@ -258,6 +258,13 @@ jobs:
             echo "::warning::Could not sign in to Amazon ECR Public; the base image will be pulled anonymously."
           fi
 
+      # Our own copy of the pinned node base image in private ECR (scripts/aws/node-base-image.sh): copied once per
+      # digest from ECR Public, then every build pulls it from our registry. Falls back to ECR Public with a warning.
+      - name: Use our own copy of the node base image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: bash scripts/aws/node-base-image.sh "$REGISTRY"
+
       - name: Build and push immutable application image
         id: image
         env:
@@ -268,6 +275,7 @@ jobs:
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
           docker build \
+            --build-arg NODE_BASE_IMAGE="$NODE_BASE_IMAGE" \
             --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
             --build-arg SERVER_ACTION_ALLOWED_ORIGINS="$SERVER_ACTION_ALLOWED_ORIGINS" \
             -t "$IMAGE_URI" .

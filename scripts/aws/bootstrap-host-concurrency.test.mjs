@@ -15,7 +15,7 @@ const triggerPaths = (path) => read(path).split('\njobs:')[0]
 const terraformRunners = [
   'ecs-resend-secret-policy', 'edge-recovery', 'newsletter-signing-secret', 'phase3-reliability-infra',
   'seaandshore-domain', 'seanshore-domain-bootstrap', 'web-resilience-infra', 'sms-retirement-infra',
-  'bootstrap-budget-retirement',
+  'bootstrap-budget-retirement', 'bootstrap-base-image',
 ]
 
 test('every Terraform runner (and disk maintenance) queues on one bootstrap host lock', () => {

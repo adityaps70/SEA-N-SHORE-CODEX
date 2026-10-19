@@ -1,15 +1,19 @@
-# Base images come from Amazon ECR Public (the Docker official images mirror), so a deploy never depends on
-# Docker Hub (round C: a deploy failed on a Docker Hub sign-in timeout). Anonymous pulls: no credentials, no paid
-# service. No "# syntax=" line: BuildKit's built-in Dockerfile frontend covers everything used here, and the
-# docker/dockerfile frontend image is only on Docker Hub.
-FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS dependencies
+# Base images: Docker's official node image, pinned by digest (scripts/aws/node-base-image.env holds the same
+# digest). The deploy builds pass NODE_BASE_IMAGE=<our private ECR copy>@<digest> (scripts/aws/node-base-image.sh);
+# PR CI passes the Amazon ECR Public or mirror.gcr.io reference it pulled. The default below is Amazon ECR Public,
+# never Docker Hub (round C: a deploy failed on a Docker Hub sign-in timeout). No "# syntax=" line: BuildKit's
+# built-in Dockerfile frontend covers everything used here, and the docker/dockerfile frontend image is only on
+# Docker Hub.
+ARG NODE_BASE_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim@sha256:efd0ab5780c2d9ab1f0f869571a00d5edb17793bff4cce4a2792e3eb0ffc7562
+
+FROM ${NODE_BASE_IMAGE} AS dependencies
 WORKDIR /app
 # Round 14 (3.10): install exactly what package-lock.json pins.
 COPY package.json package-lock.json ./
 RUN npm install -g npm@11.6.0 \
     && npm ci --no-audit --no-fund
 
-FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS builder
+FROM ${NODE_BASE_IMAGE} AS builder
 WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
@@ -27,7 +31,7 @@ RUN npm run build \
     && test -f dist/workers/consume-notifications.mjs \
     && test -f dist/workers/learning-round-e-content.mjs
 
-FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS runner
+FROM ${NODE_BASE_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

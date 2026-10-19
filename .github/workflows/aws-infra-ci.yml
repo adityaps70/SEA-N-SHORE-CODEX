@@ -111,6 +111,8 @@ jobs:
         run: node --test scripts/aws/sms-retirement-infra.test.mjs
       - name: Verify bootstrap budget retirement release contract
         run: node --test scripts/aws/bootstrap-budget-retirement.test.mjs
+      - name: Verify bootstrap base image release contract
+        run: node --test scripts/aws/bootstrap-base-image.test.mjs
       - name: Verify phase 3 reliability release contract
         run: node --test scripts/aws/phase3-reliability-infra.test.mjs
       - name: Verify bootstrap host concurrency contract
@@ -133,6 +135,8 @@ jobs:
         run: node --test scripts/aws/github-deploy-iam-ci-checkouts.test.mjs
       - name: Verify ECR Public sign-in IAM and deploy step contract
         run: node --test scripts/aws/github-deploy-iam-ecr-public.test.mjs
+      - name: Verify our own node base image copy contract
+        run: node --test scripts/aws/node-base-image.test.mjs
       - name: Verify bootstrap host checkout contract (no GitHub access on the host)
         run: node --test scripts/aws/host-checkout.test.mjs
       - name: Verify owner-merged arm guard contract
@@ -322,21 +326,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Round H: PR CI has no AWS sign-in, and anonymous Amazon ECR Public pulls from shared runner IPs sometimes
-      # fail with 429 "Data limit exceeded". Pull the base image first; if ECR Public refuses, use Google's mirror of
-      # the same official Docker image and tag it locally, so the build below finds it without a registry call.
+      # fail with 429 "Data limit exceeded". Pull the pinned base image (scripts/aws/node-base-image.env) first; if
+      # ECR Public refuses, pull the same digest from Google's mirror of the official Docker image. The build below
+      # uses whichever reference was pulled, so it finds the image locally without a registry call.
       - name: Pull the node base image
         run: |
-          image=public.ecr.aws/docker/library/node:22-bookworm-slim
-          for wait_seconds in 10 30; do
-            if docker pull --quiet "$image"; then exit 0; fi
+          set -euo pipefail
+          source scripts/aws/node-base-image.env
+          image="public.ecr.aws/docker/library/node@$NODE_BASE_DIGEST"
+          for wait_seconds in 10 30 0; do
+            if docker pull --quiet "$image"; then echo "NODE_BASE_IMAGE=$image" >> "$GITHUB_ENV"; exit 0; fi
             sleep "$wait_seconds"
           done
-          if docker pull --quiet "$image"; then exit 0; fi
           echo "::warning::Amazon ECR Public refused the anonymous base image pull; using the mirror.gcr.io copy of the official node image."
-          docker pull --quiet mirror.gcr.io/library/node:22-bookworm-slim
-          docker tag mirror.gcr.io/library/node:22-bookworm-slim "$image"
+          image="mirror.gcr.io/library/node@$NODE_BASE_DIGEST"
+          docker pull --quiet "$image"
+          echo "NODE_BASE_IMAGE=$image" >> "$GITHUB_ENV"
       - name: Build production image
         run: |
           docker build \
+            --build-arg NODE_BASE_IMAGE="$NODE_BASE_IMAGE" \
             --build-arg NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
             -t sea-n-shore:ci .

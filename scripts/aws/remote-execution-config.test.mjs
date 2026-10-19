@@ -170,8 +170,15 @@ test('the image build never pulls from Docker Hub: base images come from Amazon 
   const dockerfile = text('Dockerfile')
   const bases = [...dockerfile.matchAll(/^FROM\s+(\S+)/gm)].map((match) => match[1])
 
+  // Round I: every stage starts from NODE_BASE_IMAGE, whose default is ECR Public pinned by digest; the deploy passes
+  // our private ECR copy of the same digest, and PR CI the ECR Public or mirror.gcr.io reference (never Docker Hub).
   assert.equal(bases.length, 3)
-  for (const base of bases) assert.match(base, /^public\.ecr\.aws\/docker\/library\/node:22-bookworm-slim$/)
+  for (const base of bases) assert.equal(base, '${NODE_BASE_IMAGE}')
+  assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=public\.ecr\.aws\/docker\/library\/node:22-bookworm-slim@sha256:[0-9a-f]{64}$/m)
+  assert.equal((dockerfile.match(/^ARG NODE_BASE_IMAGE/gm) || []).length, 1)
+  for (const path of ['.github/workflows/aws-staging-deploy.yml', '.github/workflows/aws-social-events-image.yml', '.github/workflows/aws-infra-ci.yml', 'scripts/aws/node-base-image.sh']) {
+    assert.doesNotMatch(text(path), /docker\.io|registry-1\.docker|(?<![\w./-])library\/node|hub\.docker/, path)
+  }
   // A "# syntax=" directive would fetch a Dockerfile frontend image from Docker Hub.
   assert.doesNotMatch(dockerfile, /^#\s*syntax\s*=/im)
 })
