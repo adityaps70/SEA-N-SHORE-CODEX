@@ -7,7 +7,7 @@ import { z } from 'zod'
  * content). Pure, safe to import from client and server code.
  */
 
-export const SITE_SETTING_KEYS = ['grievance_officer', 'about_page'] as const
+export const SITE_SETTING_KEYS = ['grievance_officer', 'about_page', 'social_handles'] as const
 export type SiteSettingKey = (typeof SITE_SETTING_KEYS)[number]
 
 const optionalText = (max: number, message: string) => z.string().trim().max(max, { error: message })
@@ -100,9 +100,40 @@ export type AboutPartner = z.infer<typeof aboutPartnerSchema>
 export type AboutPageContent = z.infer<typeof aboutPageSchema>
 export type MemberNumbersChoice = z.infer<typeof memberNumbersSchema>
 
+/**
+ * Round I (I1): Sea N Shore's social handles, shown in the footer of job share images. A handle without the "@"
+ * and without a web address (e.g. seaandshore.in); empty leaves that network out.
+ */
+export const SOCIAL_HANDLE_NETWORKS = ['instagram', 'linkedin', 'facebook', 'x', 'youtube'] as const
+export type SocialHandleNetwork = (typeof SOCIAL_HANDLE_NETWORKS)[number]
+export const SOCIAL_HANDLE_LABELS: Record<SocialHandleNetwork, string> = {
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
+  facebook: 'Facebook',
+  x: 'X',
+  youtube: 'YouTube',
+}
+
+const socialHandle = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/^@/, ''))
+  .refine((value) => value === '' || /^[A-Za-z0-9._-]{1,60}$/.test(value), { error: 'Use the handle only: letters, numbers, dots, dashes or underscores, without a web address.' })
+
+export const socialHandlesSchema = z.object({
+  instagram: socialHandle.default(''),
+  linkedin: socialHandle.default(''),
+  facebook: socialHandle.default(''),
+  x: socialHandle.default(''),
+  youtube: socialHandle.default(''),
+})
+
+export type SocialHandles = z.infer<typeof socialHandlesSchema>
+
 export const SITE_SETTING_SCHEMAS = {
   grievance_officer: grievanceOfficerSchema,
   about_page: aboutPageSchema,
+  social_handles: socialHandlesSchema,
 } as const satisfies Record<SiteSettingKey, z.ZodType>
 
 export type SiteSettingValue<K extends SiteSettingKey> = z.infer<(typeof SITE_SETTING_SCHEMAS)[K]>
@@ -110,6 +141,8 @@ export type SiteSettingValue<K extends SiteSettingKey> = z.infer<(typeof SITE_SE
 export const SITE_SETTING_DEFAULTS: { [K in SiteSettingKey]: SiteSettingValue<K> } = {
   grievance_officer: { name: '', email: '', responseTime: '' },
   about_page: { founders: [], team: [], partners: [], memberNumbers: { enabled: false, members: true, organizations: true, courses: true } },
+  // The accounts already linked in the site footer (components/navigation/social-links.ts) until an admin edits them.
+  social_handles: { instagram: 'seaandshore.in', linkedin: '', facebook: 'seaandshore.in', x: 'inseaandshore', youtube: '' },
 }
 
 /** A stored value read through its schema; anything that no longer validates reads as the default. */

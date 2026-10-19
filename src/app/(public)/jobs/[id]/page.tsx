@@ -16,6 +16,8 @@ import { JobCompanyIdentity, JobCompanyLogo } from '@/features/jobs/components/j
 import { ReportJobButton } from '@/features/jobs/components/report-job-button'
 import { SaveJobButton } from '@/features/jobs/components/save-job-button'
 import { SimilarJobs } from '@/features/jobs/components/similar-jobs'
+import { JobShareButton } from '@/features/jobs/share/components/job-share-button'
+import { jobShareService } from '@/features/jobs/share/share-runtime'
 import { applicantRangeLabel } from '@/features/jobs/applicant-range'
 import { formatSalaryRange } from '@/features/jobs/salary'
 import { getVerifiedUser } from '@/features/auth/queries'
@@ -42,8 +44,11 @@ function formatDate(value: string | null) {
  */
 const loadJobDetail = cache(async (id: string) => {
   const viewer = await getVerifiedUser()
-  const state = viewer ? await getJobDetailState(id) : await getSignedOutJobDetailState(id)
-  return { ...state, signedOut: !viewer }
+  const [state, canShare] = viewer
+    ? await Promise.all([getJobDetailState(id), jobShareService.canShare(viewer.id, id).catch(() => false)])
+    : [await getSignedOutJobDetailState(id), false]
+  // Round I (I1): canShare: the viewer posted the job (or manages it for a verified organization), or is a platform admin.
+  return { ...state, signedOut: !viewer, canShare }
 })
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
@@ -55,14 +60,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return jobMetadata(job, todayIsoDate())
 }
 
-const APPLY_SOURCES = new Set(['for_you', 'search', 'jobs', 'job_alert', 'digest'])
+const APPLY_SOURCES = new Set(['for_you', 'search', 'jobs', 'job_alert', 'digest', 'share_image', 'feed_share'])
 
 export default async function JobDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<{ src?: string | string[] }> }) {
   const { id } = await params
   if (!isJobId(id)) notFound()
   const rawSource = (await searchParams)?.src
   const source = typeof rawSource === 'string' && APPLY_SOURCES.has(rawSource) ? rawSource : 'job_page'
-  const { job, alreadyApplied, isSaved, match, gateMatch, profileReady, signedOut } = await loadJobDetail(id)
+  const { job, alreadyApplied, isSaved, match, gateMatch, profileReady, signedOut, canShare } = await loadJobDetail(id)
   if (!job) notFound()
   // Round H (H7): the applicant range and similar jobs, public like the job itself.
   const { applicantCount, similarJobs } = await getJobPageExtras(job)
@@ -119,6 +124,13 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
               </div>
             </div>
           </div>
+
+          {canShare && acceptingApplications ? (
+            <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-ocean-700/15 bg-mist-50 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid="job-poster-share">
+              <p className="text-sm text-navy-900"><span className="font-bold">You manage this job.</span> Make an image for social media or post it to the feed.</p>
+              <JobShareButton jobId={job.id} />
+            </div>
+          ) : null}
 
           <p className="mt-6 text-lg leading-8 text-ink max-md:mt-4 max-md:text-[15px] max-md:leading-6">{job.summary}</p>
 

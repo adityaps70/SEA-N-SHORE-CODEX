@@ -95,6 +95,32 @@ describe('Aurora feed queries', () => {
     expect(page.nextCursor).toEqual({ createdAt: rows[0].created_at, id: rows[0].id })
   })
 
+  it('attaches the job card to posts made with Share to feed, and leaves the cards out if they cannot load (Round I, I1)', async () => {
+    const shared = row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-06T20:30:00.000Z', connectionId)
+    const plain = row('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-09-06T20:29:00.000Z', connectionId)
+    const repository = {
+      listFeedRows: vi.fn(async () => [shared, plain]),
+      getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
+      getComments: vi.fn(async () => []),
+    } as unknown as FeedRepository
+    const card = { jobId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', title: 'Placeholder Job', companyName: 'Placeholder Company', location: null, open: false }
+    const loadJobShareCards = vi.fn(async () => new Map([[shared.id, card]]))
+    const { createFeedQueries } = await import('./queries')
+    const base = {
+      requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
+      repository,
+      getPreferredAuthorIds: vi.fn(async () => []),
+      resolveMediaUrls: vi.fn(async () => new Map()),
+    }
+    const page = await createFeedQueries({ ...base, loadJobShareCards }).getFeedPage({ limit: 20 })
+    expect(loadJobShareCards).toHaveBeenCalledWith([shared.id, plain.id])
+    expect(page.posts.find((post) => post.id === shared.id)?.jobShare).toEqual(card)
+    expect(page.posts.find((post) => post.id === plain.id)?.jobShare).toBeUndefined()
+
+    const failing = await createFeedQueries({ ...base, loadJobShareCards: vi.fn(async () => { throw new Error('relation does not exist') }) }).getFeedPage({ limit: 20 })
+    expect(failing.posts.map((post) => post.jobShare)).toEqual([undefined, undefined])
+  })
+
   it('keeps the viewer newest post ahead of preferred connections in the all feed', async () => {
     const ownPost = row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-06T20:30:00.000Z', viewerId)
     const connectionPost = row('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-09-06T20:29:00.000Z', connectionId)

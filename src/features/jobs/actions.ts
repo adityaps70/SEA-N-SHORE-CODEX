@@ -116,8 +116,12 @@ export async function prepareJobApplicationCvUpload(
   }
 }
 
-/** Round G: where an application started, for Admin › Ranking health (counts only). */
-const JOB_APPLICATION_SOURCES = ['for_you', 'search', 'jobs', 'job_page', 'job_alert', 'digest'] as const
+/**
+ * Round G: where an application started, for Admin › Ranking health (counts only). Round I (I1): share_image (the
+ * QR on a share image) and feed_share (the Apply button on a job shared to the feed) are also kept on the
+ * application, so the poster can see how many applies came from shares.
+ */
+const JOB_APPLICATION_SOURCES = ['for_you', 'search', 'jobs', 'job_page', 'job_alert', 'digest', 'share_image', 'feed_share'] as const
 
 export async function applyToJob(
   jobId: string,
@@ -176,8 +180,9 @@ export async function applyToJob(
     }
   }
 
+  const source = (JOB_APPLICATION_SOURCES as readonly string[]).includes(sourceInput ?? '') ? sourceInput! : 'job_page'
   try {
-    await jobsRepository.createApplication(parsed.data, user.id, cv, coverNote)
+    await jobsRepository.createApplication(parsed.data, user.id, cv, coverNote, source)
   } catch (error) {
     if (cv) {
       await removeJobApplicationCv(cv.storagePath).catch(() => undefined)
@@ -188,7 +193,6 @@ export async function applyToJob(
 
   revalidateCandidateJobs(parsed.data)
   revalidatePath('/activities')
-  const source = (JOB_APPLICATION_SOURCES as readonly string[]).includes(sourceInput ?? '') ? sourceInput : 'job_page'
   void incrementRankingMetric(`jobs.applications.${source}`)
   return { ok: true, alreadyApplied: false }
 }

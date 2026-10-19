@@ -144,7 +144,16 @@ describe('applyToJob', () => {
       jobId,
       ...cv,
     })
-    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', cv, null)
+    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', cv, null, 'job_page')
+  })
+
+  it('keeps a share source on the application and drops unknown sources (Round I, I1)', async () => {
+    await expect(applyToJob(jobId, null, null, 'feed_share')).resolves.toEqual({ ok: true, alreadyApplied: false })
+    expect(mocks.createApplication).toHaveBeenLastCalledWith(jobId, 'viewer-1', null, null, 'feed_share')
+    await applyToJob(jobId, null, null, 'share_image')
+    expect(mocks.createApplication).toHaveBeenLastCalledWith(jobId, 'viewer-1', null, null, 'share_image')
+    await applyToJob(jobId, null, null, 'made_up')
+    expect(mocks.createApplication).toHaveBeenLastCalledWith(jobId, 'viewer-1', null, null, 'job_page')
   })
 
   it('blocks an application when the uploaded CV cannot be verified', async () => {
@@ -166,7 +175,7 @@ describe('applyToJob', () => {
   it('creates the first application and revalidates jobs and activity routes', async () => {
     await expect(applyToJob(jobId)).resolves.toEqual({ ok: true, alreadyApplied: false })
 
-    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', null, null)
+    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', null, null, 'job_page')
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/jobs')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/jobs/${jobId}`)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/activities')

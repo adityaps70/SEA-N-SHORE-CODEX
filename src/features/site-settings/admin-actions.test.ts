@@ -20,7 +20,7 @@ vi.mock('./repository', async (importOriginal) => ({
   siteSettingsRepository: { set: mocks.set },
 }))
 
-import { createSiteImageUploadAction, saveAboutPageAction, saveGrievanceOfficerAction } from './admin-actions'
+import { createSiteImageUploadAction, saveAboutPageAction, saveGrievanceOfficerAction, saveSocialHandlesAction } from './admin-actions'
 
 const ADMIN = '44444444-4444-4444-8444-444444444444'
 
@@ -42,6 +42,7 @@ describe('Admin › Site settings actions (round H, H7)', () => {
     expect((await saveGrievanceOfficerAction({ status: 'idle' }, form({ name: '', email: '', responseTime: '' }))).status).toBe('error')
     expect((await saveAboutPageAction({ status: 'idle' }, form({ about: '{}' }))).status).toBe('error')
     expect(await createSiteImageUploadAction({ contentType: 'image/png', size: 1000 })).toMatchObject({ ok: false })
+    expect((await saveSocialHandlesAction({ status: 'idle' }, form({ instagram: 'placeholder' }))).status).toBe('error')
     expect(mocks.set).not.toHaveBeenCalled()
     expect(mocks.createMediaUploadUrl).not.toHaveBeenCalled()
   })
@@ -55,6 +56,16 @@ describe('Admin › Site settings actions (round H, H7)', () => {
     expect(saved.status).toBe('success')
     expect(mocks.set).toHaveBeenCalledWith('grievance_officer', { name: 'Placeholder Officer', email: 'officer@example.com', responseTime: 'Within 15 days' }, ADMIN)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/contact')
+  })
+
+  it('validates and saves the social handles for job share images (Round I, I1)', async () => {
+    const invalid = await saveSocialHandlesAction({ status: 'idle' }, form({ instagram: 'https://instagram.com/placeholder', x: '@placeholder' }))
+    expect(invalid).toMatchObject({ status: 'error', fieldErrors: { instagram: expect.stringContaining('without a web address') } })
+    expect(mocks.set).not.toHaveBeenCalled()
+
+    const saved = await saveSocialHandlesAction({ status: 'idle' }, form({ instagram: '@placeholder.handle', linkedin: '', facebook: 'placeholder', x: 'placeholder_x', youtube: '' }))
+    expect(saved.status).toBe('success')
+    expect(mocks.set).toHaveBeenCalledWith('social_handles', { instagram: 'placeholder.handle', linkedin: '', facebook: 'placeholder', x: 'placeholder_x', youtube: '' }, ADMIN)
   })
 
   it('validates the About page lists with a field path per error', async () => {

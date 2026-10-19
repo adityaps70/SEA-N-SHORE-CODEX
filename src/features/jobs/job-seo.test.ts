@@ -169,6 +169,19 @@ describe('job page metadata (round H, H5)', () => {
     expect(jobMetadata({ ...base, applyUntil: null, joiningFrom: '2026-10-01' }, '2026-10-17').robots).toEqual({ index: false, follow: true })
   })
 
+  it('uses the Portrait share image as og:image for open jobs only (Round I, I1)', () => {
+    const job = base
+    const open = jobMetadata(job, '2026-10-17')
+    expect(open.openGraph?.images).toEqual([expect.stringMatching(new RegExp(`^/api/jobs/${base.id}/og-image\\?v=[0-9a-z]+$`))])
+    expect(open.twitter).toMatchObject({ card: 'summary_large_image' })
+    const closed = jobMetadata(job, '2026-12-01')
+    expect(closed.openGraph?.images).toBeUndefined()
+    expect(closed.twitter).toMatchObject({ card: 'summary' })
+    expect(jobMetadata({ ...base }, '2026-10-17').openGraph?.images).toEqual(open.openGraph?.images)
+    const edited = jobMetadata({ ...base, title: 'Chief Engineer' }, '2026-10-17')
+    expect(edited.openGraph?.images).not.toEqual(open.openGraph?.images)
+  })
+
   it('gives /jobs a canonical address and a description of at most 160 characters', () => {
     const metadata = jobsIndexMetadata()
     expect(metadata.alternates?.canonical).toBe('/jobs')

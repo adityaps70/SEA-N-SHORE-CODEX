@@ -784,6 +784,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     applicantId: string,
     cv: JobApplicationCvReference | null,
     coverNote: string | null = null,
+    source: string | null = null,
   ): Promise<void> {
     await queryRows(
       `with inserted as (
@@ -795,9 +796,10 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
            cv_file_name,
            cv_mime_type,
            cv_size_bytes,
-           cover_note
+           cover_note,
+           source
          )
-         values ($1, $2, 'applied', $3, $4, $5, $6, $7)
+         values ($1, $2, 'applied', $3, $4, $5, $6, $7, $8)
          returning id, status, applicant_id, applied_at
        )
        insert into public.job_application_events (application_id, status, actor_id, created_at)
@@ -810,6 +812,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         cv?.mimeType ?? null,
         cv?.sizeBytes ?? null,
         coverNote,
+        source,
       ],
     )
   }
