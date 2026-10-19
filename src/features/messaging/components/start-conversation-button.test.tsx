@@ -33,7 +33,28 @@ describe('StartConversationButton', () => {
     render(<StartConversationButton targetProfileId={TARGET_ID} />)
     await user.click(screen.getByRole('button', { name: 'Message' }))
 
-    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID)
+    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID, undefined)
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/messages/${CONVERSATION_ID}`))
+  })
+
+  it('passes a recruiter\'s reason to the server action (recruiter messaging exception)', async () => {
+    const user = userEvent.setup()
+    mocks.startDirectConversationAction.mockResolvedValueOnce({ ok: true, conversationId: CONVERSATION_ID })
+    render(<StartConversationButton targetProfileId={TARGET_ID} contact={{ reason: 'open_to_recruiters' }} />)
+    await user.click(screen.getByRole('button', { name: 'Message' }))
+    expect(mocks.startDirectConversationAction).toHaveBeenCalledWith(TARGET_ID, { reason: 'open_to_recruiters' })
+  })
+
+  it('names the member for screen readers when given one, as in a list of candidates', async () => {
+    const user = userEvent.setup()
+    let resolve: (value: { ok: true; conversationId: string }) => void = () => {}
+    mocks.startDirectConversationAction.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    render(<StartConversationButton targetProfileId={TARGET_ID} fullName="Placeholder Member" variant="pill" />)
+    const button = screen.getByRole('button', { name: 'Message Placeholder Member' })
+    expect(button).toHaveTextContent('Message')
+    await user.click(button)
+    expect(screen.getByRole('button', { name: 'Opening conversation with Placeholder Member' })).toBeDisabled()
+    resolve({ ok: true, conversationId: CONVERSATION_ID })
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith(`/messages/${CONVERSATION_ID}`))
   })
 

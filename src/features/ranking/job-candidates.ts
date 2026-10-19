@@ -2,6 +2,7 @@ import { query as databaseQuery } from '@/lib/db/client'
 import { CANDIDATE_PROFILE_COLUMNS, mapCandidateProfileRow, type JobCandidateRow } from '@/features/jobs/repository'
 import type { JobListing, JobMatchResult } from '@/features/jobs/types'
 import type { RelationshipState } from '@/features/network/types'
+import { messagePermissionFrom, type MessagePermission } from '@/features/profiles/privacy-choices'
 import { jobAcceptedRoleKeys } from '@/features/jobs/matching'
 import { ROLES } from '@/features/roles/taxonomy'
 import { RANK_BAND_STEPS, rankDistance } from '@/features/taxonomy/maritime-taxonomy'
@@ -13,7 +14,8 @@ import { JOB_WEIGHTS } from './job-weights'
  * "Let recruiters find me as open to work" (Settings › Privacy) are ever listed; never the
  * recruiter, never anyone blocked either way, never someone who already applied. Scored with the
  * same matching v2 the member sees; only eligible members with a score are shown. Contact is
- * through existing messaging (connections only) or a connection request; no contact details.
+ * through messaging (a verified recruiter may write unless the member chose "Nobody") or a connection request;
+ * no contact details.
  */
 type Query = (text: string, values?: readonly unknown[]) => Promise<Array<Record<string, unknown>>>
 
@@ -25,6 +27,8 @@ export type SuggestedCandidate = {
   headline: string | null
   location: string | null
   relationship: RelationshipState
+  /** "Who can message me" (recruiter messaging exception: a verified recruiter may write unless it is "nobody"). */
+  messagePermission: MessagePermission
   match: JobMatchResult
 }
 
@@ -56,7 +60,7 @@ export function createJobCandidateSuggestions(input: { query?: Query } = {}) {
     })).map((role) => role.key)
     const rows = await queryRows(
       `select
-         p.id, p.slug, p.full_name, p.avatar_path,
+         p.id, p.slug, p.full_name, p.avatar_path, pref.message_permission,
          conn.id as connection_id, conn.status::text as connection_status, conn.requested_by as connection_requested_by,
          ${CANDIDATE_PROFILE_COLUMNS}
        from public.member_preferences pref
@@ -91,6 +95,7 @@ export function createJobCandidateSuggestions(input: { query?: Query } = {}) {
           headline: (row.headline as string | null) ?? null,
           location: (row.location as string | null) ?? null,
           relationship: relationshipFor(row, recruiterId),
+          messagePermission: messagePermissionFrom(row.message_permission),
           match,
         }
       })

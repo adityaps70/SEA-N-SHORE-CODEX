@@ -11,11 +11,22 @@ import {
 import { isWithinMessageEditWindow } from './edit-policy'
 import { canMessageMember } from '@/features/profiles/privacy-choices'
 import type { EditMessageInput, SendMessageInput } from './types'
+import {
+  RECRUITER_CONVERSATION_WINDOW_MS,
+  RECRUITER_CONVERSATIONS_PER_DAY,
+  type RecruiterContactReason,
+  type RecruiterContactRequest,
+} from './recruiter-contact'
+import {
+  createRecruiterContactRepositoryForClient,
+  type RecruiterContactRepository,
+} from './recruiter-contact-repository'
 
 type MessagingTransactionContext = {
   messaging: MessagingRepository
   network: NetworkRepository
   outbox: OutboxRepository
+  recruiters: RecruiterContactRepository
 }
 
 type MessagingTransaction = <T>(
@@ -53,6 +64,24 @@ function messageUpdatedEvent(input: {
   }
 }
 
+/**
+ * Why a verified recruiter may reach this member, or null. Applied: the member's application (not withdrawn) to a
+ * job the recruiter may manage. Open to recruiters: the member switched it on.
+ */
+async function recruiterContactBasis(
+  recruiters: RecruiterContactRepository,
+  recruiterId: string,
+  memberId: string,
+  contact: RecruiterContactRequest,
+): Promise<{ reason: RecruiterContactReason; applicationId: string | null; jobId: string | null } | null> {
+  if (!await recruiters.isVerifiedRecruiter(recruiterId)) return null
+  if (contact.reason === 'applied') {
+    const application = await recruiters.findApplicationForRecruiter(recruiterId, memberId, contact.applicationId)
+    return application ? { reason: 'applied', applicationId: application.application_id, jobId: application.job_id } : null
+  }
+  return await recruiters.isOpenToRecruiters(memberId) ? { reason: 'open_to_recruiters', applicationId: null, jobId: null } : null
+}
+
 export function createMessagingService(input: {
   withTransaction: MessagingTransaction
   now?: () => Date
@@ -60,23 +89,44 @@ export function createMessagingService(input: {
   const now = input.now ?? (() => new Date())
 
   return {
-    async startDirectConversation(actorId: string, targetProfileId: string) {
+    /**
+     * Opens (or reuses) the direct conversation with a member. Round H (H2): the member's "Who can message me"
+     * decides, and a block or "Nobody" always refuses. Recruiter exception (Oct 2026): with `contact`, a verified
+     * recruiter may also reach a "connections only" member who applied to one of their jobs, or who is open to
+     * recruiters. Such a conversation is recorded with its reason (shown above the recruiter's first message) and
+     * counts toward the recruiter's RECRUITER_CONVERSATIONS_PER_DAY.
+     */
+    async startDirectConversation(actorId: string, targetProfileId: string, contact?: RecruiterContactRequest) {
       if (actorId === targetProfileId) error('messaging_self_conversation')
 
-      return input.withTransaction(async ({ messaging, network }) => {
+      return input.withTransaction(async ({ messaging, network, recruiters }) => {
         const [connection, blocked, permission] = await Promise.all([
           network.findConnectionByPair(actorId, targetProfileId),
           network.isPairBlocked(actorId, targetProfileId),
           messaging.getMessagePermission(targetProfileId),
         ])
-        // Round H (H2): the recipient's "Who can message me" choice decides; a block always refuses.
-        if (!canMessageMember({ permission, connected: connection?.status === 'accepted', blocked })) {
-          error('messaging_not_allowed')
-        }
+        if (blocked || permission === 'nobody') error('messaging_not_allowed')
+        const allowed = canMessageMember({ permission, connected: connection?.status === 'accepted', blocked })
 
         const existing = await messaging.findDirectConversationByPair(actorId, targetProfileId)
-        if (existing) return existing.id
-        return messaging.insertDirectConversation(actorId, targetProfileId)
+        if (existing && (allowed || await recruiters.findByConversation(existing.id))) return existing.id
+
+        const eligible = contact ? await recruiterContactBasis(recruiters, actorId, targetProfileId, contact) : null
+        if (eligible) {
+          await recruiters.lockRecruiter(actorId)
+          const since = new Date(now().getTime() - RECRUITER_CONVERSATION_WINDOW_MS)
+          const underCap = await recruiters.countSince(actorId, since) < RECRUITER_CONVERSATIONS_PER_DAY
+          if (underCap) {
+            const conversationId = existing?.id ?? await messaging.insertDirectConversation(actorId, targetProfileId)
+            await recruiters.insert({ conversationId, recruiterId: actorId, memberId: targetProfileId, ...eligible })
+            return conversationId
+          }
+          // Over the cap, a member the recruiter may message anyway (a connection, or "Everyone") is still reachable.
+          if (!allowed) error('messaging_recruiter_daily_limit')
+        }
+
+        if (!allowed) error('messaging_not_allowed')
+        return existing?.id ?? messaging.insertDirectConversation(actorId, targetProfileId)
       })
     },
 
@@ -85,7 +135,7 @@ export function createMessagingService(input: {
       if (!parsed.success) error('messaging_invalid_message')
       const data = parsed.data
 
-      return input.withTransaction(async ({ messaging, network, outbox }) => {
+      return input.withTransaction(async ({ messaging, network, outbox, recruiters }) => {
         if (!await messaging.isParticipant(actorId, data.conversationId)) {
           error('messaging_not_participant')
         }
@@ -102,7 +152,15 @@ export function createMessagingService(input: {
           messaging.getMessagePermission(counterpartId),
         ])
         if (!canMessageMember({ permission, connected: connection?.status === 'accepted', blocked })) {
-          error('messaging_not_allowed')
+          // Recruiter exception: in a conversation a verified recruiter started that way, both sides may keep writing,
+          // unless one blocked the other or the member chose "Nobody".
+          if (blocked) error('messaging_not_allowed')
+          const recruiterConversation = await recruiters.findByConversation(data.conversationId)
+          if (!recruiterConversation) error('messaging_not_allowed')
+          const memberIsActor = recruiterConversation.member_profile_id === actorId
+          const memberPermission = memberIsActor ? await messaging.getMessagePermission(actorId) : permission
+          if (memberPermission === 'nobody') error('messaging_not_allowed')
+          if (!memberIsActor && !await recruiters.isVerifiedRecruiter(actorId)) error('messaging_not_allowed')
         }
 
         if (data.replyToMessageId) {
@@ -301,6 +359,7 @@ export function createProductionMessagingService() {
       messaging: createMessagingRepositoryForClient(client),
       network: createNetworkRepositoryForClient(client),
       outbox: createOutboxRepositoryForClient(client),
+      recruiters: createRecruiterContactRepositoryForClient(client),
     })),
   })
 }

@@ -24,6 +24,7 @@ import {
 } from './schemas'
 import { createProductionMessagingService } from './service'
 import type { SendMessageInput } from './types'
+import type { RecruiterContactRequest } from './recruiter-contact'
 
 const messagingService = createProductionMessagingService()
 
@@ -32,6 +33,8 @@ function messagingError(message?: string) {
     case 'messaging_not_allowed':
       // Round H (H2): the recipient's "Who can message me" choice, or a block.
       return 'This member isn’t accepting messages from you.'
+    case 'messaging_recruiter_daily_limit':
+      return 'You’ve started 20 new conversations with candidates in the last 24 hours. Try again later.'
     case 'messaging_self_conversation':
       return 'You cannot message yourself.'
     case 'messaging_not_participant':
@@ -69,8 +72,9 @@ async function bestEffortRemoveUnreferencedAttachment(storagePath: string) {
   }
 }
 
-export async function startDirectConversationAction(targetProfileId: string) {
-  const parsed = directConversationInputSchema.safeParse({ targetProfileId })
+/** `contact`: a recruiter's reason to reach a member on "connections only" (recruiter messaging exception). */
+export async function startDirectConversationAction(targetProfileId: string, contact?: RecruiterContactRequest) {
+  const parsed = directConversationInputSchema.safeParse({ targetProfileId, contact })
   if (!parsed.success) return { ok: false as const, error: 'Invalid member.' }
 
   let user: Awaited<ReturnType<typeof requireAwsUser>>
@@ -88,6 +92,7 @@ export async function startDirectConversationAction(targetProfileId: string) {
     const conversationId = await messagingService.startDirectConversation(
       user.id,
       parsed.data.targetProfileId,
+      parsed.data.contact,
     )
     revalidateMessaging(conversationId)
     return { ok: true as const, conversationId }

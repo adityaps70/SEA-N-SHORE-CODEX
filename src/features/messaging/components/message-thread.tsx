@@ -223,6 +223,7 @@ export function MessageThread({
   otherSlug = null,
   messages,
   nextCursor,
+  recruiterContact = null,
   peerReadCursor,
   onReply,
   otherTyping = false,
@@ -238,6 +239,8 @@ export function MessageThread({
   otherSlug?: string | null
   messages: MessageThreadItem[]
   nextCursor: { createdAt: string; id: string } | null
+  /** Recruiter messaging exception: shown above the recruiter's first message once the thread's start is loaded. */
+  recruiterContact?: { recruiterProfileId: string; line: string } | null
   peerReadCursor: MessagingReadCursor | null
   onReply?: (message: MessagingMessageDto) => void
   otherTyping?: boolean
@@ -573,6 +576,8 @@ export function MessageThread({
         {messages.length ? (
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
             {messages.map((message, index) => {
+              const showRecruiterContact = Boolean(recruiterContact && !nextCursor
+                && message.id === messages.find((item) => item.senderProfileId === recruiterContact.recruiterProfileId)?.id)
               const mine = message.senderProfileId === viewerId
               const owner = { mine, senderName: name }
               const state = deliveryState(message)
@@ -606,6 +611,11 @@ export function MessageThread({
                       <time dateTime={message.createdAt} className="text-xs font-semibold tracking-[0.08em] text-muted">{dayLabel(message.createdAt)}</time>
                       <span className="h-px flex-1 bg-mist-100" />
                     </div>
+                  ) : null}
+                  {showRecruiterContact ? (
+                    <p data-testid="recruiter-contact-line" className="mb-1.5 text-center text-xs font-medium text-muted">
+                      {recruiterContact?.line}
+                    </p>
                   ) : null}
 
                   <div className={`group flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
