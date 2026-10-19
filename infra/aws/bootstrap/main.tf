@@ -161,6 +161,47 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
+# Round I: our own copy of the node base image (Docker's official node:22-bookworm-slim, linux/amd64, pinned by
+# digest in scripts/aws/node-base-image.env). Deploy builds pulled it from Amazon ECR Public and failed twice on
+# 429 "Data limit exceeded"; the deploy copies the pinned digest here once (scripts/aws/node-base-image.sh) and
+# builds from this copy. Created by scripts/aws/bootstrap-base-image.sh.
+resource "aws_ecr_repository" "base_image" {
+  name                 = "${var.project_name}-base/node"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = false
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_ecr_lifecycle_policy" "base_image" {
+  repository = aws_ecr_repository.base_image.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep the latest 5 base images"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 5
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   count = var.existing_github_oidc_provider_arn == "" ? 1 : 0
 
@@ -424,6 +465,34 @@ resource "aws_iam_role_policy" "github_deploy_health_check_token" {
   })
 }
 
+# Round I: the deploy role may pull from and push to the base image repository only (the copy and the builds). A
+# separate inline policy, like the health check token one: scripts/aws/github-deploy-iam.sh reconciles only the
+# main policy, which stays byte-for-byte the same. The ARN is spelled out so the plan shows the exact resource.
+resource "aws_iam_role_policy" "github_deploy_base_image" {
+  name = "${local.name_prefix}-github-deploy-base-image"
+  role = aws_iam_role.github_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CopyAndPullNodeBaseImage"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:CompleteLayerUpload",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart"
+        ]
+        Resource = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${aws_ecr_repository.base_image.name}"
+      }
+    ]
+  })
+}
+
 output "aws_account_id" {
   value = data.aws_caller_identity.current.account_id
 }
@@ -442,4 +511,8 @@ output "ecr_repository_url" {
 
 output "github_deploy_role_arn" {
   value = aws_iam_role.github_deploy.arn
+}
+
+output "base_image_repository_url" {
+  value = aws_ecr_repository.base_image.repository_url
 }

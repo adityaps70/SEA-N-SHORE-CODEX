@@ -6,6 +6,8 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - Dockerfile
+      - scripts/aws/node-base-image.env
+      - scripts/aws/node-base-image.sh
       - package.json
       - src/features/events/**
       - src/features/notifications/**
@@ -77,6 +79,13 @@ jobs:
         id: ecr
         uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
+      # The same pinned node base image as the staging deploy, from our own private ECR copy when it is there.
+      - name: Use our own copy of the node base image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: bash scripts/aws/node-base-image.sh "$REGISTRY"
+
       - name: Build and push immutable social worker image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
@@ -85,7 +94,7 @@ jobs:
           set -euo pipefail
           IMAGE_TAG="social-${GITHUB_SHA}"
           IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-          docker build --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" -t "$IMAGE_URI" .
+          docker build --build-arg NODE_BASE_IMAGE="$NODE_BASE_IMAGE" --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" -t "$IMAGE_URI" .
           PUSH_OUTPUT="$(docker push "$IMAGE_URI")"
           printf '%s\n' "$PUSH_OUTPUT"
           DIGEST="$(awk '/digest: sha256:/ {print $3}' <<<"$PUSH_OUTPUT" | tail -n 1)"
