@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Round 15 guarded infrastructure: retire phone/SMS sign-in and add the health check token.
-# - The public web client drops ALLOW_CUSTOM_AUTH (in-place; nothing else on the client changes).
+# - The public web client dropped ALLOW_CUSTOM_AUTH (applied in Round 15). Round I (I3): the web client is no longer
+#   planned here; refresh-rotation-infra owns it now. The post-apply checks below still read the live client.
 # - The user pool drops the define/create/verify auth challenge triggers (in-place; the pre-sign-up
 #   trigger, the Resend email sender and its key stay exactly as they are).
 # - The three challenge Lambdas, their permissions, role, policies (including sns:Publish) and log
@@ -122,7 +123,6 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
 # its destroy); the SMS preferences are covered by the removed block (forget, never destroy).
 TARGETS=(
   aws_cognito_user_pool.app
-  aws_cognito_user_pool_client.web
   aws_lambda_function.cognito_define_auth_challenge
   aws_lambda_function.cognito_create_auth_challenge
   aws_lambda_function.cognito_verify_auth_challenge
@@ -184,9 +184,8 @@ creates = {
   'aws_secretsmanager_secret_version.health_check_token',
   'aws_iam_role_policy.ecs_execution_health_check_token_secret',
 }
-updates = {'aws_cognito_user_pool.app', 'aws_cognito_user_pool_client.web'}
+updates = {'aws_cognito_user_pool.app'}
 custom_triggers = ('define_auth_challenge', 'create_auth_challenge', 'verify_auth_challenge_response')
-web_flows_after = ['ALLOW_REFRESH_TOKEN_AUTH', 'ALLOW_USER_PASSWORD_AUTH', 'ALLOW_USER_SRP_AUTH']
 
 def refuse(message):
     raise SystemExit('SMS retirement plan refused: ' + message)
@@ -247,19 +246,11 @@ for r in changes:
             if isinstance(unknown, dict) and any(v is True for v in unknown.values()):
                 refuse('user pool lambda_config has unknown values after the change')
             print('COGNITO_LAMBDA_TRIGGERS_PLANNED_AFTER=' + ','.join(sorted(k for k, v in la.items() if v)))
-        if address == 'aws_cognito_user_pool_client.web':
-            if set(keys) - {'explicit_auth_flows'}:
-                refuse('web client change outside explicit_auth_flows: ' + ','.join(keys))
-            if 'ALLOW_CUSTOM_AUTH' not in (before.get('explicit_auth_flows') or []):
-                refuse('the web client did not have ALLOW_CUSTOM_AUTH before')
-            if sorted(after.get('explicit_auth_flows') or []) != web_flows_after:
-                refuse('the web client must end with exactly password, SRP and refresh-token flows')
-            print('COGNITO_CLIENT_EXPLICIT_AUTH_FLOWS_PLANNED_AFTER=' + ','.join(sorted(after['explicit_auth_flows'])))
     else:
         refuse(f'unexpected change {address} {actions}')
 
-# The pool and client updates may already be live (multi-login-auth-infra also plans them); the
-# post-apply checks read the live pool and client either way. Everything else must be in the plan.
+# The pool update may already be live (multi-login-auth-infra also plans it); the post-apply checks read the live
+# pool and client either way. Everything else must be in the plan.
 expected = set(destroys) | forgets | creates
 if not changes:
     # After the apply nothing is left to change; a partial plan is still refused below.

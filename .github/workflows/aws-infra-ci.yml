@@ -109,6 +109,8 @@ jobs:
         run: node --test scripts/aws/web-resilience-infra.test.mjs
       - name: Verify SMS retirement infrastructure release contract
         run: node --test scripts/aws/sms-retirement-infra.test.mjs
+      - name: Verify refresh rotation infrastructure release contract
+        run: node --test scripts/aws/refresh-rotation-infra.test.mjs
       - name: Verify bootstrap budget retirement release contract
         run: node --test scripts/aws/bootstrap-budget-retirement.test.mjs
       - name: Verify bootstrap base image release contract

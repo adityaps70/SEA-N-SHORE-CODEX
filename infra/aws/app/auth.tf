@@ -87,11 +87,19 @@ resource "aws_cognito_user_pool_client" "web" {
   # gone, a phone number on an account no longer signs anybody in.
 
   # Round 15: ALLOW_CUSTOM_AUTH (phone/SMS sign-in codes) is retired.
+  # Round I (I3): ALLOW_REFRESH_TOKEN_AUTH is retired too: Cognito does not allow it with refresh token rotation on.
+  # The app refreshes with GetTokensFromRefreshToken.
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_USER_SRP_AUTH",
-    "ALLOW_REFRESH_TOKEN_AUTH",
   ]
+
+  # Round I (I3): every refresh returns a new refresh token; the old one keeps working for 60 seconds (parallel page
+  # loads), the same window as REFRESH_REUSE_GRACE_SECONDS in the app's reuse detection.
+  refresh_token_rotation {
+    feature                    = "ENABLED"
+    retry_grace_period_seconds = 60
+  }
 
   supported_identity_providers         = var.enable_google_identity_provider ? ["COGNITO", "Google"] : ["COGNITO"]
   allowed_oauth_flows_user_pool_client = true
@@ -101,9 +109,12 @@ resource "aws_cognito_user_pool_client" "web" {
   callback_urls = [for origin in local.browser_site_urls : "${origin}/auth/google/callback"]
   logout_urls   = local.browser_site_urls
 
+  # Round I (I3): rotation keeps every new refresh token inside the first one's validity, so the refresh token limit
+  # is set far out (3650 days, the maximum) and the 30-day sliding session is enforced by the app: a sign-in not used
+  # for 30 days is refused (auth_sessions idle limit), and the cookies last 30 days from the last refresh.
   access_token_validity  = 60
   id_token_validity      = 60
-  refresh_token_validity = 30
+  refresh_token_validity = 3650
 
   token_validity_units {
     access_token  = "minutes"
