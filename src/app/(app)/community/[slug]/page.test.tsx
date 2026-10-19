@@ -15,6 +15,15 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
 }))
 
+// Round I (I2): the category picker's options.
+vi.mock('@/features/community/category-repository', () => ({
+  communityCategoryRepository: {
+    listPickerOptions: vi.fn(async () => [
+      { id: '00000000-0000-4000-8000-000000000001', slug: 'maritime-news', name: 'Maritime News', icon: 'Newspaper', hidden: false },
+      { id: '00000000-0000-4000-8000-000000000002', slug: 'other', name: 'Other', icon: 'UsersRound', hidden: false },
+    ]),
+  },
+}))
 vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
 vi.mock('@/features/community/media-actions', () => ({
   uploadCommunityCoverAction: vi.fn(), uploadCommunityIconAction: vi.fn(), removeCommunityCoverAction: vi.fn(), removeCommunityIconAction: vi.fn(),
@@ -193,11 +202,18 @@ describe('/community/[slug]', () => {
   })
 
   it('shows the edit form on the About tab for admins with ?edit=1', async () => {
-    mocks.getBySlug.mockResolvedValue(group({ viewerMembership: { role: 'owner', status: 'active' } }))
+    mocks.getBySlug.mockResolvedValue(group({
+      viewerMembership: { role: 'owner', status: 'active' },
+      category: { id: '00000000-0000-4000-8000-000000000009', slug: 'retired-topic', name: 'Retired Topic', icon: null, hidden: true },
+    }))
     render(await CommunityGroupPage({ params, searchParams: search({ tab: 'about', edit: '1' }) }))
     const form = screen.getByRole('form', { name: 'Edit Tanker Professionals' })
     expect(within(form).getByLabelText('Rules')).toHaveValue('Keep it professional.')
     expect(within(form).getByLabelText('Visibility')).toHaveValue('public')
+    // Round I (I2): the admin's categories; a hidden one the community already has stays selectable for it.
+    expect(within(within(form).getByLabelText('Category')).getAllByRole('option').map((option) => option.textContent))
+      .toEqual(['Choose a category', 'Maritime News', 'Other', 'Retired Topic (hidden, kept)'])
+    expect(within(form).getByLabelText('Category')).toHaveValue('00000000-0000-4000-8000-000000000009')
     // The header shows the viewer's own role instead of Leave; the admins list shows the Owner chip.
     expect(screen.getAllByText('Owner')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Leave group' })).not.toBeInTheDocument()

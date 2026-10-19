@@ -335,7 +335,30 @@ describe('community service: suggestions and site administration', () => {
     })
     expect(created.slug).toBe('harbour-minds-crew')
     expect(repo.createGroup).toHaveBeenCalledWith(expect.objectContaining({ createdBy: viewerId, ownerId: viewerId, ownerCompanyId: companyId, joinPolicy: 'approval' }))
-    expect(repo.insertAuditEvent).toHaveBeenCalledWith(viewerId, 'community.group_created', groupId, { slug: 'harbour-minds-crew', owner_id: viewerId, owner_company_id: companyId, visibility: 'private', join_policy: 'approval' })
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(viewerId, 'community.group_created', groupId, { slug: 'harbour-minds-crew', category_id: null, owner_id: viewerId, owner_company_id: companyId, visibility: 'private', join_policy: 'approval' })
+  })
+
+  it('takes only shown categories for a new community, and keeps a hidden one on a community that has it (round I, I2)', async () => {
+    const shownId = '88888888-8888-4888-8888-888888888881'
+    const hiddenId = '88888888-8888-4888-8888-888888888882'
+    const categories = { canAssign: vi.fn(async (categoryId: string, current: string | null = null) => categoryId === shownId || categoryId === current) }
+    const repo = repository({ listSlugsLike: vi.fn(async () => []) })
+    const service = createCommunityService({ repository: repo, categories })
+    const fields = { name: 'Harbour Minds Crew', description: '', rules: '', visibility: 'public' as const, icon: null, ownerId: viewerId }
+
+    expect(await codeOf(service.createGroup(viewerId, { ...fields, categoryId: hiddenId }))).toBe('group_category_unavailable')
+    expect(repo.createGroup).not.toHaveBeenCalled()
+    await service.createGroup(viewerId, { ...fields, categoryId: shownId })
+    expect(repo.createGroup).toHaveBeenCalledWith(expect.objectContaining({ categoryId: shownId }))
+
+    // A moderator saving a community that already has the hidden category keeps it.
+    const owned = repository({
+      getById: vi.fn(async () => group({ viewerMembership: { role: 'owner', status: 'active' }, category: { id: hiddenId, slug: 'retired', name: 'Retired', icon: null, hidden: true } })),
+    })
+    const moderated = createCommunityService({ repository: owned, categories })
+    await moderated.updateGroup(viewerId, groupId, { description: '', rules: '', visibility: 'public', icon: null, categoryId: hiddenId })
+    expect(categories.canAssign).toHaveBeenLastCalledWith(hiddenId, hiddenId)
+    expect(owned.updateGroup).toHaveBeenCalledWith(groupId, expect.objectContaining({ categoryId: hiddenId }))
   })
 
   it('archives, restores and hands over ownership with audit events', async () => {

@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { Lock, UsersRound } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import { pluralize } from '@/lib/format'
-import { COMMUNITY_CATEGORY_ICONS, GroupIcon } from '../group-icons'
-import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, UNCATEGORISED_COMMUNITIES, communityCategoryFilterLabel, groupHref, type CommunityCategoryFilter, type CommunityGroup } from '../types'
+import { GroupIcon } from '../group-icons'
+import { groupHref, type CommunityCategoryChip, type CommunityGroup } from '../types'
 import { GroupCover, GroupIconTile } from './group-icon-tile'
 import { GroupMembershipButton } from './group-membership-button'
 
@@ -100,7 +100,7 @@ export function CommunityDiscoverCard({ group, reason = null }: { group: Communi
           {group.visibility === 'private' ? <Lock aria-label="Private group" className="size-3.5 shrink-0 text-muted" /> : null}
         </h3>
         <p className="mt-0.5 text-xs font-semibold text-muted">
-          {group.category ? `${COMMUNITY_CATEGORY_LABELS[group.category]} · ` : ''}{pluralize(group.memberCount, 'member')}
+          {group.category ? `${group.category.name} · ` : ''}{pluralize(group.memberCount, 'member')}
         </p>
         {reason ? <p className="mt-1 text-xs font-semibold text-ocean-800">{reason}</p> : null}
         {group.description ? <p className="mt-2 line-clamp-2 text-sm leading-5 text-ink">{group.description}</p> : null}
@@ -121,29 +121,26 @@ export function CommunityDiscoverCard({ group, reason = null }: { group: Communi
 }
 
 /**
- * "Browse by category": one tile per category with how many live communities it has. Round H (H7): empty
- * categories are left out, and communities without a category get an "Other topics" tile, so the tiles add
- * up to every live community.
+ * "Browse by category": one tile per category with how many live communities it has. Round I (I2): the
+ * admin-managed categories in admin order; empty and hidden categories are left out.
  */
-export function CommunityCategoryGrid({ counts }: { counts: Partial<Record<CommunityCategoryFilter, number>> }) {
-  const tiles = ([...COMMUNITY_CATEGORIES, UNCATEGORISED_COMMUNITIES] as CommunityCategoryFilter[]).filter((category) => (counts[category] ?? 0) > 0)
+export function CommunityCategoryGrid({ chips }: { chips: readonly CommunityCategoryChip[] }) {
+  const tiles = chips.filter((chip) => chip.count > 0)
   if (!tiles.length) return null
   return (
     <ul aria-label="Community categories" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {tiles.map((category) => (
-        <li key={category} className="min-w-0">
+      {tiles.map((chip) => (
+        <li key={chip.id} className="min-w-0">
           <Link
-            href={communityHref({ view: 'all', category })}
+            href={communityHref({ view: 'all', category: chip.slug })}
             className="flex min-h-14 min-w-0 items-center gap-2.5 rounded-xl border border-mist-200 bg-white px-3 py-2 transition hover:border-ocean-200 hover:bg-ocean-50"
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-mist-50 text-ocean-700">
-              {category === UNCATEGORISED_COMMUNITIES
-                ? <UsersRound aria-hidden="true" className="size-4" />
-                : <GroupIcon icon={COMMUNITY_CATEGORY_ICONS[category]} aria-hidden="true" className="size-4" />}
+              <GroupIcon icon={chip.icon} aria-hidden="true" className="size-4" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold text-navy-950">{communityCategoryFilterLabel(category)}</span>
-              <span className="block text-xs text-muted">{pluralize(counts[category] ?? 0, 'community', 'communities')}</span>
+              <span className="block truncate text-sm font-semibold text-navy-950">{chip.name}</span>
+              <span className="block text-xs text-muted">{pluralize(chip.count, 'community', 'communities')}</span>
             </span>
           </Link>
         </li>

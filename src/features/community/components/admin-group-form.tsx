@@ -4,7 +4,8 @@ import { useActionState } from 'react'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { createGroupAsAdmin, setGroupOwnerAsAdmin, updateGroupAsAdmin, type AdminGroupFormState } from '../admin-actions'
 import { GROUP_ICON_LABELS } from '../group-icons'
-import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type AdminCommunityGroup } from '../types'
+import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type AdminCommunityGroup, type CommunityCategoryRef } from '../types'
+import { CategoryOptions } from './category-options'
 import { JOIN_POLICY_OPTIONS } from './edit-group-form'
 
 const inputClass = 'min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100'
@@ -19,7 +20,7 @@ function FormStatus({ state }: { state: AdminGroupFormState }) {
 }
 
 /** Site admin: create a group (with its owner) or edit an existing one. */
-export function AdminGroupForm({ group }: { group?: AdminCommunityGroup }) {
+export function AdminGroupForm({ group, categories }: { group?: AdminCommunityGroup; categories: readonly CommunityCategoryRef[] }) {
   const [state, action, pending] = useActionState(group ? updateGroupAsAdmin : createGroupAsAdmin, null)
   const formLabel = group ? `Edit ${group.name}` : 'Create group'
   return (
@@ -63,9 +64,8 @@ export function AdminGroupForm({ group }: { group?: AdminCommunityGroup }) {
         </label>
         <label className={labelClass}>
           Category
-          <select name="category" defaultValue={group?.category ?? ''} className={`${inputClass} mt-1 normal-case tracking-normal`}>
-            <option value="">No category</option>
-            {COMMUNITY_CATEGORIES.map((category) => <option key={category} value={category}>{COMMUNITY_CATEGORY_LABELS[category]}</option>)}
+          <select name="categoryId" required defaultValue={group?.category?.id ?? ''} className={`${inputClass} mt-1 normal-case tracking-normal`}>
+            <CategoryOptions options={categories} current={group?.category} />
           </select>
         </label>
       </div>

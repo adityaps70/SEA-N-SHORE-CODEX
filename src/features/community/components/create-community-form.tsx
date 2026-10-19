@@ -12,7 +12,8 @@ import { requestCommunityMediaUploadAction, completeCommunityMediaUploadAction }
 import { CREATE_AS_SELF } from '../eligibility'
 import { COMMUNITY_MEDIA_FAILURE_NOTICE, communityMediaCancelDestination, uploadRemainingCreationImages } from '../creation-media-flow'
 import { COMMUNITY_IMAGE_CONTENT_TYPES, validateCommunityImage, type CommunityMediaKind } from '../media'
-import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type GroupJoinPolicy, type GroupVisibility } from '../types'
+import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type CommunityCategoryRef, type GroupJoinPolicy, type GroupVisibility } from '../types'
+import { CategoryOptions } from './category-options'
 import { pluralize } from '@/lib/format'
 
 /** One identity the member may create as: themselves (`me`) or an organization (its id). */
@@ -58,7 +59,7 @@ function usePreview() {
  * Create a community (round 9C): who it is for, name, description, rules, join setting,
  * visibility and the optional banner and photo. The server action re-checks eligibility.
  */
-export function CreateCommunityForm({ identities, initialAs }: { identities: CreateCommunityIdentity[]; initialAs?: string | null }) {
+export function CreateCommunityForm({ identities, initialAs, categories }: { identities: CreateCommunityIdentity[]; initialAs?: string | null; categories: readonly CommunityCategoryRef[] }) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<CreateCommunityState, FormData>(createCommunity, null)
   const [uploading, setUploading] = useState(false)
@@ -228,9 +229,8 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
 
       <label className={labelClass}>
         Category
-        <select name="category" defaultValue="" className={`${inputClass} mt-1.5`} aria-describedby="community-category-hint">
-          <option value="">No category</option>
-          {COMMUNITY_CATEGORIES.map((category) => <option key={category} value={category}>{COMMUNITY_CATEGORY_LABELS[category]}</option>)}
+        <select name="categoryId" defaultValue="" required className={`${inputClass} mt-1.5`} aria-describedby="community-category-hint">
+          <CategoryOptions options={categories} />
         </select>
         <span id="community-category-hint" className={hintClass}>Helps members find the community under Browse by category.</span>
       </label>

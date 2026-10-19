@@ -10,6 +10,15 @@ const mocks = vi.hoisted(() => ({
   }),
 }))
 
+// Round I (I2): the category picker's options.
+vi.mock('@/features/community/category-repository', () => ({
+  communityCategoryRepository: {
+    listPickerOptions: vi.fn(async () => [
+      { id: '00000000-0000-4000-8000-000000000001', slug: 'maritime-news', name: 'Maritime News', icon: 'Newspaper', hidden: false },
+      { id: '00000000-0000-4000-8000-000000000002', slug: 'other', name: 'Other', icon: 'UsersRound', hidden: false },
+    ]),
+  },
+}))
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound }))
 vi.mock('@/features/admin/access', () => ({ requirePlatformAdministratorUser: mocks.requirePlatformAdministratorUser, canAccessPlatformAdmin: vi.fn(async () => true) }))
 vi.mock('@/features/community/repository', () => ({ communityRepository: { listAdminGroups: mocks.listAdminGroups } }))

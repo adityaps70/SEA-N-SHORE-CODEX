@@ -5,6 +5,7 @@ import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ORGANIZATION_PRO_CHOOSER_HREF } from '@/features/billing/organization-pro-path'
+import { communityCategoryRepository } from '@/features/community/category-repository'
 import { CreateCommunityForm, type CreateCommunityIdentity } from '@/features/community/components/create-community-form'
 import { CREATE_AS_SELF, ELIGIBILITY_REASON_TEXT, isOrganizationCreatorRole } from '@/features/community/eligibility'
 import { getCommunityCreationEligibility, type CommunityCreationOrganization } from '@/features/community/eligibility-server'
@@ -117,7 +118,11 @@ function NotEligible({ personalReason, organizations }: { personalReason: 'creat
 export default async function CreateCommunityPage({ searchParams }: { searchParams?: Promise<{ as?: string | string[] }> }) {
   const user = await requireAwsUser()
   const requestedAs = single((await searchParams)?.as).trim()
-  const options = await getCommunityCreationEligibility(user.id)
+  const [options, categories] = await Promise.all([
+    getCommunityCreationEligibility(user.id),
+    // Round I (I2): the picker offers the admin's shown categories, in admin order.
+    communityCategoryRepository.listPickerOptions(),
+  ])
   const { eligibility, organizations } = options
 
   const requestedOrganization = requestedAs && requestedAs !== CREATE_AS_SELF ? organizations.find((organization) => organization.id === requestedAs) ?? null : null
@@ -138,7 +143,7 @@ export default async function CreateCommunityPage({ searchParams }: { searchPara
     <Shell>
       <Card labelledBy="community-form-heading">
         <h2 id="community-form-heading" className="sr-only">Community details</h2>
-        <CreateCommunityForm identities={identities} initialAs={requestedOrganization?.id ?? null} />
+        <CreateCommunityForm identities={identities} initialAs={requestedOrganization?.id ?? null} categories={categories} />
       </Card>
     </Shell>
   )

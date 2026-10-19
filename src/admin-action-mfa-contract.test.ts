@@ -26,6 +26,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/organizations/access-request-actions.ts', ['decideOrganizationAccessRequest']],
   ['src/features/billing/admin-actions.ts', ['updatePlanPriceAction', 'adminCancelSubscriptionAction', 'adminExtendTrialAction', 'adminEndTrialAction']],
   ['src/features/community/admin-actions.ts', ['createGroupAsAdmin', 'updateGroupAsAdmin', 'setGroupOwnerAsAdmin', 'archiveGroupAsAdmin', 'unarchiveGroupAsAdmin']],
+  // Round I (I2): Admin › Communities › Categories.
+  ['src/features/community/category-admin-actions.ts', ['createCommunityCategory', 'updateCommunityCategory', 'moveCommunityCategory', 'setCommunityCategoryHidden', 'moveCommunityCategoryCommunities', 'deleteCommunityCategory']],
   ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites', 'prepareLegacyReminderBatch', 'startPreparedLegacyReminders', 'cancelPreparedLegacyReminders', 'stopUnsentLegacyReminders', 'sendLegacyReminderTest']],
   ['src/features/newsletter/admin-actions.ts', ['adminUnsubscribeSubscriber', 'queueNewsletterCampaign']],
   ['src/features/payouts/admin-actions.ts', ['updateFeeSettingsAction', 'setFeeOverrideAction', 'removeFeeOverrideAction', 'searchSellersAction', 'sendPayoutAction', 'refreshPayoutStatusAction', 'retryPayoutAction', 'cancelPayoutAction']],
@@ -97,7 +99,7 @@ describe('platform-admin server actions are MFA-gated (Round 15)', () => {
 
   it('lists every exported action of the admin-only modules', () => {
     const adminOnly = ADMIN_ACTION_MODULES.filter(([path]) => /(^src\/features\/admin\/|admin-actions\.ts$)/.test(path))
-    expect(adminOnly.length).toBe(13)
+    expect(adminOnly.length).toBe(14)
     for (const [path, names] of adminOnly) {
       const exported = [...read(path).matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1])
       expect(exported.sort(), path).toEqual([...names].sort())

@@ -48,6 +48,8 @@ const TARGET_LABELS: Record<string, string> = {
   learning_mentor_application: 'Trainer application',
   support_ticket: 'Support request',
   site_setting: 'Site setting',
+  // Round I (I2): Admin › Communities › Categories.
+  community_category: 'Community category',
 }
 
 export function auditTargetLabel(targetType: string) {
@@ -63,6 +65,7 @@ export function auditTargetHref(targetType: string, targetId: string) {
   if (targetType === 'group') return `/admin/communities?group=${targetId}`
   if (targetType === 'support_ticket') return `/admin/support/${targetId}`
   if (targetType === 'site_setting') return '/admin/settings'
+  if (targetType === 'community_category') return '/admin/communities/categories'
   return null
 }
 

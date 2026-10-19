@@ -1,11 +1,11 @@
 import { canUsePlatformAdminAuthority as canAccessPlatformAdminDefault } from '@/features/admin/mfa-gate'
+import { communityCategoryRepository, type CommunityCategoryRepository } from './category-repository'
 import { communityRepository, type CommunityRepository } from './repository'
 import { groupSlugFromName, uniqueGroupSlug } from './slug'
 import { suggestedGroupSlugs } from './suggestions'
 import {
   isGroupAdminRole,
   type CommunityGroup,
-  type CommunityCategory,
   type GroupJoinPolicy,
   type GroupVisibility,
   type MembershipStatus,
@@ -22,6 +22,7 @@ export type CommunityServiceErrorCode =
   | 'group_member_not_found'
   | 'group_post_not_found'
   | 'group_owner_not_found'
+  | 'group_category_unavailable'
 
 export class CommunityServiceError extends Error {
   constructor(public readonly code: CommunityServiceErrorCode) {
@@ -42,8 +43,11 @@ export type GroupInput = {
   icon: string | null
   /** Round 9C join setting; when omitted the repository keeps the stored value (or derives it from visibility on create). */
   joinPolicy?: GroupJoinPolicy
-  /** Round 10 category; when omitted the stored category is kept (none on create). */
-  category?: CommunityCategory | null
+  /**
+   * Round I (I2): an admin-managed category id; when omitted the stored category is kept (none on create). Only a
+   * shown category, or the one the community already has, is accepted.
+   */
+  categoryId?: string | null
 }
 
 export function joinRequestDedupeKey(groupId: string, requesterId: string, recipientId: string) {
@@ -58,8 +62,16 @@ export function createCommunityService(input: {
   repository?: CommunityRepository
   /** Whether a profile is a Sea N Shore platform administrator with admin MFA (they moderate every community). */
   canAccessPlatformAdmin?: (userId: string) => Promise<boolean>
+  categories?: Pick<CommunityCategoryRepository, 'canAssign'>
 } = {}) {
   const repository = input.repository ?? communityRepository
+  const categories = input.categories ?? communityCategoryRepository
+
+  /** Round I (I2): a hidden category leaves the picker but stays on the communities that have it. */
+  async function requireAssignableCategory(categoryId: string | null | undefined, current: string | null) {
+    if (!categoryId) return
+    if (!(await categories.canAssign(categoryId, current))) fail('group_category_unavailable')
+  }
   const canAccessPlatformAdmin = input.canAccessPlatformAdmin ?? canAccessPlatformAdminDefault
 
   async function isPlatformAdmin(userId: string) {
@@ -227,6 +239,7 @@ export function createCommunityService(input: {
   /** Moderators edit the description, rules, icon, visibility and join setting; the name and slug stay. */
   async function updateGroup(actorId: string, groupId: string, changes: Omit<GroupInput, 'name'>) {
     const group = await requireAdministeredGroup(actorId, groupId)
+    await requireAssignableCategory(changes.categoryId, group.category?.id ?? null)
     await repository.updateGroup(groupId, { ...changes, name: group.name })
     if (changes.joinPolicy && changes.joinPolicy !== group.joinPolicy) {
       await repository.insertAuditEvent(actorId, 'community.join_policy_changed', groupId, { from: group.joinPolicy, to: changes.joinPolicy })
@@ -265,6 +278,7 @@ export function createCommunityService(input: {
    * organization owns the community.
    */
   async function createGroup(actorId: string, group: GroupInput & { ownerId: string; ownerCompanyId?: string | null }) {
+    await requireAssignableCategory(group.categoryId, null)
     const base = groupSlugFromName(group.name)
     const slug = uniqueGroupSlug(base, await repository.listSlugsLike(base))
     const joinPolicy = group.joinPolicy ?? (group.visibility === 'private' ? 'approval' : 'open')
@@ -279,10 +293,11 @@ export function createCommunityService(input: {
       createdBy: actorId,
       ownerId: group.ownerId,
       ownerCompanyId: group.ownerCompanyId ?? null,
-      category: group.category ?? null,
+      categoryId: group.categoryId ?? null,
     })
     await repository.insertAuditEvent(actorId, 'community.group_created', groupId, {
       slug,
+      category_id: group.categoryId ?? null,
       owner_id: group.ownerId,
       owner_company_id: group.ownerCompanyId ?? null,
       visibility: group.visibility,
@@ -296,9 +311,14 @@ export function createCommunityService(input: {
   async function updateGroupAsAdmin(adminId: string, groupId: string, group: GroupInput) {
     const before = await repository.getById(adminId, groupId)
     if (!before) fail('group_not_found')
+    await requireAssignableCategory(group.categoryId, before.category?.id ?? null)
     const updated = await repository.updateGroup(groupId, group)
     if (!updated) fail('group_not_found')
-    await repository.insertAuditEvent(adminId, 'community.group_updated', groupId, { visibility: group.visibility, join_policy: group.joinPolicy ?? before.joinPolicy })
+    await repository.insertAuditEvent(adminId, 'community.group_updated', groupId, {
+      visibility: group.visibility,
+      join_policy: group.joinPolicy ?? before.joinPolicy,
+      category_id: group.categoryId === undefined ? before.category?.id ?? null : group.categoryId,
+    })
     if (group.joinPolicy && group.joinPolicy !== before.joinPolicy) {
       await repository.insertAuditEvent(adminId, 'community.join_policy_changed', groupId, { from: before.joinPolicy, to: group.joinPolicy })
     }

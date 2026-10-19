@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listDiscoverEvents: vi.fn(),
   searchHashtags: vi.fn(),
   searchGroups: vi.fn(),
+  countSearchGroupsByCategory: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
@@ -33,7 +34,7 @@ vi.mock('@/features/jobs/queries', () => ({ getJobsDiscovery: mocks.getJobsDisco
 vi.mock('@/features/learning/marketplace-repository', () => ({ marketplaceRepository: { listPublishedCourses: mocks.listPublishedCourses } }))
 vi.mock('@/features/events/calendar-repository', () => ({ calendarEventRepository: { listDiscoverEvents: mocks.listDiscoverEvents } }))
 vi.mock('@/features/hashtags/repository', () => ({ hashtagRepository: { searchHashtags: mocks.searchHashtags } }))
-vi.mock('@/features/community/repository', () => ({ communityRepository: { searchGroups: mocks.searchGroups } }))
+vi.mock('@/features/community/repository', () => ({ communityRepository: { searchGroups: mocks.searchGroups, countSearchGroupsByCategory: mocks.countSearchGroupsByCategory } }))
 vi.mock('@/features/community/actions', () => ({ joinGroup: vi.fn(), leaveGroup: vi.fn() }))
 vi.mock('@/features/network/components/network-profile-card', () => ({
   NetworkProfileCard: ({ profile, actions }: { profile: { fullName: string }; actions?: string }) => <article data-actions={actions}>Person {profile.fullName}</article>,
@@ -62,6 +63,7 @@ beforeEach(() => {
   mocks.listDiscoverEvents.mockResolvedValue([])
   mocks.searchHashtags.mockResolvedValue([{ tag: 'sire2', postCount: 3 }])
   mocks.searchGroups.mockResolvedValue([])
+  mocks.countSearchGroupsByCategory.mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -177,6 +179,22 @@ describe('Global search on phones', () => {
     expect(screen.getByTestId('search-result-count')).toHaveTextContent('7 results for “sire”')
   })
 
+  it('offers a community category facet in admin order and narrows the groups to the chosen category (Round I, I2)', async () => {
+    mocks.countSearchGroupsByCategory.mockResolvedValue([
+      { id: 'c2', slug: 'vetting-sire-2-0', name: 'Vetting & SIRE 2.0', icon: 'ShieldCheck', hidden: false, count: 3 },
+      { id: 'c9', slug: 'other', name: 'Other', icon: null, hidden: false, count: 1 },
+    ])
+    render(await GlobalSearchPage({ searchParams: Promise.resolve({ q: 'sire', type: 'groups', category: 'vetting-sire-2-0' }) }))
+
+    expect(mocks.countSearchGroupsByCategory).toHaveBeenCalledWith('sire')
+    expect(mocks.searchGroups).toHaveBeenCalledWith('viewer-1', 'sire', 20, 'vetting-sire-2-0')
+    const facet = screen.getByRole('navigation', { name: 'Filter communities by category' })
+    expect(within(facet).getAllByRole('link').map((link) => link.textContent)).toEqual(['All categories', 'Vetting & SIRE 2.0 3', 'Other 1'])
+    expect(within(facet).getByRole('link', { name: /Vetting & SIRE 2.0/ })).toHaveAttribute('aria-current', 'page')
+    expect(within(facet).getByRole('link', { name: 'All categories' })).toHaveAttribute('href', '/search?q=sire&type=groups')
+    expect(within(facet).getByRole('link', { name: /Other/ })).toHaveAttribute('href', '/search?q=sire&type=groups&category=other')
+  })
+
   it('lists community groups (round 9B) with member count and visibility, as phone rows and desktop cards', async () => {
     mocks.searchGroups.mockResolvedValue([
       { id: 'g1', slug: 'tanker-professionals', name: 'Tanker Professionals', description: 'SIRE 2.0 and cargo operations.', icon: 'ShieldCheck', iconUrl: '/api/community-media/g1/icon?v=icon-1.webp', visibility: 'public', memberCount: 12, archived: false, createdBy: null, rules: '', coverUrl: null, viewerMembership: null },
@@ -184,7 +202,7 @@ describe('Global search on phones', () => {
     ])
     render(await GlobalSearchPage({ searchParams: Promise.resolve({ q: 'sire', type: 'groups' }) }))
 
-    expect(mocks.searchGroups).toHaveBeenCalledWith('viewer-1', 'sire', 20)
+    expect(mocks.searchGroups).toHaveBeenCalledWith('viewer-1', 'sire', 20, null)
     const chips = screen.getByRole('navigation', { name: 'Search filters' })
     expect(within(chips).getByRole('link', { name: 'Groups' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByTestId('search-result-count')).toHaveTextContent('2 results for “sire”')

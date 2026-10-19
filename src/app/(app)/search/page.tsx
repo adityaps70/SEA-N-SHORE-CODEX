@@ -3,9 +3,10 @@ import Link from 'next/link'
 import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Hash, Search, UsersRound } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { CommunityCategoryFacet } from '@/features/community/components/category-facet'
 import { GroupCard } from '@/features/community/components/group-card'
 import { communityRepository } from '@/features/community/repository'
-import type { CommunityGroup } from '@/features/community/types'
+import type { CommunityCategoryChip, CommunityGroup } from '@/features/community/types'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventCard } from '@/features/events/components/event-card'
 import { JobCard } from '@/features/jobs/components/job-card'
@@ -159,18 +160,21 @@ function settledValue<T>(result: PromiseSettledResult<T[]>, fallback: T[]): T[] 
 export default async function GlobalSearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; type?: string | string[]; page?: string | string[] }>
+  searchParams: Promise<{ q?: string | string[]; type?: string | string[]; page?: string | string[]; category?: string | string[] }>
 }) {
   const params = await searchParams
   const rawQuery = Array.isArray(params.q) ? params.q[0] : params.q
   const query = rawQuery?.trim().slice(0, 100) ?? ''
   const chip = parseSearchChip(params.type)
+  // Round I (I2): the community category facet (a category slug).
+  const rawCategory = (Array.isArray(params.category) ? params.category[0] : params.category)?.trim().slice(0, 60) ?? ''
+  const groupCategory = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(rawCategory) ? rawCategory : null
 
   // Round G (G4): search_documents, live as you type, behind ranking_settings.search.
   const viewer = await requireAwsUser()
   if (await isRankingEnabled('search', viewer.id).catch(() => false)) {
     const rawPage = Number(Array.isArray(params.page) ? params.page[0] : params.page)
-    return <SearchV2 viewerId={viewer.id} query={query.slice(0, 80)} tab={parseSearchTab(params.type)} page={Number.isInteger(rawPage) && rawPage > 1 && rawPage <= 50 ? rawPage : 1} />
+    return <SearchV2 viewerId={viewer.id} query={query.slice(0, 80)} tab={parseSearchTab(params.type)} page={Number.isInteger(rawPage) && rawPage > 1 && rawPage <= 50 ? rawPage : 1} category={groupCategory} />
   }
 
   if (!query) {
@@ -208,9 +212,10 @@ export default async function GlobalSearchPage({
     .catch(() => ({ items: [], failed: true }))
   // Community groups (round 9B) load the same way: name/description matches, live groups only.
   const groupSearch: Promise<{ items: CommunityGroup[]; failed: boolean }> = communityRepository
-    .searchGroups(user.id, query, PHONE_CHIP_RESULTS)
+    .searchGroups(user.id, query, PHONE_CHIP_RESULTS, groupCategory)
     .then((items) => ({ items, failed: false }))
     .catch(() => ({ items: [], failed: true }))
+  const groupFacet: Promise<CommunityCategoryChip[]> = communityRepository.countSearchGroupsByCategory(query).catch(() => [])
   // Each vertical loads independently: one failing source shows a notice in its
   // section instead of taking down the whole results page.
   const settled = await Promise.allSettled([
@@ -222,6 +227,7 @@ export default async function GlobalSearchPage({
   ] as const)
   const hashtagResult = await hashtagSearch
   const groupResult = await groupSearch
+  const groupCategoryChips = await groupFacet
   const failed = {
     hashtags: hashtagResult.failed,
     groups: groupResult.failed,
@@ -340,6 +346,18 @@ export default async function GlobalSearchPage({
         <section aria-labelledby="global-groups-heading" className={`border-t border-mist-100 pt-7 ${PHONE_SECTION} ${sectionPhoneClass(chip, 'groups')}`}>
           <div id="global-groups-heading">
             <SectionHeading icon={UsersRound} title="Groups" count={groups.length} href={groupsHref(query)} chip={chip} />
+          </div>
+          <div className="mb-3">
+            <CommunityCategoryFacet
+              chips={groupCategoryChips}
+              active={groupCategory}
+              hrefFor={(slug) => {
+                const next = new URLSearchParams({ q: query })
+                if (chip !== 'all') next.set('type', chip)
+                if (slug) next.set('category', slug)
+                return `/search?${next.toString()}`
+              }}
+            />
           </div>
           {groupResults.length ? (
             <>

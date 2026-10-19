@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { ArrowLeft, BookOpen, BriefcaseBusiness, Building2, CalendarDays, FileText, UsersRound } from 'lucide-react'
 import { MediaImage } from '@/components/ui/media-image'
+import { CommunityCategoryFacet } from '@/features/community/components/category-facet'
+import { communityRepository } from '@/features/community/repository'
 import { getNetworkProfilesByIds } from '@/features/network/queries'
 import { LivePageSearch } from '@/features/search/components/live-page-search'
 import { highlightParts } from '@/features/search/highlight'
 import type { SearchHit } from '@/features/search/search-repository'
 import { ALL_TAB_LIMITS, SEARCH_TABS, TAB_KIND, hrefFor, searchService, type SearchTab } from '@/features/search/search-service'
-import type { SearchKind } from '@/features/search/search-weights'
+import { SEARCH_WEIGHTS, type SearchKind } from '@/features/search/search-weights'
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { SearchPersonRow } from './search-result-rows'
@@ -72,9 +74,16 @@ function ResultRow({ hit, query, avatarUrl }: { hit: SearchHit; query: string; a
   )
 }
 
-export async function SearchV2({ viewerId, query, tab, page }: { viewerId: string; query: string; tab: SearchTab; page: number }) {
-  const result = query ? await searchService.page(viewerId, query, tab, page) : null
-  const groups = result?.groups ?? {}
+export async function SearchV2({ viewerId, query, tab, page, category = null }: { viewerId: string; query: string; tab: SearchTab; page: number; category?: string | null }) {
+  // Round I (I2): on the Communities tab, the category facet; a chosen category lists that category's matches.
+  const facet = query && tab === 'communities' ? await communityRepository.countSearchGroupsByCategory(query).catch(() => []) : []
+  const filtered = query && tab === 'communities' && category
+    ? await communityRepository.searchGroups(viewerId, query, SEARCH_WEIGHTS.pageSize, category).catch(() => [])
+    : null
+  const result = query && !filtered ? await searchService.page(viewerId, query, tab, page) : null
+  const groups: Partial<Record<SearchKind, SearchHit[]>> = filtered
+    ? { community: filtered.map((group) => ({ kind: 'community' as const, id: group.id, name: group.name, subtitle: group.category?.name ?? null, slug: group.slug, avatarPath: null, ownerId: null, score: 0, createdAt: null })) }
+    : result?.groups ?? {}
   const peopleHits = groups.person ?? []
   const otherHits = SECTION_ORDER.filter((kind) => kind !== 'person').flatMap((kind) => groups[kind] ?? [])
   const [people, avatars] = await Promise.all([
@@ -83,7 +92,7 @@ export async function SearchV2({ viewerId, query, tab, page }: { viewerId: strin
   ])
   const avatarByKey = new Map(avatars)
   const sections = tab === 'all' ? SECTION_ORDER : [TAB_KIND[tab]]
-  const total = result?.total ?? 0
+  const total = filtered ? filtered.length : result?.total ?? 0
 
   return (
     <section className="mx-auto w-full max-w-page-wide py-2 max-md:py-0 sm:py-5">
@@ -119,6 +128,17 @@ export async function SearchV2({ viewerId, query, tab, page }: { viewerId: strin
                 ? `Top matches for “${query}”`
                 : `${(page - 1) * 20 + total}${result?.hasMore ? '+' : ''} result${total === 1 ? '' : 's'} for “${query}”`}
           </p>
+          {tab === 'communities' ? (
+            <CommunityCategoryFacet
+              chips={facet}
+              active={category}
+              hrefFor={(slug) => {
+                const next = new URLSearchParams({ q: query, type: 'communities' })
+                if (slug) next.set('category', slug)
+                return `/search?${next.toString()}`
+              }}
+            />
+          ) : null}
           {result?.partial ? <p role="status" className="rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-900">Search took too long; showing what was ready. Keep typing or try again.</p> : null}
           {sections.map((kind) => {
             const hits = groups[kind] ?? []

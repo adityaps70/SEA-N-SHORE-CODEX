@@ -7,6 +7,15 @@ const mocks = vi.hoisted(() => ({
   getCommunityCreationEligibility: vi.fn(),
 }))
 
+// Round I (I2): the category picker's options.
+vi.mock('@/features/community/category-repository', () => ({
+  communityCategoryRepository: {
+    listPickerOptions: vi.fn(async () => [
+      { id: '00000000-0000-4000-8000-000000000001', slug: 'maritime-news', name: 'Maritime News', icon: 'Newspaper', hidden: false },
+      { id: '00000000-0000-4000-8000-000000000002', slug: 'other', name: 'Other', icon: 'UsersRound', hidden: false },
+    ]),
+  },
+}))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/community/eligibility-server', () => ({ getCommunityCreationEligibility: mocks.getCommunityCreationEligibility }))
 vi.mock('@/features/community/create-actions', () => ({ createCommunity: vi.fn() }))
@@ -55,6 +64,11 @@ describe('/community/new', () => {
     expect(within(form).getByLabelText(/^Name/)).toHaveAttribute('maxlength', '80')
     expect(within(form).getByLabelText('Description')).toBeInTheDocument()
     expect(within(form).getByLabelText('Rules')).toBeInTheDocument()
+    // Round I (I2): owners choose one of the admin's categories (required).
+    const category = within(form).getByRole('combobox', { name: /^Category/ })
+    expect(category).toHaveAttribute('name', 'categoryId')
+    expect(category).toBeRequired()
+    expect(within(category).getAllByRole('option').map((option) => option.textContent)).toEqual(['Choose a category', 'Maritime News', 'Other'])
     expect(within(form).getByRole('radio', { name: /Open — anyone can join/ })).toBeChecked()
     expect(within(form).getByRole('radio', { name: /Approval required — a moderator approves requests/ })).not.toBeChecked()
     expect(within(form).getByRole('radio', { name: /^Public/ })).toBeChecked()

@@ -5,7 +5,8 @@ import { useState, useTransition } from 'react'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { updateGroup } from '../actions'
 import { GROUP_ICON_LABELS } from '../group-icons'
-import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_RULES_MAX_LENGTH, type CommunityGroup, type GroupJoinPolicy } from '../types'
+import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_RULES_MAX_LENGTH, type CommunityCategoryRef, type CommunityGroup, type GroupJoinPolicy } from '../types'
+import { CategoryOptions } from './category-options'
 
 const inputClass = 'min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100'
 const areaClass = 'w-full rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100'
@@ -17,14 +18,14 @@ export const JOIN_POLICY_OPTIONS: Array<{ value: GroupJoinPolicy; label: string;
 ]
 
 /** Moderators edit the description, rules, visibility, join setting and icon (the name stays). */
-export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; doneHref: string }) {
+export function EditGroupForm({ group, doneHref, categories }: { group: CommunityGroup; doneHref: string; categories: readonly CommunityCategoryRef[] }) {
   const router = useRouter()
   const [description, setDescription] = useState(group.description)
   const [rules, setRules] = useState(group.rules)
   const [visibility, setVisibility] = useState(group.visibility)
   const [joinPolicy, setJoinPolicy] = useState<GroupJoinPolicy>(group.joinPolicy)
   const [icon, setIcon] = useState(group.icon ?? '')
-  const [category, setCategory] = useState<string>(group.category ?? '')
+  const [categoryId, setCategoryId] = useState<string>(group.category?.id ?? '')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -33,7 +34,7 @@ export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; done
     event.preventDefault()
     setError('')
     startTransition(async () => {
-      const result = await updateGroup({ groupId: group.id, description, rules, visibility, joinPolicy, icon: icon || null, category: category || null }).catch(() => null)
+      const result = await updateGroup({ groupId: group.id, description, rules, visibility, joinPolicy, icon: icon || null, categoryId }).catch(() => null)
       if (!result || !result.ok) {
         setError(result?.error ?? 'We could not save the group. Check your connection and try again.')
         return
@@ -85,9 +86,8 @@ export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; done
         </label>
         <label className="block text-sm font-semibold text-navy-950 sm:col-span-2">
           Category
-          <select name="category" value={category} onChange={(event) => setCategory(event.target.value)} className={`${inputClass} mt-1.5`}>
-            <option value="">No category</option>
-            {COMMUNITY_CATEGORIES.map((value) => <option key={value} value={value}>{COMMUNITY_CATEGORY_LABELS[value]}</option>)}
+          <select name="categoryId" value={categoryId} required onChange={(event) => setCategoryId(event.target.value)} className={`${inputClass} mt-1.5`}>
+            <CategoryOptions options={categories} current={group.category} />
           </select>
         </label>
       </div>

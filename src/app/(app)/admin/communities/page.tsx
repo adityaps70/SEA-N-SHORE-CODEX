@@ -8,6 +8,7 @@ import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/f
 import { archiveGroupAsAdmin, unarchiveGroupAsAdmin } from '@/features/community/admin-actions'
 import { AdminGroupForm, AdminGroupOwnerForm } from '@/features/community/components/admin-group-form'
 import { GroupIconTile } from '@/features/community/components/group-icon-tile'
+import { communityCategoryRepository } from '@/features/community/category-repository'
 import { communityRepository } from '@/features/community/repository'
 import { groupHref, type AdminCommunityGroup } from '@/features/community/types'
 import { pluralize } from '@/lib/format'
@@ -58,7 +59,10 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
   const filter = readFilter(params.status)
   const editId = single(params.edit) || single(params.group)
   const createdSlug = single(params.created)
-  const groups = await communityRepository.listAdminGroups({ search: query, archived: filter })
+  const [groups, categories] = await Promise.all([
+    communityRepository.listAdminGroups({ search: query, archived: filter }),
+    communityCategoryRepository.listPickerOptions(),
+  ])
   const editing = editId ? groups.find((group) => group.id === editId) ?? null : null
 
   function href(next: { status?: Filter }) {
@@ -76,7 +80,13 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
         title="Communities"
         meta={pluralize(groups.length, 'group')}
         description="Every community group: who owns it, how many members it has and whether it is live. Reports about groups and group posts arrive in Moderation."
-        actions={<a href="#create-group" className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Create group</a>}
+        actions={(
+          <>
+            {/* Round I (I2) */}
+            <Link href="/admin/communities/categories" className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">Categories</Link>
+            <a href="#create-group" className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Create group</a>
+          </>
+        )}
       />
 
       {createdSlug ? (
@@ -197,7 +207,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
               <Link href={href({})} className={actionClass}>Close</Link>
             </div>
           </div>
-          <AdminGroupForm group={editing} />
+          <AdminGroupForm group={editing} categories={categories} />
           <div className="border-t border-mist-100 pt-4">
             <h4 className="mb-2 text-sm font-bold text-navy-950">Owner</h4>
             <AdminGroupOwnerForm group={editing} />
@@ -212,7 +222,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
           <h3 id="create-group-heading" className="text-lg font-bold text-navy-950">Create group</h3>
           <p className="mt-1 text-sm text-muted">The owner is added as an active member at once; they can then appoint moderators from the group’s Members tab.</p>
         </div>
-        <AdminGroupForm />
+        <AdminGroupForm categories={categories} />
       </section>
     </div>
   )
