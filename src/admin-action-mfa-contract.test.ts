@@ -30,7 +30,7 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/community/category-admin-actions.ts', ['createCommunityCategory', 'updateCommunityCategory', 'moveCommunityCategory', 'setCommunityCategoryHidden', 'moveCommunityCategoryCommunities', 'deleteCommunityCategory']],
   ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites', 'prepareLegacyReminderBatch', 'startPreparedLegacyReminders', 'cancelPreparedLegacyReminders', 'stopUnsentLegacyReminders', 'sendLegacyReminderTest']],
   ['src/features/newsletter/admin-actions.ts', ['adminUnsubscribeSubscriber', 'queueNewsletterCampaign']],
-  ['src/features/payouts/admin-actions.ts', ['updateFeeSettingsAction', 'setFeeOverrideAction', 'removeFeeOverrideAction', 'searchSellersAction', 'sendPayoutAction', 'refreshPayoutStatusAction', 'retryPayoutAction', 'cancelPayoutAction']],
+  ['src/features/payouts/admin-actions.ts', ['checkCashfreeConnectionAction', 'updateFeeSettingsAction', 'setFeeOverrideAction', 'removeFeeOverrideAction', 'searchSellersAction', 'sendPayoutAction', 'refreshPayoutStatusAction', 'retryPayoutAction', 'cancelPayoutAction']],
   // C4: admin review of course sellers' monthly invoices.
   ['src/features/payouts/seller-invoice-admin-actions.ts', ['approveSellerInvoiceAction', 'rejectSellerInvoiceAction']],
   ['src/features/learning/course-payment-actions.ts', ['refundCoursePaymentAction']],

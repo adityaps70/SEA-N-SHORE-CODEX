@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ save: vi.fn(), remove: vi.fn(), refresh: vi.fn() }))
+const mocks = vi.hoisted(() => ({ save: vi.fn(), remove: vi.fn(), refresh: vi.fn(), lookup: vi.fn() }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }))
-vi.mock('../actions', () => ({ savePayoutAccountAction: mocks.save, removePayoutAccountAction: mocks.remove }))
+vi.mock('../actions', () => ({ savePayoutAccountAction: mocks.save, removePayoutAccountAction: mocks.remove, lookupIfscAction: mocks.lookup }))
 
 import { PayoutAccountPanel } from './payout-account-panel'
 
@@ -15,6 +15,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.save.mockResolvedValue({ ok: true, message: 'Payout details saved. Payouts will go to Bank account ••••1772 · HDFC0000001.', account: { summary: saved.summary } })
   mocks.remove.mockResolvedValue({ ok: true, message: 'Payout details removed. Add new details to receive payouts again.' })
+  mocks.lookup.mockResolvedValue({ ok: true, bank: 'HDFC Bank · Fort, Mumbai', found: true })
 })
 afterEach(() => cleanup())
 
@@ -23,6 +24,20 @@ function fill(label: string | RegExp, value: string) {
 }
 
 describe('PayoutAccountPanel', () => {
+  it('shows the bank for a complete IFSC, and says when an IFSC does not exist (hotfix P1)', async () => {
+    render(<PayoutAccountPanel sellerKey={key} sellerName="You" kind="profile" account={null} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add payout details' }))
+    fill('IFSC', 'HDFC00')
+    expect(mocks.lookup).not.toHaveBeenCalled()
+    fill('IFSC', 'hdfc0000001')
+    await waitFor(() => expect(screen.getByTestId('payout-ifsc-bank')).toHaveTextContent('HDFC Bank · Fort, Mumbai'))
+    expect(mocks.lookup).toHaveBeenCalledWith('HDFC0000001')
+    expect(screen.getByLabelText('IFSC').getAttribute('aria-describedby')).toContain(screen.getByTestId('payout-ifsc-bank').id)
+    mocks.lookup.mockResolvedValueOnce({ ok: true, bank: null, found: false })
+    fill('IFSC', 'HDFC0999999')
+    await waitFor(() => expect(screen.getByTestId('payout-ifsc-bank')).toHaveTextContent("We couldn't find this IFSC."))
+  })
+
   it('invites a member without details to add them, and saves a bank account', async () => {
     render(<PayoutAccountPanel sellerKey={key} sellerName="You" kind="profile" account={null} />)
     expect(screen.getByText(/No payout details yet/)).toBeInTheDocument()

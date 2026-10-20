@@ -6,6 +6,19 @@ import { PayoutProviderError, PayoutsNotConfiguredError, type PayoutOutcome } fr
 
 /** Plain-language messages for payout results and failures (seller and admin screens). */
 
+/**
+ * Hotfix P1: Cashfree's reason for refusing payout details, in plain words. Cashfree's own text has field paths
+ * and codes (and could repeat what was typed), so it is never shown as is: only the field it names is used.
+ */
+export function plainCashfreeRejection(providerMessage: string | null) {
+  const text = (providerMessage ?? '').toLowerCase()
+  if (/ifsc/.test(text)) return "Cashfree says the IFSC isn't valid. Check it on your cheque book or bank app."
+  if (/\bvpa\b|\bupi\b/.test(text)) return "Cashfree says this UPI ID isn't valid or isn't active. Check it in your UPI app."
+  if (/account/.test(text)) return "Cashfree says the bank account number isn't valid for this IFSC."
+  if (/name/.test(text)) return "Cashfree didn't accept the account holder's name. Enter it exactly as your bank shows it, in letters and spaces."
+  if (/block|blacklist|fraud|not allowed/.test(text)) return "Cashfree can't send payouts to these details. Use a different bank account or UPI ID."
+  return "Cashfree couldn't verify these details with the bank. Check the account number and IFSC, or the UPI ID."
+}
 
 export function sellerPayoutErrorMessage(error: unknown) {
   if (error instanceof PayoutsNotConfiguredError) return 'Payouts are not switched on yet, so payout details cannot be saved. Nothing was saved.'
@@ -14,7 +27,7 @@ export function sellerPayoutErrorMessage(error: unknown) {
     if (error.code === 'payout_in_progress') return 'A payout to your current details is on its way. You can change or remove them once it completes.'
   }
   if (error instanceof PayoutProviderError) {
-    if (error.reason === 'details_rejected') return "Cashfree couldn't accept these payout details. Check the account number and IFSC, or the UPI ID, and try again. Nothing was saved."
+    if (error.reason === 'details_rejected') return `Cashfree couldn't accept these payout details. ${plainCashfreeRejection(error.providerMessage)} Nothing was saved.`
     if (error.reason === 'duplicate_details') return 'These bank details are already registered with our payout partner under another record. Use different details, or contact the Sea N Shore team.'
     if (error.reason === 'setup') return "Payout details can't be saved right now because of a setup problem on our side. Nothing was saved. Please try again later."
     return "We couldn't reach our payout partner, Cashfree. Nothing was saved. Please try again in a few minutes."

@@ -3,7 +3,7 @@
 import { Building2, Landmark, LockKeyhole, Smartphone, UserRound } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
-import { removePayoutAccountAction, savePayoutAccountAction } from '../actions'
+import { lookupIfscAction, removePayoutAccountAction, savePayoutAccountAction } from '../actions'
 import type { PayoutAccountFieldErrors, PayoutMethod } from '../payout-rules'
 
 export type PayoutAccountView = {
@@ -48,12 +48,40 @@ export function PayoutAccountPanel({ sellerKey, sellerName, kind, account, locke
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<PayoutAccountFieldErrors>({})
   const [notice, setNotice] = useState<string | null>(null)
+  /** Hotfix P1: the bank for the IFSC being typed ("HDFC Bank · Fort, Mumbai"), or a not-found hint. */
+  const [ifscInfo, setIfscInfo] = useState<{ text: string; found: boolean } | null>(null)
+  const ifscRequest = useRef(0)
+  const ifscTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const openRef = useRef<HTMLButtonElement>(null)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const confirmRemoveRef = useRef<HTMLButtonElement>(null)
   const returnFocus = useRef(false)
   const id = useId()
   const titleId = `${id}-title`
+
+  useEffect(() => () => {
+    if (ifscTimer.current) clearTimeout(ifscTimer.current)
+  }, [])
+
+  function onIfscInput(value: string) {
+    const ifsc = value.replace(/\s/g, '').toUpperCase()
+    const request = ++ifscRequest.current
+    if (ifscTimer.current) clearTimeout(ifscTimer.current)
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+      setIfscInfo(null)
+      return
+    }
+    ifscTimer.current = setTimeout(() => {
+      void lookupIfscAction(ifsc).then((result) => {
+        if (request !== ifscRequest.current) return
+        if (!result.ok) setIfscInfo(null)
+        else if (!result.found) setIfscInfo({ text: "We couldn't find this IFSC. Check it on your cheque book or in your bank app.", found: false })
+        else setIfscInfo(result.bank ? { text: result.bank, found: true } : null)
+      }).catch(() => {
+        if (request === ifscRequest.current) setIfscInfo(null)
+      })
+    }, 350)
+  }
 
   useEffect(() => {
     if (mode === 'edit') firstFieldRef.current?.focus()
@@ -275,8 +303,11 @@ export function PayoutAccountPanel({ sellerKey, sellerName, kind, account, locke
               </div>
               <div className="grid gap-1.5 sm:max-w-xs">
                 <label htmlFor={`${id}-ifsc`} className="text-sm font-semibold text-navy-900">IFSC</label>
-                <input id={`${id}-ifsc`} name="ifsc" autoComplete="off" autoCapitalize="characters" maxLength={11} placeholder="e.g. HDFC0001234" aria-invalid={Boolean(fieldErrors.ifsc)} aria-describedby={describedBy('ifsc')} className={`${inputClass} uppercase`} />
+                <input id={`${id}-ifsc`} name="ifsc" autoComplete="off" autoCapitalize="characters" maxLength={11} placeholder="e.g. HDFC0001234" onChange={(event) => onIfscInput(event.currentTarget.value)} aria-invalid={Boolean(fieldErrors.ifsc)} aria-describedby={[describedBy('ifsc'), `${id}-ifsc-bank`].filter(Boolean).join(' ')} className={`${inputClass} uppercase`} />
                 <FieldError id={`${id}-ifsc-error`} message={fieldErrors.ifsc} />
+                <p id={`${id}-ifsc-bank`} aria-live="polite" data-testid="payout-ifsc-bank" className={`text-sm ${ifscInfo && !ifscInfo.found ? 'font-medium text-amber-800' : 'text-muted'}`}>
+                  {fieldErrors.ifsc ? null : ifscInfo?.text}
+                </p>
               </div>
             </>
           ) : (

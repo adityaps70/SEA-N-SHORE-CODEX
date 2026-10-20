@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { withTransaction } from '@/lib/db/client'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { removeSellerFeeOverride, setSellerFeeOverride, updatePlatformFeeSettings } from '@/features/payments/earnings'
+import { SETUP_REASON_TEXT } from '@/features/payments/cashfree-health'
+import { checkCashfreeNow } from '@/features/payments/payments-health'
 import { adminPayoutErrorMessage, payoutOutcomeMessage } from './payout-messages'
 import { getSellerIdentity, searchSellers, type SellerSearchResult } from './payout-queries'
 import { getPayout, getPayoutSettings, PayoutError, updatePayoutSettings } from './payout-repository'
@@ -76,6 +78,30 @@ export async function updateFeeSettingsAction(input: { defaultPercent: string; h
     if (error instanceof NotAdminError) return { ok: false, error: NOT_ADMIN }
     logUnexpected('fee_settings_update_failed', error)
     return { ok: false, error: "We couldn't save the fee settings. Nothing was changed. Please try again." }
+  }
+}
+
+/**
+ * Hotfix P1: one harmless read per Cashfree product from this server (Admin › Payments › Payments health).
+ * Reports only whether Cashfree accepted our keys, and why not.
+ */
+export async function checkCashfreeConnectionAction(): Promise<AdminActionResult> {
+  try {
+    await requireAdmin()
+    const results = await checkCashfreeNow()
+    refresh()
+    const name = { pg: 'Payment Gateway', payouts: 'Payouts' } as const
+    const parts = results.map(({ product, outcome }) => {
+      if (!outcome) return `${name[product]}: not set up.`
+      if (outcome.ok) return `${name[product]}: Cashfree accepted our keys.`
+      return `${name[product]}: ${SETUP_REASON_TEXT[outcome.reason]}`
+    })
+    const allOk = results.every(({ outcome }) => outcome?.ok)
+    return allOk ? { ok: true, message: parts.join(' ') } : { ok: false, error: parts.join(' ') }
+  } catch (error) {
+    if (error instanceof NotAdminError) return { ok: false, error: NOT_ADMIN }
+    logUnexpected('payments_health_check_failed', error)
+    return { ok: false, error: "We couldn't run the check. Nothing was changed. Please try again." }
   }
 }
 

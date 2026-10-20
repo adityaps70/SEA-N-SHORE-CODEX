@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseQueryClient } from '@/lib/db/client'
 import type { CashfreePayoutsConfig } from '@/features/payments/cashfree-config'
+import { cashfreeReportingFetch, classifyCashfreeSetupFailure, type CashfreeSetupReason } from '@/features/payments/cashfree-health'
 import type { Seller } from '@/features/payments/earnings'
 import { PaymentProviderError } from '@/features/payments/types'
 import { createCashfreePayoutsClient, isDefiniteRejection, type CashfreeBeneficiary, type CashfreePayoutsClient } from './cashfree-payouts-client'
@@ -45,11 +46,20 @@ export class PayoutsNotConfiguredError extends Error {
   }
 }
 
-/** Cashfree could not be used for this request. `reason` picks the message shown. */
+/**
+ * Cashfree could not be used for this request. `reason` picks the message shown; for 'setup', `setupReason` says
+ * which part of the Payouts setup Cashfree refused (logged for admins, never shown to members).
+ */
 export class PayoutProviderError extends Error {
-  constructor(readonly reason: 'unavailable' | 'setup' | 'details_rejected' | 'duplicate_details', readonly providerMessage: string | null = null) {
+  readonly setupReason: CashfreeSetupReason | null
+  constructor(
+    readonly reason: 'unavailable' | 'setup' | 'details_rejected' | 'duplicate_details',
+    readonly providerMessage: string | null = null,
+    readonly status: number | null = null,
+  ) {
     super(`payout_provider_${reason}`)
     this.name = 'PayoutProviderError'
+    this.setupReason = reason === 'setup' ? classifyCashfreeSetupFailure(providerMessage, status) : null
   }
 }
 
@@ -86,10 +96,10 @@ function stateOf(payout: Payout): PayoutSendState {
 
 function providerFailure(error: unknown): PayoutProviderError {
   if (error instanceof PaymentProviderError) {
-    if (error.status === 401 || error.status === 403) return new PayoutProviderError('setup', error.providerMessage)
-    if (error.status === 400 || error.status === 422) return new PayoutProviderError('details_rejected', error.providerMessage)
+    if (error.status === 401 || error.status === 403) return new PayoutProviderError('setup', error.providerMessage, error.status)
+    if (error.status === 400 || error.status === 422) return new PayoutProviderError('details_rejected', error.providerMessage, error.status)
   }
-  return new PayoutProviderError('unavailable')
+  return new PayoutProviderError('unavailable', null, error instanceof PaymentProviderError ? error.status : null)
 }
 
 /** Plain reason for a transfer Cashfree refused outright. */
@@ -102,7 +112,7 @@ export function createPayoutService(deps: PayoutServiceDeps) {
   const now = deps.now ?? (() => new Date())
   const newId = deps.newId ?? randomUUID
   const log = deps.log ?? ((message, details) => console.error(message, details ?? {}))
-  const makeClient = deps.createClient ?? ((config: CashfreePayoutsConfig) => createCashfreePayoutsClient(config))
+  const makeClient = deps.createClient ?? ((config: CashfreePayoutsConfig) => createCashfreePayoutsClient(config, { fetchImpl: cashfreeReportingFetch('payouts') }))
 
   async function requireClient() {
     const config = await deps.loadConfig()

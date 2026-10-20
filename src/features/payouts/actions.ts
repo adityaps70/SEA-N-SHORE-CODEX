@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { describeIfsc, IFSC_NOT_FOUND_MESSAGE, IFSC_PATTERN, lookupIfsc } from './ifsc-lookup'
 import { sellerPayoutErrorMessage } from './payout-messages'
 import { PayoutError } from './payout-repository'
 import { maskPayoutAccount, parsePayoutAccountInput, parseSellerKey, type MaskedPayoutAccount, type PayoutAccountFieldErrors } from './payout-rules'
@@ -14,13 +15,25 @@ export type SavePayoutAccountResult =
 
 export type RemovePayoutAccountResult = { ok: true; message: string } | { ok: false; error: string }
 
+export type IfscLookupResult = { ok: true; bank: string | null; found: boolean } | { ok: false; error: string }
+
 function refresh() {
   for (const path of ['/settings/payouts', '/settings/earnings', '/admin/payments/payouts']) revalidatePath(path)
 }
 
 function logUnexpected(event: string, error: unknown) {
-  if (error instanceof PayoutError || error instanceof PayoutProviderError || error instanceof PayoutsNotConfiguredError) return
-  // Never log the submitted details: only the error name.
+  if (error instanceof PayoutError) return
+  // Never log the submitted details or Cashfree's text: only a reason code and the HTTP status.
+  if (error instanceof PayoutsNotConfiguredError) {
+    console.error(event, { kind: 'setup', reason: 'payouts_not_configured' })
+    return
+  }
+  if (error instanceof PayoutProviderError) {
+    if (error.reason === 'setup') console.error(event, { kind: 'setup', reason: error.setupReason, status: error.status })
+    else if (error.reason === 'unavailable') console.error(event, { kind: 'unavailable', status: error.status })
+    else console.warn(event, { kind: 'rejected', reason: error.reason, status: error.status })
+    return
+  }
   console.error(event, { name: error instanceof Error ? error.name : null })
 }
 
@@ -42,6 +55,10 @@ export async function savePayoutAccountAction(sellerKeyValue: string, details: R
   if (!parsed.ok) return { ok: false, error: 'Check the highlighted fields.', fieldErrors: parsed.fieldErrors }
   try {
     const user = await requireAwsUser()
+    // An IFSC that definitely does not exist is a mistake in the form, not something to send to Cashfree.
+    if (parsed.input.method === 'bank' && (await lookupIfsc(parsed.input.ifsc)).status === 'not_found') {
+      return { ok: false, error: 'Check the highlighted fields.', fieldErrors: { ifsc: IFSC_NOT_FOUND_MESSAGE } }
+    }
     const { account, replaced } = await payoutService.addPayoutAccount({ actorProfileId: user.id, seller, details: parsed.input })
     refresh()
     const masked = maskPayoutAccount(account)
@@ -55,6 +72,21 @@ export async function savePayoutAccountAction(sellerKeyValue: string, details: R
   } catch (error) {
     logUnexpected('payout_account_save_failed', error)
     return { ok: false, error: sellerPayoutErrorMessage(error) }
+  }
+}
+
+/** The bank (and branch) for an IFSC, for the line under the IFSC field. Signed-in members only. */
+export async function lookupIfscAction(ifscValue: string): Promise<IfscLookupResult> {
+  const ifsc = String(ifscValue ?? '').replace(/\s/g, '').toUpperCase()
+  if (!IFSC_PATTERN.test(ifsc)) return { ok: false, error: 'Enter the 11-character IFSC.' }
+  try {
+    await requireAwsUser()
+    const result = await lookupIfsc(ifsc)
+    if (result.status === 'not_found') return { ok: true, bank: null, found: false }
+    return { ok: true, bank: describeIfsc(result), found: true }
+  } catch (error) {
+    logUnexpected('payout_ifsc_lookup_failed', error)
+    return { ok: false, error: "We couldn't look up this IFSC right now." }
   }
 }
 

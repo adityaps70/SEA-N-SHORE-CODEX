@@ -1,5 +1,6 @@
 import { loadCashfreeSettings, parseProviderPreference } from './cashfree-config'
 import { createCashfreeGateway } from './cashfree'
+import { cashfreeReportingFetch } from './cashfree-health'
 import { loadRazorpayConfig } from './config'
 import { createRazorpayGateway, type RazorpayGateway } from './razorpay'
 import type { PaymentCurrency, PaymentGateway, PaymentProviderName } from './types'
@@ -24,7 +25,7 @@ export type PaymentCapabilities = {
 async function configuredGateways() {
   const [cashfree, razorpay] = await Promise.all([loadCashfreeSettings(), loadRazorpayConfig()])
   return {
-    cashfree: cashfree.pg ? createCashfreeGateway(cashfree.pg) : null,
+    cashfree: cashfree.pg ? createCashfreeGateway(cashfree.pg, cashfreeReportingFetch('pg')) : null,
     razorpay: razorpay ? createRazorpayGateway(razorpay) : null,
     preferred: parseProviderPreference(process.env.PAYMENTS_PROVIDER) ?? cashfree.preferredProvider,
   }

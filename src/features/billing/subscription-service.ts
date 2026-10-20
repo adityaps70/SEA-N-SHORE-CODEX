@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { verifyCashfreeSignature } from '@/features/payments/cashfree'
+import { cashfreeReportingFetch } from '@/features/payments/cashfree-health'
 import { loadCashfreeConfig, type CashfreeConfig } from '@/features/payments/cashfree-config'
 import { loadCheckoutCustomer } from '@/features/payments/customer-contact'
 import { PaymentProviderError, PaymentVerificationError, type CheckoutCustomer, type HeaderLookup } from '@/features/payments/types'
@@ -120,7 +121,7 @@ export function createSubscriptionService(deps: {
   trialSweep?: (now: Date) => Promise<{ closed: number; reminders: number; failures: number }>
 } = {}) {
   const loadConfig = deps.loadConfig ?? (() => loadCashfreeConfig())
-  const createClient = deps.createClient ?? ((config: CashfreeConfig) => createCashfreeSubscriptionsClient(config))
+  const createClient = deps.createClient ?? ((config: CashfreeConfig) => createCashfreeSubscriptionsClient(config, cashfreeReportingFetch('pg')))
   const repository = deps.repository ?? subscriptionRepository
   const transaction: RunInTransaction = deps.transaction ?? withTransaction
   const storeFor = deps.storeFor ?? createSqlBillingStore

@@ -29,7 +29,17 @@ vi.mock('@/features/admin/access', () => ({
     return { id: 'admin-1', cognitoSub: 'a', email: null }
   },
 }))
+vi.mock('@/features/payments/payments-health', () => ({
+  getPaymentsHealth: async () => ({
+    allOk: false,
+    lines: [
+      { id: 'payouts_keys', label: 'Payouts keys', tone: 'ok', value: 'Present · PROD', detail: null },
+      { id: 'payouts_auth', label: 'Payouts authentication', tone: 'problem', value: 'IP whitelist (no public key)', detail: "Our web servers have no fixed address, so an IP whitelist can't work." },
+    ],
+  }),
+}))
 vi.mock('@/features/payouts/admin-actions', () => ({
+  checkCashfreeConnectionAction: vi.fn(),
   sendPayoutAction: vi.fn(), refreshPayoutStatusAction: vi.fn(), retryPayoutAction: vi.fn(), cancelPayoutAction: vi.fn(),
   updateFeeSettingsAction: vi.fn(), searchSellersAction: vi.fn(), setFeeOverrideAction: vi.fn(), removeFeeOverrideAction: vi.fn(),
 }))
@@ -133,6 +143,15 @@ describe('Admin → Payments', () => {
     expect(screen.getByText('Platform fees earned').closest('div')).toHaveTextContent('₹99.80')
     expect(screen.getByText('Sandbox (test money)')).toBeInTheDocument()
     expect(screen.getByText(/1 payout was not confirmed by Cashfree/)).toBeInTheDocument()
+  })
+
+  it('overview shows the Payments health card with status only (hotfix P1)', async () => {
+    render(await AdminPaymentsOverviewPage())
+    const card = screen.getByRole('region', { name: /Payments health/ })
+    expect(within(card).getByText('Needs attention')).toBeInTheDocument()
+    expect(within(card).getByTestId('payments-health-payouts_auth')).toHaveTextContent('Needs attention: IP whitelist (no public key)')
+    expect(within(card).getByTestId('payments-health-payouts_keys')).toHaveTextContent('OK: Present · PROD')
+    expect(within(card).getByRole('button', { name: 'Check Cashfree now' })).toBeInTheDocument()
   })
 
   it('queue offers "Create payout" only when a payout can actually be sent', async () => {

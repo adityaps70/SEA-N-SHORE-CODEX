@@ -35,8 +35,14 @@ function refresh() {
 
 function logUnexpected(event: string, error: unknown) {
   if (error instanceof SellerInvoiceError || error instanceof SellerInvoiceFileError) return
-  // Only the error name: never the PAN, GSTIN, file name or amounts.
-  console.error(event, { name: error instanceof Error ? error.name : null })
+  // Only the error name and, for database errors, the SQLSTATE and constraint name: never the PAN, GSTIN,
+  // file name or amounts.
+  const details = error && typeof error === 'object' ? error as { code?: unknown; constraint?: unknown } : {}
+  console.error(event, {
+    name: error instanceof Error ? error.name : null,
+    code: typeof details.code === 'string' && /^[0-9A-Z]{5}$/.test(details.code) ? details.code : null,
+    constraint: typeof details.constraint === 'string' && /^[a-z0-9_]{1,63}$/.test(details.constraint) ? details.constraint : null,
+  })
 }
 
 async function authorise(sellerKeyValue: unknown) {

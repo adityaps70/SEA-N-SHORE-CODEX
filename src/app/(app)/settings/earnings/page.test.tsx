@@ -71,13 +71,17 @@ describe('Settings → Earnings', () => {
     expect(screen.getByText('On hold').closest('div')).toHaveTextContent('Next release 5 Oct 2026')
     expect(screen.getByText('Ready for payout').closest('div')).toHaveTextContent('₹179.64')
     expect(screen.getByText('Paid out').closest('div')).toHaveTextContent('₹898.20')
+    expect(screen.getByText('In a payout').closest('div')).toHaveTextContent('₹0')
+    expect(screen.getByText('In a payout').closest('div')).not.toHaveTextContent('₹0.00')
+    expect(screen.getByText(/the minimum payout is ₹100\./)).toBeInTheDocument()
     const sale = screen.getByText('Tanker Safety Workshop').closest('li') as HTMLElement
-    expect(within(sale).getByText('₹499.00')).toBeInTheDocument()
+    // Hotfix P1: the site-wide money format (no ".00" on whole amounts).
+    expect(within(sale).getByText('₹499')).toBeInTheDocument()
     expect(within(sale).getByText('(10%)')).toBeInTheDocument()
     expect(within(sale).getByText('₹449.10')).toBeInTheDocument()
     expect(within(sale).getByText('On hold until 5 Oct 2026')).toBeInTheDocument()
     const refund = screen.getByText('Bridge Resource Management').closest('li') as HTMLElement
-    expect(within(refund).getByText('−₹179.64')).toBeInTheDocument()
+    expect(within(refund).getByText('-₹179.64')).toBeInTheDocument()
     expect(within(refund).getByText('Deducted next payout')).toBeInTheDocument()
     expect(screen.getByText('N123456789')).toBeInTheDocument()
     expect(screen.getByText(/Add payout details to get paid/)).toBeInTheDocument()
@@ -133,7 +137,7 @@ describe('Settings → Earnings', () => {
     expect(within(section).getByText('July 2026').closest('li')).toHaveTextContent('No invoice needed')
     // The payout shows gross, TDS (section and rate) and net; the PAN never reaches the page.
     const payout = screen.getByText('N999').closest('li') as HTMLElement
-    expect(payout).toHaveTextContent('Earnings ₹1,800.00 − TDS ₹180.00 (section 194J, 10%, on ₹1,800.00 of course earnings) = paid ₹1,620.00')
+    expect(payout).toHaveTextContent('Earnings ₹1,800 − TDS ₹180 (section 194J, 10%, on ₹1,800 of course earnings) = paid ₹1,620')
     expect(document.body.textContent).not.toContain('ABCDE1234F')
   })
 
