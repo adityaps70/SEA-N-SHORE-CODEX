@@ -15,6 +15,6 @@ export async function requirePlatformAdministratorUser(): Promise<AwsVerifiedUse
   const allowed = await adminRepository.isPlatformAdministrator(user.id)
   if (!allowed) throw new Error('admin_forbidden')
   // Round 14 (2.11): administrators without an authenticator app are sent to set one up first.
-  await enforcePlatformAdminMfa()
+  await enforcePlatformAdminMfa(user.id)
   return user
 }

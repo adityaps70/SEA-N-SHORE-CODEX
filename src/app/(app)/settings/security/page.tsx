@@ -7,7 +7,9 @@ import { adminRepository } from '@/features/admin/repository'
 import { signOut } from '@/features/auth/actions'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { TwoStepPanel } from '@/features/auth/components/two-step-panel'
-import { satisfiesAdminMfa, type CurrentMfaStatus } from '@/features/auth/mfa'
+import { canStepUpForAdmin, satisfiesAdminMfa, type CurrentMfaStatus } from '@/features/auth/mfa'
+import { hasAdminStepUp } from '@/features/account-security/admin-step-up-runtime'
+import { AdminStepUpForm } from '@/features/account-security/components/admin-step-up-form'
 import { getCurrentMfaStatus } from '@/features/auth/mfa-status'
 import { safeAdminReturnPath } from '@/lib/auth/admin-mfa-paths'
 
@@ -23,6 +25,13 @@ function single(value: string | string[] | undefined) {
 /** What an administrator sent here by the admin MFA gate still has to do. */
 function adminNotice(status: CurrentMfaStatus | null): { text: string; signOut: boolean } | null {
   if (!status) return null
+  if (status.kind === 'federated') {
+    // Hotfix P1: a Google-only account (not linked to an email-and-password account) has no authenticator app.
+    return {
+      text: 'Admin pages need an authenticator app, and this Google sign-in isn’t linked to your email-and-password account yet. Sign out, then sign in with your email and password. Once the two are linked, you can confirm with your authenticator app here instead.',
+      signOut: true,
+    }
+  }
   if (status.kind !== 'eligible') {
     return {
       text: 'Admin pages need an email and password sign-in protected by an authenticator app. Sign out, then sign in with your email and password.',
@@ -35,12 +44,7 @@ function adminNotice(status: CurrentMfaStatus | null): { text: string; signOut: 
       signOut: false,
     }
   }
-  if (status.hostedSession) {
-    return {
-      text: 'Google sign-in doesn’t ask for your authenticator code. To open admin pages, sign out, then sign in with your email, password and authenticator code.',
-      signOut: true,
-    }
-  }
+  // Hotfix P1: a Google sign-in with an authenticator app on the account confirms with the step-up form instead.
   return null
 }
 
@@ -55,7 +59,10 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
   const returnTo = safeAdminReturnPath(single(params.next))
   const sentByAdminGate = isAdministrator && single(params.required) === 'admin'
   const gate = sentByAdminGate ? adminNotice(status) : null
-  const adminReady = sentByAdminGate && satisfiesAdminMfa(status)
+  const stepUpPossible = isAdministrator && canStepUpForAdmin(status)
+  const steppedUp = stepUpPossible ? await hasAdminStepUp(user.id) : false
+  const adminReady = sentByAdminGate && (satisfiesAdminMfa(status) || steppedUp)
+  const showStepUp = sentByAdminGate && stepUpPossible && !steppedUp
 
   return (
     <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
@@ -86,6 +93,8 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
           </div>
         </div>
       ) : null}
+
+      {showStepUp ? <AdminStepUpForm returnTo={returnTo} /> : null}
 
       {adminReady ? (
         <p>

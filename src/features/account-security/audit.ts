@@ -9,6 +9,8 @@ export type AccountSecurityAuditAction =
   | 'account.mfa_backup_codes_regenerated'
   | 'account.mfa_backup_code_used'
   | 'account.mfa_reset'
+  /** Hotfix P1: a platform administrator signed in with Google confirmed it is them to open admin pages. */
+  | 'account.admin_step_up'
 
 export async function recordAccountSecurityAudit(
   query: AccountQuery,
