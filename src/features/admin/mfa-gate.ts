@@ -1,7 +1,8 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ADMIN_RETURN_PATH_HEADER, adminMfaSetupHref } from '@/lib/auth/admin-mfa-paths'
-import { satisfiesAdminMfa, type CurrentMfaStatus } from '@/features/auth/mfa'
+import { canStepUpForAdmin, satisfiesAdminMfa, type CurrentMfaStatus } from '@/features/auth/mfa'
+import { hasAdminStepUp } from '@/features/account-security/admin-step-up-runtime'
 import { getCurrentMfaStatus } from '@/features/auth/mfa-status'
 import { adminRepository } from './repository'
 
@@ -9,22 +10,28 @@ import { adminRepository } from './repository'
  * Round 14 (2.11): platform administrators need an authenticator app, and a session that answered
  * it at sign-in, before any admin page renders. Runs only after the administrator check, so
  * other members are never sent here.
+ * Hotfix P1: a Google sign-in on an account with an authenticator app also passes once that sign-in has made the
+ * admin step-up (hasStepUp). A failed step-up lookup refuses (fail closed).
  */
 export function createAdminMfaGate(input: {
   getStatus: () => Promise<CurrentMfaStatus | null>
   getReturnPath: () => Promise<string | null>
   redirect: (href: string) => never
+  hasStepUp?: (userId: string) => Promise<boolean>
 }) {
-  return async function enforceAdminMfa(): Promise<void> {
+  const hasStepUp = input.hasStepUp ?? (async () => false)
+  return async function enforceAdminMfa(userId?: string): Promise<void> {
     // A Cognito failure throws here (fail closed); it is not treated as "MFA on".
     const status = await input.getStatus()
     if (satisfiesAdminMfa(status)) return
+    if (userId && canStepUpForAdmin(status) && await hasStepUp(userId).catch(() => false)) return
     input.redirect(adminMfaSetupHref(await input.getReturnPath().catch(() => null)))
   }
 }
 
 export const enforcePlatformAdminMfa = createAdminMfaGate({
   getStatus: () => getCurrentMfaStatus(),
+  hasStepUp: (userId) => hasAdminStepUp(userId),
   getReturnPath: async () => (await headers()).get(ADMIN_RETURN_PATH_HEADER),
   // Resolved when called, so modules that only import the admin access helpers stay side-effect free.
   redirect: (href) => redirect(href),
@@ -42,10 +49,14 @@ export const ADMIN_MFA_REQUIRED_MESSAGE = 'Turn on your authenticator app and si
 export function createAdminActionMfaChecks(input: {
   isPlatformAdministrator: (userId: string) => Promise<boolean>
   getStatus: () => Promise<CurrentMfaStatus | null>
+  hasStepUp?: (userId: string) => Promise<boolean>
 }) {
-  async function sessionSatisfiesAdminMfa() {
+  const hasStepUp = input.hasStepUp ?? (async () => false)
+  async function sessionSatisfiesAdminMfa(userId: string) {
     try {
-      return satisfiesAdminMfa(await input.getStatus())
+      const status = await input.getStatus()
+      if (satisfiesAdminMfa(status)) return true
+      return canStepUpForAdmin(status) && await hasStepUp(userId)
     } catch {
       return false
     }
@@ -64,7 +75,7 @@ export function createAdminActionMfaChecks(input: {
       } catch {
         administrator = true
       }
-      return administrator && !(await sessionSatisfiesAdminMfa())
+      return administrator && !(await sessionSatisfiesAdminMfa(userId))
     },
 
     /** Drop-in for `canAccessPlatformAdmin` where it grants authority: an administrator with admin MFA. */
@@ -74,7 +85,7 @@ export function createAdminActionMfaChecks(input: {
       } catch {
         return false
       }
-      return sessionSatisfiesAdminMfa()
+      return sessionSatisfiesAdminMfa(userId)
     },
   }
 }
@@ -82,6 +93,7 @@ export function createAdminActionMfaChecks(input: {
 const adminActionMfaChecks = createAdminActionMfaChecks({
   isPlatformAdministrator: (userId) => adminRepository.isPlatformAdministrator(userId),
   getStatus: () => getCurrentMfaStatus(),
+  hasStepUp: (userId) => hasAdminStepUp(userId),
 })
 
 export const adminActionMfaMissing = adminActionMfaChecks.adminActionMfaMissing

@@ -3,6 +3,7 @@ import type { CurrentMfaStatus } from '@/features/auth/mfa'
 
 vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: vi.fn() }))
 vi.mock('./repository', () => ({ adminRepository: { isPlatformAdministrator: vi.fn() } }))
+vi.mock('@/features/account-security/admin-step-up-runtime', () => ({ hasAdminStepUp: vi.fn(async () => false) }))
 
 import { createAdminActionMfaChecks, createAdminMfaGate } from './mfa-gate'
 
@@ -53,6 +54,51 @@ describe('platform admin MFA gate (Round 14, 2.11)', () => {
     const { enforce, redirect } = gate(new Error('TransportError'))
     await expect(enforce()).rejects.toThrow('TransportError')
     expect(redirect).not.toHaveBeenCalled()
+  })
+})
+
+describe('admin step-up for Google sign-ins (hotfix P1)', () => {
+  const google: CurrentMfaStatus = { ...ready, hostedSession: true }
+
+  function stepUpGate(status: CurrentMfaStatus | null, stepUp: boolean | Error) {
+    const redirect = vi.fn((href: string) => {
+      throw Object.assign(new Error('NEXT_REDIRECT'), { href })
+    }) as unknown as ((href: string) => never) & ReturnType<typeof vi.fn>
+    const hasStepUp = vi.fn(async () => {
+      if (stepUp instanceof Error) throw stepUp
+      return stepUp
+    })
+    return { redirect, hasStepUp, enforce: createAdminMfaGate({ getStatus: async () => status, getReturnPath: async () => '/admin', redirect, hasStepUp }) }
+  }
+
+  it('blocks a Google admin with an app until this sign-in has stepped up, then lets it through', async () => {
+    const blocked = stepUpGate(google, false)
+    await expect(blocked.enforce('admin-1')).rejects.toMatchObject({ message: 'NEXT_REDIRECT' })
+    expect(blocked.hasStepUp).toHaveBeenCalledWith('admin-1')
+    const allowed = stepUpGate(google, true)
+    await expect(allowed.enforce('admin-1')).resolves.toBeUndefined()
+    expect(allowed.redirect).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a Google-only account (no authenticator app)', { ...google, kind: 'federated' as const }],
+    ['an account without an authenticator app', { ...google, enabled: false }],
+    ['a failed step-up lookup', google],
+  ])('never lets a step-up open admin pages for %s', async (label, status) => {
+    const { enforce, redirect } = stepUpGate(status, label.startsWith('a failed') ? new Error('db down') : true)
+    await expect(enforce('admin-1')).rejects.toMatchObject({ message: 'NEXT_REDIRECT' })
+    expect(redirect).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies the same rule to admin server actions', async () => {
+    const isPlatformAdministrator = vi.fn(async () => true)
+    const withStepUp = createAdminActionMfaChecks({ isPlatformAdministrator, getStatus: async () => google, hasStepUp: async () => true })
+    await expect(withStepUp.adminActionMfaMissing('admin-1')).resolves.toBe(false)
+    await expect(withStepUp.canUsePlatformAdminAuthority('admin-1')).resolves.toBe(true)
+    const without = createAdminActionMfaChecks({ isPlatformAdministrator, getStatus: async () => google, hasStepUp: async () => false })
+    await expect(without.adminActionMfaMissing('admin-1')).resolves.toBe(true)
+    const federated = createAdminActionMfaChecks({ isPlatformAdministrator, getStatus: async () => ({ ...google, kind: 'federated' }), hasStepUp: async () => true })
+    await expect(federated.canUsePlatformAdminAuthority('admin-1')).resolves.toBe(false)
   })
 })
 

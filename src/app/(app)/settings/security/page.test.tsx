@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   signOut: vi.fn(async () => undefined),
   refresh: vi.fn(),
   replace: vi.fn(),
+  hasAdminStepUp: vi.fn(async () => false),
+  adminStepUpAction: vi.fn(async () => ({})),
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh, replace: mocks.replace }) }))
@@ -19,6 +21,8 @@ vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAws
 vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: mocks.isPlatformAdministrator } }))
 vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: mocks.getCurrentMfaStatus }))
 vi.mock('@/features/auth/actions', () => ({ signOut: mocks.signOut }))
+vi.mock('@/features/account-security/admin-step-up-runtime', () => ({ hasAdminStepUp: mocks.hasAdminStepUp }))
+vi.mock('@/features/account-security/admin-step-up-actions', () => ({ adminStepUpAction: mocks.adminStepUpAction }))
 vi.mock('@/features/auth/mfa-actions', () => ({
   startAuthenticatorSetup: mocks.startAuthenticatorSetup,
   confirmAuthenticatorSetup: mocks.confirmAuthenticatorSetup,
@@ -150,14 +154,39 @@ describe('/settings/security (Round 14, 2.11)', () => {
     expect(submitted.get('returnTo')).toBe('/admin/users')
   })
 
-  it('asks an administrator signed in with Google to sign in with password and code instead', async () => {
+  it('lets an administrator signed in with Google confirm with password and authenticator code, without signing out (hotfix P1)', async () => {
     mocks.isPlatformAdministrator.mockResolvedValue(true)
     mocks.getCurrentMfaStatus.mockResolvedValue({ ...on, hostedSession: true })
-    await renderPage({ required: 'admin', next: '/admin' })
+    await renderPage({ required: 'admin', next: '/admin/users' })
 
-    expect(screen.getByRole('status')).toHaveTextContent(/Google sign-in doesn’t ask for your authenticator code/)
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    const form = screen.getByRole('form', { name: 'Confirm it’s you to open admin pages' })
+    expect(within(form).getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password')
+    expect(within(form).getByLabelText('6-digit code')).toHaveAttribute('autocomplete', 'one-time-code')
+    fireEvent.click(within(form).getByLabelText('Backup code'))
+    expect(within(form).getByLabelText('Backup code', { selector: 'input[name="code"]' })).toBeInTheDocument()
+    expect(form.querySelector('input[name="next"]')).toHaveAttribute('value', '/admin/users')
+    expect(within(form).getByRole('button', { name: 'Confirm and continue' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Continue to the admin console' })).not.toBeInTheDocument()
+    expect(mocks.hasAdminStepUp).toHaveBeenCalledWith('profile-1')
+  })
+
+  it('offers the way back once a Google sign-in has stepped up', async () => {
+    mocks.isPlatformAdministrator.mockResolvedValue(true)
+    mocks.getCurrentMfaStatus.mockResolvedValue({ ...on, hostedSession: true })
+    mocks.hasAdminStepUp.mockResolvedValueOnce(true)
+    await renderPage({ required: 'admin', next: '/admin/users' })
+    expect(screen.queryByRole('form', { name: 'Confirm it’s you to open admin pages' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Continue to the admin console' })).toHaveAttribute('href', '/admin/users')
+  })
+
+  it('explains that a Google-only sign-in must be linked first, and still needs an authenticator app', async () => {
+    mocks.isPlatformAdministrator.mockResolvedValue(true)
+    mocks.getCurrentMfaStatus.mockResolvedValue({ ...off, kind: 'federated', hostedSession: true })
+    await renderPage({ required: 'admin', next: '/admin' })
+    expect(screen.getByRole('status')).toHaveTextContent(/isn’t linked to your email-and-password account yet/)
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Confirm it’s you to open admin pages' })).not.toBeInTheDocument()
   })
 
   it('offers the way back once an administrator is ready, and ignores unsafe return paths', async () => {

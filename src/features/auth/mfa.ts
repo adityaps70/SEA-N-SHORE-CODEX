@@ -66,6 +66,14 @@ export function satisfiesAdminMfa(status: CurrentMfaStatus | null): boolean {
   return Boolean(status && status.kind === 'eligible' && status.enabled && !status.hostedSession)
 }
 
+/**
+ * Hotfix P1: a Google sign-in on an account that has an authenticator app. Cognito never asked it for a code, so
+ * admin pages open only after this sign-in's step-up (password plus authenticator code, or a backup code).
+ */
+export function canStepUpForAdmin(status: CurrentMfaStatus | null): boolean {
+  return Boolean(status && status.kind === 'eligible' && status.enabled && status.hostedSession)
+}
+
 export function otpauthUri(input: { secret: string; account: string; issuer?: string }) {
   const issuer = input.issuer ?? MFA_ISSUER
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(input.account)}`
