@@ -4,9 +4,10 @@ import { Info, Wallet } from 'lucide-react'
 import { textLinkClass } from '@/components/ui/interactive-styles'
 import type { SellerBalance } from '@/features/payments/earnings'
 import type { EarningLine, PayoutLine } from '../payout-queries'
+// Hotfix P1: the site-wide money format here ("₹0", "₹1,00,000", "₹99.50"), like the rest of the site.
 import {
   EARNING_STATUS_LABELS,
-  formatExactMoney,
+  formatMoney,
   formatPercentLabel,
   PAYOUT_STATUS_LABELS,
   SOURCE_TYPE_LABELS,
@@ -43,23 +44,23 @@ function BalanceTiles({ balance, minPayoutMinor }: { balance: SellerBalance; min
     <dl className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
       <StatTile
         label="On hold"
-        value={formatExactMoney(balance.pendingMinor, currency)}
+        value={formatMoney(balance.pendingMinor, currency)}
         hint={balance.nextAvailableAt ? <>Next release <time dateTime={balance.nextAvailableAt}>{formatDay(balance.nextAvailableAt)}</time></> : 'Nothing waiting'}
       />
       <StatTile
         label="Ready for payout"
         emphasis
-        value={formatExactMoney(balance.availableMinor, currency)}
+        value={formatMoney(balance.availableMinor, currency)}
         hint={owes
           ? 'Refunds after an earlier payout. This is deducted from your next sales.'
           : currency !== 'INR'
             ? 'USD earnings are paid by the Sea N Shore team directly.'
             : balance.availableMinor > 0 && balance.availableMinor < minPayoutMinor
-              ? `Paid once it reaches ${formatExactMoney(minPayoutMinor)}`
+              ? `Paid once it reaches ${formatMoney(minPayoutMinor)}`
               : 'Sent after a Sea N Shore review'}
       />
-      <StatTile label="In a payout" value={formatExactMoney(balance.inPayoutMinor, currency)} hint={balance.inPayoutMinor ? 'On its way to your account' : 'Nothing on its way'} />
-      <StatTile label="Paid out" value={formatExactMoney(balance.paidMinor, currency)} hint="All time" />
+      <StatTile label="In a payout" value={formatMoney(balance.inPayoutMinor, currency)} hint={balance.inPayoutMinor ? 'On its way to your account' : 'Nothing on its way'} />
+      <StatTile label="Paid out" value={formatMoney(balance.paidMinor, currency)} hint="All time" />
     </dl>
   )
 }
@@ -79,17 +80,17 @@ function SaleRow({ line }: { line: EarningLine }) {
       <dl className="contents">
         <div className="flex justify-between gap-3 lg:block lg:text-right">
           <dt className="text-xs text-muted lg:sr-only">Price paid</dt>
-          <dd className="tabular-nums text-navy-900">{formatExactMoney(line.grossMinor, line.currency)}</dd>
+          <dd className="tabular-nums text-navy-900">{formatMoney(line.grossMinor, line.currency)}</dd>
         </div>
         <div className="flex justify-between gap-3 lg:block lg:text-right">
           <dt className="text-xs text-muted lg:sr-only">Platform fee</dt>
           <dd className="tabular-nums text-navy-900">
-            {formatExactMoney(line.feeMinor, line.currency)} <span className="text-xs text-muted">({formatPercentLabel(line.feePercent)})</span>
+            {formatMoney(line.feeMinor, line.currency)} <span className="text-xs text-muted">({formatPercentLabel(line.feePercent)})</span>
           </dd>
         </div>
         <div className="flex justify-between gap-3 lg:block lg:text-right">
           <dt className="text-xs text-muted lg:sr-only">You receive</dt>
-          <dd className={`font-bold tabular-nums ${line.netMinor < 0 ? 'text-red-700' : 'text-navy-950'}`}>{formatExactMoney(line.netMinor, line.currency)}</dd>
+          <dd className={`font-bold tabular-nums ${line.netMinor < 0 ? 'text-red-700' : 'text-navy-950'}`}>{formatMoney(line.netMinor, line.currency)}</dd>
         </div>
         <div className="flex justify-between gap-3 lg:block lg:text-right">
           <dt className="text-xs text-muted lg:sr-only">Status</dt>
@@ -106,17 +107,17 @@ function PayoutRow({ payout }: { payout: PayoutLine }) {
   return (
     <li className="grid gap-2 px-5 py-3.5 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
       <div className="min-w-0">
-        <p className="font-bold tabular-nums text-navy-950">{formatExactMoney(payout.amountMinor)}</p>
+        <p className="font-bold tabular-nums text-navy-950">{formatMoney(payout.amountMinor)}</p>
         <p className="break-words text-xs text-muted">
           <time dateTime={payout.createdAt}>{formatDay(payout.createdAt)}</time>
           {payout.account ? ` · to ${payout.account.summary}` : ''}
         </p>
         {payout.tdsFinancialYear && payout.grossMinor !== null ? (
           <p className="mt-0.5 break-words text-xs text-navy-800">
-            Earnings <span className="font-semibold tabular-nums">{formatExactMoney(payout.grossMinor)}</span>
-            {' − '}TDS <span className="font-semibold tabular-nums">{formatExactMoney(payout.tdsMinor)}</span>
-            {' '}(section {payout.tdsSection}, {formatRateBasisPoints(payout.tdsRateBasisPoints)}, on {formatExactMoney(payout.tdsBaseMinor)} of course earnings)
-            {' = '}paid <span className="font-semibold tabular-nums">{formatExactMoney(payout.amountMinor)}</span>
+            Earnings <span className="font-semibold tabular-nums">{formatMoney(payout.grossMinor)}</span>
+            {' − '}TDS <span className="font-semibold tabular-nums">{formatMoney(payout.tdsMinor)}</span>
+            {' '}(section {payout.tdsSection}, {formatRateBasisPoints(payout.tdsRateBasisPoints)}, on {formatMoney(payout.tdsBaseMinor)} of course earnings)
+            {' = '}paid <span className="font-semibold tabular-nums">{formatMoney(payout.amountMinor)}</span>
           </p>
         ) : null}
         {payout.utr ? <p className="mt-0.5 break-all text-xs text-navy-800">Bank reference (UTR): <span className="font-semibold">{payout.utr}</span></p> : null}
@@ -162,7 +163,7 @@ export function EarningsView(props: EarningsViewProps) {
           <p>
             Buyers pay Sea N Shore. For every sale Sea N Shore keeps a platform fee of <span className="font-semibold">{formatPercentLabel(props.feePercent)}</span>
             {props.feeIsOverride ? ' (a rate agreed for this account)' : ''} and the rest is yours. Each sale is held for {props.holdDays} day{props.holdDays === 1 ? '' : 's'} after the event ends or the course is bought, in case of refunds, then it is ready for payout.
-            The Sea N Shore team reviews and sends payouts to your saved payout details; the minimum payout is {formatExactMoney(props.minPayoutMinor)}.
+            The Sea N Shore team reviews and sends payouts to your saved payout details; the minimum payout is {formatMoney(props.minPayoutMinor)}.
             If a buyer is refunded after you were paid, that amount is deducted from your next payout.
           </p>
           <p className="mt-2">

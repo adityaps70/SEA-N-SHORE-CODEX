@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   updatePayoutSettings: vi.fn(),
   getPayout: vi.fn(),
   getSellerIdentity: vi.fn(),
+  lookupIfsc: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -29,6 +30,7 @@ vi.mock('@/features/payments/earnings', () => ({
   removeSellerFeeOverride: vi.fn(),
 }))
 vi.mock('./payout-runtime', () => ({ payoutService: mocks.service, readClient: {} }))
+vi.mock('./ifsc-lookup', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), lookupIfsc: mocks.lookupIfsc }))
 vi.mock('./payout-queries', () => ({ getSellerIdentity: mocks.getSellerIdentity, searchSellers: vi.fn(async () => []) }))
 vi.mock('./payout-repository', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -37,7 +39,7 @@ vi.mock('./payout-repository', async (importOriginal) => ({
   updatePayoutSettings: mocks.updatePayoutSettings,
 }))
 
-import { removePayoutAccountAction, savePayoutAccountAction } from './actions'
+import { lookupIfscAction, removePayoutAccountAction, savePayoutAccountAction } from './actions'
 import { cancelPayoutAction, searchSellersAction, sendPayoutAction, setFeeOverrideAction, updateFeeSettingsAction } from './admin-actions'
 import { PayoutError } from './payout-repository'
 import { PayoutProviderError, PayoutsNotConfiguredError } from './payout-service'
@@ -59,6 +61,7 @@ beforeEach(() => {
   mocks.requireAdmin.mockResolvedValue({ id: 'admin-1', cognitoSub: 'a', email: 'admin@example.net' })
   mocks.withTransaction.mockImplementation(async (work: (tx: unknown) => unknown) => work({}))
   mocks.getSellerIdentity.mockResolvedValue({ seller: { profileId: USER }, name: 'Arjun Rao', slug: 'arjun', kind: 'profile' })
+  mocks.lookupIfsc.mockResolvedValue({ status: 'found', bank: 'HDFC Bank', branch: 'Fort', city: 'Mumbai' })
 })
 
 describe('seller payout detail actions', () => {
@@ -85,6 +88,46 @@ describe('seller payout detail actions', () => {
     expect(await savePayoutAccountAction(`profile:${USER}`, bank)).toMatchObject({ ok: false, error: expect.stringMatching(/couldn't accept these payout details/) })
     mocks.service.addPayoutAccount.mockRejectedValueOnce(new Error('boom'))
     expect(await savePayoutAccountAction(`profile:${USER}`, bank)).toMatchObject({ ok: false, error: expect.stringMatching(/Nothing was changed/) })
+  })
+
+  it('stops an IFSC that does not exist before Cashfree, but saves when the IFSC service is down', async () => {
+    mocks.lookupIfsc.mockResolvedValueOnce({ status: 'not_found' })
+    expect(await savePayoutAccountAction(`profile:${USER}`, bank)).toMatchObject({ ok: false, fieldErrors: { ifsc: expect.stringMatching(/couldn't find this IFSC/) } })
+    expect(mocks.service.addPayoutAccount).not.toHaveBeenCalled()
+    mocks.lookupIfsc.mockResolvedValueOnce({ status: 'unavailable', bank: 'HDFC Bank' })
+    mocks.service.addPayoutAccount.mockResolvedValue({ account: { method: 'bank', holderName: 'Arjun Rao', ifsc: 'HDFC0000001', last4: '1772', vpa: null }, replaced: false })
+    expect(await savePayoutAccountAction(`profile:${USER}`, bank)).toMatchObject({ ok: true })
+  })
+
+  it('looks up the bank for an IFSC for signed-in members', async () => {
+    expect(await lookupIfscAction('hdfc0000001')).toEqual({ ok: true, bank: 'HDFC Bank · Fort, Mumbai', found: true })
+    expect(mocks.lookupIfsc).toHaveBeenCalledWith('HDFC0000001')
+    mocks.lookupIfsc.mockResolvedValueOnce({ status: 'not_found' })
+    expect(await lookupIfscAction('HDFC0999999')).toEqual({ ok: true, bank: null, found: false })
+    expect(await lookupIfscAction('HDFC1')).toMatchObject({ ok: false })
+  })
+
+  it('logs only reason codes and statuses: never the details, the name or Cashfree\'s text', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const upi = { method: 'upi', holderName: 'Arjun Rao', vpa: 'arjun.rao@okhdfc' }
+    mocks.service.addPayoutAccount.mockRejectedValueOnce(new PayoutProviderError('setup', 'IP not whitelisted your current IP is 13.200.1.2', 403))
+    expect(await savePayoutAccountAction(`profile:${USER}`, bank)).toMatchObject({ ok: false, error: expect.stringMatching(/setup problem on our side/) })
+    mocks.service.addPayoutAccount.mockRejectedValueOnce(new PayoutProviderError('details_rejected', 'vpa arjun.rao@okhdfc is invalid', 422))
+    expect(await savePayoutAccountAction(`profile:${USER}`, upi)).toMatchObject({ ok: false, error: expect.stringMatching(/UPI ID isn't valid/) })
+    mocks.service.addPayoutAccount.mockRejectedValueOnce(new PayoutProviderError('unavailable', null, 503))
+    await savePayoutAccountAction(`profile:${USER}`, bank)
+    mocks.service.addPayoutAccount.mockRejectedValueOnce(new PayoutsNotConfiguredError())
+    await savePayoutAccountAction(`profile:${USER}`, bank)
+
+    const logged = JSON.stringify([...errors.mock.calls, ...warnings.mock.calls])
+    expect(errors).toHaveBeenCalledWith('payout_account_save_failed', { kind: 'setup', reason: 'ip_not_whitelisted', status: 403 })
+    expect(warnings).toHaveBeenCalledWith('payout_account_save_failed', { kind: 'rejected', reason: 'details_rejected', status: 422 })
+    expect(errors).toHaveBeenCalledWith('payout_account_save_failed', { kind: 'unavailable', status: 503 })
+    expect(errors).toHaveBeenCalledWith('payout_account_save_failed', { kind: 'setup', reason: 'payouts_not_configured' })
+    for (const secret of ['00011020001772', 'HDFC0000001', 'hdfc0000001', 'arjun.rao@okhdfc', 'Arjun Rao', 'arjun@example.net', '13.200.1.2', 'current IP', 'is invalid']) {
+      expect(logged).not.toContain(secret)
+    }
   })
 
   it('rejects a malformed seller key and removes details', async () => {

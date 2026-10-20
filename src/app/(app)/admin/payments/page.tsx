@@ -4,6 +4,8 @@ import { AlertTriangle, ArrowRight } from 'lucide-react'
 import { AdminChip, AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { getPaymentCapabilities } from '@/features/payments/provider'
 import { requirePaymentsAdmin } from '@/features/payouts/admin-guard'
+import { getPaymentsHealth } from '@/features/payments/payments-health'
+import { PaymentsHealthCard } from '@/features/payouts/components/admin/payments-health-card'
 import { PaymentsAdminTabs } from '@/features/payouts/components/admin/payments-admin-tabs'
 import { getPaymentsOverview, type PaymentType } from '@/features/payouts/payout-queries'
 import { formatExactMoney } from '@/features/payouts/payout-rules'
@@ -20,10 +22,11 @@ function Money({ minor, currency }: { minor: number; currency: string }) {
 
 export default async function AdminPaymentsOverviewPage() {
   await requirePaymentsAdmin()
-  const [overview, capabilities, payoutsMode] = await Promise.all([
+  const [overview, capabilities, payoutsMode, health] = await Promise.all([
     getPaymentsOverview(readClient),
     getPaymentCapabilities().catch(() => ({ configured: false, provider: null, currencies: [] as string[] })),
     payoutsEnvironment(),
+    getPaymentsHealth(),
   ])
 
   const collectedRows = (['event', 'course', 'plan'] as PaymentType[]).flatMap((type) => {
@@ -62,6 +65,8 @@ export default async function AdminPaymentsOverviewPage() {
           </div>
         </div>
       </AdminPanel>
+
+      <PaymentsHealthCard health={health} />
 
       {attention ? (
         <Link href="/admin/payments/payouts" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-950 transition hover:bg-amber-100">

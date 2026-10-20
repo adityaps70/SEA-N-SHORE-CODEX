@@ -12,7 +12,8 @@ export type PayoutStatus = 'draft' | 'processing' | 'success' | 'failed' | 'reve
 export type PayoutAccountStatus = 'active' | 'removed'
 
 export const OPEN_PAYOUT_STATUSES: readonly PayoutStatus[] = ['draft', 'processing']
-export const DEFAULT_MIN_PAYOUT_MINOR = 10_000
+/** Hotfix P1 (owner's choice): ₹1,00,000, in paise. */
+export const DEFAULT_MIN_PAYOUT_MINOR = 10_000_000
 /** Two sends of the same draft this close together are treated as one (double click). */
 export const DISPATCH_RETRY_AFTER_MS = 2 * 60_000
 

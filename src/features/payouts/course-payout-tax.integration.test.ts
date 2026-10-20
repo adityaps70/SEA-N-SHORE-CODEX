@@ -292,3 +292,36 @@ describe('course earnings wait for an approved seller invoice; event earnings an
     ])
   }, 120_000)
 })
+
+describe('tax details for an organization (hotfix P1)', () => {
+  it('an owner or administrator saves the organization’s PAN; it reads back masked; another organization’s admin cannot', async () => {
+    const owner = await profile('Fixture Org Owner')
+    const outsider = await profile('Fixture Other Admin')
+    const [company] = await db.query(`insert into public.companies (slug, name, created_by, is_verified) values ('fixture-tax-org', 'Fixture Tax Org', $1, true) returning id`, [owner])
+    const [other] = await db.query(`insert into public.companies (slug, name, created_by, is_verified) values ('fixture-other-org', 'Fixture Other Org', $1, true) returning id`, [outsider])
+    await db.query(`insert into public.company_members (company_id, user_id, role, approved_at) values ($1, $2, 'owner', now())`, [company!.id, owner])
+    await db.query(`insert into public.company_members (company_id, user_id, role, approved_at) values ($1, $2, 'administrator', now())`, [other!.id, outsider])
+    const seller = { companyId: company!.id as string }
+
+    expect(await repository.canManageSeller(db.client as unknown as Client, owner, seller)).toBe(true)
+    expect(await repository.canManageSeller(db.client as unknown as Client, outsider, seller)).toBe(false)
+
+    // A company PAN (4th letter C) with a matching GSTIN; placeholder values only.
+    const saved = await inTransaction((tx) => tax.savePayoutTaxProfile(tx, {
+      seller,
+      legalName: 'Fixture Tax Org',
+      pan: 'AAACF1234K',
+      gstRegistered: true,
+      gstin: '27AAACF1234K1Z5',
+      actorProfileId: owner,
+    }))
+    expect(saved).toMatchObject({ legalName: 'Fixture Tax Org', maskedPan: 'AAACF****K', gstRegistered: true })
+    expect(JSON.stringify(saved)).not.toContain('AAACF1234K')
+    const stored = await tax.getPayoutTaxProfile(db.client as unknown as Client, seller)
+    expect(stored && tax.maskTaxProfile(stored)).toMatchObject({ maskedPan: 'AAACF****K' })
+    // Saving again replaces the organization's one row.
+    await inTransaction((tx) => tax.savePayoutTaxProfile(tx, { seller, legalName: 'Fixture Tax Org', pan: 'AAACF1234K', gstRegistered: false, gstin: null, actorProfileId: owner }))
+    const rows = await db.query(`select count(*)::int as n from public.payout_tax_profiles where seller_company_id = $1`, [company!.id])
+    expect(rows[0]!.n).toBe(1)
+  })
+})
