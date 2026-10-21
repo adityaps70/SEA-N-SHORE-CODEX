@@ -11,6 +11,7 @@ import {
   percentToBasisPoints,
   RELEASE_AVAILABLE_EARNINGS_SQL,
   recordSaleEarning,
+  refundSaleEarningAmount,
   releaseAvailableEarnings,
   reverseSaleEarning,
   setSellerFeeOverride,
@@ -50,6 +51,10 @@ type Ledger = {
   inserted?: Record<string, unknown> | null
   existing?: Record<string, unknown> | null
   locked?: Record<string, unknown> | null
+  /** What earlier adjustments already took back (positive). */
+  adjusted?: { gross_minor: string; fee_minor: string }
+  /** An adjustment already recorded under the requested source id. */
+  existingAdjustment?: Record<string, unknown> | null
 }
 
 function fakeTx(ledger: Ledger) {
@@ -57,6 +62,11 @@ function fakeTx(ledger: Ledger) {
     const text = sql.replace(/\s+/g, ' ')
     if (text.includes('from public.platform_fee_settings')) return { rows: [{ default_percent: ledger.defaultPercent ?? '10.00', hold_days: ledger.holdDays ?? 7 }] }
     if (text.includes('select percent from public.seller_fee_overrides')) return { rows: ledger.override ? [{ percent: ledger.override }] : [] }
+    if (text.includes('where adjustment.adjusts_earning_id = $1::uuid')) return { rows: [ledger.adjusted ?? { gross_minor: '0', fee_minor: '0' }] }
+    if (text.includes("where adjustment.source_type = 'adjustment' and adjustment.source_id = $1::text")) return { rows: ledger.existingAdjustment ? [ledger.existingAdjustment] : [] }
+    if (text.includes('insert into public.seller_earnings') && text.includes('$4::uuid')) {
+      return { rows: [earningRow({ id: '77777777-7777-4777-8777-777777777777', source_type: 'adjustment', source_id: values[2], adjusts_earning_id: values[3], gross_minor: values[5], platform_fee_minor: values[7], net_minor: values[8], status: 'available' })] }
+    }
     if (text.includes('insert into public.seller_earnings')) {
       if (ledger.inserted === null) return { rows: [] }
       const adjustment = text.includes("'adjustment'")
@@ -172,6 +182,40 @@ describe('recording and reversing sale earnings', () => {
     const insert = tx.query.mock.calls.find((call) => String(call[0]).includes('insert into public.seller_earnings'))!
     expect((insert[1] as unknown[]).slice(4, 8)).toEqual([-49900, '10.00', -4990, -44910])
     expect(audits(tx)).toEqual([{ action: 'earning_adjustment_created', amount: -44910 }])
+  })
+
+  it('a partial refund takes back exactly that share, with its fee, keyed by the refund', async () => {
+    const tx = fakeTx({ locked: earningRow({ status: 'available' }) })
+    const result = await refundSaleEarningAmount(tx, { sourceType: 'event_ticket', sourceId: orderId, refundedGrossMinor: 10000, refundKey: 'cf_refund_1', reason: 'ticket_partially_refunded' })
+    expect(result.outcome).toBe('adjusted')
+    const insert = tx.query.mock.calls.find((call) => String(call[0]).includes('insert into public.seller_earnings'))!
+    expect((insert[1] as unknown[]).slice(2, 9)).toEqual(['66666666-6666-4666-8666-666666666666:refund:cf_refund_1', '66666666-6666-4666-8666-666666666666', 'INR', -10000, '10.00', -1000, -9000])
+    // The sale itself is not reversed: the rest of it is still the seller's.
+    expect(tx.query.mock.calls.some((call) => String(call[0]).includes("set status = 'reversed'"))).toBe(false)
+    expect(audits(tx)).toEqual([{ action: 'earning_adjustment_created', amount: -9000 }])
+  })
+
+  it('never takes back more than is left, and the last share carries the rest of the fee', async () => {
+    const tx = fakeTx({ locked: earningRow({ status: 'paid' }), adjusted: { gross_minor: '40000', fee_minor: '4000' } })
+    await refundSaleEarningAmount(tx, { sourceType: 'event_ticket', sourceId: orderId, refundedGrossMinor: 20000, refundKey: 'cf_refund_2', reason: 'x' })
+    const insert = tx.query.mock.calls.find((call) => String(call[0]).includes('insert into public.seller_earnings'))!
+    expect((insert[1] as unknown[]).slice(5, 9)).toEqual([-9900, '10.00', -990, -8910])
+  })
+
+  it('the same refund is taken back once', async () => {
+    const tx = fakeTx({ locked: earningRow({ status: 'available' }), existingAdjustment: earningRow({ id: '77777777-7777-4777-8777-777777777777', source_type: 'adjustment', gross_minor: '-10000', platform_fee_minor: '-1000', net_minor: '-9000', status: 'available' }) })
+    await expect(refundSaleEarningAmount(tx, { sourceType: 'event_ticket', sourceId: orderId, refundedGrossMinor: 10000, refundKey: 'cf_refund_1', reason: 'x' })).resolves.toMatchObject({ outcome: 'adjusted' })
+    expect(tx.query.mock.calls.some((call) => String(call[0]).includes('insert into public.seller_earnings'))).toBe(false)
+    expect(audits(tx)).toEqual([])
+  })
+
+  it('a full refund after a partial one takes back only what was left, never the whole sale again', async () => {
+    const tx = fakeTx({ locked: earningRow({ status: 'available' }), adjusted: { gross_minor: '10000', fee_minor: '1000' } })
+    const result = await reverseSaleEarning(tx, { sourceType: 'event_ticket', sourceId: orderId, reason: 'ticket_refunded' })
+    expect(result.outcome).toBe('adjusted')
+    expect(tx.query.mock.calls.some((call) => String(call[0]).includes("set status = 'reversed'"))).toBe(false)
+    const insert = tx.query.mock.calls.find((call) => String(call[0]).includes('insert into public.seller_earnings'))!
+    expect((insert[1] as unknown[]).slice(2, 9)).toEqual(['66666666-6666-4666-8666-666666666666:refund:remainder', '66666666-6666-4666-8666-666666666666', 'INR', -39900, '10.00', -3990, -35910])
   })
 
   it('does nothing twice and ignores sales that never earned', async () => {

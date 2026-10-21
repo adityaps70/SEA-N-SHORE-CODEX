@@ -40,7 +40,7 @@ function totals(sales: CourseSaleRow[]) {
 
 function canRefund(sale: CourseSaleRow) {
   if (!sale.providerPaymentId || !sale.providerOrderId) return false
-  if (sale.refundStatus === 'requested') return false
+  if (sale.refundStatus === 'requested' || sale.refundStatus === 'pending') return false
   return sale.status === 'paid' || (sale.status === 'refunded' && sale.refundStatus === 'failed')
 }
 

@@ -92,6 +92,10 @@ type Scenario = {
   lockedOrder?: Record<string, unknown> | null
   earning?: Record<string, unknown> | null
   refundRequestStale?: boolean
+  /** payment_audit_events rows of earlier partial refunds of the order. */
+  partialRefunds?: Array<{ action: string; provider_reference: string; amount_minor: string }>
+  /** What earlier adjustments already took back from the earning (positive). */
+  adjusted?: { gross_minor: string; fee_minor: string }
 }
 
 /** Answers each SQL statement by what it does, so the tests do not depend on call order. */
@@ -104,12 +108,18 @@ function scenario(input: Scenario) {
     if (text.includes('where o.id = $1::uuid for update')) return { rows: input.lockedOrder ? [input.lockedOrder] : [] }
     if (text.includes('from public.platform_fee_settings')) return { rows: [{ default_percent: '10.00', hold_days: 7 }] }
     if (text.includes('from public.seller_fee_overrides')) return { rows: [] }
+    if (text.includes('from public.payment_audit_events audit')) return { rows: input.partialRefunds ?? [] }
+    if (text.includes('where adjustment.adjusts_earning_id = $1::uuid')) return { rows: [input.adjusted ?? { gross_minor: '0', fee_minor: '0' }] }
+    if (text.includes('insert into public.seller_earnings') && text.includes("'adjustment'")) {
+      return { rows: [earningRow({ id: '88888888-8888-4888-8888-888888888888', source_type: 'adjustment', source_id: values[2], adjusts_earning_id: values[3], gross_minor: values[5], platform_fee_minor: values[7], net_minor: values[8], status: 'available' })] }
+    }
     if (text.includes('insert into public.seller_earnings')) {
       return { rows: [earningRow({ seller_profile_id: values[0], seller_company_id: values[1], gross_minor: values[5], platform_fee_minor: values[7], net_minor: values[8], available_at: values[9] })] }
     }
     if (text.includes('from public.seller_earnings where source_type = $1::text and source_id = $2::text for update')) return { rows: input.earning ? [input.earning] : [] }
     if (text.includes("set status = 'reversed'")) return { rows: [{ ...input.earning, status: 'reversed' }] }
     if (text.includes('refund_requested_at < now()')) return { rows: [{ stale: Boolean(input.refundRequestStale) }] }
+    if (text.includes("set refund_status = 'pending'")) return { rows: [orderRow({ ...input.lockedOrder, refund_status: 'pending', provider_refund_id: values[1] })] }
     if (text.includes("set refund_status = 'requested'")) return { rows: [orderRow({ ...input.lockedOrder, refund_status: 'requested', refund_attempts: Number(input.lockedOrder?.refund_attempts ?? 0) + 1 })] }
     if (text.includes("update public.course_payment_orders o set status = 'refunded'")) return { rows: [orderRow({ ...input.lockedOrder, status: 'refunded', refund_status: values[1] ?? 'processed', provider_refund_id: values[2] })] }
     if (text.includes("set status = 'revoked'")) return { rows: input.enrollment ? [{ id: input.enrollment.id }] : [] }
@@ -328,6 +338,80 @@ describe('course payment repository: refunds', () => {
     expect(callWith("set status = 'revoked'")?.[1]).toEqual([orderId])
     expect(sqlCalls().some((sql) => sql.includes("set status = 'reversed'"))).toBe(true)
     expect(auditActions()).toEqual(['refunded', 'earning_reversed'])
+  })
+
+  it('a pending refund keeps the learner’s access: the order stays paid and nothing is reversed', async () => {
+    scenario({ lockedOrder: paidOrder, enrollment: { id: enrollmentId }, earning: earningRow() })
+    const order = await coursePaymentRepository.applyRefundUpdate(client, orderId, { providerRefundId: 'cf_refund_1', amountMinor: 400000, status: 'pending', actor: { type: 'provider' } })
+    expect(order).toMatchObject({ status: 'paid', refundStatus: 'pending', providerRefundId: 'cf_refund_1' })
+    expect(callWith("set status = 'revoked'")).toBeUndefined()
+    expect(callWith("set status = 'refunded'")).toBeUndefined()
+    expect(sqlCalls().some((sql) => sql.includes('insert into public.seller_earnings') || sql.includes("set status = 'reversed'"))).toBe(false)
+    expect(auditActions()).toEqual(['refund_pending'])
+  })
+
+  it('access ends only when Cashfree confirms the full refund', async () => {
+    scenario({ lockedOrder: { ...paidOrder, refund_status: 'pending', provider_refund_id: 'cf_refund_1' }, enrollment: { id: enrollmentId }, earning: earningRow() })
+    const order = await coursePaymentRepository.applyRefundUpdate(client, orderId, { providerRefundId: 'cf_refund_1', amountMinor: 400000, status: 'processed', actor: { type: 'provider' } })
+    expect(order).toMatchObject({ status: 'refunded', refundStatus: 'processed' })
+    expect(callWith("set status = 'revoked'")?.[1]).toEqual([orderId])
+    expect(auditActions()).toEqual(['refunded', 'earning_reversed'])
+  })
+
+  it('a partial refund takes only that amount from the seller and the learner keeps the course', async () => {
+    scenario({ lockedOrder: paidOrder, enrollment: { id: enrollmentId }, earning: earningRow() })
+    const order = await coursePaymentRepository.applyRefundUpdate(client, orderId, { providerRefundId: 'cf_refund_7', amountMinor: 100000, status: 'processed', actor: { type: 'provider' } })
+    expect(order).toMatchObject({ status: 'paid', enrollmentId })
+    expect(callWith("set status = 'revoked'")).toBeUndefined()
+    expect(callWith("set status = 'refunded'")).toBeUndefined()
+    expect(callWith("set status = 'reversed'")).toBeUndefined()
+    // ₹1,000 of the ₹4,000 sale: gross −1,00,000 paise, its 10% fee −10,000, net −90,000. Keyed by Cashfree's refund id.
+    const adjustment = callWith("insert into public.seller_earnings")![1] as unknown[]
+    expect(adjustment.slice(2, 9)).toEqual(['77777777-7777-4777-8777-777777777777:refund:cf_refund_7', '77777777-7777-4777-8777-777777777777', 'INR', -100000, '10.00', -10000, -90000])
+    expect(auditActions()).toEqual(['earning_adjustment_created', 'partial_refund_processed'])
+    const partial = db.txQuery.mock.calls.filter((call) => String(call[0]).includes('insert into public.payment_audit_events')).at(-1)![1] as unknown[]
+    expect(partial[7]).toBe(100000)
+    expect(partial[10]).toBe('cf_refund_7')
+  })
+
+  it('a partial refund that is still pending changes nothing but the audit trail', async () => {
+    scenario({ lockedOrder: paidOrder, enrollment: { id: enrollmentId }, earning: earningRow() })
+    await coursePaymentRepository.applyRefundUpdate(client, orderId, { providerRefundId: 'cf_refund_7', amountMinor: 100000, status: 'pending', actor: { type: 'provider' } })
+    expect(sqlCalls().some((sql) => sql.includes('update public.') || sql.includes('insert into public.seller_earnings'))).toBe(false)
+    expect(auditActions()).toEqual(['partial_refund_pending'])
+  })
+
+  it('the same partial refund reported twice is taken from the seller once', async () => {
+    scenario({ lockedOrder: paidOrder, earning: earningRow(), partialRefunds: [{ action: 'partial_refund_processed', provider_reference: 'cf_refund_7', amount_minor: '100000' }], adjusted: { gross_minor: '100000', fee_minor: '10000' } })
+    await coursePaymentRepository.applyRefundUpdate(client, orderId, { providerRefundId: 'cf_refund_7', amountMinor: 100000, status: 'processed', actor: { type: 'provider' } })
+    expect(sqlCalls().some((sql) => sql.includes('insert into public.seller_earnings') || sql.includes('update public.'))).toBe(false)
+    expect(auditActions()).toEqual([])
+  })
+
+  it('a refund of the rest after a partial one ends access and takes back only what was left', async () => {
+    scenario({
+      lockedOrder: paidOrder,
+      enrollment: { id: enrollmentId },
+      earning: earningRow(),
+      partialRefunds: [{ action: 'partial_refund_processed', provider_reference: 'cf_refund_7', amount_minor: '100000' }],
+      adjusted: { gross_minor: '100000', fee_minor: '10000' },
+    })
+    const order = await coursePaymentRepository.applyRefundUpdate(client, orderId, { providerRefundId: 'cf_refund_8', amountMinor: 300000, status: 'processed', actor: { type: 'provider' } })
+    expect(order).toMatchObject({ status: 'refunded' })
+    expect(callWith("set status = 'revoked'")?.[1]).toEqual([orderId])
+    expect(callWith("set status = 'reversed'")).toBeUndefined()
+    const adjustment = callWith("insert into public.seller_earnings")![1] as unknown[]
+    expect(adjustment.slice(2, 9)).toEqual(['77777777-7777-4777-8777-777777777777:refund:remainder', '77777777-7777-4777-8777-777777777777', 'INR', -300000, '10.00', -30000, -270000])
+  })
+
+  it('an admin refund after a partial one asks the gateway only for what is left, and waits while a refund is pending', async () => {
+    scenario({ lockedOrder: paidOrder, partialRefunds: [{ action: 'partial_refund_processed', provider_reference: 'cf_refund_7', amount_minor: '100000' }] })
+    await expect(coursePaymentRepository.requestRefund(client, { orderId, actor: { type: 'admin', profileId }, reason: 'admin_refund' }))
+      .resolves.toMatchObject({ attempt: 1, refundableMinor: 300000 })
+
+    scenario({ lockedOrder: { ...paidOrder, refund_status: 'pending' } })
+    await expect(coursePaymentRepository.requestRefund(client, { orderId, actor: { type: 'admin', profileId }, reason: 'admin_refund' }))
+      .rejects.toMatchObject({ code: 'refund_in_progress' })
   })
 
   it('is idempotent: a second refund webhook only updates the refund status', async () => {

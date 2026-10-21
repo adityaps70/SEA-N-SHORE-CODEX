@@ -79,7 +79,9 @@ function makeRepository() {
     getOrderById: vi.fn(async () => ({ ...baseOrder, providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', status: 'paid' }) as CoursePaymentOrder | null),
     findOrderByProviderOrderId: vi.fn(async () => ({ ...baseOrder, providerOrderId: gatewayId }) as CoursePaymentOrder | null),
     confirmPaidOrder: vi.fn(async () => ({ state: 'enrolled', order: { ...baseOrder, status: 'paid', enrollmentConfirmedAt: now.toISOString() } }) as never),
-    requestRefund: vi.fn(async () => ({ order: { ...baseOrder, providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', status: 'paid', refundStatus: 'requested', refundAttempts: 1 } as CoursePaymentOrder, attempt: 1 })),
+    requestRefund: vi.fn(async () => ({ order: { ...baseOrder, providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', status: 'paid', refundStatus: 'requested', refundAttempts: 1 } as CoursePaymentOrder, attempt: 1, refundableMinor: 400000 })),
+    markRefundPending: vi.fn(async () => ({ ...baseOrder, status: 'paid', refundStatus: 'pending' }) as CoursePaymentOrder | null),
+    applyRefundUpdate: vi.fn(async () => null as CoursePaymentOrder | null),
     markOrderRefunded: vi.fn(async () => ({ ...baseOrder, status: 'refunded' }) as CoursePaymentOrder | null),
     recordRefundFailure: vi.fn(async () => null),
     listLearnerPurchases: vi.fn(),
@@ -236,7 +238,12 @@ describe('course payment service: webhooks', () => {
     expect(repository.recordAttemptFailure).toHaveBeenCalledWith(tx, expect.objectContaining({ reason: 'Insufficient funds', dropped: false }))
 
     await service().applyGatewayEvent(tx, { kind: 'refund_updated', provider: 'cashfree', providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', providerRefundId: 'cf_refund_1', refundId: null, amountMinor: 400000, status: 'processed' })
-    expect(repository.markOrderRefunded).toHaveBeenCalledWith(tx, orderId, { providerRefundId: 'cf_refund_1', refundStatus: 'processed', actor: { type: 'provider' } })
+    expect(repository.applyRefundUpdate).toHaveBeenCalledWith(tx, orderId, { providerRefundId: 'cf_refund_1', amountMinor: 400000, status: 'processed', actor: { type: 'provider' } })
+
+    // The amount goes along, so a partial or pending refund keeps access (decided with the order locked).
+    await service().applyGatewayEvent(tx, { kind: 'refund_updated', provider: 'cashfree', providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', providerRefundId: 'cf_refund_3', refundId: null, amountMinor: 100000, status: 'pending' })
+    expect(repository.applyRefundUpdate).toHaveBeenLastCalledWith(tx, orderId, { providerRefundId: 'cf_refund_3', amountMinor: 100000, status: 'pending', actor: { type: 'provider' } })
+    expect(repository.markOrderRefunded).not.toHaveBeenCalled()
 
     await service().applyGatewayEvent(tx, { kind: 'refund_updated', provider: 'cashfree', providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', providerRefundId: 'cf_refund_2', refundId: null, amountMinor: 400000, status: 'failed' })
     expect(repository.recordRefundFailure).toHaveBeenCalledWith(tx, expect.objectContaining({ orderId, reason: 'gateway_refund_failed' }))
@@ -268,5 +275,15 @@ describe('course payment service: refunds', () => {
   it('says a pending refund is on its way', async () => {
     gateway = makeGateway({ refund: vi.fn(async () => ({ providerRefundId: 'cf_refund_1', status: 'pending' as const })) })
     await expect(service().refundOrder({ orderId, actor: { type: 'organizer', profileId }, reason: 'course_team_refund' })).resolves.toMatchObject({ state: 'refund_pending' })
+    // A pending refund does not end access: the order is only marked pending until Cashfree confirms it.
+    expect(repository.markRefundPending).toHaveBeenCalledWith(tx, orderId, expect.objectContaining({ providerRefundId: 'cf_refund_1' }))
+    expect(repository.markOrderRefunded).not.toHaveBeenCalled()
+  })
+
+  it('after a partial refund, refunds only what is left of the price', async () => {
+    repository.requestRefund.mockResolvedValueOnce({ order: { ...baseOrder, providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', status: 'paid', refundStatus: 'requested', refundAttempts: 1 } as CoursePaymentOrder, attempt: 1, refundableMinor: 300000 })
+    const outcome = await service().refundOrder({ orderId, actor: { type: 'admin', profileId }, reason: 'admin_refund' })
+    expect(gateway.refund).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 300000 }))
+    expect(outcome).toMatchObject({ state: 'refunded', amountMinor: 300000 })
   })
 })

@@ -58,7 +58,15 @@ export function describePaymentsHealth(settings: CashfreeSettings, record: Cashf
       ? { id: 'payouts_auth', label: 'Payouts authentication', tone: 'unknown', value: 'Not set up', detail: null }
       : payouts.publicKeyPem
         ? { id: 'payouts_auth', label: 'Payouts authentication', tone: 'ok', value: 'Signature (2FA public key)', detail: null }
-        : {
+        : payouts.publicKeyProblem === 'invalid'
+          ? {
+              id: 'payouts_auth',
+              label: 'Payouts authentication',
+              tone: 'problem',
+              value: 'Public key present but not valid',
+              detail: 'payouts_public_key is in the Cashfree secret but is not a usable RSA public key. Paste the whole .pem file Cashfree gave you, from the BEGIN line to the END line.',
+            }
+          : {
             id: 'payouts_auth',
             label: 'Payouts authentication',
             tone: 'problem',
@@ -106,7 +114,7 @@ export async function checkCashfreeNow(deps: {
   record?: (product: CashfreeProduct, outcome: CashfreeCallOutcome) => Promise<void>
   fetchImpl?: (input: string, init?: RequestInit) => Promise<Response>
 } = {}): Promise<ProbeResult[]> {
-  const settings = await (deps.loadSettings ?? (() => loadCashfreeSettings({ useCache: false })))()
+  const settings = await (deps.loadSettings ?? (() => loadCashfreeSettings({ useCache: false, refreshCache: true })))()
   const record = deps.record ?? ((product, outcome) => cashfreeHealthStore.record(product, outcome, { force: true }))
   const results: ProbeResult[] = []
 

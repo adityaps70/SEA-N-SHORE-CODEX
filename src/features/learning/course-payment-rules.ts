@@ -56,7 +56,7 @@ export type CourseOrderStatusView = {
 export function coursePurchaseStatusLabel(row: CourseOrderStatusView) {
   if (row.refundStatus === 'requested') return { label: 'Refund in progress', tone: 'bg-amber-50 text-amber-900' }
   if (row.status === 'refunded' && row.refundStatus === 'failed') return { label: 'Refund failed', tone: 'bg-rose-50 text-rose-700' }
-  if (row.status === 'refunded' && row.refundStatus === 'pending') return { label: 'Refund on its way', tone: 'bg-mist-50 text-navy-700' }
+  if (row.refundStatus === 'pending' && (row.status === 'refunded' || row.status === 'paid')) return { label: 'Refund on its way', tone: 'bg-mist-50 text-navy-700' }
   if (row.status === 'paid' && row.refundStatus === 'failed') return { label: 'Refund failed', tone: 'bg-rose-50 text-rose-700' }
   if (row.status === 'paid' && row.enrollmentConfirmedAt) return { label: 'Paid', tone: 'bg-emerald-50 text-emerald-800' }
   if (row.status === 'paid') return { label: 'Refund due', tone: 'bg-amber-50 text-amber-900' }

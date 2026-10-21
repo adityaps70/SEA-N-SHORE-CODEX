@@ -168,12 +168,12 @@ export async function refundEventPaymentAction(orderId: string): Promise<RefundE
       reason: isAdmin ? 'admin_refund' : 'organizer_refund',
     })
     if (order.eventId) refreshEventPaths(order.eventId)
-    const amount = formatMoney(order.amountMinor, order.currency)
+    const amount = formatMoney(result.amountMinor ?? order.amountMinor, order.currency)
     return {
       ok: true,
       message: result.state === 'refunded'
         ? `Refunded ${amount}. The attendee's seat has been released and the money is on its way back to their original payment method.`
-        : `Refund of ${amount} started. The payment provider is processing it; the attendee's seat has been released.`,
+        : `Refund of ${amount} started. The payment provider is processing it. The attendee keeps their seat until the refund is confirmed, then it is released.`,
     }
   } catch (error) {
     if (error instanceof EventRegistrationError) {

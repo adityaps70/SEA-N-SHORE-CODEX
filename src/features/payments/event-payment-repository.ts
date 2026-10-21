@@ -3,7 +3,8 @@ import { query, withTransaction, type DatabaseQueryClient } from '@/lib/db/clien
 import { EVENT_MANAGER_ACCESS_SQL } from '@/features/events/calendar-repository'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { recordPaymentAudit, type PaymentAuditActorType } from './audit'
-import { recordSaleEarning, reverseSaleEarning } from './earnings'
+import { recordSaleEarning, refundSaleEarningAmount, reverseSaleEarning } from './earnings'
+import { isPartialRefund, PARTIAL_REFUND_PENDING, PARTIAL_REFUND_PROCESSED, readPartialRefunds } from './partial-refunds'
 import {
   CHECKOUT_HOLD_MINUTES,
   checkoutBlocker,
@@ -160,6 +161,8 @@ async function audit(client: DatabaseQueryClient, order: EventPaymentOrder, acti
   fromStatus?: string | null
   toStatus?: string | null
   providerReference?: string | null
+  /** Defaults to the order amount; a partial refund records its own amount. */
+  amountMinor?: number
   details?: Record<string, unknown>
 } = {}) {
   const actor = input.actor ?? SYSTEM
@@ -171,7 +174,7 @@ async function audit(client: DatabaseQueryClient, order: EventPaymentOrder, acti
     action,
     fromStatus: input.fromStatus ?? null,
     toStatus: input.toStatus ?? null,
-    amountMinor: order.amountMinor,
+    amountMinor: input.amountMinor ?? order.amountMinor,
     currency: order.currency,
     provider: order.provider,
     providerReference: input.providerReference ?? null,
@@ -543,7 +546,8 @@ async function confirmPaidOrder(
 
 /**
  * Starts a refund: checks the order can be refunded and marks it 'requested' so a
- * double click cannot send two refunds. Returns the attempt number for the refund id.
+ * double click cannot send two refunds. Returns the attempt number for the refund id
+ * and the amount still to refund (the order amount less any partial refunds).
  */
 async function requestRefund(client: DatabaseQueryClient, input: { orderId: string; actor: PaymentActor; reason: string }) {
   const current = await lockOrder(client, input.orderId)
@@ -552,6 +556,11 @@ async function requestRefund(client: DatabaseQueryClient, input: { orderId: stri
   if ((current.status !== 'paid' && !retryAfterFailure) || !current.providerPaymentId || !current.providerOrderId) {
     throw new EventRegistrationError('refund_not_allowed')
   }
+  // A refund the gateway has not confirmed yet is still on its way; a second one would refund twice.
+  if (current.refundStatus === 'pending') throw new EventRegistrationError('refund_in_progress')
+  const partial = await readPartialRefunds(client, SUBJECT, current.id)
+  const refundableMinor = current.amountMinor - partial.refundedMinor
+  if (refundableMinor <= 0) throw new EventRegistrationError('refund_not_allowed')
   if (current.refundStatus === 'requested') {
     const stale = await client.query<QueryResultRow & { stale: boolean }>(`
       select refund_requested_at < now() - make_interval(mins => $2::integer) as stale
@@ -569,18 +578,86 @@ async function requestRefund(client: DatabaseQueryClient, input: { orderId: stri
     returning ${ORDER_COLUMNS}
   `, [current.id, input.actor.profileId ?? null])
   const order = mapOrder(updated.rows[0]!)
-  await audit(client, order, 'refund_requested', { actor: input.actor, fromStatus: current.status, toStatus: current.status, details: { reason: input.reason, attempt: order.refundAttempts } })
-  return { order, attempt: order.refundAttempts }
+  await audit(client, order, 'refund_requested', { actor: input.actor, fromStatus: current.status, toStatus: current.status, details: { reason: input.reason, attempt: order.refundAttempts, refundableMinor } })
+  return { order, attempt: order.refundAttempts, refundableMinor }
+}
+
+/**
+ * The gateway took a full refund but has not confirmed it yet. The attendee keeps the seat until it is confirmed
+ * (`markOrderRefunded`); the order stays paid with refund_status 'pending'. Idempotent.
+ */
+async function markRefundPending(client: DatabaseQueryClient, orderId: string, refund: { providerRefundId?: string | null; actor?: PaymentActor; reason?: string } = {}) {
+  const before = await lockOrder(client, orderId)
+  if (!before || before.status !== 'paid') return before
+  if (before.refundStatus === 'pending' && (!refund.providerRefundId || before.providerRefundId === refund.providerRefundId)) return before
+  const result = await client.query<OrderRow>(`
+    update public.event_payment_orders o
+    set refund_status = 'pending', provider_refund_id = coalesce($2::text, o.provider_refund_id), updated_at = now()
+    where o.id = $1::uuid
+    returning ${ORDER_COLUMNS}
+  `, [orderId, refund.providerRefundId ?? null])
+  const order = mapOrder(result.rows[0]!)
+  await audit(client, order, 'refund_pending', {
+    actor: refund.actor,
+    fromStatus: before.refundStatus,
+    toStatus: 'pending',
+    providerReference: order.providerRefundId,
+    details: { reason: refund.reason ?? null, seatKept: true },
+  })
+  return order
+}
+
+/**
+ * A refund the gateway reports (webhook), pending or processed. A refund of part of the ticket price takes only that
+ * amount back from the seller's earning and the attendee keeps the seat. A full refund releases the seat only once
+ * the gateway confirms it; until then it is pending. Idempotent per gateway refund id.
+ */
+async function applyRefundUpdate(client: DatabaseQueryClient, orderId: string, refund: {
+  providerRefundId: string | null
+  amountMinor: number | null
+  status: 'pending' | 'processed'
+  actor?: PaymentActor
+}) {
+  const actor = refund.actor ?? SYSTEM
+  const before = await lockOrder(client, orderId)
+  if (!before) return null
+  const partial = await readPartialRefunds(client, SUBJECT, before.id)
+  const refundId = refund.providerRefundId
+  if (refundId && partial.processedRefundIds.has(refundId)) return before
+  const partOfOrder = before.status === 'paid' && isPartialRefund({ orderAmountMinor: before.amountMinor, refundedMinor: partial.refundedMinor, refundAmountMinor: refund.amountMinor })
+  if (partOfOrder && refundId) {
+    const amountMinor = refund.amountMinor!
+    if (refund.status === 'pending') {
+      if (!partial.pendingRefundIds.has(refundId)) {
+        await audit(client, before, PARTIAL_REFUND_PENDING, { actor, toStatus: before.status, providerReference: refundId, amountMinor, details: { seatKept: true } })
+      }
+      return before
+    }
+    await refundSaleEarningAmount(client, { sourceType: 'event_ticket', sourceId: before.id, refundedGrossMinor: amountMinor, refundKey: refundId, reason: 'ticket_partially_refunded', actor })
+    await audit(client, before, PARTIAL_REFUND_PROCESSED, {
+      actor,
+      fromStatus: before.status,
+      toStatus: before.status,
+      providerReference: refundId,
+      amountMinor,
+      details: { refundedSoFarMinor: partial.refundedMinor + amountMinor, seatKept: true },
+    })
+    return before
+  }
+  if (refund.status === 'pending') return markRefundPending(client, orderId, { providerRefundId: refundId, actor })
+  return markOrderRefunded(client, orderId, { providerRefundId: refundId, refundStatus: 'processed', actor })
 }
 
 /**
  * Marks a payment refunded, releases the seat it paid for and reverses the seller's
- * earning, all in one transaction. Idempotent.
+ * earning (what is left of it after any partial refund), all in one transaction.
+ * Only for a refund the gateway confirmed: a pending one is `markRefundPending`.
+ * Idempotent.
  */
 async function markOrderRefunded(
   client: DatabaseQueryClient,
   orderId: string,
-  refund: { providerRefundId?: string | null; refundStatus?: 'pending' | 'processed'; actor?: PaymentActor; reason?: string } = {},
+  refund: { providerRefundId?: string | null; refundStatus?: 'processed'; actor?: PaymentActor; reason?: string } = {},
 ) {
   const actor = refund.actor ?? SYSTEM
   const before = await lockOrder(client, orderId)
@@ -691,6 +768,8 @@ export const eventPaymentRepository = {
   findOrderByProviderPaymentId,
   confirmPaidOrder,
   requestRefund,
+  markRefundPending,
+  applyRefundUpdate,
   markOrderRefunded,
   recordRefundFailure,
   recordWebhookEvent,

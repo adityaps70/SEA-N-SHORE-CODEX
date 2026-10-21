@@ -46,6 +46,14 @@ describe('Payments health card (hotfix P1)', () => {
     expect(health.allOk).toBe(false)
   })
 
+  it('tells a public key that is present but unusable apart from a missing one', () => {
+    const health = describePaymentsHealth(settings({ payouts: { ...settings().payouts!, publicKeyPem: null, publicKeyProblem: 'invalid' } }), healthy)
+    const line = health.lines.find((item) => item.id === 'payouts_auth')!
+    expect(line).toMatchObject({ tone: 'problem', value: 'Public key present but not valid' })
+    expect(line.detail).toMatch(/from the BEGIN line to the END line/)
+    expect(health.allOk).toBe(false)
+  })
+
   it('shows the last refusal in plain words while it is newer than the last success', () => {
     const health = describePaymentsHealth(settings(), {
       ...healthy,
