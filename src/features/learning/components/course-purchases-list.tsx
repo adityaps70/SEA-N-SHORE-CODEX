@@ -18,6 +18,9 @@ function refundLine(purchase: LearnerCoursePurchase) {
       ? `Refund of ${formatMoney(purchase.amountMinor, purchase.currency)} started on ${formatDate(purchase.refundedAt)}. It reaches your original payment method in about 5–7 working days.`
       : `Refunded ${formatMoney(purchase.amountMinor, purchase.currency)} on ${formatDate(purchase.refundedAt)} to your original payment method. Course access has ended.`
   }
+  if (purchase.status === 'paid' && purchase.refundStatus === 'pending') {
+    return `Refund of ${formatMoney(purchase.amountMinor, purchase.currency)} started. It reaches your original payment method in about 5–7 working days. You keep the course until the refund is confirmed.`
+  }
   if (purchase.status === 'paid' && !purchase.enrollmentConfirmedAt) {
     return 'We could not unlock the course for this payment. The Sea N Shore team will refund the full amount.'
   }

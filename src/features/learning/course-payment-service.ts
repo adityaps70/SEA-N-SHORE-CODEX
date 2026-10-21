@@ -52,9 +52,10 @@ export type CourseCheckoutOutcome =
   | { state: 'failed'; order: CoursePaymentOrder; message: string | null }
   | { state: 'expired'; order: CoursePaymentOrder }
 
+/** `amountMinor` is what this refund sends back (less than the order after a partial refund). */
 export type CourseRefundOutcome =
-  | { state: 'refunded'; order: CoursePaymentOrder }
-  | { state: 'refund_pending'; order: CoursePaymentOrder }
+  | { state: 'refunded'; order: CoursePaymentOrder; amountMinor?: number }
+  | { state: 'refund_pending'; order: CoursePaymentOrder; amountMinor?: number }
 
 /** Pages to refresh after a purchase or refund changes. */
 export function coursePurchasePaths(courseSlug: string | null) {
@@ -94,22 +95,24 @@ export function createCoursePaymentService(deps: {
   }
 
   /**
-   * Sends the money back through the gateway that took it. The order is marked
-   * 'requested' first (a double click cannot refund twice), then refunded or failed.
-   * Course access ends and the seller's earning is reversed in the same transaction.
+   * Sends the money back through the gateway that took it (what is left after any
+   * partial refund). The order is marked 'requested' first (a double click cannot
+   * refund twice), then refunded, pending or failed. Course access ends, and the
+   * seller's earning is reversed, only once the gateway confirms the refund; a pending
+   * refund keeps the learner's access until the webhook confirms it.
    */
   async function refundOrder(input: { orderId: string; actor: CoursePaymentActor; reason: string }): Promise<CourseRefundOutcome> {
     const existing = await repository.getOrderById(input.orderId)
     if (!existing) throw new CoursePurchaseError('order_not_found')
     const gateway = await gatewayFor(existing)
-    const { order, attempt } = await transaction((client) => repository.requestRefund(client, input))
+    const { order, attempt, refundableMinor } = await transaction((client) => repository.requestRefund(client, input))
 
     let result
     try {
       result = await gateway.refund({
         providerOrderId: order.providerOrderId!,
         providerPaymentId: order.providerPaymentId!,
-        amountMinor: order.amountMinor,
+        amountMinor: refundableMinor,
         currency: order.currency,
         refundId: refundIdFor(order.id, attempt),
         note: 'Sea N Shore course refund',
@@ -125,14 +128,22 @@ export function createCoursePaymentService(deps: {
       await transaction((client) => repository.recordRefundFailure(client, { orderId: order.id, reason: 'gateway_rejected', actor: input.actor, providerRefundId: result.providerRefundId }))
       throw new RefundFailedError(null)
     }
+    if (result.status !== 'processed') {
+      const pending = await transaction((client) => repository.markRefundPending(client, order.id, {
+        providerRefundId: result.providerRefundId,
+        actor: input.actor,
+        reason: input.reason,
+      }))
+      const final = pending ?? order
+      return { state: final.status === 'refunded' ? 'refunded' : 'refund_pending', order: final, amountMinor: refundableMinor }
+    }
     const refunded = await transaction((client) => repository.markOrderRefunded(client, order.id, {
       providerRefundId: result.providerRefundId,
-      refundStatus: result.status === 'processed' ? 'processed' : 'pending',
+      refundStatus: 'processed',
       actor: input.actor,
       reason: input.reason,
     }))
-    const final = refunded ?? order
-    return result.status === 'processed' ? { state: 'refunded', order: final } : { state: 'refund_pending', order: final }
+    return { state: 'refunded', order: refunded ?? order, amountMinor: refundableMinor }
   }
 
   /** Returns the money for a payment that could not unlock the course (e.g. a duplicate). */
@@ -410,7 +421,8 @@ export function createCoursePaymentService(deps: {
     if (event.status === 'failed') {
       await repository.recordRefundFailure(tx, { orderId: order.id, reason: 'gateway_refund_failed', actor, providerRefundId: event.providerRefundId })
     } else {
-      await repository.markOrderRefunded(tx, order.id, { providerRefundId: event.providerRefundId, refundStatus: event.status, actor })
+      // A partial refund keeps access; a full one ends it only once processed.
+      await repository.applyRefundUpdate(tx, order.id, { providerRefundId: event.providerRefundId, amountMinor: event.amountMinor, status: event.status, actor })
     }
     return { handled: true, revalidatePaths: paths }
   }

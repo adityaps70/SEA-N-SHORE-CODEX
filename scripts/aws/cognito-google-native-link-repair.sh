@@ -301,7 +301,59 @@ print(f'COGNITO_GOOGLE_NATIVE_REPAIR_DUPLICATE_EMAIL_GROUPS={duplicate_groups}')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_STRICT_CANDIDATES={len(strict_candidates)}')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_SKIPPED_GROUPS={skipped}')
 
+# unsafe-reason:begin
+def unsafe_reason(native_rows, google_rows):
+    """Hotfix P1: which database safety check a pair fails, or None when it is safe to link. Codes only."""
+    if len(native_rows) != 1:
+        return 'native_identity_not_unique'
+    native = native_rows[0]
+    if native.get('completed') is not True:
+        return 'native_profile_onboarding_incomplete'
+    if native.get('account_status') not in ('active', 'restricted'):
+        return 'native_profile_not_active'
+    if len(google_rows) > 1:
+        return 'google_identity_not_unique'
+    if google_rows:
+        google = google_rows[0]
+        if google.get('profile_id') == native.get('profile_id'):
+            return None
+        if google.get('completed') is not False:
+            return 'google_profile_separate_and_in_use'
+        if google.get('account_status') not in ('active', 'restricted'):
+            return 'google_profile_not_active'
+    return None
+# unsafe-reason:end
+
+# Hotfix P1: the Cognito subjects of platform administrators (profile ids are never printed), so the plan can say
+# whether an administrator's Google-only sign-in is among the safe pairs.
+admin_response = run_json('platform_admin_subjects', [
+    'aws', 'rds-data', 'execute-statement',
+    '--region', region,
+    '--resource-arn', cluster_arn,
+    '--secret-arn', secret_arn,
+    '--database', database,
+    '--sql',
+    """select distinct ia.provider_subject, ia.profile_id::text as profile_id
+         from public.identity_accounts ia
+         join public.user_roles ur on ur.user_id = ia.profile_id and ur.role::text = 'administrator'
+        where ia.provider = 'cognito'""",
+    '--format-records-as', 'JSON',
+    '--output', 'json',
+])
+try:
+    admin_rows = json.loads(admin_response.get('formattedRecords') or '[]')
+except json.JSONDecodeError:
+    raise SystemExit('platform_admin_subjects_invalid_json')
+admin_subjects = {row.get('provider_subject') for row in admin_rows}
+admin_profile_count = len({row.get('profile_id') for row in admin_rows})
+google_only_admin_subs = {
+    attrs(user).get('sub')
+    for user in users
+    if user.get('UserStatus') == 'EXTERNAL_PROVIDER' and attrs(user).get('sub') in admin_subjects
+}
+
 db_verified = []
+unsafe_reasons = defaultdict(int)
 
 for candidate in strict_candidates:
     parameters = json.dumps([
@@ -337,31 +389,31 @@ for candidate in strict_candidates:
     native_rows = [row for row in rows if row.get('provider_subject') == candidate['native_sub']]
     google_rows = [row for row in rows if row.get('provider_subject') == candidate['google_sub']]
 
-    safe = (
-        len(native_rows) == 1
-        and native_rows[0].get('completed') is True
-        and native_rows[0].get('account_status') in ('active', 'restricted')
-        and len(google_rows) <= 1
-    )
-
-    if safe and google_rows:
-        google_row = google_rows[0]
-        safe = (
-            google_row.get('profile_id') == native_rows[0].get('profile_id')
-            or (
-                google_row.get('completed') is False
-                and google_row.get('account_status') in ('active', 'restricted')
-            )
-        )
-
-    if safe:
+    reason = unsafe_reason(native_rows, google_rows)
+    if reason is None and candidate['google_sub'] in admin_subjects and candidate['native_sub'] not in admin_subjects:
+        # Linking moves Google sign-in to the native profile: an administrator role held only by the Google profile would be lost.
+        reason = 'admin_role_only_on_google_profile'
+    if reason is None:
         db_verified.append(candidate)
+    else:
+        unsafe_reasons[reason] += 1
 
+def admin_pair(candidate):
+    return candidate['google_sub'] in admin_subjects or candidate['native_sub'] in admin_subjects
+
+safe_admin = sum(1 for candidate in db_verified if admin_pair(candidate))
+unsafe_admin = sum(1 for candidate in strict_candidates if candidate not in db_verified and admin_pair(candidate))
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_DB_VERIFIED_CANDIDATES={len(db_verified)}')
 print(
     'COGNITO_GOOGLE_NATIVE_REPAIR_UNSAFE_CANDIDATES='
     f'{len(strict_candidates) - len(db_verified)}'
 )
+for reason in sorted(unsafe_reasons):
+    print(f'COGNITO_GOOGLE_NATIVE_REPAIR_UNSAFE_REASON={reason}|{unsafe_reasons[reason]}')
+print(f'COGNITO_PLATFORM_ADMIN_PROFILES={admin_profile_count}')
+print(f'COGNITO_GOOGLE_ONLY_PLATFORM_ADMIN_USERS={len(google_only_admin_subs)}')
+print(f'COGNITO_GOOGLE_NATIVE_REPAIR_SAFE_PLATFORM_ADMIN_CANDIDATES={safe_admin}')
+print(f'COGNITO_GOOGLE_NATIVE_REPAIR_UNSAFE_PLATFORM_ADMIN_CANDIDATES={unsafe_admin}')
 
 if action == 'plan':
     print('COGNITO_GOOGLE_NATIVE_REPAIR_PLAN_ONLY_NO_APPLY=true')
@@ -389,8 +441,10 @@ if action == 'send-reset-once':
     print('COGNITO_GOOGLE_HISTORICAL_RESET_SENT=true')
     raise SystemExit(0)
 
-if len(db_verified) != len(strict_candidates):
-    raise SystemExit('unsafe_candidate_refused')
+# Hotfix P1 (owner's decision): link only the pairs that pass every check; an unsafe pair is left exactly as it is.
+if not db_verified:
+    raise SystemExit('no_safe_candidates')
+print(f'COGNITO_GOOGLE_NATIVE_REPAIR_LEFT_UNLINKED={len(strict_candidates) - len(db_verified)}')
 
 for candidate in db_verified:
     run_json('delete_external_user', [

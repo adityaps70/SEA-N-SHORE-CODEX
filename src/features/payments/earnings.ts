@@ -264,6 +264,19 @@ export async function reverseSaleEarning(tx: DatabaseQueryClient, input: {
   if (!current) return { outcome: 'not_found' }
   if (current.status === 'reversed') return { outcome: 'already_reversed', earning: current }
 
+  // A partial refund already took part of this earning back: only what is left goes now.
+  const taken = await adjustedSoFar(tx, current.id)
+  if (taken.grossMinor > 0) {
+    return addRefundAdjustment(tx, current, {
+      grossMinor: current.grossMinor - taken.grossMinor,
+      feeMinor: current.platformFeeMinor - taken.feeMinor,
+      sourceId: `${current.id}:refund:remainder`,
+      reason,
+      actor,
+      details: { sourceType: input.sourceType, sourceId: input.sourceId, remainder: true },
+    })
+  }
+
   if (current.status === 'pending' || current.status === 'available') {
     const updated = await tx.query<EarningRow>(`
       update public.seller_earnings
@@ -316,6 +329,99 @@ export async function reverseSaleEarning(tx: DatabaseQueryClient, input: {
     details: { reason, adjustsEarningId: current.id, adjustedStatus: current.status, sourceType: input.sourceType, sourceId: input.sourceId },
   })
   return { outcome: 'adjusted', earning: current, adjustment }
+}
+
+/** What negative adjustments have already taken back from an earning (positive numbers). */
+async function adjustedSoFar(tx: DatabaseQueryClient, earningId: string) {
+  const result = await tx.query<QueryResultRow & { gross_minor: string | number | null; fee_minor: string | number | null }>(`
+    select coalesce(-sum(adjustment.gross_minor), 0) as gross_minor, coalesce(-sum(adjustment.platform_fee_minor), 0) as fee_minor
+    from public.seller_earnings adjustment
+    where adjustment.adjusts_earning_id = $1::uuid
+  `, [earningId])
+  return { grossMinor: Number(result.rows[0]?.gross_minor ?? 0), feeMinor: Number(result.rows[0]?.fee_minor ?? 0) }
+}
+
+/** Adds one negative 'adjustment' (status available) against `earning`, once per `sourceId`. */
+async function addRefundAdjustment(tx: DatabaseQueryClient, earning: SellerEarning, input: {
+  grossMinor: number
+  feeMinor: number
+  sourceId: string
+  reason: string
+  actor: LedgerActor
+  details: Record<string, unknown>
+}): Promise<ReverseEarningOutcome> {
+  const existing = await tx.query<EarningRow>(`
+    select ${EARNING_COLUMNS} from public.seller_earnings adjustment where adjustment.source_type = 'adjustment' and adjustment.source_id = $1::text
+  `, [input.sourceId])
+  if (existing.rows[0]) return { outcome: 'adjusted', earning, adjustment: mapEarning(existing.rows[0]) }
+  if (input.grossMinor <= 0) return { outcome: 'already_reversed', earning }
+  const fee = Math.min(Math.max(0, input.feeMinor), input.grossMinor)
+  const [profileId, companyId] = sellerColumns(earning.seller)
+  const inserted = await tx.query<EarningRow>(`
+    insert into public.seller_earnings (
+      seller_profile_id, seller_company_id, source_type, source_id, adjusts_earning_id, currency,
+      gross_minor, platform_fee_percent, platform_fee_minor, net_minor, status, available_at, reversed_reason
+    )
+    values ($1::uuid, $2::uuid, 'adjustment', $3::text, $4::uuid, $5::text, $6::bigint, $7::numeric, $8::bigint, $9::bigint, 'available', now(), $10::text)
+    on conflict (source_type, source_id) do nothing
+    returning ${EARNING_COLUMNS}
+  `, [profileId, companyId, input.sourceId, earning.id, earning.currency, -input.grossMinor, earning.platformFeePercent, -fee, -(input.grossMinor - fee), input.reason])
+  if (!inserted.rows[0]) {
+    const raced = await tx.query<EarningRow>(`
+      select ${EARNING_COLUMNS} from public.seller_earnings adjustment where adjustment.source_type = 'adjustment' and adjustment.source_id = $1::text
+    `, [input.sourceId])
+    return { outcome: 'adjusted', earning, adjustment: mapEarning(raced.rows[0]!) }
+  }
+  const adjustment = mapEarning(inserted.rows[0])
+  await recordPaymentAudit(tx, {
+    actorType: input.actor.type,
+    actorProfileId: input.actor.profileId ?? null,
+    subjectType: 'seller_earning',
+    subjectId: adjustment.id,
+    action: 'earning_adjustment_created',
+    toStatus: 'available',
+    amountMinor: adjustment.netMinor,
+    currency: adjustment.currency,
+    details: { reason: input.reason, adjustsEarningId: earning.id, adjustedStatus: earning.status, ...input.details },
+  })
+  return { outcome: 'adjusted', earning, adjustment }
+}
+
+/**
+ * A partial refund of a sale (Cashfree refunded part of the payment): takes back exactly that share of the seller's
+ * gross, its fee and its net as a negative 'adjustment', so the next payout drops by that much and no more. Never
+ * takes back more than is left of the earning. Idempotent per refund: `refundKey` is Cashfree's refund id.
+ */
+export async function refundSaleEarningAmount(tx: DatabaseQueryClient, input: {
+  sourceType: EarningSourceType
+  sourceId: string
+  refundedGrossMinor: number
+  refundKey: string
+  reason: string
+  actor?: LedgerActor
+}): Promise<ReverseEarningOutcome> {
+  const actor = input.actor ?? SYSTEM
+  const locked = await tx.query<EarningRow>(`
+    select ${EARNING_COLUMNS} from public.seller_earnings
+    where source_type = $1::text and source_id = $2::text
+    for update
+  `, [input.sourceType, input.sourceId])
+  const current = locked.rows[0] ? mapEarning(locked.rows[0]) : null
+  if (!current) return { outcome: 'not_found' }
+  if (current.status === 'reversed') return { outcome: 'already_reversed', earning: current }
+  const taken = await adjustedSoFar(tx, current.id)
+  const left = current.grossMinor - taken.grossMinor
+  const gross = Math.min(Math.max(0, Math.floor(input.refundedGrossMinor)), left)
+  // The last paisa of the earning carries the rest of the fee, so the fee never drifts by rounding.
+  const fee = gross === left ? current.platformFeeMinor - taken.feeMinor : Math.round((current.platformFeeMinor * gross) / current.grossMinor)
+  return addRefundAdjustment(tx, current, {
+    grossMinor: gross,
+    feeMinor: fee,
+    sourceId: `${current.id}:refund:${input.refundKey}`.slice(0, 200),
+    reason: input.reason.slice(0, 500),
+    actor,
+    details: { partial: true, sourceType: input.sourceType, sourceId: input.sourceId },
+  })
 }
 
 /**

@@ -183,12 +183,12 @@ export async function refundCoursePaymentAction(orderId: string): Promise<Refund
       reason: isAdmin ? 'admin_refund' : 'course_team_refund',
     })
     refresh(await coursePaymentRepository.getCourseSlug(order.courseId))
-    const amount = formatMoney(order.amountMinor, order.currency)
+    const amount = formatMoney(result.amountMinor ?? order.amountMinor, order.currency)
     return {
       ok: true,
       message: result.state === 'refunded'
         ? `Refunded ${amount}. The learner's access has ended and the money is on its way back to their original payment method.`
-        : `Refund of ${amount} started. The payment provider is processing it; the learner's access has ended.`,
+        : `Refund of ${amount} started. The payment provider is processing it. The learner keeps access until the refund is confirmed, then it ends.`,
     }
   } catch (error) {
     if (error instanceof CoursePurchaseError) {

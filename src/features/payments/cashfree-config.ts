@@ -1,3 +1,4 @@
+import { createPublicKey } from 'node:crypto'
 import type { CashfreeMode, PaymentProviderName } from './types'
 
 /**
@@ -36,6 +37,8 @@ export type CashfreePayoutsConfig = {
   clientSecret: string
   /** RSA public key (PEM) for the x-cf-signature 2FA header, when IP whitelisting is not used. */
   publicKeyPem: string | null
+  /** 'invalid' when payouts_public_key is set but is not a usable RSA public key (publicKeyPem is then null). */
+  publicKeyProblem?: 'invalid' | null
   environment: CashfreeMode
 }
 
@@ -94,15 +97,44 @@ function pgConfig(input: { clientId: unknown; clientSecret: unknown; environment
   return { clientId, clientSecret, environment, international: flag(input.international) }
 }
 
+const PEM_LABELS = new Set(['PUBLIC KEY', 'RSA PUBLIC KEY'])
+
+/**
+ * The Payouts 2FA public key as a clean PEM, whatever way it was pasted into the secret: the downloaded .pem text,
+ * the same with its line breaks written as \n or lost (one long line), or only the base64 body without the BEGIN and
+ * END lines. Checked with node:crypto, so a key that cannot sign is reported as invalid instead of failing later.
+ * Never logs or returns any part of a key that is not valid.
+ */
+export function normalizePayoutsPublicKey(value: unknown): { pem: string | null; problem: 'invalid' | null } {
+  const text = clean(value).replace(/\\r/g, '').replace(/\\n/g, '\n').replace(/\r/g, '')
+  if (!text) return { pem: null, problem: null }
+  const armored = /^-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----\s*$/.exec(text)
+  if (text.includes('-----') && (!armored || !PEM_LABELS.has(armored[1]!))) return { pem: null, problem: 'invalid' }
+  const body = (armored ? armored[2]! : text).replace(/\s+/g, '')
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(body) || body.length < 100) return { pem: null, problem: 'invalid' }
+  const lines = body.match(/.{1,64}/g)!.join('\n')
+  for (const label of armored ? [armored[1]!] : ['PUBLIC KEY', 'RSA PUBLIC KEY']) {
+    const pem = `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----\n`
+    try {
+      if (createPublicKey(pem).asymmetricKeyType === 'rsa') return { pem, problem: null }
+    } catch {
+      // Not this encoding; try the next one.
+    }
+  }
+  return { pem: null, problem: 'invalid' }
+}
+
 function payoutsConfig(input: { clientId: unknown; clientSecret: unknown; publicKey: unknown; environment: CashfreeMode | null }): CashfreePayoutsConfig | null {
   const clientId = clean(input.clientId)
   const clientSecret = clean(input.clientSecret)
   if (!clientId || !clientSecret || !input.environment) return null
-  const pem = clean(input.publicKey).replace(/\\n/g, '\n')
+  const key = normalizePayoutsPublicKey(input.publicKey)
+  if (key.problem) console.error('payments_cashfree_payouts_public_key_invalid')
   return {
     clientId,
     clientSecret,
-    publicKeyPem: pem.includes('BEGIN') ? pem : null,
+    publicKeyPem: key.pem,
+    publicKeyProblem: key.problem,
     environment: input.environment,
   }
 }
@@ -169,6 +201,8 @@ export async function loadCashfreeSettings(options: {
   loadSecret?: SecretLoader
   now?: () => number
   useCache?: boolean
+  /** With useCache false: still store what was read, so later cached reads in this task use it. */
+  refreshCache?: boolean
 } = {}): Promise<CashfreeSettings> {
   const environment = options.environment ?? process.env
   const now = options.now ?? Date.now
@@ -195,7 +229,7 @@ export async function loadCashfreeSettings(options: {
   }
 
   const settings = value ?? { ...EMPTY, preferredProvider: parseProviderPreference(environment.PAYMENTS_PROVIDER) }
-  if (useCache) cached = { value: settings, expiresAt: now() + ttl }
+  if (useCache || options.refreshCache) cached = { value: settings, expiresAt: now() + ttl }
   return settings
 }
 

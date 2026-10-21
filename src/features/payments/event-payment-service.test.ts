@@ -68,7 +68,9 @@ function fakeRepository() {
     findOrderByProviderOrderId: vi.fn(),
     findOrderByProviderPaymentId: vi.fn(),
     confirmPaidOrder: vi.fn(),
-    requestRefund: vi.fn(async () => ({ order: order({ status: 'paid', providerPaymentId: 'cf_pay_1', refundStatus: 'requested', refundAttempts: 1 }), attempt: 1 })),
+    requestRefund: vi.fn(async () => ({ order: order({ status: 'paid', providerPaymentId: 'cf_pay_1', refundStatus: 'requested', refundAttempts: 1 }), attempt: 1, refundableMinor: 49900 })),
+    markRefundPending: vi.fn(async () => order({ status: 'paid', providerPaymentId: 'cf_pay_1', refundStatus: 'pending' })),
+    applyRefundUpdate: vi.fn(async () => null),
     markOrderRefunded: vi.fn(async () => order({ status: 'refunded', providerPaymentId: 'cf_pay_1', refundStatus: 'processed' })),
     recordRefundFailure: vi.fn(async () => null),
     recordWebhookEvent: vi.fn(async () => true),
@@ -305,7 +307,18 @@ describe('refunding a paid ticket', () => {
     const actor = { type: 'organizer' as const, profileId }
     await expect(service(async () => razorpay).refundOrder({ orderId, actor, reason: 'organizer_refund' })).resolves.toMatchObject({ state: 'refund_pending' })
     expect(cashfree.refund).toHaveBeenCalled()
-    expect(repository.markOrderRefunded).toHaveBeenCalledWith(tx, orderId, expect.objectContaining({ refundStatus: 'pending', actor }))
+    // A pending refund keeps the seat: it is only marked pending, never refunded, until the gateway confirms it.
+    expect(repository.markRefundPending).toHaveBeenCalledWith(tx, orderId, expect.objectContaining({ providerRefundId: 'cf_refund_1', actor }))
+    expect(repository.markOrderRefunded).not.toHaveBeenCalled()
+  })
+
+  it('after a partial refund, refunds only what is left of the ticket price', async () => {
+    repository.getOrderById.mockResolvedValue(order({ status: 'paid', providerPaymentId: 'cf_pay_1' }))
+    repository.requestRefund.mockResolvedValueOnce({ order: order({ status: 'paid', providerPaymentId: 'cf_pay_1', refundStatus: 'requested', refundAttempts: 1 }), attempt: 1, refundableMinor: 29900 })
+    const outcome = await service().refundOrder({ orderId, actor: { type: 'admin', profileId }, reason: 'admin_refund' })
+    expect(cashfree.refund).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 29900 }))
+    expect(outcome).toMatchObject({ state: 'refunded', amountMinor: 29900 })
+    expect(repository.markOrderRefunded).toHaveBeenCalledWith(tx, orderId, expect.objectContaining({ refundStatus: 'processed' }))
   })
 
   it('records a rejected refund and keeps the order refundable', async () => {
@@ -355,7 +368,12 @@ describe('Cashfree gateway events for event tickets', () => {
     expect(repository.markOrderFailed).not.toHaveBeenCalled()
 
     await service().applyGatewayEvent(tx, { kind: 'refund_updated', provider: 'cashfree', providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', providerRefundId: 'cf_refund_1', refundId: null, amountMinor: 49900, status: 'processed' })
-    expect(repository.markOrderRefunded).toHaveBeenCalledWith(tx, orderId, { providerRefundId: 'cf_refund_1', refundStatus: 'processed', actor: { type: 'provider' } })
+    expect(repository.applyRefundUpdate).toHaveBeenCalledWith(tx, orderId, { providerRefundId: 'cf_refund_1', amountMinor: 49900, status: 'processed', actor: { type: 'provider' } })
+
+    // The amount goes along, so a partial or pending refund keeps the seat (decided with the order locked).
+    await service().applyGatewayEvent(tx, { kind: 'refund_updated', provider: 'cashfree', providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', providerRefundId: 'cf_refund_3', refundId: null, amountMinor: 10000, status: 'pending' })
+    expect(repository.applyRefundUpdate).toHaveBeenLastCalledWith(tx, orderId, { providerRefundId: 'cf_refund_3', amountMinor: 10000, status: 'pending', actor: { type: 'provider' } })
+    expect(repository.markOrderRefunded).not.toHaveBeenCalled()
 
     await service().applyGatewayEvent(tx, { kind: 'refund_updated', provider: 'cashfree', providerOrderId: gatewayId, providerPaymentId: 'cf_pay_1', providerRefundId: 'cf_refund_2', refundId: null, amountMinor: 49900, status: 'failed' })
     expect(repository.recordRefundFailure).toHaveBeenCalledWith(tx, expect.objectContaining({ orderId, providerRefundId: 'cf_refund_2' }))

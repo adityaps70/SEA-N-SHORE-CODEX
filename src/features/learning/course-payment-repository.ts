@@ -1,7 +1,8 @@
 import type { QueryResultRow } from 'pg'
 import { query, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { recordPaymentAudit, type PaymentAuditActorType } from '@/features/payments/audit'
-import { recordSaleEarning, reverseSaleEarning } from '@/features/payments/earnings'
+import { recordSaleEarning, refundSaleEarningAmount, reverseSaleEarning } from '@/features/payments/earnings'
+import { isPartialRefund, PARTIAL_REFUND_PENDING, PARTIAL_REFUND_PROCESSED, readPartialRefunds } from '@/features/payments/partial-refunds'
 import { orderUuidFromGatewayOrderId } from '@/features/payments/order-ids'
 import type { EventPaymentOrderStatus, PaymentCurrency, PaymentProviderName } from '@/features/payments/types'
 import { resolveEnrolmentBatch } from './batches/batch-repository'
@@ -269,6 +270,8 @@ async function audit(client: DatabaseQueryClient, order: CoursePaymentOrder, act
   fromStatus?: string | null
   toStatus?: string | null
   providerReference?: string | null
+  /** Defaults to the order amount; a partial refund records its own amount. */
+  amountMinor?: number
   details?: Record<string, unknown>
 } = {}) {
   const actor = input.actor ?? SYSTEM
@@ -280,7 +283,7 @@ async function audit(client: DatabaseQueryClient, order: CoursePaymentOrder, act
     action,
     fromStatus: input.fromStatus ?? null,
     toStatus: input.toStatus ?? null,
-    amountMinor: order.amountMinor,
+    amountMinor: input.amountMinor ?? order.amountMinor,
     currency: order.currency,
     provider: order.provider,
     providerReference: input.providerReference ?? null,
@@ -1034,7 +1037,8 @@ async function confirmSeatPack(client: DatabaseQueryClient, current: CoursePayme
 
 /**
  * Starts a refund: checks the order can be refunded and marks it 'requested' so a
- * double click cannot send two refunds. Returns the attempt number for the refund id.
+ * double click cannot send two refunds. Returns the attempt number for the refund id
+ * and the amount still to refund (the order amount less any partial refunds).
  */
 async function requestRefund(client: DatabaseQueryClient, input: { orderId: string; actor: CoursePaymentActor; reason: string }) {
   const current = await lockOrder(client, input.orderId)
@@ -1043,6 +1047,11 @@ async function requestRefund(client: DatabaseQueryClient, input: { orderId: stri
   if ((current.status !== 'paid' && !retryAfterFailure) || !current.providerPaymentId || !current.providerOrderId) {
     throw new CoursePurchaseError('refund_not_allowed')
   }
+  // A refund Cashfree has not confirmed yet is still on its way; a second one would refund twice.
+  if (current.refundStatus === 'pending') throw new CoursePurchaseError('refund_in_progress')
+  const partial = await readPartialRefunds(client, SUBJECT, current.id)
+  const refundableMinor = current.amountMinor - partial.refundedMinor
+  if (refundableMinor <= 0) throw new CoursePurchaseError('refund_not_allowed')
   if (current.refundStatus === 'requested') {
     const stale = await client.query<QueryResultRow & { stale: boolean }>(`
       select refund_requested_at < now() - make_interval(mins => $2::integer) as stale
@@ -1072,19 +1081,91 @@ async function requestRefund(client: DatabaseQueryClient, input: { orderId: stri
     actor: input.actor,
     fromStatus: current.status,
     toStatus: current.status,
-    details: { reason: input.reason, attempt: order.refundAttempts },
+    details: { reason: input.reason, attempt: order.refundAttempts, refundableMinor },
   })
-  return { order, attempt: order.refundAttempts }
+  return { order, attempt: order.refundAttempts, refundableMinor }
+}
+
+/**
+ * Cashfree took a full refund but has not confirmed it yet. The learner keeps the course until it is confirmed
+ * (`markOrderRefunded`); the order stays paid with refund_status 'pending'. Idempotent.
+ */
+async function markRefundPending(client: DatabaseQueryClient, orderId: string, refund: { providerRefundId?: string | null; actor?: CoursePaymentActor; reason?: string } = {}) {
+  const before = await lockOrder(client, orderId)
+  if (!before || before.status !== 'paid') return before
+  if (before.refundStatus === 'pending' && (!refund.providerRefundId || before.providerRefundId === refund.providerRefundId)) return before
+  const result = await client.query<OrderRow>(`
+    update public.course_payment_orders o
+    set refund_status = 'pending', provider_refund_id = coalesce($2::text, o.provider_refund_id), updated_at = now()
+    where o.id = $1::uuid
+    returning ${ORDER_COLUMNS}, ${ORDER_DOCUMENT_COLUMNS}
+  `, [orderId, refund.providerRefundId ?? null])
+  const order = mapCourseOrder(result.rows[0]!)
+  await audit(client, order, 'refund_pending', {
+    actor: refund.actor,
+    fromStatus: before.refundStatus,
+    toStatus: 'pending',
+    providerReference: order.providerRefundId,
+    details: { reason: refund.reason ?? null, accessKept: true },
+  })
+  return order
+}
+
+/**
+ * A refund Cashfree reports (webhook), pending or processed. A refund of part of what was paid takes only that
+ * amount back from the seller's earning, with a credit note for it, and the learner keeps the course. A full refund
+ * ends access only once Cashfree confirms it; until then it is pending. Idempotent per Cashfree refund id.
+ */
+async function applyRefundUpdate(client: DatabaseQueryClient, orderId: string, refund: {
+  providerRefundId: string | null
+  amountMinor: number | null
+  status: 'pending' | 'processed'
+  actor?: CoursePaymentActor
+}) {
+  const actor = refund.actor ?? SYSTEM
+  const before = await lockOrder(client, orderId)
+  if (!before) return null
+  const partial = await readPartialRefunds(client, SUBJECT, before.id)
+  const refundId = refund.providerRefundId
+  if (refundId && partial.processedRefundIds.has(refundId)) return before
+  const partOfOrder = before.status === 'paid' && isPartialRefund({ orderAmountMinor: before.amountMinor, refundedMinor: partial.refundedMinor, refundAmountMinor: refund.amountMinor })
+  if (partOfOrder && refundId) {
+    const amountMinor = refund.amountMinor!
+    if (refund.status === 'pending') {
+      if (!partial.pendingRefundIds.has(refundId)) {
+        await audit(client, before, PARTIAL_REFUND_PENDING, { actor, toStatus: before.status, providerReference: refundId, amountMinor, details: { accessKept: true } })
+      }
+      return before
+    }
+    await refundSaleEarningAmount(client, { sourceType: 'course_purchase', sourceId: before.id, refundedGrossMinor: amountMinor, refundKey: refundId, reason: 'course_partially_refunded', actor })
+    // C4: one credit note per invoice, so only the first partial refund gets one; later ones are noted here.
+    const creditNote = before.creditNoteId
+      ? 'already_issued'
+      : (await withTaxSavepoint(client, 'credit_note', () => issueCreditNoteForOrder(client, before.id, { reason: 'Course purchase partly refunded', amountMinor }))) ? 'issued' : 'not_issued'
+    await audit(client, before, PARTIAL_REFUND_PROCESSED, {
+      actor,
+      fromStatus: before.status,
+      toStatus: before.status,
+      providerReference: refundId,
+      amountMinor,
+      details: { refundedSoFarMinor: partial.refundedMinor + amountMinor, accessKept: true, creditNote },
+    })
+    return before
+  }
+  if (refund.status === 'pending') return markRefundPending(client, orderId, { providerRefundId: refundId, actor })
+  return markOrderRefunded(client, orderId, { providerRefundId: refundId, refundStatus: 'processed', actor })
 }
 
 /**
  * Marks a purchase refunded, ends the course access it paid for and reverses the
- * seller's earning, all in one transaction. Idempotent.
+ * seller's earning (what is left of it after any partial refund), all in one
+ * transaction. Only for a refund Cashfree confirmed: a pending one is
+ * `markRefundPending`. Idempotent.
  */
 async function markOrderRefunded(
   client: DatabaseQueryClient,
   orderId: string,
-  refund: { providerRefundId?: string | null; refundStatus?: 'pending' | 'processed'; actor?: CoursePaymentActor; reason?: string } = {},
+  refund: { providerRefundId?: string | null; refundStatus?: 'processed'; actor?: CoursePaymentActor; reason?: string } = {},
 ) {
   const actor = refund.actor ?? SYSTEM
   const before = await lockOrder(client, orderId)
@@ -1240,6 +1321,8 @@ export const coursePaymentRepository = {
   findOrderByProviderOrderId,
   confirmPaidOrder,
   requestRefund,
+  markRefundPending,
+  applyRefundUpdate,
   markOrderRefunded,
   recordRefundFailure,
   listLearnerPurchases,

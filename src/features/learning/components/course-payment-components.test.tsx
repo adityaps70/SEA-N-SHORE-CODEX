@@ -223,6 +223,14 @@ describe('CoursePurchasesList', () => {
     expect(within(items[1]!).queryByRole('link')).not.toBeInTheDocument()
   })
 
+  it('a refund still on its way says so, and the learner keeps the course until it is confirmed', () => {
+    render(<CoursePurchasesList purchases={[{ ...purchase, refundStatus: 'pending', providerRefundId: 'cf_refund_1' }]} />)
+    const item = screen.getByRole('listitem')
+    expect(within(item).getByText('Refund on its way')).toBeInTheDocument()
+    expect(within(item).getByText(/Refund of ₹4,000 started\..*You keep the course until the refund is confirmed\./)).toBeInTheDocument()
+    expect(within(item).getByRole('link', { name: 'SIRE 2.0 Masterclass' })).toBeInTheDocument()
+  })
+
   it('links the GST invoice and, after a refund, the credit note as downloads with their numbers', () => {
     const invoiceId = '44444444-4444-4444-8444-444444444444'
     const creditNoteId = '55555555-5555-4555-8555-555555555555'

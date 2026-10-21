@@ -21,7 +21,7 @@ function dateLabel(value: string | null) {
 }
 
 function canRefund(row: OrganizerPaymentRow) {
-  if (!row.providerPaymentId || row.refundStatus === 'requested') return false
+  if (!row.providerPaymentId || row.refundStatus === 'requested' || row.refundStatus === 'pending') return false
   return row.status === 'paid' || (row.status === 'refunded' && row.refundStatus === 'failed')
 }
 

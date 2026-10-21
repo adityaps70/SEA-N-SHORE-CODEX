@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cashfreeSecretId,
@@ -7,8 +8,15 @@ import {
   loadCashfreeConfig,
   loadCashfreePayoutsConfig,
   loadCashfreeSettings,
+  normalizePayoutsPublicKey,
   parseCashfreeEnvironment,
+  resetCashfreeConfigCache,
 } from './cashfree-config'
+
+const keys = generateKeyPairSync('rsa', { modulusLength: 2048 })
+const PUBLIC_PEM = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+const PKCS1_PEM = keys.publicKey.export({ type: 'pkcs1', format: 'pem' }).toString()
+const bodyOf = (pem: string) => pem.split('\n').filter((line) => line && !line.startsWith('-----')).join('')
 
 const secretJson = JSON.stringify({
   client_id: 'TEST10123456789',
@@ -18,7 +26,7 @@ const secretJson = JSON.stringify({
   international: true,
   payouts_client_id: 'CF10PAYOUT',
   payouts_client_secret: 'payout-secret',
-  payouts_public_key: '-----BEGIN PUBLIC KEY-----\\nMIIBIjAN\\n-----END PUBLIC KEY-----',
+  payouts_public_key: PUBLIC_PEM.trim().replace(/\n/g, '\\n'),
 })
 
 let errorSpy: ReturnType<typeof vi.spyOn>
@@ -56,13 +64,52 @@ describe('Cashfree configuration', () => {
       payouts: {
         clientId: 'CF10PAYOUT',
         clientSecret: 'payout-secret',
-        publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIBIjAN\n-----END PUBLIC KEY-----',
+        publicKeyPem: PUBLIC_PEM,
+        publicKeyProblem: null,
         environment: 'sandbox',
       },
       preferredProvider: 'cashfree',
     })
     expect(cashfreeSettingsFromSecretString('{broken')).toEqual({ pg: null, payouts: null, preferredProvider: null })
     expect(cashfreeSettingsFromSecretString(JSON.stringify({ cashfree_international: 'true', client_id: 'A12', client_secret: 'b' })).pg?.international).toBe(true)
+  })
+
+  it('accepts the Payouts public key however it was pasted, and checks that it is a real RSA public key', () => {
+    const singleLine = `-----BEGIN PUBLIC KEY-----${bodyOf(PUBLIC_PEM)}-----END PUBLIC KEY-----`
+    for (const pasted of [PUBLIC_PEM, PUBLIC_PEM.replace(/\n/g, '\\n'), PUBLIC_PEM.replace(/\n/g, '\r\n'), singleLine, bodyOf(PUBLIC_PEM), `  ${bodyOf(PUBLIC_PEM).match(/.{1,40}/g)!.join(' ')}  `]) {
+      expect(normalizePayoutsPublicKey(pasted)).toEqual({ pem: PUBLIC_PEM, problem: null })
+    }
+    // The older PKCS#1 form, with or without its BEGIN/END lines.
+    expect(normalizePayoutsPublicKey(PKCS1_PEM)).toEqual({ pem: PKCS1_PEM, problem: null })
+    expect(normalizePayoutsPublicKey(bodyOf(PKCS1_PEM)).pem).toBe(PKCS1_PEM)
+    // Missing is not invalid.
+    expect(normalizePayoutsPublicKey('')).toEqual({ pem: null, problem: null })
+    expect(normalizePayoutsPublicKey(undefined)).toEqual({ pem: null, problem: null })
+  })
+
+  it('reports a key that cannot sign as invalid, never as missing, and never logs it', () => {
+    const privatePem = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    for (const bad of ['-----BEGIN PUBLIC KEY-----\nMIIBIjAN\n-----END PUBLIC KEY-----', bodyOf(PUBLIC_PEM).slice(0, 200), 'not a key at all', privatePem, PUBLIC_PEM.replace('END PUBLIC', 'END RSA PUBLIC')]) {
+      expect(normalizePayoutsPublicKey(bad)).toEqual({ pem: null, problem: 'invalid' })
+    }
+    const settings = cashfreeSettingsFromSecretString(JSON.stringify({ client_id: 'A12', client_secret: 'b', payouts_client_id: 'CF10PAYOUT', payouts_client_secret: 'payout-secret', payouts_public_key: bodyOf(PUBLIC_PEM).slice(0, 200) }))
+    expect(settings.payouts).toMatchObject({ publicKeyPem: null, publicKeyProblem: 'invalid' })
+    expect(errorSpy).toHaveBeenCalledWith('payments_cashfree_payouts_public_key_invalid')
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(bodyOf(PUBLIC_PEM).slice(0, 40))
+  })
+
+  it('a fresh read (Check Cashfree now) refreshes the cached settings, so a newly added key is used at once', async () => {
+    resetCashfreeConfigCache()
+    const environment = { NODE_ENV: 'production' }
+    const before = JSON.stringify({ client_id: 'A12', client_secret: 'b', payouts_client_id: 'CF10PAYOUT', payouts_client_secret: 'payout-secret' })
+    const loadSecret = vi.fn(async () => before)
+    await expect(loadCashfreePayoutsConfig({ environment, loadSecret })).resolves.toMatchObject({ publicKeyPem: null })
+    loadSecret.mockResolvedValue(secretJson)
+    await expect(loadCashfreePayoutsConfig({ environment, loadSecret })).resolves.toMatchObject({ publicKeyPem: null })
+    await expect(loadCashfreePayoutsConfig({ environment, loadSecret, useCache: false, refreshCache: true })).resolves.toMatchObject({ publicKeyPem: PUBLIC_PEM })
+    await expect(loadCashfreePayoutsConfig({ environment, loadSecret })).resolves.toMatchObject({ publicKeyPem: PUBLIC_PEM })
+    expect(loadSecret).toHaveBeenCalledTimes(2)
+    resetCashfreeConfigCache()
   })
 
   it('uses the explicit secret ARN, or the default secret name in production only', () => {
