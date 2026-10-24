@@ -59,7 +59,7 @@ export function TextLink({ href, children }: { href: string; children: ReactNode
   if (/^(mailto:|tel:|https?:)/.test(href)) {
     return <a href={href} className="font-semibold text-ocean-700 hover:underline">{children}</a>
   }
-  return <Link href={href} className="font-semibold text-ocean-700 hover:underline">{children}</Link>
+  return <Link href={href} prefetch={false} className="font-semibold text-ocean-700 hover:underline">{children}</Link>
 }
 
 /** Row of related-policy links at the end of a policy page. */
@@ -72,6 +72,7 @@ export function RelatedPolicies({ links }: { links: Array<{ href: string; label:
           <li key={link.href}>
             <Link
               href={link.href}
+              prefetch={false}
               className="inline-flex min-h-9 cursor-pointer items-center rounded-lg border max-md:min-h-11 border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50"
             >
               {link.label}

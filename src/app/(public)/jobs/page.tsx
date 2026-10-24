@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { BellRing, BriefcaseBusiness, ChevronRight, Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { JobCard } from '@/features/jobs/components/job-card'

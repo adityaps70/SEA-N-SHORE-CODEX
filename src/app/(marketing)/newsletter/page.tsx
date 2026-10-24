@@ -62,7 +62,7 @@ export default async function NewsletterPage() {
             ))}
           </ul>
           <p className="mt-4 text-xs leading-5 text-muted">
-            Read the <Link href="/privacy" className="font-semibold text-ocean-700 hover:underline">Privacy Policy</Link> for how Sea N Shore handles personal data.
+            Read the <Link href="/privacy" prefetch={false} className="font-semibold text-ocean-700 hover:underline">Privacy Policy</Link> for how Sea N Shore handles personal data.
           </p>
         </section>
 

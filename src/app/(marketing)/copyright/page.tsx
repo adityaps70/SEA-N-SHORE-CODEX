@@ -62,7 +62,7 @@ export default function CopyrightPage() {
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/terms" className="rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-900">Read Terms</Link>
+          <Link href="/terms" prefetch={false} className="rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-900">Read Terms</Link>
         </div>
       </section>
     </MainLandmark>

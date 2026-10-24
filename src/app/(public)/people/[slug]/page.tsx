@@ -1,7 +1,8 @@
 import { MainLandmark } from '@/components/layout/main-landmark'
 import { postLoadingPriority } from '@/features/feed/post-loading-priority'
 import type { Metadata } from 'next'
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'

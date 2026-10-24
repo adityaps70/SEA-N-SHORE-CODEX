@@ -1,7 +1,8 @@
 import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import Image from 'next/image'
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import {
   ArrowRight,
   Award,

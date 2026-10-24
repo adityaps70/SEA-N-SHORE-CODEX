@@ -196,6 +196,7 @@ export function FooterLinkColumns({ signedIn, className = '' }: {
                 <li key={link.href}>
                   <Link
                     href={link.href}
+                    prefetch={false}
                     className="inline-flex min-h-8 items-center text-sm font-semibold text-navy-900 transition hover:text-ocean-700 hover:underline"
                   >
                     {link.label}

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { AuthForm } from '@/features/auth/components/auth-form'
 import { AuthShell } from '@/features/auth/components/auth-shell'
 import { confirmSignInMfa } from '@/features/auth/actions'

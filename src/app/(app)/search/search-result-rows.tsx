@@ -1,5 +1,6 @@
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { BadgeCheck, BookOpen, Building2, Hash, Lock } from 'lucide-react'
 import { GroupIconTile } from '@/features/community/components/group-icon-tile'
 import { groupHref } from '@/features/community/types'
