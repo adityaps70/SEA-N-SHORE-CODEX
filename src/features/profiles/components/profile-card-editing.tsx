@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import { cn } from '@/lib/cn'
+import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
 
 /**
  * Round 11: every card on My Profile edits in place. Only one card (or one experience /
@@ -248,7 +249,11 @@ export function ProfileCardForm({
     <form
       ref={formRef}
       action={action}
-      onSubmit={onSubmit}
+      onSubmit={(event) => {
+        onSubmit?.(event)
+        // Hotfix P2: submitted without React's form reset, so an error keeps everything typed.
+        if (!event.defaultPrevented && action) submitWithoutReset(event, action)
+      }}
       tabIndex={-1}
       aria-label={label}
       data-profile-card-form={cardId}

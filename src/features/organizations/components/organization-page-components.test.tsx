@@ -248,6 +248,21 @@ describe('OrganizationBrandingForm', () => {
     expect(screen.getByRole('button', { name: 'Save page details' })).toBeEnabled()
   })
 
+  it('keeps every typed page detail when the save is refused (hotfix P2)', async () => {
+    mocks.updateOrganizationBranding.mockResolvedValueOnce({ error: 'Something went wrong. Please try again.' })
+    render(<OrganizationBrandingForm workspace={workspace} />)
+    fireEvent.change(screen.getByRole('textbox', { name: /Specialities/ }), { target: { value: 'LNG, Ship management' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Company size' }), { target: { value: '201-500' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /Tagline/ }), { target: { value: 'Crew care first' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save page details' }))
+
+    expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument()
+    expect(mocks.updateOrganizationBranding).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('textbox', { name: /Specialities/ })).toHaveValue('LNG, Ship management')
+    expect(screen.getByRole('combobox', { name: 'Company size' })).toHaveValue('201-500')
+    expect(screen.getByRole('textbox', { name: /Tagline/ })).toHaveValue('Crew care first')
+  })
+
   describe('cropping a picked image', () => {
     const original = new File([new Uint8Array(4096)], 'logo.png', { type: 'image/png' })
     const cropped = new File([new Uint8Array(1024)], 'logo.webp', { type: 'image/webp' })

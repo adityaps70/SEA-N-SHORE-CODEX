@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateJobRoles } from './job-role-input'
+import { draftJobRoles, validateJobRoles } from './job-role-input'
 
 describe('job department, accepted ranks and minimum match', () => {
   it('requires a department and at least one accepted rank for new jobs', () => {
@@ -50,5 +50,22 @@ describe('job department, accepted ranks and minimum match', () => {
   it('lets an older job be edited without a department', () => {
     expect(validateJobRoles({}, { domain: 'shore', requireDepartment: false }))
       .toMatchObject({ ok: true, data: { departmentKey: null, acceptedRoleKeys: [], domain: 'shore', rankLabel: null } })
+  })
+})
+
+describe('draftJobRoles (hotfix P2)', () => {
+  it('keeps a department picked before its ranks, and drops only what is not valid yet', () => {
+    expect(draftJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: [] }, { domain: 'shore' })).toMatchObject({
+      departmentKey: 'deck_officers', acceptedRoleKeys: [], domain: 'sea', departmentLabel: expect.any(String), rankLabel: null,
+    })
+    expect(draftJobRoles({ departmentKey: 'catering', acceptedRoleKeys: ['other_catering', 'master'], roleOtherText: '' }, { domain: 'sea' }))
+      .toMatchObject({ departmentKey: 'catering', acceptedRoleKeys: ['other_catering'], roleOtherText: null })
+    expect(draftJobRoles({ departmentKey: 'not_a_department', acceptedRoleKeys: ['master'], minMatchToApply: 140 }, { domain: 'sea' }))
+      .toMatchObject({ departmentKey: null, acceptedRoleKeys: [], minMatchToApply: 70 })
+  })
+
+  it('returns the strict result when the choice is already complete', () => {
+    const strict = validateJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: ['master'] }, { domain: 'sea', requireDepartment: false })
+    expect(strict.ok && draftJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: ['master'] }, { domain: 'sea' })).toEqual(strict.ok && strict.data)
   })
 })

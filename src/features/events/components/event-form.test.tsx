@@ -212,3 +212,38 @@ describe('event form: optional sections on phones', () => {
     expect(screen.getByRole('button', { name: /Event banner/ })).toHaveAttribute('aria-expanded', 'true')
   })
 })
+
+describe('event form keeps what was typed on an error (hotfix P2)', () => {
+  function fill() {
+    const typed: Array<[string, string]> = [
+      ['title', 'Cargo securing workshop'],
+      ['summary', 'Hands-on lashing and securing.'],
+      ['description', 'A practical session on container lashing, securing manuals and the CSS Code.'],
+      ['topics', 'Lashing, CSS Code'],
+      ['capacity', '40'],
+    ]
+    for (const [name, value] of typed) fireEvent.change(document.querySelector(`[name="${name}"]`)!, { target: { value } })
+    return typed
+  }
+  function expectKept(typed: Array<[string, string]>) {
+    for (const [name, value] of typed) expect((document.querySelector(`[name="${name}"]`) as HTMLInputElement).value, name).toBe(value)
+  }
+
+  it('after a blocked Publish', async () => {
+    render(<EventForm mode="create" publisherOptions={[publisher]} paymentsConfigured />)
+    const typed = fill()
+    fireEvent.click(screen.getByRole('radio', { name: /Offline/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Publish event' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("This event can't be published yet")
+    expectKept(typed)
+  })
+
+  it('after the server refuses the save', async () => {
+    mocks.updateEventAction.mockResolvedValue({ ok: false, error: 'Something went wrong. Please try again.' })
+    render(<EventForm mode="edit" eventId="e1" initial={existing()} paymentsConfigured />)
+    const typed = fill()
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong')
+    expectKept(typed)
+  })
+})

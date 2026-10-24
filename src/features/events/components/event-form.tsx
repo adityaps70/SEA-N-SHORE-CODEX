@@ -30,6 +30,7 @@ import type { EventPublisherOption } from '../publishers'
 import { EventDateTimeField } from './event-date-time-field'
 import { uploadEventBannerFile } from './upload-event-banner'
 import { buttonClass } from '@/components/ui/interactive-styles'
+import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
 
 type Props =
   | { mode: 'create'; publisherOptions: EventPublisherOption[]; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; initial?: never; eventId?: never }
@@ -451,7 +452,7 @@ export function EventForm(props: Props) {
   const publishBlocked = attemptedStatus === 'published' && errorEntries.length > 0
 
   return (
-    <form ref={formRef} action={submit} noValidate className="space-y-6">
+    <form ref={formRef} action={submit} onSubmit={(event) => submitWithoutReset(event, submit)} noValidate className="space-y-6">
       {props.mode === 'create' ? (
         <section id="event-field-publisher" className={sectionClass}>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Publishing identity</p>

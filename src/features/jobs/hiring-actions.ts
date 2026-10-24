@@ -22,16 +22,17 @@ import {
   type JobLifecycleAction,
 } from './job-lifecycle'
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from './types'
-import { validateJobRoles } from '@/features/roles/job-role-input'
+import { draftJobRoles, validateJobRoles, type JobRoleSelection } from '@/features/roles/job-role-input'
 import { URGENT_LIMIT_MESSAGE } from './urgent'
-import { validateJobForm } from './job-form-rules'
+import { jobDraftTitle, thingsToFix, validateJobPublish, type JobFormIssue } from './job-form-rules'
+import { storedDraftText } from './job-draft-text'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
 const uuidSchema = z.string().uuid()
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter dates as full dates.').nullable()
 const optionalText = (max: number) => z.string().trim().max(max).nullable()
 
-const jobFieldsSchema = z.object({
+const jobFieldsShape = {
   title: z.string().trim().min(2, 'Add a job title of at least 2 characters.').max(160),
   domain: z.enum(['sea', 'shore']),
   department: optionalText(120),
@@ -63,7 +64,9 @@ const jobFieldsSchema = z.object({
     .min(0, 'Set the minimum match to apply between 0 and 100 (0 turns it off).')
     .max(100, 'Set the minimum match to apply between 0 and 100 (0 turns it off).')
     .optional(),
-}).superRefine((value, context) => {
+}
+
+const jobFieldsSchema = z.object(jobFieldsShape).superRefine((value, context) => {
   if (value.salaryMin !== null && value.salaryMax !== null && value.salaryMin > value.salaryMax) {
     context.addIssue({ code: 'custom', path: ['salaryMax'], message: 'Maximum salary must be at least the minimum salary.' })
   }
@@ -71,6 +74,23 @@ const jobFieldsSchema = z.object({
     context.addIssue({ code: 'custom', path: ['experienceMaxYears'], message: 'Maximum experience must be at least the minimum experience.' })
   }
 })
+
+/**
+ * Hotfix P2: a draft only needs a title (or a rank to name it after, see jobDraftTitle). The summary and
+ * description may still be empty and the ranges inconsistent; only what the database can't hold is refused.
+ */
+const draftJobFieldsSchema = z.object({
+  ...jobFieldsShape,
+  title: z.string().trim().max(160, 'Keep the job title to 160 characters or fewer.'),
+  summary: z.string().trim().max(500, 'Keep the summary to 500 characters or fewer.'),
+  description: z.string().trim().max(12000, 'Keep the description to 12,000 characters or fewer.'),
+  minMatchToApply: z.number().optional(),
+})
+
+const createDraftJobSchema = z.union([
+  z.object({ publisherType: z.literal('personal'), companyId: z.null(), status: z.literal('draft') }).and(draftJobFieldsSchema),
+  z.object({ publisherType: z.literal('organization'), companyId: uuidSchema, status: z.literal('draft') }).and(draftJobFieldsSchema),
+])
 
 const createJobSchema = z.union([
   z.object({
@@ -92,8 +112,10 @@ const applicationStatusSchema = z.enum(JOB_APPLICATION_STATUSES)
 const statusNoteSchema = z.string().trim().max(1000, 'Keep the message to the applicant under 1,000 characters.').nullable()
 const recruiterNoteSchema = z.string().trim().min(1, 'Add a note before saving.').max(4000)
 
-export type HiringActionResult = { ok: true } | { ok: false; error: string }
-export type HiringCreateResult = { ok: true; jobId: string } | { ok: false; error: string }
+/** `code: 'session_expired'` tells the form to keep its copy and send the member to sign in again. */
+export type HiringActionFailure = { ok: false; error: string; code?: 'session_expired' }
+export type HiringActionResult = { ok: true } | HiringActionFailure
+export type HiringCreateResult = { ok: true; jobId: string } | HiringActionFailure
 export type HiringJobSaveIntent = z.infer<typeof saveIntentSchema>
 export type HiringLifecycleChange = z.infer<typeof lifecycleActionSchema>
 
@@ -106,6 +128,24 @@ class HiringValidationError extends Error {
 
 function validationError(error: z.ZodError) {
   return firstPlainIssue(error, 'Please check the information and try again.')
+}
+
+/** requireAwsUser's AwsAuthenticationRequiredError, matched by name so the module's test doubles need not export it. */
+function isSessionExpired(error: unknown) {
+  return error instanceof Error && error.name === 'AwsAuthenticationRequiredError'
+}
+
+const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Sign in again to continue; what you typed is kept on this device.'
+
+function mutationFailure(error: unknown): HiringActionFailure {
+  if (isSessionExpired(error)) return { ok: false, error: SESSION_EXPIRED_MESSAGE, code: 'session_expired' }
+  return { ok: false, error: safeMutationError(error) }
+}
+
+/** One problem as it is; several as "Before you publish: 2 things to fix. …". */
+function publishProblemsMessage(errors: JobFormIssue[]) {
+  if (errors.length === 1) return errors[0]!.message
+  return `Before you publish: ${thingsToFix(errors.length)}. ${errors.map((issue) => issue.message).join(' ')}`
 }
 
 function safeMutationError(error: unknown) {
@@ -138,6 +178,7 @@ function databaseErrorField(error: unknown, field: string) {
 
 function logHiringMutationError(operation: string, error: unknown) {
   if (error instanceof HiringValidationError) return
+  if (isSessionExpired(error)) return
   if (error instanceof Error && error.message === 'hiring_forbidden') return
   if (error instanceof Error && error.message === 'job_urgent_limit_reached') return
 
@@ -203,19 +244,33 @@ function withJobRoles<T extends HiringJobUpdateInput>(input: T, requireDepartmen
   if (!submitted && !requireDepartment) return { ok: true, data: input }
   const roles = validateJobRoles(input, { domain: input.domain, requireDepartment })
   if (!roles.ok) return roles
-  const selection = roles.data
+  return { ok: true, data: withRoleSelection(input, roles.data, requireDepartment) }
+}
+
+function withRoleSelection<T extends HiringJobUpdateInput>(input: T, selection: JobRoleSelection, requireDepartment: boolean): T {
+  return {
+    ...input,
+    domain: selection.domain,
+    department: selection.departmentLabel ?? input.department,
+    rank: selection.rankLabel ?? input.rank,
+    departmentKey: selection.departmentKey,
+    acceptedRoleKeys: selection.acceptedRoleKeys,
+    roleOtherText: selection.roleOtherText,
+    minMatchToApply: input.minMatchToApply === undefined && !requireDepartment ? undefined : selection.minMatchToApply,
+  }
+}
+
+/**
+ * Hotfix P2: a draft as it can be stored: whatever role choice is valid so far, the title (or the
+ * picked rank when it is empty), and the empty-text marker for a summary or description not written yet.
+ */
+function asStoredDraft<T extends HiringJobUpdateInput>(input: T): { ok: true; data: T } | { ok: false; error: string } {
+  const roles = withRoleSelection(input, draftJobRoles(input, { domain: input.domain }), true)
+  const title = jobDraftTitle(roles)
+  if (title.length < 2) return { ok: false, error: 'Add a job title (or pick a rank) to save a draft.' }
   return {
     ok: true,
-    data: {
-      ...input,
-      domain: selection.domain,
-      department: selection.departmentLabel ?? input.department,
-      rank: selection.rankLabel ?? input.rank,
-      departmentKey: selection.departmentKey,
-      acceptedRoleKeys: selection.acceptedRoleKeys,
-      roleOtherText: selection.roleOtherText,
-      minMatchToApply: input.minMatchToApply === undefined && !requireDepartment ? undefined : selection.minMatchToApply,
-    },
+    data: { ...roles, title, summary: storedDraftText(roles.summary), description: storedDraftText(roles.description) },
   }
 }
 
@@ -242,31 +297,41 @@ async function requireManagedJob(userId: string, jobId: string): Promise<Managed
 }
 
 export async function createHiringJob(input: HiringJobInput): Promise<HiringCreateResult> {
-  const parsed = createJobSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
-  if (parsed.data.status === 'closed') return { ok: false, error: 'New jobs are saved as a draft or published. Archive a job after it has been live.' }
-  const withRoles = withJobRoles(parsed.data, true)
-  if (!withRoles.ok) return withRoles
-  const jobInput = withRoles.data
-
   const today = todayIsoDate()
-  // Round H (H7): the form's rules (description, salary, joining date, location) also hold on the server.
-  // Warnings (rank vs experience) never block.
-  const rules = validateJobForm(jobInput, { today, savedJoiningFrom: null })
-  if (rules.errors.length) return { ok: false, error: rules.errors[0]!.message }
-  if (parsed.data.status === 'published') {
+  let jobInput: HiringJobInput
+  if (input?.status === 'draft') {
+    // Hotfix P2: "Save draft" needs only a title (or rank); the publish rules wait for Publish.
+    const parsed = createDraftJobSchema.safeParse(input)
+    if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+    const draft = asStoredDraft(parsed.data)
+    if (!draft.ok) return draft
+    jobInput = draft.data
+  } else {
+    const parsed = createJobSchema.safeParse(input)
+    if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+    if (parsed.data.status === 'closed') return { ok: false, error: 'New jobs are saved as a draft or published. Archive a job after it has been live.' }
+    const withRoles = withJobRoles(parsed.data, true)
+    if (!withRoles.ok) return withRoles
+    jobInput = withRoles.data
+    // Round H (H7): the form's rules (description, salary, joining date, location) also hold on the server.
+    // Warnings (rank vs experience) never block.
+    const rules = validateJobPublish(jobInput, { today, savedJoiningFrom: null, checkApplyUntil: false })
+    if (rules.errors.length) return { ok: false, error: publishProblemsMessage(rules.errors) }
+  }
+
+  if (jobInput.status === 'published') {
     const publish = validateJobTransition({
       status: 'draft',
       deleted: false,
       moderationRemoved: false,
-      applyUntil: parsed.data.applyUntil,
+      applyUntil: jobInput.applyUntil,
       joiningUntil: null,
       applicantCount: 0,
       canDelete: true,
     }, 'publish', { today })
     if (!publish.ok) return { ok: false, error: publish.message }
   } else {
-    const dates = validateApplyUntilForStatus('draft', parsed.data.applyUntil, today)
+    const dates = validateApplyUntilForStatus('draft', jobInput.applyUntil, today)
     if (!dates.ok) return { ok: false, error: dates.message }
   }
 
@@ -282,7 +347,7 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
     return { ok: true, jobId }
   } catch (error) {
     logHiringMutationError('create_job', error)
-    return { ok: false, error: safeMutationError(error) }
+    return mutationFailure(error)
   }
 }
 
@@ -296,22 +361,42 @@ export async function updateHiringJob(
   intent: HiringJobSaveIntent = 'save',
 ): Promise<HiringActionResult> {
   const parsedJobId = uuidSchema.safeParse(jobId)
-  const parsed = updateJobSchema.safeParse(input)
+  // Hotfix P2: whether the full rules apply depends on the job's status, read below; the shapes and
+  // limits every save needs are checked first.
+  const parsedDraft = draftJobFieldsSchema.safeParse(input)
   const parsedIntent = saveIntentSchema.safeParse(intent)
   if (!parsedJobId.success) return { ok: false, error: 'This job link is not valid. Open the job again from Your jobs.' }
-  if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (!parsedDraft.success) return { ok: false, error: validationError(parsedDraft.error) }
   if (!parsedIntent.success) return { ok: false, error: 'Choose whether to save or publish the job.' }
-  const withRoles = withJobRoles(parsed.data, false)
-  if (!withRoles.ok) return withRoles
-  const jobInput = withRoles.data
 
   try {
     const user = await requireAwsUser()
     const job = await requireManagedJob(user.id, parsedJobId.data)
     const today = todayIsoDate()
-    // Round H (H7): an unchanged joining date that has since passed stays valid, so older jobs remain editable.
-    const rules = validateJobForm(jobInput, { today, savedJoiningFrom: job.joiningFrom ?? null })
-    if (rules.errors.length) throw new HiringValidationError(rules.errors[0]!.message)
+    const staysDraft = job.status === 'draft' && parsedIntent.data === 'save'
+
+    let jobInput: HiringJobUpdateInput
+    if (staysDraft) {
+      const draft = asStoredDraft(parsedDraft.data)
+      if (!draft.ok) throw new HiringValidationError(draft.error)
+      jobInput = draft.data
+    } else {
+      const parsed = updateJobSchema.safeParse(input)
+      if (!parsed.success) throw new HiringValidationError(validationError(parsed.error))
+      const withRoles = withJobRoles(parsed.data, false)
+      if (!withRoles.ok) throw new HiringValidationError(withRoles.error)
+      jobInput = withRoles.data
+      // Round H (H7): an unchanged joining date that has since passed stays valid, so older jobs remain
+      // editable. A draft being published is checked in full, like a new job (hotfix P2).
+      const publishingDraft = job.status === 'draft'
+      const rules = validateJobPublish(jobInput, {
+        today,
+        savedJoiningFrom: publishingDraft ? null : job.joiningFrom ?? null,
+        requireDepartment: publishingDraft,
+        checkApplyUntil: false,
+      })
+      if (rules.errors.length) throw new HiringValidationError(publishProblemsMessage(rules.errors))
+    }
 
     let nextStatus: HiringJobStatus = job.status
     if (parsedIntent.data === 'publish' && job.status !== 'published') {
@@ -342,7 +427,7 @@ export async function updateHiringJob(
     return { ok: true }
   } catch (error) {
     logHiringMutationError('update_job', error)
-    return { ok: false, error: safeMutationError(error) }
+    return mutationFailure(error)
   }
 }
 
@@ -376,6 +461,17 @@ export async function changeHiringJobStatus(
       await requirePublishCapability(user.id, job.companyId)
       const details = await hiringRepository.getManagedEditableJob(user.id, parsedJobId.data)
       if (!details) throw new Error('hiring_forbidden')
+      // Hotfix P2: drafts can be saved incomplete, so publishing from the jobs list runs the full checks.
+      const publishingDraft = job.status === 'draft'
+      const rules = validateJobPublish(details, {
+        today: todayIsoDate(),
+        savedJoiningFrom: publishingDraft ? null : details.joiningFrom ?? null,
+        requireDepartment: publishingDraft,
+        checkApplyUntil: false,
+      })
+      if (rules.errors.length) {
+        throw new HiringValidationError(`${publishProblemsMessage(rules.errors)} Open the job with Edit to finish it.`)
+      }
       moderation = assessJobContent(details, 'published')
       if (moderation.decision === 'block') throw new HiringValidationError(moderationBlockMessage())
     }

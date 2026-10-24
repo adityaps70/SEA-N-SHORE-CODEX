@@ -3,6 +3,8 @@
 import { useId } from 'react'
 import { jobDepartments, rolesFor } from '../taxonomy'
 
+export type AcceptedRolesField = 'departmentKey' | 'acceptedRoleKeys' | 'roleOtherText'
+
 export type AcceptedRolesValue = {
   departmentKey: string
   acceptedRoleKeys: string[]
@@ -19,13 +21,27 @@ export function AcceptedRolesPicker({
   onChange,
   labelClassName,
   inputClassName,
+  idPrefix,
+  errors,
 }: {
   value: AcceptedRolesValue
   onChange: (value: AcceptedRolesValue) => void
   labelClassName: string
   inputClassName: string
+  /** Stable field ids (`<prefix>-departmentKey`, …) so an error summary can link to them. */
+  idPrefix?: string
+  /** Hotfix P2: a message under each field, with aria-invalid and aria-describedby. */
+  errors?: Partial<Record<AcceptedRolesField, string>>
 }) {
-  const id = useId()
+  const generatedId = useId()
+  const id = idPrefix ?? generatedId
+  const departmentId = idPrefix ? `${idPrefix}-departmentKey` : `${id}-department`
+  const rolesId = idPrefix ? `${idPrefix}-acceptedRoleKeys` : `${id}-roles`
+  const otherId = idPrefix ? `${idPrefix}-roleOtherText` : `${id}-other`
+  const issueId = (field: AcceptedRolesField) => `${id}-${field}-issue`
+  const issue = (field: AcceptedRolesField) => errors?.[field]
+    ? <span id={issueId(field)} className="block text-xs font-medium text-red-700">{errors[field]}</span>
+    : null
   const departments = jobDepartments()
   const roles = rolesFor(value.departmentKey)
   const otherSelected = roles.some((role) => role.other && value.acceptedRoleKeys.includes(role.key))
@@ -39,12 +55,14 @@ export function AcceptedRolesPicker({
   return (
     <>
       <div className={labelClassName}>
-        <label htmlFor={`${id}-department`}>Department</label>
+        <label htmlFor={departmentId}>Department</label>
         <select
-          id={`${id}-department`}
+          id={departmentId}
           name="departmentKey"
           value={value.departmentKey}
           required
+          aria-invalid={errors?.departmentKey ? true : undefined}
+          aria-describedby={errors?.departmentKey ? issueId('departmentKey') : undefined}
           onChange={(event) => onChange({ departmentKey: event.target.value, acceptedRoleKeys: [], otherText: '' })}
           className={inputClassName}
         >
@@ -60,9 +78,16 @@ export function AcceptedRolesPicker({
             ))}
           </optgroup>
         </select>
+        {issue('departmentKey')}
       </div>
 
-      <fieldset className="rounded-xl border border-mist-100 p-4 sm:col-span-2" aria-describedby={`${id}-roles-hint`} disabled={!value.departmentKey}>
+      <fieldset
+        id={rolesId}
+        className="rounded-xl border border-mist-100 p-4 sm:col-span-2"
+        aria-describedby={[`${id}-roles-hint`, errors?.acceptedRoleKeys ? issueId('acceptedRoleKeys') : null].filter(Boolean).join(' ')}
+        aria-invalid={errors?.acceptedRoleKeys ? true : undefined}
+        disabled={!value.departmentKey}
+      >
         <legend className="px-1 text-sm font-semibold text-navy-900">Accepted ranks / roles</legend>
         <p id={`${id}-roles-hint`} className="text-xs text-muted">
           {value.departmentKey
@@ -87,18 +112,22 @@ export function AcceptedRolesPicker({
             })}
           </div>
         ) : null}
+        {issue('acceptedRoleKeys')}
         {otherSelected ? (
           <div className={`${labelClassName} mt-3`}>
-            <label htmlFor={`${id}-other`}>Type the rank / role</label>
+            <label htmlFor={otherId}>Type the rank / role</label>
             <input
-              id={`${id}-other`}
+              id={otherId}
               name="roleOtherText"
               value={value.otherText}
               maxLength={100}
               required
+              aria-invalid={errors?.roleOtherText ? true : undefined}
+              aria-describedby={errors?.roleOtherText ? issueId('roleOtherText') : undefined}
               onChange={(event) => onChange({ ...value, otherText: event.target.value })}
               className={inputClassName}
             />
+            {issue('roleOtherText')}
           </div>
         ) : null}
       </fieldset>

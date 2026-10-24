@@ -15,6 +15,7 @@ import { COMMUNITY_IMAGE_CONTENT_TYPES, validateCommunityImage, type CommunityMe
 import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type CommunityCategoryRef, type GroupJoinPolicy, type GroupVisibility } from '../types'
 import { CategoryOptions } from './category-options'
 import { pluralize } from '@/lib/format'
+import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
 
 /** One identity the member may create as: themselves (`me`) or an organization (its id). */
 export type CreateCommunityIdentity = { value: string; label: string; hint?: string }
@@ -186,7 +187,7 @@ export function CreateCommunityForm({ identities, initialAs, categories }: { ide
   const error = cropping ? null : clientError ?? (state && !state.ok ? state.error : null)
 
   return (
-    <form action={formAction} aria-label="Create a community" className="space-y-5">
+    <form action={formAction} onSubmit={(event) => submitWithoutReset(event, formAction)} aria-label="Create a community" className="space-y-5">
       {identities.length > 1 ? (
         <fieldset>
           <legend className={labelClass}>Create as</legend>

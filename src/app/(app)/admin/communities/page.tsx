@@ -222,7 +222,8 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
           <h3 id="create-group-heading" className="text-lg font-bold text-navy-950">Create group</h3>
           <p className="mt-1 text-sm text-muted">The owner is added as an active member at once; they can then appoint moderators from the group’s Members tab.</p>
         </div>
-        <AdminGroupForm categories={categories} />
+        {/* A new form after each group is created (the form keeps what was typed otherwise; hotfix P2). */}
+        <AdminGroupForm key={createdSlug ?? 'new'} categories={categories} />
       </section>
     </div>
   )

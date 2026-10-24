@@ -81,3 +81,35 @@ export function validateJobRoles(
     },
   }
 }
+
+/**
+ * Hotfix P2: a draft keeps whatever role choice is valid so far (a department without ranks yet, or
+ * "Other" before its text is typed) instead of refusing the save. Publish still runs validateJobRoles.
+ */
+export function draftJobRoles(fields: JobRoleFields, context: { domain: RoleDomain }): JobRoleSelection {
+  const strict = validateJobRoles(fields, { domain: context.domain, requireDepartment: false })
+  if (strict.ok) return strict.data
+
+  const minMatch = fields.minMatchToApply ?? DEFAULT_MIN_MATCH_TO_APPLY
+  const minMatchToApply = Number.isInteger(minMatch) && minMatch >= 0 && minMatch <= 100 ? minMatch : DEFAULT_MIN_MATCH_TO_APPLY
+  const key = fields.departmentKey?.trim() || null
+  const department = key && jobDepartments().some((entry) => entry.key === key) ? departmentByKey(key) ?? null : null
+  const acceptedRoleKeys = department
+    ? [...new Set((fields.acceptedRoleKeys ?? []).map((entry) => entry.trim()))]
+      .filter((entry) => roleByKey(entry)?.department === department.key)
+      .slice(0, 20)
+    : []
+  const otherText = fields.roleOtherText?.trim().replace(/\s+/g, ' ') || null
+  const wantsOther = acceptedRoleKeys.some((entry) => roleByKey(entry)?.other)
+  const roleOtherText = wantsOther && otherText && otherText.length >= 2 && otherText.length <= 100 ? otherText : null
+
+  return {
+    departmentKey: department?.key ?? null,
+    acceptedRoleKeys,
+    roleOtherText,
+    minMatchToApply,
+    domain: department?.domain ?? context.domain,
+    departmentLabel: department?.label ?? null,
+    rankLabel: acceptedRolesLabel(acceptedRoleKeys, roleOtherText)?.slice(0, 120) ?? null,
+  }
+}

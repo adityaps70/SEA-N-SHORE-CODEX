@@ -12,8 +12,14 @@ import { availableJobActions, jobStatusPresentation, todayIsoDate } from '@/feat
 
 export const metadata: Metadata = { title: 'Edit job' }
 
-export default async function EditHiringJobPage({ params }: { params: Promise<{ jobId: string }> }) {
-  const { jobId } = await params
+export default async function EditHiringJobPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ jobId: string }>
+  searchParams: Promise<{ notice?: string | string[] }>
+}) {
+  const [{ jobId }, query] = await Promise.all([params, searchParams])
   const user = await requireAwsUser()
   const managedJobs = await hiringRepository.listManagedJobs(user.id)
   const jobSummary = managedJobs.find((item) => item.id === jobId)
@@ -70,7 +76,14 @@ export default async function EditHiringJobPage({ params }: { params: Promise<{ 
         </div>
       </section>
 
-      <HiringJobForm mode="edit" jobId={jobId} initial={job} publishLabel={publishLabel} />
+      <HiringJobForm
+        mode="edit"
+        jobId={jobId}
+        initial={job}
+        publishLabel={publishLabel}
+        draftOwnerId={user.id}
+        notice={query.notice === 'draft' && job.status === 'draft' ? 'draft' : null}
+      />
     </div>
   )
 }
