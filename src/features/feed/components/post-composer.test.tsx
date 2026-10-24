@@ -20,11 +20,14 @@ const mocks = vi.hoisted(() => ({
   createObjectURL: vi.fn((file: File) => `blob:${file.name}`),
   revokeObjectURL: vi.fn(),
   downscaleImage: vi.fn(async (file: File) => file),
+  readVideoDetails: vi.fn<(file: File) => Promise<{ durationSeconds: number; width: number; height: number } | null>>(async () => ({ durationSeconds: 30, width: 1280, height: 720 })),
 }))
 
 vi.mock('@/lib/images/downscale-image', () => ({
   downscaleImage: mocks.downscaleImage,
 }))
+// jsdom never loads video metadata; the composer gets a 30 s 720p clip unless a test says otherwise.
+vi.mock('../video-details', () => ({ readVideoDetails: mocks.readVideoDetails }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: mocks.refresh }),
@@ -205,6 +208,30 @@ describe('PostComposer rich media', () => {
     expect(preview).toHaveAttribute('src', 'blob:bridge.mp4')
   })
 
+  it('refuses a video longer than 3 minutes before asking for an upload link (Round P3)', async () => {
+    mocks.readVideoDetails.mockResolvedValueOnce({ durationSeconds: 4 * 60, width: 1280, height: 720 })
+    const user = userEvent.setup()
+    render(<PostComposer profile={profile} />)
+    await openComposer(user)
+
+    await user.upload(photoVideoInput(), fileWithSize('watch-handover.mp4', 'video/mp4', 2048))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Videos can be up to 3 minutes long. Trim this one and try again.')
+    expect(mocks.createPostMediaUploads).not.toHaveBeenCalled()
+  })
+
+  it('uploads a 1080p video with a tip to record at 720p (Round P3)', async () => {
+    mocks.readVideoDetails.mockResolvedValueOnce({ durationSeconds: 40, width: 1080, height: 1920 })
+    const user = userEvent.setup()
+    render(<PostComposer profile={profile} />)
+    await openComposer(user)
+
+    await user.upload(photoVideoInput(), fileWithSize('mooring.mp4', 'video/mp4', 2048))
+
+    await waitFor(() => expect(mocks.uploadPostMediaFile).toHaveBeenCalledTimes(1))
+    expect(screen.getByText(/Recording at 720p makes it upload and play faster./)).toBeInTheDocument()
+  })
+
   it('reads PDF pages before upload and prepares a document carousel manifest', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
@@ -251,7 +278,7 @@ describe('PostComposer rich media', () => {
 
   it.each([
     [fileWithSize('too-large.jpg', 'image/jpeg', POST_IMAGE_MAX_BYTES + 1), photoVideoInput, /5 MiB/i],
-    [fileWithSize('too-large.mp4', 'video/mp4', POST_VIDEO_MAX_BYTES + 1), photoVideoInput, /200 MB/i],
+    [fileWithSize('too-large.mp4', 'video/mp4', POST_VIDEO_MAX_BYTES + 1), photoVideoInput, /100 MB/i],
     [fileWithSize('too-large.pdf', 'application/pdf', POST_DOCUMENT_MAX_BYTES + 1), documentInput, /25 MB/i],
   ])('rejects oversized media before requesting an upload target', async (file, input, message) => {
     const user = userEvent.setup()

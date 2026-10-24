@@ -24,6 +24,8 @@ vi.mock('../actions', () => ({
 }))
 vi.mock('../organization-post-actions', () => ({ loadPostingOrganizations: vi.fn(async () => ({ ok: true, organizations: [] })) }))
 vi.mock('../pdf-page-count', () => ({ readPdfPageCount: mocks.readPdfPageCount }))
+// jsdom never loads video metadata.
+vi.mock('../video-details', () => ({ readVideoDetails: vi.fn(async () => null) }))
 vi.mock('./upload-post-media', () => ({ uploadPostMediaFile: mocks.uploadPostMediaFile }))
 vi.mock('../photo-tag-actions', () => ({ searchPhotoTagCandidates: mocks.searchPhotoTagCandidates }))
 

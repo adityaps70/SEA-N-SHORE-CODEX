@@ -22,10 +22,12 @@ import {
   POST_DOCUMENT_MAX_PAGES,
   POST_IMAGE_MAX_COUNT,
   isVideoPostMediaMime,
+  validatePostVideoDetails,
   validatePostMediaMetadata,
   type PostMediaMime,
 } from '../media-policy'
 import { readPdfPageCount } from '../pdf-page-count'
+import { readVideoDetails } from '../video-details'
 import { POST_AUDIENCE_HINTS, POST_AUDIENCE_LABELS, POST_AUDIENCES, type ComposerProfile, type PostAudience, type PostCategory, type PostingOrganization } from '../types'
 import { EmojiPicker } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
@@ -301,6 +303,8 @@ export function PostComposer({
   const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields(pollIdPrefix))
   const [media, setMediaState] = useState<ComposerMedia[]>([])
   const [mediaError, setMediaError] = useState<string | null>(null)
+  /** Round P3: advice about the attached video (e.g. record at 720p); never blocks the post. */
+  const [mediaNotice, setMediaNotice] = useState<string | null>(null)
   /** `localUrl` of the photo whose "Tag people" dialog is open. */
   const [tagTarget, setTagTarget] = useState<string | null>(null)
   const [draftHydrated, setDraftHydrated] = useState(false)
@@ -463,6 +467,7 @@ export function PostComposer({
     if (documentInputRef.current) documentInputRef.current.value = ''
     setMedia([])
     setMediaError(null)
+    setMediaNotice(null)
   }
 
   function removeMedia(localUrl: string) {
@@ -474,6 +479,7 @@ export function PostComposer({
     if (mediaInputRef.current) mediaInputRef.current.value = ''
     if (documentInputRef.current) documentInputRef.current.value = ''
     setMediaError(null)
+    setMediaNotice(null)
   }
 
   function resetComposer(options: { discardMedia: boolean; clearDraft: boolean }) {
@@ -696,7 +702,21 @@ export function PostComposer({
       }
     }
 
+    // Round P3: feed videos are capped at 3 minutes; above 720p is allowed with a hint.
+    const video = files.length === 1 && files[0] && isVideoPostMediaMime(files[0].type) ? files[0] : null
+    let videoHint: string | null = null
+    if (video) {
+      const details = validatePostVideoDetails(await readVideoDetails(video))
+      if (!details.ok) {
+        setMediaError(details.error)
+        if (mediaInputRef.current) mediaInputRef.current.value = ''
+        return
+      }
+      videoHint = details.hint
+    }
+
     const appendImages = allNewImages && existingImages.length > 0
+    setMediaNotice(videoHint)
     await uploadFiles(files.map((file) => ({ file, pageCount: null })), { appendImages })
   }
 
@@ -1093,9 +1113,10 @@ export function PostComposer({
                 </p>
               </div>
 
-              {(mediaError || state.fieldErrors?.media || state.error) ? (
+              {(mediaError || mediaNotice || state.fieldErrors?.media || state.error) ? (
                 <div className="space-y-2 border-t border-mist-100 px-5 py-3 max-md:shrink-0 max-md:px-4">
                   {mediaError ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{mediaError}</p> : null}
+                  {mediaNotice && !mediaError ? <p role="status" className="rounded-xl bg-ocean-50 px-3 py-2 text-sm text-navy-900">{mediaNotice}</p> : null}
                   {state.fieldErrors?.media ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.fieldErrors.media[0]}</p> : null}
                   {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
                 </div>
