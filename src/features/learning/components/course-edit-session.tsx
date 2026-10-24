@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, CheckCircle2, CircleDot, Loader2 } from 'lucide-react'
+import { internalDestination, isPlainLeftClick } from '@/hooks/use-unsaved-changes-warning'
 
 /**
  * Keeps every editor on the course edit page (details form, curriculum,
@@ -92,26 +93,6 @@ export function useUnsavedChanges(
   }, [dirty, hasSave, id, label, session])
 
   useEffect(() => () => session?.setEntry(id, null), [id, session])
-}
-
-function isPlainLeftClick(event: MouseEvent) {
-  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey
-}
-
-function internalDestination(anchor: HTMLAnchorElement) {
-  if (anchor.target && anchor.target !== '_self') return null
-  if (anchor.hasAttribute('download')) return null
-  const rawHref = anchor.getAttribute('href')
-  if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('mailto:') || rawHref.startsWith('tel:')) return null
-  let url: URL
-  try {
-    url = new URL(anchor.href, window.location.href)
-  } catch {
-    return null
-  }
-  if (url.origin !== window.location.origin) return null
-  if (url.pathname === window.location.pathname && url.search === window.location.search) return null
-  return `${url.pathname}${url.search}${url.hash}`
 }
 
 export function CourseEditSession({

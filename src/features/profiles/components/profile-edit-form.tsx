@@ -14,6 +14,7 @@ import { HeadlineUrlCheck } from './headline-url-check'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 import { VesselTypesInput } from '@/features/taxonomy/components/vessel-types-input'
 import { buttonClass } from '@/components/ui/interactive-styles'
+import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
 
 const initialState: ProfileActionState = {}
 
@@ -71,7 +72,9 @@ export function ProfileEditForm({
 
   return (
     <Card className="border border-mist-100 p-5 sm:p-6">
-      <form key={state.revision ?? 0} action={formAction} className="space-y-6">
+      {/* Hotfix P2: no React form reset and no remount on an error, so every field (the rank picker
+          included) keeps what was typed. */}
+      <form action={formAction} onSubmit={(event) => submitWithoutReset(event, formAction)} className="space-y-6">
         <input type="hidden" name="profileType" value={profile.profileType} />
 
         <section id="identity" className={sectionClass}>

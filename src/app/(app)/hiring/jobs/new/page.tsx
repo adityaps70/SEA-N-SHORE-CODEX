@@ -49,7 +49,7 @@ export default async function NewHiringJobPage() {
         </p>
       </div>
       <div className="max-md:hidden"><HiringSubnav active="jobs" /></div>
-      <HiringJobForm mode="create" publisherOptions={publisherOptions} />
+      <HiringJobForm mode="create" publisherOptions={publisherOptions} draftOwnerId={user.id} />
     </div>
   )
 }

@@ -1,9 +1,14 @@
-import { normaliseLegacyRank, roleByKey } from '@/features/roles/taxonomy'
+import { acceptedRolesLabel, normaliseLegacyRank, roleByKey } from '@/features/roles/taxonomy'
+import { pluralize } from '@/lib/format'
 import { locationKind } from './job-location'
 
 /**
- * Round H (H7): the job form's checks, shared by the form (as you type and before saving) and, once
- * wired, the server actions. Errors block saving; warnings are shown but never block.
+ * Round H (H7): the job form's checks, shared by the form (as you type and before saving) and the
+ * server actions. Errors block saving; warnings are shown but never block.
+ *
+ * Hotfix P2: a draft saves with only a title (or a picked rank); validateJobDraft holds that. The
+ * full checks (validateJobPublish: required fields plus validateJobForm) run on Publish, and the form
+ * shows them on a draft as the "Before you publish" checklist.
  */
 
 export const JOB_DESCRIPTION_MIN_LENGTH = 120
@@ -33,10 +38,19 @@ export type JobFormValues = {
   acceptedRoleKeys?: readonly string[]
   /** An older job's rank text, used when it has no rank keys. */
   rank?: string | null
+  /** Checked by validateJobPublish only. */
+  summary?: string
+  departmentKey?: string | null
+  roleOtherText?: string | null
+  applyUntil?: string | null
 }
 
 export type JobFormField =
   | 'title'
+  | 'departmentKey'
+  | 'acceptedRoleKeys'
+  | 'roleOtherText'
+  | 'summary'
   | 'description'
   | 'location'
   | 'regions'
@@ -44,6 +58,15 @@ export type JobFormField =
   | 'experienceMinYears'
   | 'experienceMaxYears'
   | 'joiningFrom'
+  | 'applyUntil'
+
+/** The order fields appear in on the form, so the summary and the first focused error follow the page. */
+export const JOB_FORM_FIELD_ORDER: readonly JobFormField[] = [
+  'title', 'departmentKey', 'acceptedRoleKeys', 'roleOtherText', 'location', 'summary', 'description',
+  'experienceMinYears', 'experienceMaxYears', 'regions', 'joiningFrom', 'applyUntil', 'salaryMax',
+]
+
+export const JOB_TITLE_MAX_LENGTH = 160
 
 export type JobFormIssue = { field: JobFormField; message: string }
 
@@ -54,6 +77,13 @@ export type JobFormRuleOptions = {
   today?: string
   /** The joining date already saved on the job: an unchanged past date does not block other edits. */
   savedJoiningFrom?: string | null
+}
+
+export type JobPublishRuleOptions = JobFormRuleOptions & {
+  /** New jobs and drafts need a department; an older live job may keep only its rank text. Default true. */
+  requireDepartment?: boolean
+  /** Check the last date to apply here (the form); the server leaves it to job-lifecycle.ts. Default true. */
+  checkApplyUntil?: boolean
 }
 
 const collapse = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en')
@@ -127,4 +157,61 @@ export function validateJobForm(values: JobFormValues, options: JobFormRuleOptio
   }
 
   return { errors, warnings }
+}
+
+/** The title a draft is saved under: the typed title, or the picked ranks when the title is empty. */
+export function jobDraftTitle(values: Pick<JobFormValues, 'title' | 'acceptedRoleKeys' | 'roleOtherText' | 'rank'>) {
+  const typed = values.title.trim()
+  if (typed) return typed
+  const rank = acceptedRolesLabel(values.acceptedRoleKeys ?? [], values.roleOtherText) ?? values.rank?.trim() ?? ''
+  return rank.slice(0, JOB_TITLE_MAX_LENGTH).trim()
+}
+
+/** What "Save draft" needs: a title of at least 2 characters, or a rank to name the draft after. */
+export function validateJobDraft(values: Pick<JobFormValues, 'title' | 'acceptedRoleKeys' | 'roleOtherText' | 'rank'>): JobFormIssue[] {
+  return jobDraftTitle(values).length >= 2
+    ? []
+    : [{ field: 'title', message: 'Add a job title (or pick a rank) to save a draft.' }]
+}
+
+function sortIssues(issues: JobFormIssue[]) {
+  return [...issues].sort((a, b) => JOB_FORM_FIELD_ORDER.indexOf(a.field) - JOB_FORM_FIELD_ORDER.indexOf(b.field))
+}
+
+/**
+ * Everything Publish (and Save and publish / republish) needs: the required fields, then the H7 rules.
+ * A job without a department may publish only when it is an older job that keeps its rank text.
+ */
+export function validateJobPublish(values: JobFormValues, options: JobPublishRuleOptions = {}): JobFormValidation {
+  const errors: JobFormIssue[] = []
+  const today = options.today ?? new Date().toISOString().slice(0, 10)
+
+  if (values.title.trim().length < 2) errors.push({ field: 'title', message: 'Add a job title of at least 2 characters.' })
+
+  const keys = values.acceptedRoleKeys ?? []
+  const departmentKey = values.departmentKey?.trim() || null
+  if (!departmentKey && (options.requireDepartment ?? true) && !(values.rank?.trim())) {
+    errors.push({ field: 'departmentKey', message: 'Choose the department for this job.' })
+  } else if (departmentKey && !keys.length) {
+    errors.push({ field: 'acceptedRoleKeys', message: 'Choose at least one accepted rank / role.' })
+  }
+  const wantsOther = keys.some((key) => roleByKey(key)?.other)
+  if (wantsOther && (values.roleOtherText?.trim().length ?? 0) < 2) {
+    errors.push({ field: 'roleOtherText', message: 'Type the rank / role for “Other”.' })
+  }
+
+  if (!values.summary?.trim()) errors.push({ field: 'summary', message: 'Add a short summary candidates will see first.' })
+
+  const applyUntil = values.applyUntil?.trim() || null
+  if ((options.checkApplyUntil ?? true) && applyUntil && /^\d{4}-\d{2}-\d{2}$/.test(applyUntil) && applyUntil < today) {
+    errors.push({ field: 'applyUntil', message: 'The last date to apply can’t be in the past. Pick today or a later date, or leave it empty.' })
+  }
+
+  const rules = validateJobForm(values, options)
+  return { errors: sortIssues([...errors, ...rules.errors]), warnings: rules.warnings }
+}
+
+/** "1 thing to fix" / "2 things to fix". */
+export function thingsToFix(count: number) {
+  return `${pluralize(count, 'thing')} to fix`
 }

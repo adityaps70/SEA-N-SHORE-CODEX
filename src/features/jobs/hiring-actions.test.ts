@@ -585,3 +585,96 @@ describe('urgent jobs limit (round H, H7)', () => {
     error.mockRestore()
   })
 })
+
+describe('drafts save with only a title (hotfix P2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'recruiter-1', cognitoSub: 'sub-1', email: null })
+    mocks.createJob.mockResolvedValue(jobId)
+    mocks.updateJob.mockResolvedValue(undefined)
+    mocks.changeJobStatus.mockResolvedValue(undefined)
+    mocks.getManagedJob.mockResolvedValue(managedJob({ status: 'draft', publishedAt: null }))
+  })
+
+  const titleOnly = (overrides: Partial<HiringJobInput> = {}) => createInput({
+    status: 'draft', title: 'Chief Officer', department: null, rank: null, vesselTypes: [], location: null, regions: [],
+    summary: '', description: '', requirements: null, experienceMinYears: null, experienceMaxYears: null, joiningFrom: null,
+    joiningUntil: null, salaryMin: null, salaryMax: null, urgent: false, applyUntil: null, certificates: [], visas: [],
+    departmentKey: null, acceptedRoleKeys: [], ...overrides,
+  })
+
+  it('saves a new draft with only a title, keeping the empty summary and description as the stored marker', async () => {
+    await expect(createHiringJob(titleOnly())).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenCalledWith('recruiter-1', expect.objectContaining({
+      status: 'draft', title: 'Chief Officer', summary: '​', description: '​', departmentKey: null, acceptedRoleKeys: [],
+    }))
+  })
+
+  it('saves a draft whose fields break the publish rules (short description, salary min above max, past joining date)', async () => {
+    const result = await createHiringJob(titleOnly({
+      description: 'Full command.', salaryMin: 9000, salaryMax: 8000, joiningFrom: past, location: 'Andheri East', domain: 'shore',
+      regions: ['Worldwide'], departmentKey: 'deck_officers', acceptedRoleKeys: [], experienceMinYears: 10, experienceMaxYears: 2,
+    }))
+    expect(result).toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenCalledWith('recruiter-1', expect.objectContaining({
+      description: 'Full command.', salaryMin: 9000, salaryMax: 8000, joiningFrom: past, departmentKey: 'deck_officers', acceptedRoleKeys: [],
+      domain: 'sea',
+    }))
+  })
+
+  it('names a draft without a title after its rank, and refuses one with neither', async () => {
+    await expect(createHiringJob(titleOnly({ title: '', departmentKey: 'deck_officers', acceptedRoleKeys: ['chief_officer'] }))).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenCalledWith('recruiter-1', expect.objectContaining({ title: 'Chief Officer' }))
+    await expect(createHiringJob(titleOnly({ title: ' ' }))).resolves.toEqual({ ok: false, error: 'Add a job title (or pick a rank) to save a draft.' })
+    expect(mocks.createJob).toHaveBeenCalledTimes(1)
+  })
+
+  it('still runs every check on Publish, listing all the problems', async () => {
+    const result = await createHiringJob(titleOnly({ status: 'published', summary: 'Tanker', description: 'Full command.', salaryMin: 9000, salaryMax: 8000 }))
+    expect(result).toEqual({ ok: false, error: 'Maximum salary must be at least the minimum salary.' })
+    await expect(createHiringJob(createInput({ departmentKey: null, acceptedRoleKeys: [] }))).resolves.toEqual({ ok: false, error: 'Choose the department for this job.' })
+    const published = await createHiringJob(createInput({ description: 'Full command.', joiningFrom: past }))
+    expect(published).toEqual({ ok: false, error: expect.stringMatching(/^Before you publish: 2 things to fix\. Describe the role in at least 120 characters.*The joining date can’t be in the past\./) })
+    expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('saves an existing draft leniently, but checks it in full when it is published from the form', async () => {
+    const draft = updateInput({ summary: '', description: 'Short.', salaryMin: 9000, salaryMax: 8000, departmentKey: 'deck_officers', acceptedRoleKeys: [] })
+    await expect(updateHiringJob(jobId, draft, 'save')).resolves.toEqual({ ok: true })
+    expect(mocks.updateJob).toHaveBeenCalledWith('recruiter-1', jobId, expect.objectContaining({ summary: '​', description: 'Short.' }), { expectedStatus: 'draft', nextStatus: 'draft' })
+
+    const published = await updateHiringJob(jobId, draft, 'publish')
+    expect(published).toMatchObject({ ok: false })
+    expect(mocks.updateJob).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the full checks on a live job’s Save changes', async () => {
+    mocks.getManagedJob.mockResolvedValue(managedJob())
+    await expect(updateHiringJob(jobId, updateInput({ description: 'Short.' }), 'save')).resolves.toEqual({
+      ok: false,
+      error: 'Describe the role in at least 120 characters (6 so far).',
+    })
+    expect(mocks.updateJob).not.toHaveBeenCalled()
+  })
+
+  it('refuses to publish an unfinished draft from the jobs list and says what is missing', async () => {
+    mocks.getManagedEditableJob.mockResolvedValue({ id: jobId, companyId, status: 'draft', ...updateInput({ summary: '', description: '' }) })
+    const result = await changeHiringJobStatus(jobId, 'publish')
+    expect(result).toEqual({ ok: false, error: expect.stringMatching(/^Before you publish: 2 things to fix\. Add a short summary.*Describe the role.*Open the job with Edit to finish it\.$/) })
+    expect(mocks.changeJobStatus).not.toHaveBeenCalled()
+  })
+
+  it('tells the form when the session has expired, so it can keep the copy and sign the member in again', async () => {
+    const expired = Object.assign(new Error('Authentication required.'), { name: 'AwsAuthenticationRequiredError' })
+    mocks.requireAwsUser.mockRejectedValue(expired)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    await expect(createHiringJob(titleOnly())).resolves.toEqual({
+      ok: false,
+      code: 'session_expired',
+      error: 'Your session has expired. Sign in again to continue; what you typed is kept on this device.',
+    })
+    await expect(updateHiringJob(jobId, updateInput(), 'save')).resolves.toMatchObject({ ok: false, code: 'session_expired' })
+    expect(error).not.toHaveBeenCalled()
+    error.mockRestore()
+  })
+})

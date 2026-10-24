@@ -1,10 +1,12 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { OwnProfile } from '../types'
 import { ProfileEditForm } from './profile-edit-form'
 
+const mocks = vi.hoisted(() => ({ updateProfile: vi.fn<(...args: unknown[]) => Promise<object>>(async () => ({})) }))
+
 vi.mock('../actions', () => ({
-  updateProfile: vi.fn(async () => ({})),
+  updateProfile: mocks.updateProfile,
 }))
 
 const profile: OwnProfile = {
@@ -127,5 +129,22 @@ describe('ProfileEditForm', () => {
     expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
     // The saved rank is removed from "Profile type & goals" above; nobody types a rank any more.
     expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('ProfileEditForm keeps what was typed on an error (hotfix P2)', () => {
+  it('keeps the typed text and the newly picked rank when the save is refused', async () => {
+    mocks.updateProfile.mockResolvedValueOnce({ error: 'That username is already taken.', revision: 1, values: {} })
+    render(<ProfileEditForm profile={profile} />)
+    fireEvent.change(screen.getByRole('textbox', { name: /full name/i }), { target: { value: 'Capt. Asha Rao' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /^headline$/i }), { target: { value: 'Master Mariner, LNG' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Current or most recent rank' }), { target: { value: 'chief_officer' } })
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('That username is already taken.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /full name/i })).toHaveValue('Capt. Asha Rao')
+    expect(screen.getByRole('textbox', { name: /^headline$/i })).toHaveValue('Master Mariner, LNG')
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toHaveValue('chief_officer')
   })
 })

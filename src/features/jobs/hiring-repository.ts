@@ -12,6 +12,7 @@ import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
 import type { JobLifecycleSnapshot } from './job-lifecycle'
 import { URGENT_LIMIT_PER_COMPANY, urgentActiveSql } from './urgent'
+import { readStoredJobText } from './job-draft-text'
 import type {
   JobApplicationEvent,
   JobApplicationStatus,
@@ -722,8 +723,8 @@ function mapEditableJob(row: EditableJobRow): HiringEditableJob {
     vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
     location: row.location ?? null,
     regions: Array.isArray(row.sailing_regions) ? row.sailing_regions : [],
-    summary: row.summary,
-    description: row.description,
+    summary: readStoredJobText(row.summary),
+    description: readStoredJobText(row.description),
     requirements: row.requirements ?? null,
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),

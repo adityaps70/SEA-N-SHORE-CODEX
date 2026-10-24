@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState, type ChangeEvent, type For
 import { ImageUp } from 'lucide-react'
 import { FormErrorSummary } from '@/components/ui/form-error-summary'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
+import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
 import { isDownscalableImage } from '@/lib/images/downscale-image'
 import { updateOrganizationBranding, requestOrganizationMediaUploadAction, completeOrganizationMediaUploadAction, type OrganizationBrandingActionState } from '../workspace-actions'
 import type { OrganizationWorkspace } from '../workspace-repository'
@@ -126,7 +127,12 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
     const data = new FormData(event.currentTarget)
     const message = brandingImagesProblem(chosenFile(data.get('logo')), chosenFile(data.get('cover')))
     setClientError(message)
-    if (message || mediaUploading || cropping) event.preventDefault()
+    if (message || mediaUploading || cropping) {
+      event.preventDefault()
+      return
+    }
+    // Hotfix P2: no React form reset, so an error never wipes the other fields.
+    submitWithoutReset(event, formAction)
   }
 
   return (

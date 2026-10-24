@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { JOB_DESCRIPTION_MIN_LENGTH, validateJobForm, type JobFormValues } from './job-form-rules'
+import { JOB_DESCRIPTION_MIN_LENGTH, jobDraftTitle, thingsToFix, validateJobDraft, validateJobForm, validateJobPublish, type JobFormValues } from './job-form-rules'
 
 const today = '2026-10-17'
 const longDescription = 'Command a product tanker on a nine-month contract, with full responsibility for safe navigation, cargo operations and crew.'
@@ -88,5 +88,42 @@ describe('validateJobForm (Round H, H7)', () => {
     expect(validateJobForm(values({ acceptedRoleKeys: ['master', 'second_officer'], experienceMinYears: 0 }), { today }).warnings).toEqual([])
     expect(validateJobForm(values({ acceptedRoleKeys: ['master', 'chief_officer'], experienceMinYears: 5 }), { today }).warnings).toEqual([])
     expect(validateJobForm(values({ acceptedRoleKeys: ['master', 'chief_officer'], experienceMinYears: 3 }), { today }).warnings[0]?.message).toBe('Chief Officer usually needs 5+ years of sea service; check the experience years.')
+  })
+})
+
+describe('drafts and publishing (hotfix P2)', () => {
+  it('saves a draft with only a title, or a rank when the title is empty', () => {
+    expect(validateJobDraft({ title: 'Master' })).toEqual([])
+    expect(validateJobDraft({ title: '', acceptedRoleKeys: ['master', 'chief_officer'] })).toEqual([])
+    expect(jobDraftTitle({ title: '  ', acceptedRoleKeys: ['master', 'chief_officer'] })).toBe('Master / Captain, Chief Officer')
+    expect(jobDraftTitle({ title: '', rank: 'Bosun' })).toBe('Bosun')
+    expect(validateJobDraft({ title: ' ' })).toEqual([{ field: 'title', message: 'Add a job title (or pick a rank) to save a draft.' }])
+  })
+
+  it('a draft is never held back by the publish rules', () => {
+    const broken = values({ description: 'Short.', salaryMin: 9000, salaryMax: 100, joiningFrom: '2020-01-01', domain: 'shore', location: 'Onboard' })
+    expect(validateJobDraft(broken)).toEqual([])
+    expect(validateJobForm(broken, { today }).errors.length).toBeGreaterThan(2)
+  })
+
+  it('Publish needs the title, department, ranks, “Other” text and summary too, in the order of the form', () => {
+    const result = validateJobPublish(values({ title: '', summary: '', departmentKey: null, acceptedRoleKeys: [], description: 'Short.' }), { today })
+    expect(fields(result.errors)).toEqual(['title', 'departmentKey', 'summary', 'description'])
+    const ranks = validateJobPublish(values({ summary: 'Tanker', departmentKey: 'deck_officers', acceptedRoleKeys: [] }), { today })
+    expect(fields(ranks.errors)).toEqual(['acceptedRoleKeys'])
+    const other = validateJobPublish(values({ summary: 'Tanker', departmentKey: 'catering', acceptedRoleKeys: ['other_catering'], roleOtherText: '' }), { today })
+    expect(fields(other.errors)).toEqual(['roleOtherText'])
+  })
+
+  it('an older job with rank text may publish without a department, and the apply-by check can be left to the lifecycle', () => {
+    const legacy = values({ summary: 'Tanker', departmentKey: null, acceptedRoleKeys: [], rank: 'Master', applyUntil: '2026-01-01' })
+    expect(fields(validateJobPublish(legacy, { today }).errors)).toEqual(['applyUntil'])
+    expect(validateJobPublish(legacy, { today, checkApplyUntil: false }).errors).toEqual([])
+    expect(validateJobPublish(values({ summary: 'Tanker', departmentKey: null, acceptedRoleKeys: [] }), { today, requireDepartment: false }).errors).toEqual([])
+  })
+
+  it('counts things to fix in words', () => {
+    expect(thingsToFix(1)).toBe('1 thing to fix')
+    expect(thingsToFix(2)).toBe('2 things to fix')
   })
 })

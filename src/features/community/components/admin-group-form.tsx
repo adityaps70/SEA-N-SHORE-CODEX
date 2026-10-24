@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
+import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { createGroupAsAdmin, setGroupOwnerAsAdmin, updateGroupAsAdmin, type AdminGroupFormState } from '../admin-actions'
 import { GROUP_ICON_LABELS } from '../group-icons'
@@ -24,7 +25,7 @@ export function AdminGroupForm({ group, categories }: { group?: AdminCommunityGr
   const [state, action, pending] = useActionState(group ? updateGroupAsAdmin : createGroupAsAdmin, null)
   const formLabel = group ? `Edit ${group.name}` : 'Create group'
   return (
-    <form action={action} aria-label={formLabel} className="space-y-4">
+    <form action={action} onSubmit={(event) => submitWithoutReset(event, action)} aria-label={formLabel} className="space-y-4">
       {group ? <input type="hidden" name="groupId" value={group.id} /> : null}
       <div className="grid gap-4 md:grid-cols-2">
         <label className={labelClass}>
@@ -87,7 +88,7 @@ export function AdminGroupForm({ group, categories }: { group?: AdminCommunityGr
 export function AdminGroupOwnerForm({ group }: { group: AdminCommunityGroup }) {
   const [state, action, pending] = useActionState(setGroupOwnerAsAdmin, null)
   return (
-    <form action={action} aria-label={`Change owner of ${group.name}`} className="space-y-3">
+    <form action={action} onSubmit={(event) => submitWithoutReset(event, action)} aria-label={`Change owner of ${group.name}`} className="space-y-3">
       <input type="hidden" name="groupId" value={group.id} />
       <label className={labelClass}>
         New owner (sign-in email or @handle)
