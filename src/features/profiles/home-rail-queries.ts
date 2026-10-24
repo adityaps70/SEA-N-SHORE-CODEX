@@ -3,7 +3,8 @@ import { getAccessContext } from '@/features/access/server'
 import { canUpgradeOrganization } from '@/features/billing/billing-access'
 import { organizationRepository } from '@/features/organizations/repository'
 import type { OrganizationApplicationStatus, UserOrganizationState } from '@/features/organizations/types'
-import { organizationLinkRepository, type MemberOrganizationShortcut } from './organization-link-repository'
+import type { MemberOrganizationShortcut } from './organization-link-repository'
+import { listMemberOrganizationsForRequest } from './request-cached-reads'
 
 export type HomeOrganizationApplication = {
   companyName: string
@@ -90,7 +91,7 @@ export function createHomeRailQueries(dependencies: HomeRailDependencies) {
 
 const productionQueries = createHomeRailQueries({
   getAccessContext,
-  listMemberOrganizations: organizationLinkRepository.listMemberOrganizations,
+  listMemberOrganizations: listMemberOrganizationsForRequest,
   getUserOrganizationState: organizationRepository.getUserOrganizationState,
 })
 
