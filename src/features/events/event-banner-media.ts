@@ -9,6 +9,7 @@ import {
   isOwnedEventBannerStoragePath,
   validateEventBannerMetadata,
 } from './event-banner-policy'
+import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
 
 export async function prepareEventBannerUpload(input: { profileId: string; mimeType: string; size: number }) {
   const metadata = validateEventBannerMetadata(input)
@@ -36,6 +37,10 @@ export async function verifyEventBannerReference(profileId: string, reference: s
   if (stored.contentType !== expectedMime || !stored.contentLength || stored.contentLength > EVENT_BANNER_MAX_BYTES) {
     throw new Error('event_banner_metadata_mismatch')
   }
+  // Round P3: the bytes must really be the image type the browser declared.
+  const content = await verifyStoredUploadSignature(reference, expectedMime, stored.contentLength)
+  if (content === 'unavailable') throw new Error('event_banner_unavailable')
+  if (content === 'mismatch') throw new Error('event_banner_metadata_mismatch')
 }
 
 export async function resolveEventBannerReference(reference: string | null): Promise<string | null> {

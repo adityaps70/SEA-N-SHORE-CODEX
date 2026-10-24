@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/site-url', () => ({ siteOrigin: () => 'https://seanshore.in' }))
 
+import { CSP_REPORT_REQUESTS_PER_MINUTE, resetCspReportRateLimit } from '@/lib/security/csp-report-rate-limit'
 import { CSP_REPORT_FLUSH_INTERVAL_MS, flushCspViolationSummary } from '@/lib/security/csp-report-summary'
 import { POST } from './route'
 
 beforeEach(() => {
   vi.useFakeTimers()
   flushCspViolationSummary()
+  resetCspReportRateLimit()
 })
 
 afterEach(() => {
@@ -85,6 +87,49 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
       { directive: 'style-src-attr', blocked: 'blob', count: 1 },
       { directive: 'other', blocked: 'other', count: 1 },
     ])
+  })
+
+  it('reads the page reporter batches (Round P3), capped per request', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const violations = [
+      { directive: 'style-src-attr', blocked: 'inline' },
+      { directive: 'img-src', blocked: 'https://cdn.example.com' },
+      ...Array.from({ length: 30 }, () => ({ directive: 'connect-src', blocked: 'wss://rt.example.com' })),
+    ]
+    expect((await post(JSON.stringify({ violations }))).status).toBe(204)
+    vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
+    expect(summaries(log)).toEqual([expect.objectContaining({
+      total: 20,
+      violations: [
+        { directive: 'connect-src', blocked: 'rt.example.com', count: 18 },
+        { directive: 'style-src-attr', blocked: 'inline', count: 1 },
+        { directive: 'img-src', blocked: 'cdn.example.com', count: 1 },
+      ],
+    })])
+    expect(summaries(log)[0]).not.toHaveProperty('rateLimited')
+  })
+
+  it('rate-limits each visitor (Round P3) and counts what it turned away, without touching other visitors', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const report = JSON.stringify({ violations: [{ directive: 'script-src-elem', blocked: 'inline' }] })
+    const flood = { 'x-forwarded-for': '203.0.113.9, 130.176.0.1' }
+    for (let index = 0; index < CSP_REPORT_REQUESTS_PER_MINUTE + 12; index += 1) expect((await post(report, flood)).status).toBe(204)
+    await post(JSON.stringify({ violations: [{ directive: 'img-src', blocked: 'data' }] }), { 'x-forwarded-for': '198.51.100.4, 130.176.0.1' })
+
+    vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
+    expect(summaries(log)).toEqual([expect.objectContaining({
+      total: CSP_REPORT_REQUESTS_PER_MINUTE + 1,
+      rateLimited: 12,
+      violations: [
+        { directive: 'script-src-elem', blocked: 'inline', count: CSP_REPORT_REQUESTS_PER_MINUTE },
+        { directive: 'img-src', blocked: 'data', count: 1 },
+      ],
+    })])
+
+    // The next minute the visitor is counted again.
+    await post(report, flood)
+    vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
+    expect(summaries(log)[1]).toEqual(expect.objectContaining({ total: 1 }))
   })
 
   it('ignores other origins, oversized bodies and junk', async () => {

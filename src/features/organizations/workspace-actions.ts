@@ -11,6 +11,7 @@ import { organizationWorkspaceRepository } from './workspace-repository'
 import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
 import { COMPANY_SIZE_VALUES, MAX_SPECIALTIES, TAGLINE_MAX_LENGTH, type CompanySize } from './organization-page-profile'
 import { plainFieldErrors } from '@/lib/validation/plain-messages'
+import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
 
 const uuidSchema = z.string().uuid()
 const assignableRoles = [
@@ -335,6 +336,11 @@ export async function completeOrganizationMediaUploadAction(input: {
         object.contentLength > MAX_LOGO_BYTES || !input.key.endsWith('.' + logoTypes[object.contentType])) {
       await deleteMediaObject(input.key).catch(() => undefined)
       return { error: 'Image must be a JPG, PNG or WebP file up to 5 MB.' }
+    }
+    // Round P3: the bytes must really be the image type the browser declared.
+    if (await verifyStoredUploadSignature(input.key, object.contentType, object.contentLength) !== 'match') {
+      await deleteMediaObject(input.key).catch(() => undefined)
+      return { error: 'This file is not a real JPG, PNG or WebP image. Choose another image.' }
     }
     try {
       if (input.kind === 'logo') await organizationWorkspaceRepository.updateLogoPath(parsed.data, input.key)

@@ -46,3 +46,6 @@ export function isOwnedJobApplicationCvStoragePath(input: {
   const fileName = input.storagePath.slice(prefix.length)
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pdf$/i.test(fileName)
 }
+
+/** Round P3: the CV's bytes are not a PDF (a renamed image or document). */
+export const JOB_APPLICATION_CV_NOT_PDF = 'job_application_cv_content_mismatch'

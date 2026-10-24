@@ -15,6 +15,7 @@ import {
   validatePostMediaMetadata,
   type PostMediaMime,
 } from './media-policy'
+import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
 
 function buildFirstPartyMediaUrl(path: string): string {
   const encodedPath = path
@@ -115,6 +116,11 @@ export async function verifyPendingPostMedia(input: {
   if (stored.contentType !== metadata.mimeType || stored.contentLength !== input.size) {
     throw new Error('feed_media_metadata_mismatch')
   }
+
+  // Round P3: the bytes must really be the declared image, video or PDF (PDFs are also parsed below).
+  const content = await verifyStoredUploadSignature(input.storagePath, metadata.mimeType, input.size)
+  if (content === 'unavailable') throw new Error('feed_media_unavailable')
+  if (content === 'mismatch') throw new Error('feed_media_metadata_mismatch')
 
   if (metadata.mimeType === 'application/pdf') {
     let pageCount: number

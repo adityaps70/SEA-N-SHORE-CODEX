@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useModalLayer } from '@/features/messaging/components/use-modal-layer'
 import { cropImageToFile, type PixelCrop } from '@/lib/images/crop-image'
+import { imageReencodeErrorMessage } from '@/lib/images/downscale-image'
 import { buttonClass } from '@/components/ui/interactive-styles'
 
 export type ImageCropShape = 'circle' | 'rect'
@@ -94,11 +95,12 @@ export function ImageCropDialog({ file, shape, aspect, title, initialError = '',
     setError('')
     try {
       const cropped = await cropImageToFile(file, pixelCrop, { maxEdge: CROP_MAX_EDGE_PX[shape] })
-      // A browser that cannot crop (no decoder or encoder) still uploads the photo as picked.
+      // A browser that cannot crop hands the photo on as picked; `onSave` still re-encodes it
+      // (downscaleImage), so its metadata is removed or the photo is refused with a clear message.
       try {
         await onSave(cropped ?? file)
-      } catch {
-        setError('Upload failed, try again')
+      } catch (saveError) {
+        setError(imageReencodeErrorMessage(saveError, 'Upload failed, try again'))
         setSaving(false)
       }
     } catch {

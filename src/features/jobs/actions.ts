@@ -11,6 +11,7 @@ import {
   verifyPendingJobApplicationCv,
   type JobApplicationCvReference,
 } from './application-media'
+import { JOB_APPLICATION_CV_NOT_PDF } from './application-media-policy'
 import { applyGateError, evaluateApplyGate, type ApplyGate } from './apply-gate'
 import { scoreJobMatch } from './matching'
 import { jobsRepository } from './repository'
@@ -175,7 +176,10 @@ export async function applyToJob(
         mimeType: parsedCv.data.mimeType,
         sizeBytes: parsedCv.data.sizeBytes,
       })
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === JOB_APPLICATION_CV_NOT_PDF) {
+        return { ok: false, error: 'This file is not a real PDF. Save your CV as a PDF (File › Save as PDF) and attach it again.' }
+      }
       return { ok: false, error: 'We could not verify your CV. Please attach the PDF again.' }
     }
   }

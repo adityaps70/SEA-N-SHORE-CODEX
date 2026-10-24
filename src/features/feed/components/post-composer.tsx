@@ -1,6 +1,6 @@
 'use client'
 
-import { downscaleImage } from '@/lib/images/downscale-image'
+import { downscaleImage, imageReencodeErrorMessage } from '@/lib/images/downscale-image'
 import { avatarSizes } from '@/lib/images/media-image-source'
 import { MediaImage } from '@/components/ui/media-image'
 import { useActionState, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -659,9 +659,17 @@ export function PostComposer({
   async function choosePhotoVideo(picked: File[]) {
     if (!picked.length) return
     setPickerHint(null)
-    // Photos are shrunk in the browser first (max 2048px long edge, WebP), so validation and the
-    // upload see the small file. Videos, GIFs and anything the browser cannot decode pass through.
-    const files = await Promise.all(picked.map((file) => downscaleImage(file, 'post')))
+    // Photos are always re-encoded in the browser (max 2048px long edge, WebP), so validation and
+    // the upload see the small file and EXIF metadata (GPS included) is removed. Videos and PDFs
+    // pass through; a photo the browser cannot decode is refused.
+    let files: File[]
+    try {
+      files = await Promise.all(picked.map((file) => downscaleImage(file, 'post')))
+    } catch (prepareError) {
+      setMediaError(imageReencodeErrorMessage(prepareError, 'We could not upload this media. Please try again.'))
+      if (mediaInputRef.current) mediaInputRef.current.value = ''
+      return
+    }
     const existingImages = mediaStateRef.current.length > 0 && mediaStateRef.current.every((item) => isImageMime(item.mimeType))
       ? mediaStateRef.current
       : []

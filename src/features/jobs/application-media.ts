@@ -4,10 +4,12 @@ import {
   headMediaObject,
 } from '@/lib/aws/storage'
 import {
+  JOB_APPLICATION_CV_NOT_PDF,
   buildJobApplicationCvStoragePath,
   isOwnedJobApplicationCvStoragePath,
   validateJobApplicationCvMetadata,
 } from './application-media-policy'
+import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
 
 export type JobApplicationCvReference = {
   storagePath: string
@@ -79,6 +81,14 @@ export async function verifyPendingJobApplicationCv(input: {
     || stored.contentLength !== metadata.sizeBytes
   ) {
     throw new Error('job_application_cv_metadata_mismatch')
+  }
+
+  // Round P3: the file must really be a PDF, not a renamed image or document.
+  const content = await verifyStoredUploadSignature(input.storagePath, metadata.mimeType, metadata.sizeBytes)
+  if (content === 'unavailable') throw new Error('job_application_cv_unavailable')
+  if (content === 'mismatch') {
+    await deleteMediaObject(input.storagePath).catch(() => undefined)
+    throw new Error(JOB_APPLICATION_CV_NOT_PDF)
   }
 
   return {

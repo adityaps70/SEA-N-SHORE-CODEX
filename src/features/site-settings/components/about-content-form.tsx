@@ -4,6 +4,7 @@ import { useActionState, useEffect, useId, useRef, useState, type ReactNode } fr
 import { FormErrorSummary, focusFirstFormError } from '@/components/ui/form-error-summary'
 import { supportInputClass, supportPrimaryButtonClass, supportSecondaryButtonClass } from '@/features/support/components/form-styles'
 import { createSiteImageUploadAction, saveAboutPageAction, type SiteSettingsFormState } from '../admin-actions'
+import { downscaleImage, imageReencodeErrorMessage } from '@/lib/images/downscale-image'
 import { ABOUT_LIMITS, SITE_IMAGE_MAX_BYTES, SITE_IMAGE_TYPES, type AboutPageContent, type AboutPartner, type AboutPerson } from '../schemas'
 
 type PeopleListKey = 'founders' | 'team'
@@ -15,8 +16,17 @@ const EMPTY_PARTNER: AboutPartner = { name: '', logoPath: null, websiteUrl: null
 const smallButton = 'inline-flex min-h-11 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-50'
 
 /** Uploads one image through a short-lived link and returns its storage path. */
-async function uploadSiteImage(file: File): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
-  if (!(file.type in SITE_IMAGE_TYPES) || file.size > SITE_IMAGE_MAX_BYTES) return { ok: false, error: 'Choose a PNG, JPEG or WebP image of 2 MB or less.' }
+async function uploadSiteImage(picked: File): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  const refused = { ok: false, error: 'Choose a PNG, JPEG or WebP image of 2 MB or less.' } as const
+  if (!(picked.type in SITE_IMAGE_TYPES)) return refused
+  let file: File
+  try {
+    // Round P3: always re-encoded in the browser, so EXIF metadata (GPS included) is removed.
+    file = await downscaleImage(picked, 'cover')
+  } catch (prepareError) {
+    return { ok: false, error: imageReencodeErrorMessage(prepareError, 'The image could not be uploaded. Please try again.') }
+  }
+  if (!(file.type in SITE_IMAGE_TYPES) || file.size > SITE_IMAGE_MAX_BYTES) return refused
   const prepared = await createSiteImageUploadAction({ contentType: file.type, size: file.size })
   if (!prepared.ok) return prepared
   try {

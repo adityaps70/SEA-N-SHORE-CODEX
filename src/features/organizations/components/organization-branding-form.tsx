@@ -6,7 +6,7 @@ import { ImageUp } from 'lucide-react'
 import { FormErrorSummary } from '@/components/ui/form-error-summary'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
 import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
-import { isDownscalableImage } from '@/lib/images/downscale-image'
+import { downscaleImage, imageReencodeErrorMessage, isDownscalableImage } from '@/lib/images/downscale-image'
 import { updateOrganizationBranding, requestOrganizationMediaUploadAction, completeOrganizationMediaUploadAction, type OrganizationBrandingActionState } from '../workspace-actions'
 import type { OrganizationWorkspace } from '../workspace-repository'
 import { WELLBEING_SERVICES, isWellbeingType, organizationTypeHasField } from '../organization-types'
@@ -74,11 +74,13 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
   const previewFor = (kind: BrandingImageKind) => (kind === 'logo' ? previewLogo : previewCover)
 
   /** A photo the browser can re-encode is framed in the crop dialog first; anything else previews as picked. */
-  async function uploadMedia(kind: BrandingImageKind, file: File) {
+  async function uploadMedia(kind: BrandingImageKind, picked: File) {
     setMediaUploading(true)
     setClientError(null)
     setMediaSuccess(null)
     try {
+      // Round P3: always re-encoded in the browser, so EXIF metadata (GPS included) is removed.
+      const file = await downscaleImage(picked, kind === 'logo' ? 'logo' : 'cover')
       const ticket = await requestOrganizationMediaUploadAction({
         companyId: workspace.id, kind, contentType: file.type, size: file.size,
       })
@@ -106,7 +108,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
       setCropping({ kind, file })
       return
     }
-    void uploadMedia(kind, file).catch(() => setClientError('Upload failed, try again'))
+    void uploadMedia(kind, file).catch((uploadError) => setClientError(imageReencodeErrorMessage(uploadError, 'Upload failed, try again')))
   }
 
   function cancelCrop() {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DOWNSCALE_MAX_EDGE_PX, DOWNSCALE_QUALITY, DOWNSCALE_SKIP_BYTES, downscaleImage } from './downscale-image'
+import { DOWNSCALE_MAX_EDGE_PX, DOWNSCALE_QUALITY, IMAGE_REENCODE_ERROR_MESSAGE, ImageReencodeError, downscaleImage, imageReencodeErrorMessage } from './downscale-image'
 
 type FakeBitmap = { width: number; height: number; close: () => void }
 
@@ -110,17 +110,21 @@ describe('downscaleImage', () => {
   it('re-encodes a small-dimension photo that is still heavy, without enlarging it', async () => {
     state.bitmap = { width: 700, height: 500, close: vi.fn() }
 
-    await downscaleImage(file('heavy.png', 'image/png', DOWNSCALE_SKIP_BYTES + 1), 'avatar')
+    await downscaleImage(file('heavy.png', 'image/png', 400 * 1024 + 1), 'avatar')
 
     expect(state.drawn).toEqual([{ width: 700, height: 500 }])
   })
 
-  it('skips photos that already fit and are at most 400 KB', async () => {
+  it('re-encodes even a small photo that already fits, so its EXIF metadata (GPS included) never reaches the server', async () => {
     state.bitmap = { width: 640, height: 480, close: vi.fn() }
-    const original = file('small.jpg', 'image/jpeg', DOWNSCALE_SKIP_BYTES)
+    state.encoded = { 'image/webp': blobOf(30_000, 'image/webp'), 'image/jpeg': blobOf(40_000, 'image/jpeg') }
+    const original = file('small.jpg', 'image/jpeg', 50_000)
 
-    await expect(downscaleImage(original, 'post')).resolves.toBe(original)
-    expect(state.drawn).toEqual([])
+    const result = await downscaleImage(original, 'post')
+
+    expect(result).not.toBe(original)
+    expect(result.type).toBe('image/webp')
+    expect(state.drawn).toEqual([{ width: 640, height: 480 }])
   })
 
   it('never touches GIFs or non-images', async () => {
@@ -132,11 +136,12 @@ describe('downscaleImage', () => {
     expect(vi.mocked(createImageBitmap)).not.toHaveBeenCalled()
   })
 
-  it('uploads the original when the browser cannot decode the file', async () => {
+  it('refuses a file the browser cannot decode instead of uploading it with its metadata', async () => {
     state.decodeError = new Error('The source image could not be decoded.')
     const heic = file('IMG_0002.heic', 'image/heic', 3_000_000)
 
-    await expect(downscaleImage(heic, 'avatar')).resolves.toBe(heic)
+    await expect(downscaleImage(heic, 'avatar')).rejects.toThrow(ImageReencodeError)
+    await expect(downscaleImage(heic, 'avatar')).rejects.toThrow(IMAGE_REENCODE_ERROR_MESSAGE)
   })
 
   it('falls back to JPEG when the browser cannot encode WebP', async () => {
@@ -149,24 +154,55 @@ describe('downscaleImage', () => {
     expect(result.size).toBe(220_000)
   })
 
-  it('never returns a file bigger than the original', async () => {
+  it('uploads the re-encoded file even when it is bigger than the original, because removing metadata comes first', async () => {
     state.encoded = { 'image/webp': blobOf(500_000, 'image/webp'), 'image/jpeg': blobOf(600_000, 'image/jpeg') }
     const original = file('tiny-but-huge-dimensions.png', 'image/png', 450_000)
 
-    await expect(downscaleImage(original, 'cover')).resolves.toBe(original)
+    const result = await downscaleImage(original, 'cover')
+
+    expect(result).not.toBe(original)
+    expect(result.size).toBe(500_000)
   })
 
-  it('uploads the original when encoding produces nothing', async () => {
+  it('refuses the photo when encoding produces nothing', async () => {
     state.encoded = { 'image/webp': null, 'image/jpeg': null }
     const original = file('deck.jpg', 'image/jpeg', 4_000_000)
 
-    await expect(downscaleImage(original, 'post')).resolves.toBe(original)
+    await expect(downscaleImage(original, 'post')).rejects.toThrow(ImageReencodeError)
   })
 
-  it('uploads the original where the browser has no bitmap decoder at all', async () => {
+  it('refuses the photo where the browser has no bitmap decoder at all', async () => {
     vi.stubGlobal('createImageBitmap', undefined)
     const original = file('deck.jpg', 'image/jpeg', 4_000_000)
 
-    await expect(downscaleImage(original, 'post')).resolves.toBe(original)
+    await expect(downscaleImage(original, 'post')).rejects.toThrow(ImageReencodeError)
+  })
+
+  it('keeps logo transparency: WebP first, PNG where WebP cannot be encoded, never JPEG', async () => {
+    state.encoded = { 'image/webp': blobOf(90_000, 'image/png'), 'image/png': blobOf(80_000, 'image/png') }
+
+    const result = await downscaleImage(file('logo.png', 'image/png', 1_000_000), 'logo')
+
+    expect(state.drawn).toEqual([{ width: 512, height: 384 }])
+    expect(state.encodes.map((entry) => entry.type)).toEqual(['image/webp', 'image/png'])
+    expect(result.type).toBe('image/png')
+    expect(result.name).toBe('logo.png')
+  })
+
+  it('keeps certificate artwork in a type the certificate PDF can embed: PNG stays PNG, JPEG stays JPEG', async () => {
+    state.encoded = { 'image/png': blobOf(80_000, 'image/png'), 'image/jpeg': blobOf(70_000, 'image/jpeg') }
+
+    const signature = await downscaleImage(file('signature.png', 'image/png', 900_000), 'certificate')
+    const photo = await downscaleImage(file('seal.jpg', 'image/jpeg', 900_000), 'certificate')
+
+    expect(signature.type).toBe('image/png')
+    expect(photo.type).toBe('image/jpeg')
+    expect(state.encodes.map((entry) => entry.type)).toEqual(['image/png', 'image/jpeg'])
+    expect(state.drawn).toEqual([{ width: 1200, height: 900 }, { width: 1200, height: 900 }])
+  })
+
+  it('gives members the refusal message and keeps other errors private', () => {
+    expect(imageReencodeErrorMessage(new ImageReencodeError(), 'Upload failed')).toBe(IMAGE_REENCODE_ERROR_MESSAGE)
+    expect(imageReencodeErrorMessage(new Error('s3 503'), 'Upload failed')).toBe('Upload failed')
   })
 })
