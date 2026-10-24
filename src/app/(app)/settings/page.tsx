@@ -23,6 +23,7 @@ import { getAccessContext } from '@/features/access/server'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountSection } from '@/features/account-deletion/components/delete-account-section'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { DataSaverSetting } from '@/features/settings/components/data-saver-setting'
 import { PhoneSettingsList, settingsGroups } from './settings-groups'
 
 export const metadata: Metadata = { title: 'Settings' }
@@ -109,6 +110,10 @@ export default async function SettingsPage() {
           <span><span className="font-semibold text-navy-950">Security:</span> sensitive account actions require a fresh password verification.</span>
         </p>
       </section>
+
+      <div id="data-saver" className="scroll-mt-24 max-md:mt-5">
+        <DataSaverSetting />
+      </div>
 
       {/* Phones reach these panels from the list above (#download-data, #delete-account). */}
       <div id="your-data" className="grid scroll-mt-24 gap-5 max-md:mt-5">

@@ -69,4 +69,56 @@ describe('FeedVideo', () => {
     expect(feedVideoPosterUrl('https://example.com/c.mp4')).toBeNull()
     expect(feedVideoStoragePath('/api/feed-media/a/b/c.mp4?attempt=2')).toBe('a/b/c.mp4')
   })
+
+  describe('autoplay (Round P3)', () => {
+    let observe: (entries: Array<{ isIntersecting: boolean; intersectionRatio: number }>) => void = () => undefined
+    let play: ReturnType<typeof vi.fn>
+
+    function stubBrowser() {
+      vi.stubGlobal('IntersectionObserver', class {
+        constructor(callback: typeof observe) { observe = callback }
+        observe() {}
+        disconnect() {}
+      })
+      play = vi.fn(async () => undefined)
+      vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(play as unknown as HTMLMediaElement['play'])
+      vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
+    }
+
+    afterEach(async () => {
+      const { setDataSaverChosen } = await import('@/lib/browser/data-saver')
+      setDataSaverChosen(false)
+      vi.restoreAllMocks()
+    })
+
+    it('plays muted when mostly on screen where autoplay is allowed', () => {
+      stubBrowser()
+      render(<FeedVideo src={SRC} label="Video" />)
+      act(() => observe([{ isIntersecting: true, intersectionRatio: 0.8 }]))
+      expect(play).toHaveBeenCalledTimes(1)
+      expect(screen.getByLabelText('Video')).toHaveAttribute('preload', 'metadata')
+    })
+
+    it('never starts by itself in Data saver, and loads nothing until played', async () => {
+      const { setDataSaverChosen } = await import('@/lib/browser/data-saver')
+      setDataSaverChosen(true)
+      stubBrowser()
+      render(<FeedVideo src={SRC} label="Video" />)
+      act(() => observe([{ isIntersecting: true, intersectionRatio: 0.8 }]))
+      expect(play).not.toHaveBeenCalled()
+      expect(screen.getByLabelText('Video')).toHaveAttribute('preload', 'none')
+    })
+
+    it('never starts by itself on mobile data', () => {
+      Object.defineProperty(navigator, 'connection', { configurable: true, value: { type: 'cellular', effectiveType: '4g' } })
+      try {
+        stubBrowser()
+        render(<FeedVideo src={SRC} label="Video" />)
+        act(() => observe([{ isIntersecting: true, intersectionRatio: 0.8 }]))
+        expect(play).not.toHaveBeenCalled()
+      } finally {
+        Object.defineProperty(navigator, 'connection', { configurable: true, value: undefined })
+      }
+    })
+  })
 })
