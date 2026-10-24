@@ -3,10 +3,13 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
+import { BRAND_ICONS } from './brand-assets'
 
 // The shipped app icons are the Sea N Shore "swan" ship mark drawn in pure white on a
-// transparent background. The maskable icon is the one exception: maskable icons are cropped
-// by the launcher, so it carries the mark on a solid navy (theme colour) safe-zone canvas.
+// transparent background. Two exceptions carry the mark on solid navy (the theme colour):
+// - the maskable icon, which the launcher crops, so it needs a safe-zone canvas;
+// - the iPhone Home Screen icon (apple-touch-icon-navy.png): iOS does not keep transparency there,
+//   so a white mark on a transparent icon showed as a blank white tile.
 
 const PUBLIC = path.resolve(__dirname, '../../../public')
 const NAVY = [0x07, 0x1b, 0x2d] as const
@@ -14,7 +17,6 @@ const NAVY = [0x07, 0x1b, 0x2d] as const
 const TRANSPARENT_ICONS = [
   { file: 'brand/icon-512.png', size: 512 },
   { file: 'brand/icon-192.png', size: 192 },
-  { file: 'brand/apple-touch-icon.png', size: 180 },
   { file: 'brand/favicon-32.png', size: 32 },
 ] as const
 
@@ -70,6 +72,46 @@ describe('brand icons', () => {
 
     it('draws the mark in pure white', async () => {
       expectWhiteInk(await decode(filePath))
+    })
+  })
+
+  describe('brand/apple-touch-icon-navy.png (iPhone Home Screen)', () => {
+    const filePath = path.join(PUBLIC, 'brand/apple-touch-icon-navy.png')
+
+    it('is the icon the pages link as apple-touch-icon', () => {
+      expect(BRAND_ICONS.apple).toBe('/brand/apple-touch-icon-navy.png')
+    })
+
+    it('is a fully opaque 180x180 PNG, navy at the corners', async () => {
+      const meta = await sharp(filePath).metadata()
+      expect(meta.format).toBe('png')
+      expect(meta.width).toBe(180)
+      expect(meta.height).toBe(180)
+      const raw = await decode(await sharp(filePath).ensureAlpha().png().toBuffer())
+      for (let i = 3; i < raw.data.length; i += 4) expect(raw.data[i]).toBe(255)
+      for (const [r, g, b] of corners(raw)) expect([r, g, b]).toEqual([...NAVY])
+    })
+
+    it('draws a white mark that fills a good part of the tile, away from the rounded corners', async () => {
+      const raw = await decode(await sharp(filePath).ensureAlpha().png().toBuffer())
+      let white = 0, minX = raw.width, minY = raw.height, maxX = -1, maxY = -1
+      for (let y = 0; y < raw.height; y++) {
+        for (let x = 0; x < raw.width; x++) {
+          const [r, g, b] = pixel(raw, x, y)
+          if (r > 200 && g > 200 && b > 200) {
+            white += 1
+            minX = Math.min(minX, x); maxX = Math.max(maxX, x)
+            minY = Math.min(minY, y); maxY = Math.max(maxY, y)
+          }
+        }
+      }
+      expect(white / (raw.width * raw.height)).toBeGreaterThan(0.08)
+      expect(maxY - minY).toBeGreaterThan(raw.height * 0.55)
+      const margin = raw.width * 0.1
+      expect(minX).toBeGreaterThanOrEqual(margin)
+      expect(minY).toBeGreaterThanOrEqual(margin)
+      expect(maxX).toBeLessThan(raw.width - margin)
+      expect(maxY).toBeLessThan(raw.height - margin)
     })
   })
 

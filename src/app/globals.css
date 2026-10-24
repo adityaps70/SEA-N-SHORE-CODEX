@@ -203,6 +203,18 @@ html[data-learn-player] [data-app-footer] { display: none; }
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
 
+/* Phone zoom fix: iPhone Safari zooms the page in when a text field under 16px gets focus, and stays zoomed
+   after the message is sent. On touch screens every text field is at least 16px, so it never zooms; pinch-zoom
+   stays allowed (no maximum-scale in the viewport). Unlayered, so it wins over the text-sm/text-xs utilities. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]),
+  select,
+  textarea,
+  [contenteditable]:not([contenteditable="false"]) {
+    font-size: 16px;
+  }
+}
+
 /* Round 8 phone bottom sheets */
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
