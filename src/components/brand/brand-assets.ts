@@ -24,7 +24,7 @@ export const BRAND_ASSETS = {
 export const BRAND_ICONS = {
   favicon: '/favicon.ico',
   icon32: '/brand/favicon-32.png',
-  apple: '/brand/apple-touch-icon.png',
+  apple: '/brand/apple-touch-icon-navy.png',
   icon192: '/brand/icon-192.png',
   icon512: '/brand/icon-512.png',
   maskable512: '/brand/icon-maskable-512.png',
