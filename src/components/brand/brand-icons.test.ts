@@ -5,19 +5,26 @@ import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { BRAND_ICONS } from './brand-assets'
 
-// The shipped app icons are the Sea N Shore "swan" ship mark drawn in pure white on a
-// transparent background. Two exceptions carry the mark on solid navy (the theme colour):
-// - the maskable icon, which the launcher crops, so it needs a safe-zone canvas;
-// - the iPhone Home Screen icon (apple-touch-icon-navy.png): iOS does not keep transparency there,
-//   so a white mark on a transparent icon showed as a blank white tile.
+// The favicons (browser tabs) are the Sea N Shore "swan" ship mark drawn in pure white on a
+// transparent background. Every app icon (Home Screen, launcher, install prompt) carries the mark on
+// solid navy (the theme colour) instead: iOS does not keep transparency on the Home Screen, so a white
+// mark on a transparent icon showed as a blank white tile, whether iOS took the apple-touch-icon, the
+// root /apple-touch-icon.png it probes, or an icon from the web app manifest.
+// The maskable icon also keeps its mark inside the launcher's safe zone.
 
 const PUBLIC = path.resolve(__dirname, '../../../public')
 const NAVY = [0x07, 0x1b, 0x2d] as const
 
 const TRANSPARENT_ICONS = [
-  { file: 'brand/icon-512.png', size: 512 },
-  { file: 'brand/icon-192.png', size: 192 },
   { file: 'brand/favicon-32.png', size: 32 },
+] as const
+
+const NAVY_APP_ICONS = [
+  { file: 'brand/apple-touch-icon-navy.png', size: 180 },
+  { file: 'apple-touch-icon.png', size: 180 },
+  { file: 'apple-touch-icon-precomposed.png', size: 180 },
+  { file: 'brand/icon-192-navy.png', size: 192 },
+  { file: 'brand/icon-512-navy.png', size: 512 },
 ] as const
 
 type Raw = { data: Buffer; width: number; height: number }
@@ -75,18 +82,26 @@ describe('brand icons', () => {
     })
   })
 
-  describe('brand/apple-touch-icon-navy.png (iPhone Home Screen)', () => {
-    const filePath = path.join(PUBLIC, 'brand/apple-touch-icon-navy.png')
+  it('links the navy icons as the apple-touch-icon and the 192px page icon', () => {
+    expect(BRAND_ICONS.apple).toBe('/brand/apple-touch-icon-navy.png')
+    expect(BRAND_ICONS.icon192).toBe('/brand/icon-192-navy.png')
+    expect(BRAND_ICONS.icon512).toBe('/brand/icon-512-navy.png')
+  })
 
-    it('is the icon the pages link as apple-touch-icon', () => {
-      expect(BRAND_ICONS.apple).toBe('/brand/apple-touch-icon-navy.png')
-    })
+  it('lists only opaque navy icons in the web app manifest', () => {
+    const manifest = JSON.parse(readFileSync(path.join(PUBLIC, 'manifest.webmanifest'), 'utf8')) as { icons: Array<{ src: string; sizes: string }> }
+    const files = manifest.icons.map((icon) => icon.src.replace(/^\//, ''))
+    expect(files).toEqual(['brand/icon-192-navy.png', 'brand/icon-512-navy.png', 'brand/icon-maskable-512.png'])
+  })
 
-    it('is a fully opaque 180x180 PNG, navy at the corners', async () => {
+  describe.each(NAVY_APP_ICONS)('$file (app icon)', ({ file, size }) => {
+    const filePath = path.join(PUBLIC, file)
+
+    it(`is a fully opaque ${size}x${size} PNG, navy at the corners`, async () => {
       const meta = await sharp(filePath).metadata()
       expect(meta.format).toBe('png')
-      expect(meta.width).toBe(180)
-      expect(meta.height).toBe(180)
+      expect(meta.width).toBe(size)
+      expect(meta.height).toBe(size)
       const raw = await decode(await sharp(filePath).ensureAlpha().png().toBuffer())
       for (let i = 3; i < raw.data.length; i += 4) expect(raw.data[i]).toBe(255)
       for (const [r, g, b] of corners(raw)) expect([r, g, b]).toEqual([...NAVY])
