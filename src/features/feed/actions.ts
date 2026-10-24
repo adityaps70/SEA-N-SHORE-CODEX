@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { messageForErrorCode } from '@/lib/errors/user-messages'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
@@ -201,6 +201,21 @@ async function flagAutomatedModeration(
   }
 }
 
+/** Round P3: what a member sees when their session cannot be confirmed (ended, or Cognito unreachable). */
+const SESSION_CHECK_FAILED = 'We could not confirm you are signed in. Refresh the page and try again.'
+
+/**
+ * Round P3: the signed-in member for a mutation, or null. An ended session or a Cognito timeout used
+ * to throw out of the action as a server error (500); it is now an ordinary failed result.
+ */
+async function actionUser(): Promise<AwsVerifiedUser | null> {
+  try {
+    return await requireAwsUser()
+  } catch {
+    return null
+  }
+}
+
 function revalidateSocialFeed() {
   revalidatePath('/home')
   revalidatePath('/organizations/[slug]', 'page')
@@ -248,7 +263,8 @@ export async function createPostMediaUploads(input: {
     return { ok: false, error: `PDF documents can have no more than ${POST_DOCUMENT_MAX_PAGES} pages.` }
   }
 
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   const postId = parsed.data.postId ?? crypto.randomUUID()
   try {
     const uploads = await Promise.all(validated.map(({ file, metadata }) => {
@@ -295,7 +311,8 @@ const discardPendingPostMediaSchema = z.object({
 export async function discardPendingPostMedia(input: { postId: string; storagePath: string; mimeType: string }): Promise<FeedActionResult> {
   const parsed = discardPendingPostMediaSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Invalid media.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   if (!isOwnedPostMediaStoragePath({ profileId: user.id, postId: parsed.data.postId, storagePath: parsed.data.storagePath, mimeType: parsed.data.mimeType })) {
     return { ok: false, error: 'Invalid media.' }
   }
@@ -327,7 +344,8 @@ export async function createPostVideoPosterUpload(input: { videoStoragePath: str
   const posterPath = postVideoPosterStoragePath(parsed.data.videoStoragePath)
   if (!video || !posterPath) return { ok: false, error: 'Invalid poster.' }
 
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     const allowed = video.profileId === user.id
       || (await canUsePlatformAdminAuthority(user.id) && await feedRepository.isPostMediaAttached(parsed.data.videoStoragePath))
@@ -355,7 +373,8 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
     return { error: moderationBlockMessage(), values: safePostValues(formData) }
   }
 
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { error: SESSION_CHECK_FAILED, values: safePostValues(formData) }
 
   if (data.mode === 'poll') {
     try {
@@ -562,7 +581,8 @@ const commentIdSchema = z.string().uuid()
 export async function deletePost(postId: string): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try { await deletePostWithAurora(user.id, parsedId.data) }
   catch { return { ok: false, error: 'We could not delete this post.' } }
   revalidatePath('/saved')
@@ -582,7 +602,8 @@ export async function updatePost(input: { postId: string; body: string; mentionP
   }
   const moderation = parsed.data.body ? assessPlatformText([parsed.data.body]) : null
   if (moderation?.decision === 'block') return { ok: false, error: moderationBlockMessage() }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     await updatePostWithAurora(user.id, parsed.data.postId, {
       body: parsed.data.body,
@@ -613,7 +634,8 @@ export async function updatePost(input: { postId: string; body: string; mentionP
 export async function restoreDeletedPost(postId: string): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     await restoreDeletedPostWithAurora(user.id, parsedId.data)
   } catch (error) {
@@ -644,7 +666,8 @@ export async function repostPost(
   const commentary = parsed.data.body
   const moderation = commentary ? assessPlatformText([commentary]) : null
   if (moderation?.decision === 'block') return { ok: false, error: moderationBlockMessage() }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     const repostId = commentary
       ? await repostPostWithAurora(user.id, parsed.data.postId, {
@@ -670,7 +693,8 @@ export async function setPostReaction(postId: string, reaction: PostReactionType
   const parsedId = postIdSchema.safeParse(postId)
   const parsedReaction = reaction === null ? { success: true as const, data: null } : reactionSchema.safeParse(reaction)
   if (!parsedId.success || !parsedReaction.success) return { ok: false, error: 'Invalid reaction.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try { await setPostReactionWithAurora(user.id, parsedId.data, parsedReaction.data) }
   catch (error) { return { ok: false, error: socialQuotaMessage(error) ?? 'We could not update your reaction.' } }
   return { ok: true }
@@ -679,10 +703,12 @@ export async function setPostReaction(postId: string, reaction: PostReactionType
 export async function setPostLiked(postId: string, liked: boolean): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success || typeof liked !== 'boolean') return { ok: false, error: 'Invalid post.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try { await setPostLikedWithAurora(user.id, parsedId.data, liked) }
   catch (error) { return { ok: false, error: socialQuotaMessage(error) ?? 'We could not update your like.' } }
-  revalidateSocialFeed()
+  // Round P3: no revalidatePath on likes, saves or poll votes. Any revalidation re-renders the whole
+  // current page into the action response; the card already shows the new state.
   return { ok: true }
 }
 
@@ -690,7 +716,8 @@ export async function setCommentReaction(commentId: string, reaction: PostReacti
   const parsedId = commentIdSchema.safeParse(commentId)
   const parsedReaction = reaction === null ? { success: true as const, data: null } : reactionSchema.safeParse(reaction)
   if (!parsedId.success || !parsedReaction.success) return { ok: false, error: 'Invalid reaction.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try { await setCommentReactionWithAurora(user.id, parsedId.data, parsedReaction.data) }
   catch (error) { return { ok: false, error: socialQuotaMessage(error) ?? 'We could not update your comment reaction.' } }
   return { ok: true }
@@ -699,11 +726,10 @@ export async function setCommentReaction(commentId: string, reaction: PostReacti
 export async function setPostSaved(postId: string, saved: boolean): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success || typeof saved !== 'boolean') return { ok: false, error: 'Invalid post.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try { await setPostSavedWithAurora(user.id, parsedId.data, saved) }
   catch { return { ok: false, error: 'We could not update your saved posts.' } }
-  revalidatePath('/home')
-  revalidatePath('/saved')
   return { ok: true }
 }
 
@@ -714,7 +740,8 @@ export async function setPostSaved(postId: string, saved: boolean): Promise<Feed
 export async function setPostHidden(postId: string, hidden: boolean): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success || typeof hidden !== 'boolean') return { ok: false, error: 'Invalid post.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     await setPostHiddenWithAurora(user.id, parsedId.data, hidden)
   } catch (error) {
@@ -736,7 +763,8 @@ export async function setPostHidden(postId: string, hidden: boolean): Promise<Fe
 export async function unhidePost(postId: string): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     await unhidePostWithAurora(user.id, parsedId.data)
   } catch {
@@ -767,7 +795,8 @@ export async function addComment(_previousState: CommentActionState, formData: F
   if (moderation.decision === 'block') {
     return { error: moderationBlockMessage(), value: parsed.data.body }
   }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { error: SESSION_CHECK_FAILED, value: parsed.data.body }
   try {
     const commentId = await addPostCommentWithAurora(
       user.id,
@@ -805,7 +834,8 @@ export async function updateComment(_previousState: CommentActionState, formData
   if (moderation.decision === 'block') {
     return { error: moderationBlockMessage(), value: rawValue }
   }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { error: SESSION_CHECK_FAILED, value: rawValue }
   try {
     const updated = await updateCommentWithAurora(
       user.id,
@@ -831,7 +861,8 @@ export async function updateComment(_previousState: CommentActionState, formData
 export async function deleteComment(commentId: string): Promise<DeleteCommentActionResult> {
   const parsed = deleteCommentInputSchema.safeParse({ commentId })
   if (!parsed.success) return { ok: false, error: 'Invalid comment.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try {
     const deleted = await deleteCommentWithAurora(user.id, parsed.data.commentId)
     const comment = await hydrateComment(deleted.postId, deleted.id)
@@ -844,9 +875,9 @@ export async function deleteComment(commentId: string): Promise<DeleteCommentAct
 export async function setPollVote(postId: string, optionId: string): Promise<FeedActionResult> {
   const parsed = pollVoteSchema.safeParse({ postId, optionId })
   if (!parsed.success) return { ok: false, error: 'Invalid poll option.' }
-  const user = await requireAwsUser()
+  const user = await actionUser()
+  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
   try { await setPollVoteWithAurora(user.id, parsed.data.postId, parsed.data.optionId) }
   catch { return { ok: false, error: 'We could not record your vote.' } }
-  revalidatePath('/home')
   return { ok: true }
 }

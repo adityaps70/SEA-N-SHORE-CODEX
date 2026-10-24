@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CognitoApiError, createCognitoApi, passwordRuleReason } from './cognito-api'
+import { COGNITO_REQUEST_TIMEOUT_MS, CognitoApiError, createCognitoApi, passwordRuleReason } from './cognito-api'
 
 const config = {
   region: 'ap-south-1',
@@ -578,5 +578,24 @@ describe('Round H (H3) account security calls', () => {
     const wrong = await refused('Incorrect username or password.').changePassword({ accessToken: 'a', previousPassword: 'b', proposedPassword: 'c' }).catch((error) => error)
     expect(wrong).toBeInstanceOf(CognitoApiError)
     expect(wrong).toMatchObject({ code: 'NotAuthorizedException', reason: null })
+  })
+
+  it('gives up on a Cognito call that does not answer in time (Round P3) instead of holding the request open', async () => {
+    // AbortSignal.timeout runs on Node's own timers; hand out a signal the test fires itself.
+    const controller = new AbortController()
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal)
+    try {
+      const transport = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+      }))
+      const api = createCognitoApi(config, transport)
+      const pending = api.getUser('access-token')
+      expect(timeout).toHaveBeenCalledWith(COGNITO_REQUEST_TIMEOUT_MS)
+      controller.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
+      await expect(pending).rejects.toMatchObject({ code: 'TransportError' })
+      expect(transport.mock.calls[0]?.[1]?.signal).toBe(controller.signal)
+    } finally {
+      timeout.mockRestore()
+    }
   })
 })
