@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { createLearningMediaUpload, getLearningMediaReadUrl } from '../media-actions'
 import { ARTICLE_IMAGE_PATH_ATTRIBUTE } from '../article-html'
+import { downscaleImage, imageReencodeErrorMessage } from '@/lib/images/downscale-image'
 import { uploadLearningMediaFile } from './upload-learning-media'
 
 /** Course images keep their storage path; the src shown while editing is a short-lived URL. */
@@ -115,10 +116,18 @@ function Toolbar({ editor, courseId, disabled }: { editor: Editor; courseId: str
     editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
   }
 
-  async function addImage(file: File) {
+  async function addImage(picked: File) {
     setError(null)
     setUploading(true)
     try {
+      // Round P3: always re-encoded in the browser, so EXIF metadata (GPS included) is removed.
+      let file: File
+      try {
+        file = await downscaleImage(picked, 'post')
+      } catch (prepareError) {
+        setError(imageReencodeErrorMessage(prepareError, 'The image didn’t upload. Check your connection and try again.'))
+        return
+      }
       const prepared = await createLearningMediaUpload({ courseId, kind: 'lesson_image', mimeType: file.type, size: file.size })
       if (!prepared.ok) {
         setError(prepared.error)

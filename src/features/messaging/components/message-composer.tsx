@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/cn'
-import { downscaleImage } from '@/lib/images/downscale-image'
+import { downscaleImage, imageReencodeErrorMessage } from '@/lib/images/downscale-image'
 import {
   FileText,
   Image as ImageIcon,
@@ -199,8 +199,15 @@ export function MessageComposer({
 
   async function prepareAttachment(picked: File) {
     setComposerError('')
-    // Photos are shrunk in the browser first (max 2048px long edge, WebP); other files pass through.
-    const file = await downscaleImage(picked, 'message')
+    // Photos are always re-encoded in the browser (max 2048px long edge, WebP), so EXIF metadata
+    // (GPS included) is removed; GIFs and other files pass through.
+    let file: File
+    try {
+      file = await downscaleImage(picked, 'message')
+    } catch (prepareError) {
+      setComposerError(imageReencodeErrorMessage(prepareError, 'We could not attach this file. Please try again.'))
+      return
+    }
     const validated = validateMessageAttachmentMetadata({
       name: file.name,
       mimeType: file.type,

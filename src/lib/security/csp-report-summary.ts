@@ -10,6 +10,9 @@ const MAX_DISTINCT_KEYS = 100
 const OVERFLOW_KEY = 'other\nother'
 
 let counts = new Map<string, number>()
+// Round P3: report requests the endpoint's per-visitor rate limit turned away, unread. They are
+// logged with the window's counts so a flood is visible instead of silently missing.
+let rateLimited = 0
 let windowStartedAt = 0
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -36,24 +39,33 @@ export function cspBlockedHost(value: unknown): string {
   }
 }
 
+function startWindow(now: number) {
+  if (flushTimer) return
+  windowStartedAt = now
+  const timer = setTimeout(() => flushCspViolationSummary(), CSP_REPORT_FLUSH_INTERVAL_MS)
+  // Never keep the process alive just to write a summary.
+  if (typeof timer === 'object' && typeof timer.unref === 'function') timer.unref()
+  flushTimer = timer
+}
+
 export function recordCspViolation(directive: string, blocked: string, now = Date.now()): void {
   let key = `${directive}\n${blocked}`
   if (!counts.has(key) && counts.size >= MAX_DISTINCT_KEYS) key = OVERFLOW_KEY
-  if (counts.size === 0) {
-    windowStartedAt = now
-    const timer = setTimeout(() => flushCspViolationSummary(), CSP_REPORT_FLUSH_INTERVAL_MS)
-    // Never keep the process alive just to write a summary.
-    if (typeof timer === 'object' && typeof timer.unref === 'function') timer.unref()
-    flushTimer = timer
-  }
+  startWindow(now)
   counts.set(key, (counts.get(key) ?? 0) + 1)
+}
+
+/** Counts one report request the rate limit turned away (logged as `rateLimited`). */
+export function recordCspRateLimited(now = Date.now()): void {
+  startWindow(now)
+  rateLimited += 1
 }
 
 /** Writes the window's counts as one JSON line (nothing when empty) and starts a new window. */
 export function flushCspViolationSummary(now = Date.now()): void {
   if (flushTimer) clearTimeout(flushTimer)
   flushTimer = null
-  if (counts.size === 0) return
+  if (counts.size === 0 && rateLimited === 0) return
   const violations = [...counts]
     .map(([key, count]) => {
       const [directive, blocked] = key.split('\n')
@@ -62,6 +74,8 @@ export function flushCspViolationSummary(now = Date.now()): void {
     .sort((a, b) => b.count - a.count)
   const total = violations.reduce((sum, entry) => sum + entry.count, 0)
   const windowSeconds = Math.max(1, Math.round((now - windowStartedAt) / 1000))
+  const dropped = rateLimited
   counts = new Map()
-  console.log(JSON.stringify({ event: 'csp_violation_summary', windowSeconds, total, violations }))
+  rateLimited = 0
+  console.log(JSON.stringify({ event: 'csp_violation_summary', windowSeconds, total, violations, ...(dropped ? { rateLimited: dropped } : {}) }))
 }

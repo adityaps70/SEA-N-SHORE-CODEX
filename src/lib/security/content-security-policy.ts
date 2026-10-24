@@ -128,7 +128,8 @@ export function pageContentSecurityPolicy(nonce: string, sources?: ContentSecuri
     "base-uri 'self'",
     directive('form-action', "'self'", signInOrigins),
     "frame-ancestors 'none'",
-    `report-uri ${CSP_REPORT_PATH}`,
+    // Round P3: no report-uri on pages. The page's own reporter (csp-reporter-script.ts, inlined
+    // with this nonce) sends each unique violation once per page load instead of one request each.
   ].join('; ')
 }
 

@@ -193,6 +193,13 @@ function mapSignInResult(response: CognitoAuthenticationResponse, fallbackUserna
   throw new CognitoApiError('UnexpectedResponse')
 }
 
+/**
+ * Round P3: a Cognito call gives up after this long. Without a limit a slow Cognito held the page or
+ * Server Action open until the load balancer cut it off (a 5xx); now it fails as a TransportError.
+ * Cognito allows its Lambda triggers 5 s, so sign-in calls that run one still fit.
+ */
+export const COGNITO_REQUEST_TIMEOUT_MS = 8_000
+
 export function createCognitoApi(config: CognitoConfig, transport: Transport = fetch) {
   const endpoint = `https://cognito-idp.${config.region}.amazonaws.com/`
 
@@ -206,6 +213,7 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
           'x-amz-target': `AWSCognitoIdentityProviderService.${operation}`,
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(COGNITO_REQUEST_TIMEOUT_MS),
       })
     } catch {
       throw new CognitoApiError('TransportError')

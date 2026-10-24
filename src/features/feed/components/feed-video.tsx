@@ -2,6 +2,7 @@
 
 import { RotateCcw } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useAutoplayAllowed, useVideoPreload } from '@/lib/browser/data-saver'
 import { createPostVideoPosterUpload } from '../actions'
 import { uploadVideoPoster } from '../video-poster'
 
@@ -57,6 +58,9 @@ export function FeedVideo({
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stallTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const posterUrl = feedVideoPosterUrl(src)
+  // Round P3: no autoplay in Data saver, on mobile data or a slow network; Data saver also loads nothing until play.
+  const autoplay = useAutoplayAllowed()
+  const preload = useVideoPreload()
 
   // The poster is probed with an Image so a missing one can be noticed (only for the author).
   useEffect(() => {
@@ -80,7 +84,8 @@ export function FeedVideo({
     })
   }, [canMakePoster, posterMissing, src])
 
-  // Muted autoplay while at least 60% of the video is on screen; re-attached after a retry.
+  // Muted autoplay while at least 60% of the video is on screen, where autoplay is allowed; a video
+  // that scrolls away pauses either way. Re-attached after a retry.
   useEffect(() => {
     const video = ref.current
     if (!video || typeof IntersectionObserver === 'undefined') return
@@ -89,14 +94,14 @@ export function FeedVideo({
       const entry = entries[0]
       if (!entry) return
       if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-        void video.play()?.catch(() => undefined)
+        if (autoplay) void video.play()?.catch(() => undefined)
       } else {
         video.pause()
       }
     }, { threshold: [0, 0.6, 1] })
     observer.observe(video)
     return () => observer.disconnect()
-  }, [attempt, src])
+  }, [attempt, autoplay, src])
 
   useEffect(() => () => {
     if (retryTimer.current) clearTimeout(retryTimer.current)
@@ -144,7 +149,7 @@ export function FeedVideo({
         muted
         playsInline
         loop
-        preload="metadata"
+        preload={preload}
         src={withAttempt(src, attempt)}
         poster={posterUrl ?? undefined}
         className="block max-h-[80vh] w-full bg-black"

@@ -1,6 +1,7 @@
 'use client'
 
 import { useSyncExternalStore, type ReactNode } from 'react'
+import { useVideoPreload } from '@/lib/browser/data-saver'
 
 /**
  * Learning round E (E3): the course page lays out the trailer twice (phone header and desktop hero), but only one
@@ -39,6 +40,8 @@ export function CourseTrailer({
   // null on the server: neither slot renders the video until the screen size is known.
   const phone = useSyncExternalStore<boolean | null>(subscribe, isPhone, () => null)
   const active = phone !== null && (slot === 'phone') === phone
+  // Round P3: in Data saver the trailer loads nothing until it is played.
+  const preload = useVideoPreload()
   if (!active) return <>{fallback}</>
   return (
     <video
@@ -46,7 +49,7 @@ export function CourseTrailer({
       controlsList="nodownload noremoteplayback"
       disableRemotePlayback
       onContextMenu={(event) => event.preventDefault()}
-      preload="metadata"
+      preload={preload}
       src={src}
       poster={poster}
       aria-label={label}

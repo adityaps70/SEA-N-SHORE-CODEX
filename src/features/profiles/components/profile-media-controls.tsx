@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
 import { startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
-import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-image'
+import { downscaleImage, imageReencodeErrorMessage, isDownscalableImage } from '@/lib/images/downscale-image'
 import {
   removeAvatarAction,
   removeCoverAction,
@@ -36,6 +36,7 @@ export function ProfileMediaControls({
   const removeAction = kind === 'avatar' ? removeAvatarAction : removeCoverAction
   const [state, formAction, uploading] = useActionState(uploadAction, initialState)
   const [removeError, setRemoveError] = useState('')
+  const [prepareError, setPrepareError] = useState('')
   const [removed, setRemoved] = useState(false)
   const [removing, startRemoving] = useTransition()
   const [cropping, setCropping] = useState<File | null>(null)
@@ -56,6 +57,7 @@ export function ProfileMediaControls({
    * WebP), then submitted to the upload action as the form's `image` field.
    */
   async function submitImage(picked: File) {
+    setPrepareError('')
     const image = await downscaleImage(picked, kind)
     const formData = new FormData()
     formData.set('image', image, image.name)
@@ -68,7 +70,7 @@ export function ProfileMediaControls({
       setCropping(picked)
       return
     }
-    void submitImage(picked)
+    void submitImage(picked).catch((prepare) => setPrepareError(imageReencodeErrorMessage(prepare, 'We could not upload this image. Please try again.')))
   }
 
   function cancelCrop() {
@@ -76,9 +78,10 @@ export function ProfileMediaControls({
     if (inputRef.current) inputRef.current.value = ''
   }
 
-  function saveCrop(cropped: File) {
+  /** A photo that cannot be re-encoded rejects here, so the crop dialog stays open with the reason. */
+  async function saveCrop(cropped: File) {
+    await submitImage(cropped)
     setCropping(null)
-    void submitImage(cropped)
   }
 
   function removeImage() {
@@ -95,7 +98,7 @@ export function ProfileMediaControls({
     })
   }
 
-  const error = state.error ?? removeError
+  const error = prepareError || (state.error ?? removeError)
   const busy = uploading || removing
 
   return (

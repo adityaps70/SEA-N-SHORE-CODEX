@@ -9,6 +9,7 @@ import { buildCommunityMediaKey, isCommunityMediaKind, validateCommunityImage, t
 import { createMediaUploadUrl, deleteMediaObject, headMediaObject } from '@/lib/aws/storage'
 import { communityRepository } from './repository'
 import { isGroupAdminRole } from './types'
+import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
 
 export type CommunityMediaActionState = { error?: string; success?: boolean }
 
@@ -82,6 +83,11 @@ export async function completeCommunityMediaUploadAction(input: {
     if (!validation.ok) {
       await deleteMediaObject(input.key).catch(() => undefined)
       return { error: validation.error }
+    }
+    // Round P3: the bytes must really be the image type the browser declared.
+    if (await verifyStoredUploadSignature(input.key, object.contentType ?? '', object.contentLength ?? 0) !== 'match') {
+      await deleteMediaObject(input.key).catch(() => undefined)
+      return { error: 'This file is not a real JPG, PNG or WebP image. Choose another image.' }
     }
 
     let previousPath: string | null = null

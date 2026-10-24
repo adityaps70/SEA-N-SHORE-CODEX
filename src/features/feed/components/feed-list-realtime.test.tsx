@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FEED_FRESH_POSTS_POLL_MS } from '@/lib/browser/visible-interval'
 import type { FeedPage, FeedPost } from '../types'
 import { FeedList } from './feed-list'
 
@@ -78,7 +79,7 @@ describe('FeedList incremental freshness', () => {
   it('polls for newer posts without replacing the mounted feed and prepends only after opt-in', async () => {
     render(<FeedList initialPage={{ posts: [first], nextCursor: cursor }} />)
 
-    await act(async () => { vi.advanceTimersByTime(30_000) })
+    await act(async () => { vi.advanceTimersByTime(FEED_FRESH_POSTS_POLL_MS) })
     await waitFor(() => expect(mocks.loadFeedPage).toHaveBeenCalledWith({ category: undefined, limit: 12 }))
 
     expect(screen.getByText('Current post')).toBeInTheDocument()

@@ -28,6 +28,7 @@ import {
 } from '../calendar-types'
 import type { EventPublisherOption } from '../publishers'
 import { EventDateTimeField } from './event-date-time-field'
+import { downscaleImage, imageReencodeErrorMessage } from '@/lib/images/downscale-image'
 import { uploadEventBannerFile } from './upload-event-banner'
 import { buttonClass } from '@/components/ui/interactive-styles'
 import { submitWithoutReset } from '@/lib/forms/submit-without-reset'
@@ -323,9 +324,18 @@ export function EventForm(props: Props) {
     setBannerPreview(preview)
   }
 
-  async function uploadBanner(file: File) {
+  async function uploadBanner(picked: File) {
     setMessage(null)
     setError(false)
+    let file: File
+    try {
+      // Round P3: always re-encoded in the browser, so EXIF metadata (GPS included) is removed.
+      file = await downscaleImage(picked, 'cover')
+    } catch (prepareError) {
+      setError(true)
+      setMessage(imageReencodeErrorMessage(prepareError, 'We could not upload the banner. Please try again.'))
+      return
+    }
     if (!EVENT_BANNER_MIME_TYPES.some((mimeType) => mimeType === file.type)) {
       setError(true)
       setMessage('Use a JPEG, PNG or WebP banner image.')

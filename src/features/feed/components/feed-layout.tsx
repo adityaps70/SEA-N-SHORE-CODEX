@@ -11,13 +11,16 @@ import { ProfileCompletionBanner } from './profile-completion-banner'
 export function FeedLayout({
   profile,
   portfolioCompletion,
-  suggestions,
+  suggestions = [],
+  discoveryRail,
   verified = false,
   children,
 }: {
   profile: OwnProfile
   portfolioCompletion: ProfilePortfolioCompletion
-  suggestions: NetworkProfile[]
+  suggestions?: NetworkProfile[]
+  /** Round P3: the right rail's content when it streams in (Home); otherwise built from `suggestions`. */
+  discoveryRail?: ReactNode
   verified?: boolean
   children: ReactNode
 }) {
@@ -47,7 +50,7 @@ export function FeedLayout({
 
       <aside className="hidden bg-transparent xl:block">
         <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto bg-transparent pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <FeedDiscoveryRail suggestions={suggestions} />
+          {discoveryRail ?? <FeedDiscoveryRail suggestions={suggestions} />}
           <RailFooter visibleFrom="xl" />
         </div>
       </aside>

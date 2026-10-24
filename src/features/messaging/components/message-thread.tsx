@@ -1,6 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
+import { useVideoPreload } from '@/lib/browser/data-saver'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -126,6 +127,8 @@ function AttachmentCard({
   onOpenImage: (messageId: string) => void
 }) {
   const attachment = message.attachment
+  // Round P3: in Data saver a video loads nothing until it is played.
+  const videoPreload = useVideoPreload()
   if (!attachment) return null
 
   if (attachment.kind === 'image') {
@@ -160,7 +163,7 @@ function AttachmentCard({
       <video
         src={attachment.url}
         controls
-        preload="metadata"
+        preload={videoPreload}
         aria-label={attachment.name}
         className="mb-2 max-h-[24rem] min-w-56 max-w-full rounded-xl bg-black"
       />

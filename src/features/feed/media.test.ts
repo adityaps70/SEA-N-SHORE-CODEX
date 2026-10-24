@@ -29,6 +29,10 @@ const {
   remove: vi.fn(async () => ({ error: null })),
 }))
 
+const verifyUpload = vi.hoisted(() => ({
+  verifyStoredUploadSignature: vi.fn<(key: string, mimeType: string, size: number) => Promise<'match' | 'mismatch' | 'unavailable'>>(async () => 'match'),
+}))
+vi.mock('@/lib/uploads/verify-stored-upload', () => verifyUpload)
 vi.mock('@/lib/aws/storage', () => ({
   createMediaReadUrl,
   createMediaUploadUrl,
@@ -127,6 +131,13 @@ describe('feed media adapter', () => {
   ])('rejects a pending path scoped to %s', async (_case, input) => {
     await expect(verifyPendingPostMedia(input)).rejects.toThrow('feed_media_reference_invalid')
     expect(headMediaObject).not.toHaveBeenCalled()
+  })
+
+  it('rejects an upload whose bytes are not the declared type (Round P3)', async () => {
+    verifyUpload.verifyStoredUploadSignature.mockResolvedValueOnce('mismatch')
+    await expect(verifyPendingPostMedia({ profileId, postId, storagePath: videoPath, mimeType: 'video/mp4', size: 1024 }))
+      .rejects.toThrow('feed_media_metadata_mismatch')
+    expect(verifyUpload.verifyStoredUploadSignature).toHaveBeenCalledWith(videoPath, 'video/mp4', 1024)
   })
 
   it('rejects an unavailable uploaded object', async () => {

@@ -38,13 +38,14 @@ describe('report-only Content Security Policy (Round 14, 2.4)', () => {
     for (const nonce of nonces) expect(nonce).toMatch(/^[A-Za-z0-9+/]{22}==$/)
   })
 
-  it('allows scripts only by nonce (strict-dynamic) and reports to the site', () => {
+  it('allows scripts only by nonce (strict-dynamic) and leaves reporting to the page reporter', () => {
     const policy = pageContentSecurityPolicy('abc123==')
     expect(policy).toContain("script-src 'self' 'nonce-abc123==' 'strict-dynamic'")
     expect(policy).toContain("object-src 'none'")
     expect(policy).toContain("frame-ancestors 'none'")
     expect(policy).toContain("base-uri 'self'")
-    expect(policy).toContain(`report-uri ${CSP_REPORT_PATH}`)
+    // Round P3: the inlined reporter (csp-reporter-script.ts) sends each unique violation once per page load.
+    expect(policy).not.toContain('report-uri')
     expect(policy).not.toContain("'unsafe-eval'")
     expect(policy).not.toMatch(/script-src[^;]*'unsafe-inline'/)
   })

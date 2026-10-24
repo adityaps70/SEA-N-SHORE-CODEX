@@ -10,6 +10,7 @@ import {
   validateLearningMediaMetadata,
   type LearningMediaKind,
 } from './media-policy'
+import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
 
 export async function createPendingLearningMediaUpload(input: {
   userId: string
@@ -73,6 +74,13 @@ export async function verifyLearningMediaObject(input: {
     mimeType: metadata.mimeType,
   })) {
     throw new Error('learning_media_reference_invalid')
+  }
+  // Round P3: a new upload's bytes must really be the declared type (files already in the course were
+  // checked when they were added).
+  if (!input.alreadyAttached) {
+    const content = await verifyStoredUploadSignature(input.storagePath, metadata.mimeType, stored.contentLength)
+    if (content === 'unavailable') throw new Error('learning_media_unavailable')
+    if (content === 'mismatch') throw new Error('learning_media_content_mismatch')
   }
 
   return stored

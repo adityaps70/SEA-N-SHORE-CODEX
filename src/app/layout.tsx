@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
+import { headers } from 'next/headers'
 import { connection } from 'next/server'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import { DisplayModeMarker } from '@/components/pwa/display-mode-marker'
+import { CONTENT_SECURITY_POLICY_HEADER } from '@/lib/security/content-security-policy'
+import { CSP_REPORTER_SCRIPT, nonceFromContentSecurityPolicy } from '@/lib/security/csp-reporter-script'
 import './globals.css'
 
 /*
@@ -101,8 +104,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // no page may be prerendered. Before this, the 404 page and /account-deleted were static and every visit to a
   // mistyped or probed URL reported our own scripts as blocked.
   await connection()
+  // Round P3: the CSP reporter runs first, so it sees every violation and sends each unique one once per page load.
+  const nonce = nonceFromContentSecurityPolicy((await headers()).get(CONTENT_SECURITY_POLICY_HEADER))
   return (
     <html lang="en" className={fontVariables}>
+      <head>
+        {nonce ? <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: CSP_REPORTER_SCRIPT }} /> : null}
+      </head>
       <body>
         {children}
         <DisplayModeMarker />

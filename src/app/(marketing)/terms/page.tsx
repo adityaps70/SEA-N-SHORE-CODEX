@@ -61,7 +61,7 @@ export default function TermsPage() {
           <p>If you believe content on Sea N Shore infringes your copyright or other intellectual-property rights, use the content&apos;s <strong className="text-navy-950">Report</strong> control and choose <strong className="text-navy-950">Copyright or intellectual property infringement</strong>. Provide enough information to identify the original work, the material complained of, and your ownership or authority to act.</p>
           <p>Copyright complaints enter the platform moderation queue for review. Sea N Shore may request additional information, restrict or remove content while a complaint is assessed, preserve relevant records, restore content where appropriate, and take action against repeated or abusive misuse of the platform.</p>
           <p>
-            See the <Link href="/copyright" className="font-semibold text-ocean-700 hover:underline">Copyright &amp; IP Policy</Link> for the reporting workflow and information to include in a complaint.
+            See the <Link href="/copyright" prefetch={false} className="font-semibold text-ocean-700 hover:underline">Copyright &amp; IP Policy</Link> for the reporting workflow and information to include in a complaint.
           </p>
         </div>
       </section>

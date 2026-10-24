@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ requireCapability: mocks.requireCapability }))
+const verifyUpload = vi.hoisted(() => ({
+  verifyStoredUploadSignature: vi.fn<(key: string, mimeType: string, size: number) => Promise<'match' | 'mismatch' | 'unavailable'>>(async () => 'match'),
+}))
+vi.mock('@/lib/uploads/verify-stored-upload', () => verifyUpload)
 vi.mock('@/lib/aws/storage', () => ({ createMediaUploadUrl: mocks.createMediaUploadUrl, headMediaObject: mocks.headMediaObject, deleteMediaObject: mocks.deleteMediaObject }))
 vi.mock('./workspace-repository', () => ({
   organizationWorkspaceRepository: {
@@ -90,6 +94,15 @@ describe('updateOrganizationBranding page details', () => {
     expect(result).toEqual({ success: true })
     expect(mocks.updateCoverPath).toHaveBeenCalledWith(companyId, ticket.key)
     expect(mocks.deleteMediaObject).toHaveBeenCalledWith('organizations/old-cover.jpg')
+  })
+
+  it('deletes an upload whose bytes are not a real image instead of attaching it (Round P3)', async () => {
+    const ticket = await requestOrganizationMediaUploadAction({ companyId, kind: 'cover', contentType: 'image/webp', size: 1234 })
+    verifyUpload.verifyStoredUploadSignature.mockResolvedValueOnce('mismatch')
+    const result = await completeOrganizationMediaUploadAction({ companyId, kind: 'cover', key: ticket.key! })
+    expect(result).toEqual({ error: 'This file is not a real JPG, PNG or WebP image. Choose another image.' })
+    expect(mocks.deleteMediaObject).toHaveBeenCalledWith(ticket.key)
+    expect(mocks.updateCoverPath).not.toHaveBeenCalled()
   })
 
   it('removes the cover image when asked', async () => {

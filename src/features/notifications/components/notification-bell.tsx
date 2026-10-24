@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { loadNotificationChrome, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead, markNotificationsRead } from '../actions'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { NOTIFICATION_POLL_MS, startVisibleInterval } from '@/lib/browser/visible-interval'
 import type { NetworkNotification } from '../types'
 import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
 
@@ -75,8 +76,8 @@ export function NotificationBell({
     }
   }, [])
 
-  // Every 30 seconds: the open panel reloads its list; a closed bell only refreshes the badge count
-  // (and the list reloads on the next open).
+  // Every minute while the page is visible (Round P3: was every 30 s, hidden tabs included): the open
+  // panel reloads its list; a closed bell only refreshes the badge count (the list reloads on open).
   useEffect(() => {
     let active = true
     let checking = false
@@ -100,10 +101,10 @@ export function NotificationBell({
       }
     }
 
-    const interval = window.setInterval(() => { void refreshSnapshot() }, 30_000)
+    const stop = startVisibleInterval(() => { void refreshSnapshot() }, NOTIFICATION_POLL_MS)
     return () => {
       active = false
-      window.clearInterval(interval)
+      stop()
     }
   }, [loadList])
 

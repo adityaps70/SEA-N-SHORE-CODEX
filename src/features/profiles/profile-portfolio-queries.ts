@@ -1,6 +1,7 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { certificateRepository, type ProfileLearningCertificate } from '@/features/learning/certificate-repository'
 import { getProfilePortfolio } from './profile-portfolio-repository'
+import { getProfilePortfolioForRequest } from './request-cached-reads'
 import type { ProfilePortfolio } from './profile-portfolio-types'
 
 /** Sea N Shore certificates for Licences & Credentials (learning round B, B5). A failure hides them, never the page. */
@@ -16,8 +17,8 @@ async function learningCertificates(profileId: string, includeHidden: boolean): 
 /** The signed-in member's portfolio; `withCertificates` adds every Sea N Shore certificate (hidden ones too). */
 export async function getOwnProfilePortfolio(options: { withCertificates?: boolean } = {}): Promise<ProfilePortfolio> {
   const user = await requireAwsUser()
-  if (!options.withCertificates) return getProfilePortfolio(user.id)
-  const [portfolio, certificates] = await Promise.all([getProfilePortfolio(user.id), learningCertificates(user.id, true)])
+  if (!options.withCertificates) return getProfilePortfolioForRequest(user.id)
+  const [portfolio, certificates] = await Promise.all([getProfilePortfolioForRequest(user.id), learningCertificates(user.id, true)])
   return { ...portfolio, learningCertificates: certificates }
 }
 

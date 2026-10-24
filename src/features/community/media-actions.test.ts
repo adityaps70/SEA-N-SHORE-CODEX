@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/admin/mfa-gate', () => ({ canUsePlatformAdminAuthority: mocks.canUsePlatformAdminAuthority }))
+const verifyUpload = vi.hoisted(() => ({
+  verifyStoredUploadSignature: vi.fn<(key: string, mimeType: string, size: number) => Promise<'match' | 'mismatch' | 'unavailable'>>(async () => 'match'),
+}))
+vi.mock('@/lib/uploads/verify-stored-upload', () => verifyUpload)
 vi.mock('@/lib/aws/storage', () => ({
   createMediaUploadUrl: mocks.createMediaUploadUrl,
   headMediaObject: mocks.headMediaObject,
@@ -134,6 +138,15 @@ describe('community media presigned upload actions', () => {
     expect(mocks.deleteMediaObject).toHaveBeenCalledWith('communities/old/cover.webp')
     expect(mocks.insertAuditEvent).toHaveBeenCalledWith(userId, 'community.image_updated', groupId, { kind: 'cover' })
     expectRevalidation()
+  })
+
+  it('deletes an upload whose bytes are not a real image instead of attaching it (Round P3)', async () => {
+    const key = `communities/${groupId}/cover-123.webp`
+    verifyUpload.verifyStoredUploadSignature.mockResolvedValueOnce('mismatch')
+    await expect(completeCommunityMediaUploadAction({ groupId, kind: 'cover', key }))
+      .resolves.toEqual({ error: 'This file is not a real JPG, PNG or WebP image. Choose another image.' })
+    expect(mocks.deleteMediaObject).toHaveBeenCalledWith(key)
+    expect(mocks.replaceImagePath).not.toHaveBeenCalled()
   })
 
   it('rejects an object key outside the authorized prefix', async () => {

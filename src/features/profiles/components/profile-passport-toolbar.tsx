@@ -1,6 +1,7 @@
 'use client'
 
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { useContext, useState } from 'react'
 import { Download, Ellipsis, Eye, Pencil } from 'lucide-react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
@@ -29,7 +30,8 @@ export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUr
         View public profile
       </Link>
       <ProfileShareControls slug={slug} siteUrl={siteUrl} />
-      <Link href="/api/profile/cv" className={`${buttonClass({ variant: 'primary', size: 'sm' })} max-md:hidden`}>
+      {/* A file download from an API route: never prefetched, not even on hover. */}
+      <Link href="/api/profile/cv" prefetch={false} className={`${buttonClass({ variant: 'primary', size: 'sm' })} max-md:hidden`}>
         <Download aria-hidden="true" className="size-4" />
         Download CV
       </Link>
@@ -50,7 +52,7 @@ export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUr
             <Eye aria-hidden="true" />
             View public profile
           </Link>
-          <Link role="menuitem" href="/api/profile/cv" className={sheetLinkRowClass} onClick={() => setSheetOpen(false)}>
+          <Link role="menuitem" href="/api/profile/cv" prefetch={false} className={sheetLinkRowClass} onClick={() => setSheetOpen(false)}>
             <Download aria-hidden="true" />
             Download CV
           </Link>

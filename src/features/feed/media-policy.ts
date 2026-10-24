@@ -1,6 +1,10 @@
 export const POST_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 export const POST_IMAGE_MAX_COUNT = 10
-export const POST_VIDEO_MAX_BYTES = 200 * 1024 * 1024
+/** Round P3: feed videos are served as uploaded (no transcoding), so they are capped by size and length. */
+export const POST_VIDEO_MAX_BYTES = 100 * 1024 * 1024
+export const POST_VIDEO_MAX_SECONDS = 3 * 60
+/** Videos taller and wider than 720p upload and play slower; the composer suggests recording at 720p. */
+export const POST_VIDEO_SUGGESTED_MAX_LINES = 720
 export const POST_DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
 export const POST_DOCUMENT_MAX_PAGES = 50
 
@@ -47,7 +51,7 @@ export function validatePostMediaMetadata(input: {
     }
   } else if (isVideoPostMediaMime(input.mimeType)) {
     if (input.size > POST_VIDEO_MAX_BYTES) {
-      return { ok: false, error: 'Videos must be 200 MB or smaller.' }
+      return { ok: false, error: 'Videos must be 100 MB or smaller.' }
     }
   } else if (input.size > POST_IMAGE_MAX_BYTES) {
     return { ok: false, error: 'Images must be 5 MiB or smaller.' }
@@ -58,6 +62,24 @@ export function validatePostMediaMetadata(input: {
     mimeType: input.mimeType,
     extension: POST_MEDIA_MIME_EXTENSION[input.mimeType],
   }
+}
+
+export const POST_VIDEO_TOO_LONG_MESSAGE = 'Videos can be up to 3 minutes long. Trim this one and try again.'
+export const POST_VIDEO_720P_HINT = 'Tip: this video is larger than 720p. Recording at 720p makes it upload and play faster.'
+
+/**
+ * Round P3: what the browser read from a picked video (duration and frame size). Too long is refused;
+ * above 720p is allowed with a hint. Unreadable details (null) leave the size cap as the only check.
+ */
+export function validatePostVideoDetails(details: { durationSeconds: number; width: number; height: number } | null):
+  | { ok: true; hint: string | null }
+  | { ok: false; error: string } {
+  if (!details) return { ok: true, hint: null }
+  if (Number.isFinite(details.durationSeconds) && details.durationSeconds > POST_VIDEO_MAX_SECONDS + 0.5) {
+    return { ok: false, error: POST_VIDEO_TOO_LONG_MESSAGE }
+  }
+  const shortSide = Math.min(details.width, details.height)
+  return { ok: true, hint: shortSide > POST_VIDEO_SUGGESTED_MAX_LINES ? POST_VIDEO_720P_HINT : null }
 }
 
 export function buildPostMediaStoragePath(input: {

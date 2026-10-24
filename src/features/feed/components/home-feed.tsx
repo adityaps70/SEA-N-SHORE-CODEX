@@ -53,7 +53,7 @@ export function FeedModeSwitch({ mode, onChange, disabled }: { mode: FeedMode; o
   )
 }
 
-function FeedSkeleton() {
+export function FeedSkeleton() {
   return (
     <div aria-hidden="true" className="space-y-4 max-md:space-y-2">
       {[0, 1, 2].map((index) => (

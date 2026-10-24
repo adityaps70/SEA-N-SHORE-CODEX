@@ -5,6 +5,7 @@ import { AtSign, Bell, BriefcaseBusiness, CheckCheck, ChevronRight, Ellipsis, Gr
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
+import { NOTIFICATION_POLL_MS, startVisibleInterval } from '@/lib/browser/visible-interval'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { deleteNotification, deleteNotifications, loadNotifications, markAllNotificationsRead, markNotificationRead, markNotificationsRead } from '../actions'
 import {
@@ -49,10 +50,10 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       }
     }
 
-    const interval = window.setInterval(() => { void refreshSnapshot() }, 30_000)
+    const stop = startVisibleInterval(() => { void refreshSnapshot() }, NOTIFICATION_POLL_MS)
     return () => {
       active = false
-      window.clearInterval(interval)
+      stop()
     }
   }, [])
 

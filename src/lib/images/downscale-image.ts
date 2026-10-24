@@ -1,22 +1,23 @@
 /**
- * Shrinks a photo in the browser before it is uploaded, so new avatars, covers, post images and
- * message photos are small at the source: the long edge and encoder quality are set per use, the
- * result is WebP (JPEG where the browser cannot encode WebP), and re-encoding through a canvas drops EXIF
- * metadata including GPS. Anything that cannot be improved is returned unchanged: GIFs (which may
- * animate), photos already within the size and under 400 KB, files the browser cannot decode
- * (e.g. HEIC), and results that would be bigger than the original.
+ * Re-encodes every photo in the browser before it is uploaded, so new avatars, covers, logos,
+ * banners, post, lesson and message images carry no EXIF metadata (GPS location included) and are
+ * small at the source. Round P3: re-encoding is unconditional. The long edge and encoder quality
+ * are set per use and the result is WebP (JPEG where the browser cannot encode WebP; PNG for logos
+ * so transparency survives). Certificate artwork is embedded in a PDF that only takes PNG or JPEG,
+ * so it stays in those types. GIFs (which may animate) and non-images are returned unchanged. A
+ * photo the browser cannot decode or encode is refused with `ImageReencodeError` instead of being
+ * uploaded with its metadata.
  */
-export type DownscaleImageKind = 'avatar' | 'cover' | 'post' | 'message'
+export type DownscaleImageKind = 'avatar' | 'cover' | 'post' | 'message' | 'logo' | 'certificate'
 
 export const DOWNSCALE_MAX_EDGE_PX: Record<DownscaleImageKind, number> = {
   avatar: 800,
   cover: 1920,
   post: 2048,
   message: 2048,
+  logo: 512,
+  certificate: 1200,
 }
-
-/** Photos at or under this size that already fit the long edge are uploaded as they are. */
-export const DOWNSCALE_SKIP_BYTES = 400 * 1024
 
 /**
  * Encoder quality per use. Post and message images are mostly designed graphics (cards, posters)
@@ -27,16 +28,36 @@ export const DOWNSCALE_QUALITY: Record<DownscaleImageKind, number> = {
   cover: 0.85,
   post: 0.92,
   message: 0.92,
+  logo: 0.92,
+  certificate: 0.92,
 }
 
-type Encoded = { blob: Blob; type: 'image/webp' | 'image/jpeg'; extension: 'webp' | 'jpg' }
+export const IMAGE_REENCODE_ERROR_MESSAGE = 'This photo could not be prepared for upload. Choose a JPG, PNG or WebP image.'
 
-function encode(canvas: HTMLCanvasElement, type: Encoded['type'], extension: Encoded['extension'], quality: number) {
-  return new Promise<Encoded | null>((resolve) => {
-    canvas.toBlob((blob) => {
-      // A browser that cannot encode the requested type answers with PNG (or nothing).
-      resolve(blob && blob.type === type ? { blob, type, extension } : null)
-    }, type, quality)
+/** The browser could not decode or re-encode the photo, so it is not uploaded with its metadata. */
+export class ImageReencodeError extends Error {
+  constructor() {
+    super(IMAGE_REENCODE_ERROR_MESSAGE)
+    this.name = 'ImageReencodeError'
+  }
+}
+
+type OutputType = 'image/webp' | 'image/jpeg' | 'image/png'
+
+const EXTENSION: Record<OutputType, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png' }
+
+/** Encodings to try, in order; the first one the browser can produce is used. */
+function outputTypes(kind: DownscaleImageKind, sourceType: string): OutputType[] {
+  if (kind === 'logo') return ['image/webp', 'image/png']
+  // A signature or logo on a certificate is usually a transparent PNG; a photo stays a JPEG.
+  if (kind === 'certificate') return sourceType === 'image/jpeg' ? ['image/jpeg'] : ['image/png']
+  return ['image/webp', 'image/jpeg']
+}
+
+function encode(canvas: HTMLCanvasElement, type: OutputType, quality: number) {
+  return new Promise<Blob | null>((resolve) => {
+    // A browser that cannot encode the requested type answers with PNG (or nothing).
+    canvas.toBlob((blob) => resolve(blob && blob.type === type ? blob : null), type, quality)
   })
 }
 
@@ -49,22 +70,26 @@ export function isDownscalableImage(file: Pick<File, 'type'>) {
   return file.type.startsWith('image/') && file.type !== 'image/gif'
 }
 
+/** The member-facing message for an error from `downscaleImage`, or `fallback` for anything else. */
+export function imageReencodeErrorMessage(error: unknown, fallback: string) {
+  return error instanceof ImageReencodeError ? error.message : fallback
+}
+
 export async function downscaleImage(file: File, kind: DownscaleImageKind): Promise<File> {
   if (!isDownscalableImage(file)) return file
-  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') throw new ImageReencodeError()
 
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   } catch {
-    return file
+    throw new ImageReencodeError()
   }
 
   try {
     const maxEdge = DOWNSCALE_MAX_EDGE_PX[kind]
     const longEdge = Math.max(bitmap.width, bitmap.height)
-    if (!longEdge) return file
-    if (longEdge <= maxEdge && file.size <= DOWNSCALE_SKIP_BYTES) return file
+    if (!longEdge) throw new ImageReencodeError()
 
     const scale = Math.min(1, maxEdge / longEdge)
     const width = Math.max(1, Math.round(bitmap.width * scale))
@@ -74,20 +99,17 @@ export async function downscaleImage(file: File, kind: DownscaleImageKind): Prom
     canvas.width = width
     canvas.height = height
     const context = canvas.getContext('2d')
-    if (!context) return file
+    if (!context) throw new ImageReencodeError()
     context.drawImage(bitmap, 0, 0, width, height)
 
     const quality = DOWNSCALE_QUALITY[kind]
-    const encoded = (await encode(canvas, 'image/webp', 'webp', quality))
-      ?? (await encode(canvas, 'image/jpeg', 'jpg', quality))
-    if (!encoded || encoded.blob.size >= file.size) return file
-
-    return new File([encoded.blob], withExtension(file.name, encoded.extension), {
-      type: encoded.type,
-      lastModified: file.lastModified,
-    })
+    for (const type of outputTypes(kind, file.type)) {
+      const blob = await encode(canvas, type, quality)
+      if (blob) return new File([blob], withExtension(file.name, EXTENSION[type]), { type, lastModified: file.lastModified })
+    }
+    throw new ImageReencodeError()
   } catch {
-    return file
+    throw new ImageReencodeError()
   } finally {
     bitmap.close?.()
   }

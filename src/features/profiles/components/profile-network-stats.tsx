@@ -1,4 +1,5 @@
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { Lock } from 'lucide-react'
 import { firstNameOf } from '../display-name'
 import {

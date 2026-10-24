@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { accessRepository } from './repository'
 import { canUseCapability, type Capability } from './policy'
 
@@ -13,9 +14,11 @@ export class CapabilityRequiredError extends Error {
   }
 }
 
-export async function getAccessContext(profileId: string) {
-  return accessRepository.getAccessContext(profileId)
-}
+/**
+ * Round P3: once per server render per member (the Home rail, the feed's "Post as" list and
+ * capability checks all ask). Server Actions and route handlers outside a render read fresh.
+ */
+export const getAccessContext = cache(async (profileId: string) => accessRepository.getAccessContext(profileId))
 
 export async function userCan(
   profileId: string,

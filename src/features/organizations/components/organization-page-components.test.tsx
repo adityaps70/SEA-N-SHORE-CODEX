@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/images/crop-image', () => ({ cropImageToFile: mocks.cropImageToFile }))
+// jsdom cannot decode images; the re-encode step (downscale-image.test.ts) passes the cropped file through here.
+vi.mock('@/lib/images/downscale-image', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/images/downscale-image')>()),
+  downscaleImage: vi.fn(async (file: File) => file),
+}))
 // The cropper itself is canvas and pointer driven; here it reports one fixed crop box on load.
 vi.mock('react-easy-crop', () => ({
   default: function MockCropper(props: { onCropComplete: (area: unknown, pixels: unknown) => void; cropShape: string; aspect: number }) {

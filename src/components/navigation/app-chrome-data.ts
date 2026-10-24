@@ -5,8 +5,7 @@ import { calculateProfileCompletion } from '@/features/feed/profile-completion'
 import { getUnreadMessageCount } from '@/features/messaging/queries'
 import { networkRepository } from '@/features/network/repository'
 import { getUnreadNotificationCount } from '@/features/notifications/queries'
-import { organizationLinkRepository } from '@/features/profiles/organization-link-repository'
-import { getProfilePortfolio } from '@/features/profiles/profile-portfolio-repository'
+import { getProfilePortfolioForRequest, listMemberOrganizationsForRequest } from '@/features/profiles/request-cached-reads'
 import { getOwnProfile } from '@/features/profiles/queries'
 import type { OwnProfile } from '@/features/profiles/types'
 import type { HeaderOrganization } from './account-menu'
@@ -35,11 +34,11 @@ export async function getAppChromeData(user: AwsVerifiedUser) {
     canAccessPlatformAdmin(user.id),
     getOwnProfile().catch(() => null),
     // Owners and administrators first. The menu still works (without the list) if this fails.
-    organizationLinkRepository.listMemberOrganizations(user.id).catch(() => []),
+    listMemberOrganizationsForRequest(user.id).catch(() => []),
     // The Network tab badge: the same count as the Requests tab on /network.
     networkRepository.countIncomingRequests(user.id).catch(() => 0),
     // Only used for the drawer's "Complete profile · n%" line; the drawer omits it if this fails.
-    getProfilePortfolio(user.id).catch(() => null),
+    getProfilePortfolioForRequest(user.id).catch(() => null),
     // Round G (G4): search as you type in the top bar (ranking_settings.search; off keeps the plain form).
     isRankingEnabled('search', user.id).catch(() => false),
   ])

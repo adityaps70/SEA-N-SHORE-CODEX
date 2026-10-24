@@ -1,6 +1,7 @@
 import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
-import Link from 'next/link'
+// Round P3: prefetch on intent only (viewport prefetch of these links cost thousands of requests).
+import Link from '@/components/navigation/intent-link'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { LockKeyhole } from 'lucide-react'

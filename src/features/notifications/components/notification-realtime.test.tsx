@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NOTIFICATION_POLL_MS } from '@/lib/browser/visible-interval'
 import type { NetworkNotification } from '../types'
 import { NotificationBell } from './notification-bell'
 import { NotificationList } from './notification-list'
@@ -79,11 +80,11 @@ describe('notification incremental freshness', () => {
     vi.clearAllMocks()
   })
 
-  it('refreshes the bell snapshot every 30 seconds without a route refresh', async () => {
+  it('refreshes the bell snapshot every minute without a route refresh', async () => {
     render(<NotificationBell recent={[current]} unreadCount={1} />)
 
     // Round 14 (3.9): a closed bell polls only the unread count; the list loads when it opens.
-    await act(async () => { vi.advanceTimersByTime(30_000) })
+    await act(async () => { vi.advanceTimersByTime(NOTIFICATION_POLL_MS) })
     await waitFor(() => expect(mocks.loadUnreadNotificationCount).toHaveBeenCalledTimes(1))
     expect(mocks.loadNotificationChrome).not.toHaveBeenCalled()
 
@@ -94,12 +95,12 @@ describe('notification incremental freshness', () => {
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
-  it('reloads the open panel list every 30 seconds', async () => {
+  it('reloads the open panel list every minute', async () => {
     render(<NotificationBell unreadCount={1} />)
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     await waitFor(() => expect(mocks.loadNotificationChrome).toHaveBeenCalledTimes(1))
 
-    await act(async () => { vi.advanceTimersByTime(30_000) })
+    await act(async () => { vi.advanceTimersByTime(NOTIFICATION_POLL_MS) })
     await waitFor(() => expect(mocks.loadNotificationChrome).toHaveBeenCalledTimes(2))
     expect(mocks.loadUnreadNotificationCount).not.toHaveBeenCalled()
     expect(mocks.refresh).not.toHaveBeenCalled()
@@ -118,10 +119,10 @@ describe('notification incremental freshness', () => {
     expect(screen.queryByText('1')).not.toBeInTheDocument()
   })
 
-  it('refreshes the full notification list every 30 seconds without remounting the page', async () => {
+  it('refreshes the full notification list every minute without remounting the page', async () => {
     render(<NotificationList notifications={[current]} />)
 
-    await act(async () => { vi.advanceTimersByTime(30_000) })
+    await act(async () => { vi.advanceTimersByTime(NOTIFICATION_POLL_MS) })
     await waitFor(() => expect(mocks.loadNotifications).toHaveBeenCalledTimes(1))
 
     expect(screen.getByText('2 unread')).toBeInTheDocument()

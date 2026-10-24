@@ -34,12 +34,13 @@ test('totals CSP summaries per directive and blocked host, and says when there a
   const summary = (total, violations) => JSON.stringify({ event: 'csp_violation_summary', windowSeconds: 60, total, violations })
   const out = jq('scripts/aws/csp-violation-summary.jq', [
     event('a', 1_760_000_000_000, summary(3, [{ directive: 'script-src-elem', blocked: 'inline', count: 2 }, { directive: 'img-src', blocked: 'cdn.example.com', count: 1 }])),
-    event('b', 1_760_000_600_000, summary(1, [{ directive: 'script-src-elem', blocked: 'inline', count: 1 }])),
+    event('b', 1_760_000_600_000, JSON.stringify({ ...JSON.parse(summary(1, [{ directive: 'script-src-elem', blocked: 'inline', count: 1 }])), rateLimited: 7 })),
     event('b', 1_760_000_700_000, 'not json'),
   ]).trim().split('\n')
   assert.deepEqual(out, [
     'CSP_SUMMARY_LINES=2',
     'CSP_TOTAL_REPORTS=4',
+    'CSP_RATE_LIMITED_REQUESTS=7',
     'CSP_FIRST_SUMMARY_AT=2025-10-09T08:53:20Z',
     'CSP_LAST_SUMMARY_AT=2025-10-09T09:03:20Z',
     '3\tscript-src-elem\tinline',
@@ -48,6 +49,7 @@ test('totals CSP summaries per directive and blocked host, and says when there a
   assert.deepEqual(jq('scripts/aws/csp-violation-summary.jq', []).trim().split('\n'), [
     'CSP_SUMMARY_LINES=0',
     'CSP_TOTAL_REPORTS=0',
+    'CSP_RATE_LIMITED_REQUESTS=0',
     'CSP_FIRST_SUMMARY_AT=none',
     'CSP_LAST_SUMMARY_AT=none',
   ])

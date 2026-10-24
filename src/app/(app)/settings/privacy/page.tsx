@@ -101,7 +101,7 @@ export default async function PrivacySettingsPage() {
         />
       </section>
       <p className="text-sm leading-6 text-muted">
-        How we use your data: <Link href="/privacy" className="font-semibold text-ocean-700 hover:underline">Privacy policy</Link>.
+        How we use your data: <Link href="/privacy" prefetch={false} className="font-semibold text-ocean-700 hover:underline">Privacy policy</Link>.
       </p>
     </div>
   )

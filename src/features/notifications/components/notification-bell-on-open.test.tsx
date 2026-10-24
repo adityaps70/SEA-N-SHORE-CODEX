@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NOTIFICATION_POLL_MS } from '@/lib/browser/visible-interval'
 import type { NetworkNotification } from '../types'
 import { NotificationBell } from './notification-bell'
 
@@ -114,7 +115,7 @@ describe('NotificationBell loads its list on open (Round 14, 3.9)', () => {
     mocks.loadUnreadNotificationCount.mockResolvedValueOnce({ ok: true, unreadCount: 4 })
     render(<NotificationBell unreadCount={1} />)
 
-    await act(async () => { vi.advanceTimersByTime(30_000) })
+    await act(async () => { vi.advanceTimersByTime(NOTIFICATION_POLL_MS) })
     await waitFor(() => expect(screen.getByText('4')).toBeInTheDocument())
     expect(mocks.loadNotificationChrome).not.toHaveBeenCalled()
     expect(mocks.refresh).not.toHaveBeenCalled()

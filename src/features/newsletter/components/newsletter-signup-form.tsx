@@ -154,7 +154,7 @@ export function NewsletterSignupForm({
           />
           <span>
             {NEWSLETTER_CONSENT_TEXT}{' '}
-            See our <Link href="/privacy" className="font-semibold text-ocean-700 underline-offset-2 hover:underline">Privacy Policy</Link>.
+            See our <Link href="/privacy" prefetch={false} className="font-semibold text-ocean-700 underline-offset-2 hover:underline">Privacy Policy</Link>.
           </span>
         </label>
         {errors.consent ? <p id={`${id}-consent-error`} className="text-sm text-red-700">{errors.consent}</p> : null}

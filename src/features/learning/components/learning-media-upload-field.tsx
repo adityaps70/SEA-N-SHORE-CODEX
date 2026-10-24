@@ -12,7 +12,16 @@ import {
   learningMediaLimitLabel,
   type LearningMediaKind,
 } from '../media-policy'
+import { downscaleImage, imageReencodeErrorMessage, type DownscaleImageKind } from '@/lib/images/downscale-image'
 import { uploadLearningMediaFile } from './upload-learning-media'
+
+/** The re-encode profile for each image kind; other kinds (video, documents, captions) upload as picked. */
+const LEARNING_IMAGE_DOWNSCALE: Partial<Record<LearningMediaKind, DownscaleImageKind>> = {
+  course_thumbnail: 'cover',
+  lesson_image: 'post',
+  certificate_logo: 'certificate',
+  certificate_signature: 'certificate',
+}
 
 type Props = {
   courseId: string
@@ -91,11 +100,26 @@ export function LearningMediaUploadField({
     }
   }
 
-  async function uploadFile(file: File) {
+  async function uploadFile(picked: File) {
     if (uploading) return
     setError(null)
     setProgress(0)
     setUploading(true)
+
+    // Round P3: images are always re-encoded in the browser, so EXIF metadata (GPS included) is removed.
+    const imageKind = LEARNING_IMAGE_DOWNSCALE[kind]
+    let file = picked
+    if (imageKind) {
+      try {
+        file = await downscaleImage(picked, imageKind)
+      } catch (prepareError) {
+        setError(imageReencodeErrorMessage(prepareError, 'Upload failed. Check your connection and try again.'))
+        setProgress(null)
+        setUploading(false)
+        if (inputRef.current) inputRef.current.value = ''
+        return
+      }
+    }
 
     let preparedPath: string | null = null
     const previousPendingPath = pendingPath
