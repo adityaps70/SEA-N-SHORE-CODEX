@@ -385,4 +385,65 @@ class EdgeCachingTests(unittest.TestCase):
         for after in [image_policy_after(cookie_behavior='all'), image_policy_after(headers=('Accept','Cookie')), image_policy_after(queries=('url','w','q','token'))]:
             self.assertIn('Image cache policy must key only on url, w, q and Accept, never cookies', self.errors(self.plan(self.expected(), policy_actions=('update',), policy_after=after)))
 
+
+def public_pages_policy_after(policy_id='pages-policy-id', **overrides):
+    after = {
+        'id': policy_id, 'min_ttl': 0, 'default_ttl': 0, 'max_ttl': 300,
+        'parameters_in_cache_key_and_forwarded_to_origin': [{
+            'enable_accept_encoding_brotli': True, 'enable_accept_encoding_gzip': True,
+            'cookies_config': [{'cookie_behavior': overrides.pop('cookie_behavior', 'whitelist'), 'cookies': [{'items': list(overrides.pop('cookies', ['sns_cognito_access', 'sns_cognito_refresh']))}]}],
+            'headers_config': [{'header_behavior': 'whitelist', 'headers': [{'items': list(overrides.pop('headers', ['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch']))}]}],
+            'query_strings_config': [{'query_string_behavior': overrides.pop('query', 'all')}],
+        }],
+    }
+    after.update(overrides)
+    return after
+
+
+class PublicPagesCachePolicyTests(unittest.TestCase):
+    """Round P3 (B4): pages may be cached only through the one bounded policy that honours the origin."""
+
+    def plan(self, default_policy, policy_actions=('update',), policy_after=None, unknown_policy=False):
+        cf = cloudfront_after()
+        cf['default_cache_behavior'][0]['cache_policy_id'] = default_policy
+        unknown = {'default_cache_behavior': [{'cache_policy_id': True}]} if unknown_policy else {}
+        return {'resource_changes': [
+            {'address': 'aws_wafv2_web_acl.edge', 'mode': 'managed', 'change': {'actions': ['no-op'], 'after': {'id': guard.WAF_ID}}},
+            {'address': 'aws_cloudfront_distribution.app', 'mode': 'managed', 'change': {'actions': ['update'], 'after': cf, 'after_unknown': unknown}},
+            function_change(),
+            {'address': guard.PUBLIC_PAGES_POLICY_ADDRESS, 'mode': 'managed', 'change': {'actions': list(policy_actions), 'after': policy_after or public_pages_policy_after()}},
+        ]}
+
+    def errors(self, plan):
+        return guard.validate(plan, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET)
+
+    def test_accepts_the_page_policy_on_the_default_behavior(self):
+        self.assertEqual(self.errors(self.plan('pages-policy-id')), [])
+        created = public_pages_policy_after(policy_id=None)
+        self.assertEqual(self.errors(self.plan(None, policy_actions=('create',), policy_after=created, unknown_policy=True)), [])
+
+    def test_still_accepts_caching_disabled_for_pages(self):
+        self.assertEqual(self.errors(self.plan(guard.CACHE_POLICY_ID)), [])
+
+    def test_refuses_any_other_policy_on_the_default_behavior(self):
+        for policy in [guard.CACHING_OPTIMIZED_POLICY_ID, 'some-other-policy']:
+            self.assertIn('HTTPS/cache policy mismatch', self.errors(self.plan(policy)))
+        # An unknown policy id is accepted only while the page policy itself is being created.
+        self.assertTrue(any('Unknown safety field' in e for e in self.errors(self.plan(None, unknown_policy=True))))
+
+    def test_page_policy_never_caches_what_the_origin_did_not_mark_or_mixes_sessions(self):
+        message = 'Page cache policy must store only origin-marked public responses (TTL 0/0/300), keyed on the session cookies, RSC headers and query'
+        for after in [
+            public_pages_policy_after(default_ttl=60),
+            public_pages_policy_after(min_ttl=1),
+            public_pages_policy_after(max_ttl=3600),
+            public_pages_policy_after(cookie_behavior='none'),
+            public_pages_policy_after(cookies=['sns_cognito_access']),
+            public_pages_policy_after(headers=['next-router-prefetch', 'next-router-state-tree']),
+            public_pages_policy_after(query='none'),
+        ]:
+            self.assertIn(message, self.errors(self.plan('pages-policy-id', policy_after=after)))
+        self.assertIn('Page cache policy must be create/update/no-op', self.errors(self.plan('pages-policy-id', policy_actions=('delete', 'create'))))
+
+
 if __name__ == '__main__': unittest.main()

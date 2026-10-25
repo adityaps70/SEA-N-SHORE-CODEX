@@ -12,6 +12,13 @@ ORIGIN_POLICY_ID = 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
 # Round 14 (3.1): static assets and optimized images may be cached at the edge; HTML never is.
 CACHING_OPTIMIZED_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6'
 NEXT_IMAGE_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.next_image'
+# Round P3 (B4): pages may instead use this policy, which stores only what the origin marks public
+# (default TTL 0), at most 5 minutes, keyed on the two session cookies, the RSC/router headers and
+# the query string. The default behavior must use it or CachingDisabled; nothing else.
+PUBLIC_PAGES_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.public_pages'
+PUBLIC_PAGES_SESSION_COOKIES = ['sns_cognito_access', 'sns_cognito_refresh']
+PUBLIC_PAGES_KEY_HEADERS = ['next-router-prefetch', 'next-router-segment-prefetch', 'next-router-state-tree', 'rsc']
+PUBLIC_PAGES_MAX_TTL = 300
 EXPECTED_ORDERED_BEHAVIORS = [
     ('/_next/static/*', 'optimized'),
     ('/_next/image*', 'next_image'),
@@ -333,6 +340,8 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Redirect function must be create/update/no-op')
         elif address == NEXT_IMAGE_POLICY_ADDRESS:
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Image cache policy must be create/update/no-op')
+        elif address == PUBLIC_PAGES_POLICY_ADDRESS:
+            if actions not in [['create'], ['update'], ['no-op']]: errors.append('Page cache policy must be create/update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
 
@@ -362,6 +371,11 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
     image_policy_created = image_policy_change.get('actions') == ['create']
     if image_policy_change.get('actions') in [['create'], ['update']]:
         _validate_next_image_policy(image_policy_change.get('after') or {}, errors)
+    pages_policy_change = changes.get(PUBLIC_PAGES_POLICY_ADDRESS, {}).get('change', {})
+    pages_policy_created = pages_policy_change.get('actions') == ['create']
+    pages_policy_id = (pages_policy_change.get('after') or {}).get('id')
+    if pages_policy_change:
+        _validate_public_pages_policy(pages_policy_change.get('after') or {}, errors)
     for field in ['aliases','enabled','web_acl_id','viewer_certificate','custom_error_response']:
         if has_unknown(unknown.get(field)): errors.append('Unknown safety field: ' + field)
     for block, fields in {'origin':['domain_name','origin_path','origin_id','custom_header','custom_origin_config'], 'default_cache_behavior':['target_origin_id','viewer_protocol_policy','cache_policy_id','origin_request_policy_id','allowed_methods','function_association','lambda_function_association']}.items():
@@ -374,6 +388,8 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
                     if not has_unknown(value.get(f)):
                         continue
                     if block == 'default_cache_behavior' and f == 'function_association' and function_created and _only_function_arn_unknown(value.get(f)):
+                        continue
+                    if block == 'default_cache_behavior' and f == 'cache_policy_id' and pages_policy_created:
                         continue
                     errors.append('Unknown safety field in ' + block)
     if cf.get('web_acl_id') != WAF_ARN or cf.get('enabled') is not True: errors.append('CloudFront ACL/enabled mismatch')
@@ -406,7 +422,13 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
     else:
         b = behavior[0]
         if b.get('target_origin_id') != 'sea-n-shore-staging-alb': errors.append('Behavior target mismatch')
-        if b.get('viewer_protocol_policy') != 'redirect-to-https' or b.get('cache_policy_id') != CACHE_POLICY_ID or b.get('origin_request_policy_id') != ORIGIN_POLICY_ID: errors.append('HTTPS/cache policy mismatch')
+        page_policy = b.get('cache_policy_id')
+        page_policy_allowed = (
+            page_policy == CACHE_POLICY_ID
+            or (bool(pages_policy_id) and page_policy == pages_policy_id)
+            or (pages_policy_created and page_policy in [None, ''])
+        )
+        if b.get('viewer_protocol_policy') != 'redirect-to-https' or not page_policy_allowed or b.get('origin_request_policy_id') != ORIGIN_POLICY_ID: errors.append('HTTPS/cache policy mismatch')
         if sorted(b.get('allowed_methods',[])) != ['DELETE','GET','HEAD','OPTIONS','PATCH','POST','PUT']: errors.append('Methods mismatch')
         if b.get('lambda_function_association'): errors.append('Unexpected Lambda@Edge association')
         associations = b.get('function_association') or []
@@ -435,6 +457,22 @@ def _validate_next_image_policy(after, errors):
         or after.get('max_ttl') != 31536000 or after.get('min_ttl') != 0
     ):
         errors.append('Image cache policy must key only on url, w, q and Accept, never cookies')
+
+
+def _validate_public_pages_policy(after, errors):
+    params = (after.get('parameters_in_cache_key_and_forwarded_to_origin') or [{}])[0]
+    cookies = (params.get('cookies_config') or [{}])[0]
+    headers = (params.get('headers_config') or [{}])[0]
+    queries = (params.get('query_strings_config') or [{}])[0]
+    cookie_items = ((cookies.get('cookies') or [{}])[0] or {}).get('items') or []
+    header_items = ((headers.get('headers') or [{}])[0] or {}).get('items') or []
+    if (
+        after.get('min_ttl') != 0 or after.get('default_ttl') != 0 or after.get('max_ttl') != PUBLIC_PAGES_MAX_TTL
+        or cookies.get('cookie_behavior') != 'whitelist' or sorted(cookie_items) != PUBLIC_PAGES_SESSION_COOKIES
+        or headers.get('header_behavior') != 'whitelist' or sorted(item.lower() for item in header_items) != PUBLIC_PAGES_KEY_HEADERS
+        or queries.get('query_string_behavior') != 'all'
+    ):
+        errors.append('Page cache policy must store only origin-marked public responses (TTL 0/0/300), keyed on the session cookies, RSC headers and query')
 
 
 def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors):
