@@ -287,6 +287,7 @@ def section_config():
 
     public_ipv4_inventory(ecs_cluster, names)
     pg_stat_statements_readiness()
+    lambda_concurrency_quota()
 
 
 # Round P3 (B10): AWS bills every public IPv4 address, US$0.005 an hour (about US$3.65 a month). Lists what holds
@@ -335,6 +336,26 @@ def public_ipv4_inventory(ecs_cluster, service_names):
             "usd_per_month=%.2f" % (len(unattached) * PUBLIC_IPV4_USD_PER_MONTH))
     total = sum(holders.values()) + len(unattached)
     out("PUBLIC_IPV4_TOTAL", total, "usd_per_month=%.2f" % (total * PUBLIC_IPV4_USD_PER_MONTH))
+
+
+# Round P3 (B1): the account-wide Lambda concurrency limit (10 before the owner's Service Quotas request for 1,000),
+# the applied quota value and the status of the latest increase request.
+LAMBDA_CONCURRENCY_QUOTA = "L-B99A9384"
+
+
+def lambda_concurrency_quota():
+    out("=== B1 LAMBDA CONCURRENCY ===")
+    settings = (aws("lambda", "get-account-settings") or {}).get("AccountLimit") or {}
+    out("LAMBDA_ACCOUNT_CONCURRENT_EXECUTIONS", settings.get("ConcurrentExecutions"),
+        "unreserved=%s" % settings.get("UnreservedConcurrentExecutions"))
+    quota = (aws("service-quotas", "get-service-quota", "--service-code", "lambda",
+                 "--quota-code", LAMBDA_CONCURRENCY_QUOTA) or {}).get("Quota") or {}
+    out("LAMBDA_CONCURRENCY_QUOTA_APPLIED", quota.get("Value"))
+    history = (aws("service-quotas", "list-requested-service-quota-change-history-by-quota", "--service-code", "lambda",
+                   "--quota-code", LAMBDA_CONCURRENCY_QUOTA) or {}).get("RequestedQuotas", [])
+    for request in sorted(history, key=lambda r: r.get("Created") or "", reverse=True)[:3]:
+        out("LAMBDA_CONCURRENCY_REQUEST", "desired=%s" % request.get("DesiredValue"), "status=%s" % request.get("Status"),
+            "created=%s" % request.get("Created"), "updated=%s" % request.get("LastUpdated"))
 
 
 # Round P3 (B9): whether pg_stat_statements can be installed without a reboot (Aurora preloads it unless the
