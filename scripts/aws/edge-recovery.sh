@@ -317,9 +317,15 @@ assert rate_statement['EvaluationWindowSec'] == 300
 print('PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED=true')
 PY
 
-for endpoint in phase4 home; do
-  curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 --max-time 45 "https://$DOMAIN/api/health/$endpoint" > "$RECOVERY_DIR/$endpoint.json"
-done
+# Round 15 put /api/health/home behind the health check token. It goes in a private header file for
+# `curl -H @file` and is never printed (the Actions log is public). /api/health/phase4 stays open.
+aws secretsmanager get-secret-value --region ap-south-1 --secret-id sea-n-shore-staging/health-check-token \
+  --query SecretString --output text > "$RECOVERY_DIR/health-check-token"
+grep -Eq '^[A-Za-z0-9]{32,}$' "$RECOVERY_DIR/health-check-token" || { echo 'Health check token secret is missing or malformed.' >&2; exit 1; }
+printf 'x-health-check-token: %s\n' "$(cat "$RECOVERY_DIR/health-check-token")" > "$RECOVERY_DIR/health-check-header"
+rm -f "$RECOVERY_DIR/health-check-token"
+curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 --max-time 45 "https://$DOMAIN/api/health/phase4" > "$RECOVERY_DIR/phase4.json"
+curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 --max-time 45 -H @"$RECOVERY_DIR/health-check-header" "https://$DOMAIN/api/health/home" > "$RECOVERY_DIR/home.json"
 jq -e '.status == "ok" and .database and .identityMappings and .contentNetwork' "$RECOVERY_DIR/phase4.json" >/dev/null
 jq -e '.status == "ok" and .profile and .network and .discovery and .feed and .hydration and .media' "$RECOVERY_DIR/home.json" >/dev/null
 HTTP_STATUS="$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{http_code}' "http://$DOMAIN/api/health/phase4")"

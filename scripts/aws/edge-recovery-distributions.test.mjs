@@ -23,3 +23,11 @@ test('Round P3: the one known untracked distribution is allowed by exact id, and
   assert.doesNotMatch(script, /-target=[^ ]*E2MCZ79G101LLD/)
 })
 
+test('the edge health check sends the health check token to /api/health/home from a private file, never in argv or the log', async () => {
+  const script = await read('./edge-recovery.sh')
+  assert.match(script, /--secret-id sea-n-shore-staging\/health-check-token/)
+  assert.match(script, /-H @"\$RECOVERY_DIR\/health-check-header" "https:\/\/\$DOMAIN\/api\/health\/home"/)
+  assert.doesNotMatch(script, /echo[^\n]*health-check-token\)/)
+  assert.doesNotMatch(script, /x-health-check-token: \$[A-Z]/)
+})
+
