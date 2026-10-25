@@ -311,14 +311,14 @@ resource "aws_cloudwatch_metric_alarm" "alb_target_5xx_rate" {
 
 resource "aws_cloudwatch_metric_alarm" "web_cpu_high" {
   alarm_name          = "${local.name_prefix}-web-cpu-high"
-  alarm_description   = "Web service CPU (average) above 80% for 15 minutes."
+  alarm_description   = "Web service CPU (average) above 70% for 10 minutes."
   namespace           = "AWS/ECS"
   metric_name         = "CPUUtilization"
   dimensions          = local.web_service_dimensions
   statistic           = "Average"
   period              = 300
-  evaluation_periods  = 3
-  threshold           = 80
+  evaluation_periods  = 2
+  threshold           = 70
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "missing"
   alarm_actions       = [aws_sns_topic.alerts.arn]
@@ -373,4 +373,180 @@ resource "aws_cloudwatch_metric_alarm" "site_health" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
   tags                = local.common_tags
+}
+
+# Round P3 (B6): scale on requests per task as well as CPU and memory, up to 8 tasks. A task holds
+# about 525 requests a minute at 70% CPU (P3 capacity report), so tracking 400 adds tasks before
+# CPU gets there. Target tracking waits for 3 one-minute datapoints, so a sudden burst also has
+# one-minute step alarms that add tasks at once.
+data "aws_lb_target_group" "web" {
+  name = substr("${local.name_prefix}-web", 0, 32)
+}
+
+locals {
+  web_target_group_dimension = data.aws_lb_target_group.web.arn_suffix
+}
+
+resource "aws_appautoscaling_policy" "requests" {
+  name               = "${local.name_prefix}-requests"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.web.resource_id
+  scalable_dimension = aws_appautoscaling_target.web.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.web.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = 400
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
+
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      resource_label         = "${local.alb_dimension}/${local.web_target_group_dimension}"
+    }
+  }
+}
+
+resource "aws_appautoscaling_policy" "requests_burst" {
+  name               = "${local.name_prefix}-requests-burst"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.web.resource_id
+  scalable_dimension = aws_appautoscaling_target.web.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.web.service_namespace
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Average"
+
+    # 600-900 requests per task in a minute: one more task; above 900: two more.
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      metric_interval_upper_bound = 300
+      scaling_adjustment          = 1
+    }
+
+    step_adjustment {
+      metric_interval_lower_bound = 300
+      scaling_adjustment          = 2
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "web_requests_burst" {
+  alarm_name          = "${local.name_prefix}-web-requests-burst"
+  alarm_description   = "More than 600 requests per web task in one minute: add tasks now."
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "RequestCountPerTarget"
+  dimensions          = { TargetGroup = local.web_target_group_dimension }
+  statistic           = "Sum"
+  period              = 60
+  evaluation_periods  = 1
+  threshold           = 600
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_appautoscaling_policy.requests_burst.arn]
+  tags                = local.common_tags
+}
+
+resource "aws_appautoscaling_policy" "cpu_burst" {
+  name               = "${local.name_prefix}-cpu-burst"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.web.resource_id
+  scalable_dimension = aws_appautoscaling_target.web.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.web.service_namespace
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Average"
+
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      scaling_adjustment          = 1
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "web_cpu_burst" {
+  alarm_name          = "${local.name_prefix}-web-cpu-burst"
+  alarm_description   = "Web service CPU (average) above 80% for 2 minutes: add a task now."
+  namespace           = "AWS/ECS"
+  metric_name         = "CPUUtilization"
+  dimensions          = local.web_service_dimensions
+  statistic           = "Average"
+  period              = 60
+  evaluation_periods  = 2
+  threshold           = 80
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_appautoscaling_policy.cpu_burst.arn]
+  tags                = local.common_tags
+}
+
+# Round P3 (B8): slow pages and Lambda throttles page the owner.
+resource "aws_cloudwatch_metric_alarm" "web_latency_p95" {
+  alarm_name          = "${local.name_prefix}-web-latency-p95"
+  alarm_description   = "p95 response time from the web tasks above 1 second in 3 of the last 5 minutes."
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "TargetResponseTime"
+  dimensions          = { LoadBalancer = local.alb_dimension }
+  extended_statistic  = "p95"
+  period              = 60
+  evaluation_periods  = 5
+  datapoints_to_alarm = 3
+  threshold           = 1
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+}
+
+# Account-wide: realtime messaging and the Cognito sign-up and email triggers share the Lambda
+# concurrency limit, so any throttle anywhere means a member-facing failure.
+resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
+  alarm_name          = "${local.name_prefix}-lambda-throttles"
+  alarm_description   = "At least one Lambda invocation throttled in 5 minutes (account-wide concurrency limit)."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Throttles"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+}
+
+# Round P3 (Part D): MediaConvert (course lesson and trailer videos) may cost at most about
+# ₹1,000 a month: US$11.40 at ₹88 per dollar. Email at 80% forecast and at 100% actual.
+resource "aws_budgets_budget" "mediaconvert" {
+  name         = "${local.name_prefix}-mediaconvert-monthly"
+  budget_type  = "COST"
+  limit_amount = "11.40"
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  cost_filter {
+    name   = "Service"
+    values = ["AWS Elemental MediaConvert"]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.alert_email, var.operations_alert_email]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.alert_email, var.operations_alert_email]
+  }
 }

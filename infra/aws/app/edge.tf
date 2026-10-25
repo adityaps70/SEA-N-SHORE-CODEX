@@ -152,7 +152,8 @@ data "aws_cloudfront_cache_policy" "caching_disabled" {
 }
 
 # Round 14 (3.1): hashed build assets and public brand images are cached at the edge, keyed on the
-# path only; HTML keeps CachingDisabled so signed-in pages and Set-Cookie responses are never cached.
+# path only. (Round P3: pages moved from CachingDisabled to public_pages below; the legacy redirect
+# distribution still uses CachingDisabled.)
 data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
@@ -186,6 +187,44 @@ resource "aws_cloudfront_cache_policy" "next_image" {
       query_strings {
         items = ["url", "w", "q"]
       }
+    }
+  }
+}
+
+# Round P3 (B4): the default behavior (pages and API) stores only what the origin marks public:
+# default TTL 0 honours Next's `private, no-store` on every dynamic response, and the app marks just
+# signed-out loads of a few public pages (src/lib/http/public-page-cache.ts) for a minute plus
+# stale-while-revalidate. Nothing stays longer than 5 minutes. The key holds the two session
+# cookies, so a signed-in request never shares a signed-out copy, the RSC/router headers, so an
+# RSC request never gets cached HTML, and the whole query string. Everything is still forwarded to
+# the origin by the AllViewerExceptHostHeader origin request policy.
+resource "aws_cloudfront_cache_policy" "public_pages" {
+  name        = "${local.name_prefix}-public-pages"
+  comment     = "Pages: only origin-marked public responses; keyed on session cookies, RSC headers, query."
+  min_ttl     = 0
+  default_ttl = 0
+  max_ttl     = 300
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    cookies_config {
+      cookie_behavior = "whitelist"
+      cookies {
+        items = ["sns_cognito_access", "sns_cognito_refresh"]
+      }
+    }
+
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["rsc", "next-router-prefetch", "next-router-state-tree", "next-router-segment-prefetch"]
+      }
+    }
+
+    query_strings_config {
+      query_string_behavior = "all"
     }
   }
 }
@@ -263,7 +302,7 @@ resource "aws_cloudfront_distribution" "app" {
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD"]
     compress                 = true
-    cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
+    cache_policy_id          = aws_cloudfront_cache_policy.public_pages.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
 
     function_association {

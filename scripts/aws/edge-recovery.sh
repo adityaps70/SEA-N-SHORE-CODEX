@@ -94,7 +94,7 @@ PY
 echo 'EDGE_PROVIDER_LOCK_VERIFIED=true'
 PLAN_EXIT=0
 terraform_plan_bounded "$RECOVERY_DIR/plan.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image \
+  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image -target=aws_cloudfront_cache_policy.public_pages \
   -var-file="$RECOVERY_DIR/variables.json" -out="$RECOVERY_DIR/edge.tfplan" \
   2> "$RECOVERY_DIR/plan.err" || PLAN_EXIT=$?
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
@@ -118,7 +118,8 @@ fi
 # certificate) must be no-ops; for an existing edge, only bounded in-place CloudFront/WAF updates
 # plus the repository redirect function (create/update) are allowed, and at least one must change.
 # Round 14 (3.1): the image cache policy the distribution references may be created or updated too.
-EDGE_ADDRESSES='["aws_cloudfront_cache_policy.next_image", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
+# Round P3 (B4): so may the page cache policy (check-edge-plan.py validates its exact settings).
+EDGE_ADDRESSES='["aws_cloudfront_cache_policy.next_image", "aws_cloudfront_cache_policy.public_pages", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
 jq -e --argjson edge "$EDGE_ADDRESSES" '
   [.resource_changes[] | select(.mode == "managed") | select((.address | IN($edge[])) | not) | select(.change.actions != ["no-op"])] | length == 0
 ' "$RECOVERY_DIR/plan.json" >/dev/null || {
@@ -128,9 +129,10 @@ jq -e --argjson edge "$EDGE_ADDRESSES" '
 if [[ -n "$STATE_CF_ID" ]]; then
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 4
+    | ($changes | length) == 5
       and ([ $changes[].address ] | sort) == ($edge | sort)
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["update"] or $cp == ["create"]))
+      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_pages") ][0].actions as $pp | ($pp == ["no-op"] or $pp == ["update"] or $pp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["update"] or $fn == ["create"]))
@@ -144,9 +146,10 @@ if [[ -n "$STATE_CF_ID" ]]; then
 else
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 4
+    | ($changes | length) == 5
       and ([ $changes[].address ] | sort) == ($edge | sort)
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["create"]))
+      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_pages") ][0].actions as $pp | ($pp == ["no-op"] or $pp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["create"]))
@@ -162,6 +165,19 @@ jq -e '.VersionId != null' "$RECOVERY_DIR/object.json" >/dev/null
 CLUSTER="$(jq -r '.resources[] | select(.type == "aws_ecs_cluster" and .name == "app") | .instances[0].attributes.name' "$RECOVERY_DIR/state.json")"
 SERVICE="$(jq -r '.resources[] | select(.type == "aws_ecs_service" and .name == "web") | .instances[0].attributes.name' "$RECOVERY_DIR/state.json")"
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region ap-south-1 > "$RECOVERY_DIR/ecs-before.json"
+# Round P3 (B4): the page cache policy is only safe once the app decides what is public, so the app
+# release that sends the header (src/lib/http/public-page-cache.ts) must already be live.
+LIVE_PAGE_HEADERS="$(curl --silent --show-error --max-time 45 -o /dev/null -D - -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' "https://seanshore.in/privacy?edge_precheck=$(date +%s)" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+grep -q '^cache-control: public, max-age=0, s-maxage=60, stale-while-revalidate=240$' <<<"$LIVE_PAGE_HEADERS" || {
+  echo 'Edge apply refused: the live app does not mark signed-out public pages cacheable yet; deploy the app first.' >&2
+  exit 1
+}
+LIVE_SESSION_HEADERS="$(curl --silent --show-error --max-time 45 -o /dev/null -D - -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Cookie: sns_cognito_access=edge-precheck-not-a-session' "https://seanshore.in/privacy?edge_precheck=$(date +%s)" | tr -d '\r' | tr '[:upper:]' '[:lower:]')"
+if grep -q '^cache-control: public' <<<"$LIVE_SESSION_HEADERS"; then
+  echo 'Edge apply refused: the live app marks a request with a session cookie public.' >&2
+  exit 1
+fi
+echo 'LIVE_APP_PAGE_CACHE_HEADERS_VERIFIED=true'
 PRESERVE_RECOVERY=true
 touch .edge-recovery-preserve
 echo 'APPLYING_SAVED_EDGE_ONLY_PLAN'
@@ -181,15 +197,26 @@ jq -e --arg cert "$CERT_ARN" '.Distribution.DistributionConfig.ViewerCertificate
 jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.Distribution.DistributionConfig.DefaultCacheBehavior | .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].EventType == "viewer-request" and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0' "$RECOVERY_DIR/live.json" >/dev/null
 IMAGE_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_cache_policy" and .name == "next_image") | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json")"
 [[ -n "$IMAGE_POLICY_ID" && "$IMAGE_POLICY_ID" != null ]]
-jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" '
+PAGES_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_cache_policy" and .name == "public_pages") | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json")"
+[[ -n "$PAGES_POLICY_ID" && "$PAGES_POLICY_ID" != null ]]
+jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" --arg pages "$PAGES_POLICY_ID" '
   .Distribution.DistributionConfig as $config
-  | $config.DefaultCacheBehavior.CachePolicyId == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  | $config.DefaultCacheBehavior.CachePolicyId == $pages
     and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized]])
     and all($config.CacheBehaviors.Items[]?; ((.GrpcConfig.Enabled // false) == false) and .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
 ' "$RECOVERY_DIR/live.json" >/dev/null
 aws cloudfront get-cache-policy --id "$IMAGE_POLICY_ID" --output json > "$RECOVERY_DIR/live-image-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin | .CookiesConfig.CookieBehavior == "none" and (.HeadersConfig.Headers.Items == ["Accept"]) and ((.QueryStringsConfig.QueryStrings.Items | sort) == ["q", "url", "w"])' "$RECOVERY_DIR/live-image-policy.json" >/dev/null
 echo 'EDGE_STATIC_ASSET_CACHING_VERIFIED=true'
+# Round P3 (B4): the live page policy stores only origin-marked public responses for at most 5
+# minutes and keys on both session cookies, so a signed-in request never shares a cached copy.
+aws cloudfront get-cache-policy --id "$PAGES_POLICY_ID" --output json > "$RECOVERY_DIR/live-pages-policy.json"
+jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .MaxTTL == 300
+  and .ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.CookieBehavior == "whitelist"
+  and ((.ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.Cookies.Items | sort) == ["sns_cognito_access", "sns_cognito_refresh"])
+  and ((.ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig.Headers.Items | map(ascii_downcase) | sort) == ["next-router-prefetch", "next-router-segment-prefetch", "next-router-state-tree", "rsc"])
+  and .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior == "all"' "$RECOVERY_DIR/live-pages-policy.json" >/dev/null
+echo 'EDGE_PAGE_CACHE_POLICY_VERIFIED=true'
 aws cloudfront describe-function --name sea-n-shore-staging-canonical-host-redirect --stage LIVE --output json > "$RECOVERY_DIR/live-function.json"
 jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.FunctionSummary | .FunctionMetadata.FunctionARN == $fn and .FunctionConfig.Runtime == "cloudfront-js-2.0"' "$RECOVERY_DIR/live-function.json" >/dev/null
 echo 'CANONICAL_HOST_REDIRECT_FUNCTION_LIVE=true'
@@ -300,11 +327,45 @@ WWW_LOCATION="$(curl --silent --show-error --max-time 45 --resolve "www.seanshor
 [[ "$WWW_LOCATION" == "301 https://seanshore.in/api/health/phase4?probe=www" ]]
 echo 'CUSTOM_DOMAIN_EDGE_VERIFIED; WWW_REDIRECT_VERIFIED'
 
+# Round P3 (B4): prove at the live edge that a signed-out public page is served from the cache and
+# that a request with a session cookie, and a personal page, never is. A fresh query string per run
+# keeps the probe out of real visitors' cache entries. Waits out the distribution's propagation.
+PROBE="edge_probe=$(date +%s)$RANDOM"
+page_probe() {
+  curl --silent --show-error --max-time 45 --resolve "seanshore.in:443:$EDGE_IP" -o /dev/null -D - \
+    -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' "$@" | tr -d '\r' | tr '[:upper:]' '[:lower:]'
+}
+PAGE_CACHED=false
+for attempt in $(seq 1 30); do
+  page_probe "https://seanshore.in/privacy?$PROBE" > /dev/null
+  HEADERS="$(page_probe "https://seanshore.in/privacy?$PROBE")"
+  if grep -q '^x-cache: hit from cloudfront' <<<"$HEADERS" && grep -q '^cache-control: public, max-age=0, s-maxage=60, stale-while-revalidate=240$' <<<"$HEADERS"; then
+    PAGE_CACHED=true
+    break
+  fi
+  sleep 20
+done
+[[ "$PAGE_CACHED" == true ]] || { echo 'A signed-out public page was not served from the edge cache.' >&2; exit 1; }
+echo 'SIGNED_OUT_PUBLIC_PAGE_EDGE_HIT_VERIFIED=true'
+for attempt in 1 2 3; do
+  HEADERS="$(page_probe -H 'Cookie: sns_cognito_access=edge-probe-not-a-session' "https://seanshore.in/privacy?$PROBE")"
+  if grep -q '^x-cache: hit from cloudfront' <<<"$HEADERS" || grep -q '^cache-control: public' <<<"$HEADERS"; then
+    echo 'A request with a session cookie was answered from the edge cache or marked public.' >&2
+    exit 1
+  fi
+  HEADERS="$(page_probe "https://seanshore.in/home?$PROBE")"
+  if grep -q '^x-cache: hit from cloudfront' <<<"$HEADERS" || grep -q '^cache-control: public' <<<"$HEADERS"; then
+    echo 'A personal page was answered from the edge cache or marked public.' >&2
+    exit 1
+  fi
+done
+echo 'SIGNED_IN_AND_PERSONAL_NEVER_EDGE_CACHED_VERIFIED=true'
+
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region ap-south-1 > "$RECOVERY_DIR/ecs-after.json"
 jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDefinition == $before[0].services[0].taskDefinition and .desiredCount == $before[0].services[0].desiredCount and .runningCount == .desiredCount and .pendingCount == 0 and all(.deployments[]; .rolloutState == "COMPLETED" and .failedTasks == 0)' "$RECOVERY_DIR/ecs-after.json" >/dev/null
 echo "CLOUDFRONT_ID=$CF_ID"
 echo "CLOUDFRONT_HTTPS_URL=https://$DOMAIN"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$RECOVERY_DIR/state-after.json")"
-echo 'EDGE_FORWARDED_HOST_VERIFIED; EDGE_HTTPS_ORIGIN_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; SEANSHORE_ALIASES_AND_CERTIFICATE_VERIFIED; ECS_UNCHANGED_AND_HEALTHY'
+echo 'EDGE_PAGE_CACHE_VERIFIED; EDGE_FORWARDED_HOST_VERIFIED; EDGE_HTTPS_ORIGIN_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; SEANSHORE_ALIASES_AND_CERTIFICATE_VERIFIED; ECS_UNCHANGED_AND_HEALTHY'
 PRESERVE_RECOVERY=false
 rm -f .edge-recovery-preserve

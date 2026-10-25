@@ -285,6 +285,74 @@ def section_config():
         out("CW_ALARM", a.get("AlarmName", "").replace(PREFIX + "-", ""), a.get("MetricName"),
             "%s %s" % (a.get("ComparisonOperator"), a.get("Threshold")), "periods=%s" % a.get("EvaluationPeriods"))
 
+    public_ipv4_inventory(ecs_cluster, names)
+    pg_stat_statements_readiness()
+
+
+# Round P3 (B10): AWS bills every public IPv4 address, US$0.005 an hour (about US$3.65 a month). Lists what holds
+# each one, by kind and name. Addresses themselves are never printed (the Actions log is public).
+PUBLIC_IPV4_USD_PER_MONTH = 3.65
+
+
+def public_ipv4_inventory(ecs_cluster, service_names):
+    out("=== B10 PUBLIC IPV4 ===")
+    eni_service = {}
+    for name in service_names:
+        tasks = (aws("ecs", "list-tasks", "--cluster", ecs_cluster, "--service-name", name) or {}).get("taskArns", [])
+        for t in (aws("ecs", "describe-tasks", "--cluster", ecs_cluster, "--tasks", *tasks[:100]) or {}).get("tasks", []) if tasks else []:
+            for attachment in t.get("attachments", []):
+                for d in attachment.get("details", []):
+                    if d.get("name") == "networkInterfaceId":
+                        eni_service[d.get("value")] = name
+    instance_names = {}
+    for r in (aws("ec2", "describe-instances") or {}).get("Reservations", []):
+        for i in r.get("Instances", []):
+            tags = {t["Key"]: t["Value"] for t in i.get("Tags", [])}
+            instance_names[i["InstanceId"]] = "%s(%s,%s)" % (tags.get("Name", "untagged"), i.get("InstanceType"), (i.get("State") or {}).get("Name"))
+    holders = Counter()
+    for eni in (aws("ec2", "describe-network-interfaces") or {}).get("NetworkInterfaces", []):
+        association = eni.get("Association") or {}
+        if not association.get("PublicIp"):
+            continue
+        description = eni.get("Description") or ""
+        instance = (eni.get("Attachment") or {}).get("InstanceId")
+        if eni.get("NetworkInterfaceId") in eni_service:
+            holder = "ecs-task:%s" % eni_service[eni["NetworkInterfaceId"]].replace(PREFIX + "-", "")
+        elif description.startswith("ELB app/"):
+            holder = "load-balancer:%s" % description.split("/")[1].replace(PREFIX + "-", "")
+        elif instance:
+            holder = "ec2:%s" % instance_names.get(instance, "unknown")
+        else:
+            holder = "%s:%s" % (eni.get("InterfaceType", "interface"), re.sub(r"[0-9a-f]{8,}", "[id]", description)[:60] or "no-description")
+        elastic = "elastic" if association.get("AllocationId") or association.get("IpOwnerId") not in (None, "amazon") else "auto"
+        holders[(holder, elastic)] += 1
+    unattached = [a for a in (aws("ec2", "describe-addresses") or {}).get("Addresses", []) if not a.get("AssociationId")]
+    for (holder, elastic), count in sorted(holders.items()):
+        out("PUBLIC_IPV4", "holder=%s" % holder, "kind=%s" % elastic, "count=%d" % count,
+            "usd_per_month=%.2f" % (count * PUBLIC_IPV4_USD_PER_MONTH))
+    if unattached:
+        out("PUBLIC_IPV4", "holder=unattached-elastic-ip", "kind=elastic", "count=%d" % len(unattached),
+            "usd_per_month=%.2f" % (len(unattached) * PUBLIC_IPV4_USD_PER_MONTH))
+    total = sum(holders.values()) + len(unattached)
+    out("PUBLIC_IPV4_TOTAL", total, "usd_per_month=%.2f" % (total * PUBLIC_IPV4_USD_PER_MONTH))
+
+
+# Round P3 (B9): whether pg_stat_statements can be installed without a reboot (Aurora preloads it unless the
+# cluster parameter group changed shared_preload_libraries).
+def pg_stat_statements_readiness():
+    out("=== B9 PG_STAT_STATEMENTS ===")
+    c = cluster()
+    group = c.get("DBClusterParameterGroup")
+    params = (aws("rds", "describe-db-cluster-parameters", "--db-cluster-parameter-group-name", group,
+                  "--query", "Parameters[?ParameterName=='shared_preload_libraries']") or []) if group else []
+    for prm in params if isinstance(params, list) else []:
+        out("PGSS_CLUSTER_PARAMETER", "group=%s" % group, "value=%s" % prm.get("ParameterValue"),
+            "source=%s" % prm.get("Source"), "apply=%s" % prm.get("ApplyType"))
+    preload, extension = sql_rows(["show shared_preload_libraries",
+                                   "select extname, extversion from pg_extension where extname = 'pg_stat_statements'"])
+    out("PGSS_PRELOADED", json.dumps(preload))
+    out("PGSS_EXTENSION", json.dumps(extension))
+
 
 # ---------------------------------------------------------------- section: usage
 

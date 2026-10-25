@@ -5,6 +5,9 @@
 # resources are accepted. The action file holds "plan" or "apply-once".
 # Round H (H1): adds the operations@beaufortmarine.in subscription, the app 5xx rate, web CPU, the
 # per-area server error alarms (SeaNShore/App ServerErrors) and the site health alarms (SiteUp).
+# Round P3: max 8 tasks, scaling on requests per task (target tracking plus one-minute burst steps
+# for requests and CPU), web CPU above 70% for 10 minutes, p95 latency and Lambda throttle alarms,
+# and the MediaConvert monthly budget (about ₹1,000).
 set -euo pipefail
 umask 077
 export PATH="$HOME/bin:$PATH"
@@ -98,6 +101,14 @@ TARGETS=(
   aws_cloudwatch_metric_alarm.web_cpu_high
   aws_cloudwatch_metric_alarm.api_server_errors
   aws_cloudwatch_metric_alarm.site_health
+  aws_appautoscaling_policy.requests
+  aws_appautoscaling_policy.requests_burst
+  aws_cloudwatch_metric_alarm.web_requests_burst
+  aws_appautoscaling_policy.cpu_burst
+  aws_cloudwatch_metric_alarm.web_cpu_burst
+  aws_cloudwatch_metric_alarm.web_latency_p95
+  aws_cloudwatch_metric_alarm.lambda_throttles
+  aws_budgets_budget.mediaconvert
 )
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
@@ -125,7 +136,16 @@ allowed = {
   # Round H (H1)
   'aws_sns_topic_subscription.alerts_operations_email': {('create',)},
   'aws_cloudwatch_metric_alarm.alb_target_5xx_rate': {('create',)},
-  'aws_cloudwatch_metric_alarm.web_cpu_high': {('create',)},
+  # Round P3: CPU above 70% for 10 minutes (was 80% for 15); see the bounded update check below.
+  'aws_cloudwatch_metric_alarm.web_cpu_high': {('create',), ('update',)},
+  'aws_appautoscaling_policy.requests': {('create',)},
+  'aws_appautoscaling_policy.requests_burst': {('create',)},
+  'aws_cloudwatch_metric_alarm.web_requests_burst': {('create',)},
+  'aws_appautoscaling_policy.cpu_burst': {('create',)},
+  'aws_cloudwatch_metric_alarm.web_cpu_burst': {('create',)},
+  'aws_cloudwatch_metric_alarm.web_latency_p95': {('create',)},
+  'aws_cloudwatch_metric_alarm.lambda_throttles': {('create',)},
+  'aws_budgets_budget.mediaconvert': {('create',)},
 }
 # Round H (H1): one alarm per key API area and per site check, each only created.
 allowed_instances = {
@@ -159,6 +179,20 @@ for r in changes:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
         if set(changed) - {'min_capacity', 'max_capacity'}:
             raise SystemExit('scaling target change outside min/max refused: ' + ','.join(changed))
+        if after.get('min_capacity') != 2 or after.get('max_capacity') != 8:
+            raise SystemExit('scaling target must be min 2 max 8')
+    if r['address'] == 'aws_cloudwatch_metric_alarm.web_cpu_high' and r['change']['actions'] == ['update']:
+        before, after = r['change']['before'] or {}, r['change']['after'] or {}
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
+        if set(changed) - {'threshold', 'evaluation_periods', 'alarm_description'} or after.get('threshold') != 70 or after.get('evaluation_periods') != 2 or after.get('period') != 300:
+            raise SystemExit('web CPU alarm change outside 70% for 10 minutes refused: ' + ','.join(changed))
+    if r['address'] == 'aws_budgets_budget.mediaconvert':
+        after = r['change']['after'] or {}
+        filters = after.get('cost_filter') or []
+        if float(after.get('limit_amount') or 0) != 11.4 or (after.get('limit_unit'), after.get('time_unit'), after.get('budget_type')) != ('USD', 'MONTHLY', 'COST'):
+            raise SystemExit('MediaConvert budget must be US$11.40 a month')
+        if [(f.get('name'), f.get('values')) for f in filters] != [('Service', ['AWS Elemental MediaConvert'])]:
+            raise SystemExit('MediaConvert budget must filter on the MediaConvert service only')
 PY
 
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
@@ -189,18 +223,19 @@ terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/pla
 
 aws application-autoscaling describe-scalable-targets --region "$AWS_REGION" --service-namespace ecs \
   --resource-ids "service/$CLUSTER/$SERVICE" --output json > "$WORK_DIR/target.json"
-jq -e '.ScalableTargets[0].MinCapacity == 2 and .ScalableTargets[0].MaxCapacity == 4' "$WORK_DIR/target.json" >/dev/null
+jq -e '.ScalableTargets[0].MinCapacity == 2 and .ScalableTargets[0].MaxCapacity == 8' "$WORK_DIR/target.json" >/dev/null
 aws application-autoscaling describe-scaling-policies --region "$AWS_REGION" --service-namespace ecs \
   --resource-id "service/$CLUSTER/$SERVICE" --output json > "$WORK_DIR/policies.json"
-jq -e '[.ScalingPolicies[].TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType] | (index("ECSServiceAverageCPUUtilization") != null) and (index("ECSServiceAverageMemoryUtilization") != null)' "$WORK_DIR/policies.json" >/dev/null
-echo "WEB_SCALING_VERIFIED min=2 max=4 policies=cpu,memory"
+jq -e '[.ScalingPolicies[].TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType] | (index("ECSServiceAverageCPUUtilization") != null) and (index("ECSServiceAverageMemoryUtilization") != null) and (index("ALBRequestCountPerTarget") != null)' "$WORK_DIR/policies.json" >/dev/null
+jq -e '[.ScalingPolicies[] | select(.PolicyType == "StepScaling") | .PolicyName] | sort == ["sea-n-shore-staging-cpu-burst", "sea-n-shore-staging-requests-burst"]' "$WORK_DIR/policies.json" >/dev/null
+echo "WEB_SCALING_VERIFIED min=2 max=8 policies=cpu,memory,requests steps=requests-burst,cpu-burst"
 
 TOPIC_ARN="arn:aws:sns:$AWS_REGION:$EXPECTED_ACCOUNT:sea-n-shore-staging-alerts"
 aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$TOPIC_ARN" --output json \
   | jq -r '.Subscriptions[] | "ALERT_SUBSCRIPTION protocol=\(.Protocol) status=\(if (.SubscriptionArn | startswith("arn:")) then "confirmed" else .SubscriptionArn end)"'
 aws cloudwatch describe-alarms --region "$AWS_REGION" --alarm-name-prefix sea-n-shore-staging- --output json > "$WORK_DIR/alarms.json"
 for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-connection-errors web-ephemeral-storage-high \
-  alb-target-5xx-rate web-cpu-high \
+  alb-target-5xx-rate web-cpu-high web-latency-p95 lambda-throttles \
   api-feed-server-errors api-impressions-server-errors api-messaging-server-errors api-jobs-server-errors \
   api-learning-server-errors api-payments-webhooks-server-errors site-home-down site-api-health-down; do
   jq -e --arg name "sea-n-shore-staging-$alarm" --arg topic "$TOPIC_ARN" \
@@ -216,6 +251,15 @@ done
 aws events list-targets-by-rule --region "$AWS_REGION" --rule sea-n-shore-staging-ecs-out-of-memory --output json \
   | jq -e --arg topic "$TOPIC_ARN" '[.Targets[] | select(.Arn == $topic)] | length == 1' >/dev/null
 echo "OOM_EVENT_RULE_VERIFIED=true"
+# Round P3: CPU pages at 70% for 10 minutes; the burst alarms drive the step policies, not email.
+jq -e '[.MetricAlarms[] | select(.AlarmName == "sea-n-shore-staging-web-cpu-high") | select(.Threshold == 70 and .EvaluationPeriods == 2 and .Period == 300)] | length == 1' "$WORK_DIR/alarms.json" >/dev/null
+for alarm in web-requests-burst web-cpu-burst; do
+  jq -e --arg name "sea-n-shore-staging-$alarm" '[.MetricAlarms[] | select(.AlarmName == $name) | select(.Period == 60) | select(.AlarmActions | length == 1 and (.[0] | contains(":scalingPolicy:")))] | length == 1' "$WORK_DIR/alarms.json" >/dev/null
+  echo "BURST_ALARM_VERIFIED=sea-n-shore-staging-$alarm"
+done
+aws budgets describe-budget --account-id "$EXPECTED_ACCOUNT" --budget-name sea-n-shore-staging-mediaconvert-monthly --output json \
+  | jq -e '.Budget | (.BudgetLimit.Amount | tonumber) == 11.4 and .BudgetLimit.Unit == "USD" and .TimeUnit == "MONTHLY" and .CostFilters.Service == ["AWS Elemental MediaConvert"]' >/dev/null
+echo "MEDIACONVERT_BUDGET_VERIFIED limit=USD11.40/month"
 
 # Autoscaling min 2 raises the service if it was below; wait until two tasks are running.
 SETTLED=false
