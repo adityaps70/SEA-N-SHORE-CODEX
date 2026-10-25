@@ -30,7 +30,15 @@ jq -e '.DistributionList.IsTruncated == false' "$RECOVERY_DIR/distributions.json
 jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort == ["app", "seaandshore_redirect"]' "$RECOVERY_DIR/state.json" >/dev/null
 STATE_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "app" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one app distribution in state") end' "$RECOVERY_DIR/state.json")"
 LEGACY_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "seaandshore_redirect" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one legacy redirect distribution in state") end' "$RECOVERY_DIR/state.json")"
-jq -e --arg app "$STATE_CF_ID" --arg legacy "$LEGACY_CF_ID" '([.DistributionList.Items[]?.Id] | sort) == ([$app, $legacy] | sort)' "$RECOVERY_DIR/distributions.json" >/dev/null
+# Round P3: one more distribution, made outside Terraform for the seanshore.nl/.ph/.si and seaandshore.si
+# domains, is known and allowed by its exact id. This runner never plans or touches it; any other
+# untracked distribution still stops the run, by name.
+KNOWN_UNTRACKED_CF_IDS='["E2MCZ79G101LLD"]'
+jq -e --arg app "$STATE_CF_ID" --arg legacy "$LEGACY_CF_ID" --argjson known "$KNOWN_UNTRACKED_CF_IDS" '(([.DistributionList.Items[]?.Id] - $known) | sort) == ([$app, $legacy] | sort)' "$RECOVERY_DIR/distributions.json" >/dev/null || {
+  echo "Unexpected CloudFront distributions: $(jq -c --arg app "$STATE_CF_ID" --arg legacy "$LEGACY_CF_ID" --argjson known "$KNOWN_UNTRACKED_CF_IDS" '[.DistributionList.Items[]?.Id] - [$app, $legacy] - $known' "$RECOVERY_DIR/distributions.json")" >&2
+  exit 1
+}
+echo "LIVE_CLOUDFRONT_KNOWN_UNTRACKED=$(jq -c --argjson known "$KNOWN_UNTRACKED_CF_IDS" '[.DistributionList.Items[]?.Id | select(IN($known[]))]' "$RECOVERY_DIR/distributions.json")"
 echo "LIVE_CLOUDFRONT_APP_DISTRIBUTION=$STATE_CF_ID"
 echo "LIVE_CLOUDFRONT_LEGACY_REDIRECT_DISTRIBUTION=$LEGACY_CF_ID"
 echo 'LIVE_CLOUDFRONT_DISTRIBUTIONS_VERIFIED=true'

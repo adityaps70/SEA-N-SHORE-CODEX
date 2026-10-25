@@ -13,3 +13,13 @@ test('edge recovery scopes the app distribution while allowing the tracked legac
   assert.doesNotMatch(script, /Unexpected distributions in state/)
   assert.doesNotMatch(script, /DistributionList\.Quantity == 1 and \.DistributionList\.Items\[0\]\.Id == \$id/)
 })
+
+test('Round P3: the one known untracked distribution is allowed by exact id, and any other still stops the run', async () => {
+  const script = await read('./edge-recovery.sh')
+  assert.match(script, /KNOWN_UNTRACKED_CF_IDS='\["E2MCZ79G101LLD"\]'/)
+  assert.ok(script.includes("(([.DistributionList.Items[]?.Id] - $known) | sort) == ([$app, $legacy] | sort)"))
+  assert.match(script, /Unexpected CloudFront distributions: /)
+  // The plan stays targeted at the app distribution; the known one is never a target.
+  assert.doesNotMatch(script, /-target=[^ ]*E2MCZ79G101LLD/)
+})
+
