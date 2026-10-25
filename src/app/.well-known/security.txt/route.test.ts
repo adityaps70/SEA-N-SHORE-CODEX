@@ -16,7 +16,7 @@ describe('security.txt (Round H, H4)', () => {
     expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8')
     const text = await response.text()
     expect(text).toBe([
-      'Contact: mailto:operations@beaufortmarine.in',
+      'Contact: mailto:info@beaufortmarine.in',
       'Expires: 2027-10-17T00:00:00.000Z',
       'Preferred-Languages: en',
       'Canonical: https://seanshore.in/.well-known/security.txt',

@@ -3,7 +3,7 @@
 # and alert the owner (SNS email) on web memory, running task count, ALB 5xx / connection errors,
 # ephemeral storage and OOM task stops. Targeted plan; only creates and in-place updates of these
 # resources are accepted. The action file holds "plan" or "apply-once".
-# Round H (H1): adds the operations@beaufortmarine.in subscription, the app 5xx rate, web CPU, the
+# Round H (H1): adds the operations inbox subscription (Round P3: info@beaufortmarine.in), the app 5xx rate, web CPU, the
 # per-area server error alarms (SeaNShore/App ServerErrors) and the site health alarms (SiteUp).
 # Round P3: max 8 tasks, scaling on requests per task (target tracking plus one-minute burst steps
 # for requests and CPU), web CPU above 70% for 10 minutes, p95 latency and Lambda throttle alarms,
@@ -134,7 +134,8 @@ allowed = {
   'aws_cloudwatch_event_rule.ecs_out_of_memory': {('create',)},
   'aws_cloudwatch_event_target.ecs_out_of_memory': {('create',)},
   # Round H (H1)
-  'aws_sns_topic_subscription.alerts_operations_email': {('create',)},
+  # Round P3: the operations inbox moves to info@beaufortmarine.in; an email endpoint change replaces the subscription.
+  'aws_sns_topic_subscription.alerts_operations_email': {('create',), ('delete', 'create'), ('create', 'delete')},
   'aws_cloudwatch_metric_alarm.alb_target_5xx_rate': {('create',)},
   # Round P3: CPU above 70% for 10 minutes (was 80% for 15); see the bounded update check below.
   'aws_cloudwatch_metric_alarm.web_cpu_high': {('create',), ('update',)},
@@ -145,7 +146,7 @@ allowed = {
   'aws_cloudwatch_metric_alarm.web_cpu_burst': {('create',)},
   'aws_cloudwatch_metric_alarm.web_latency_p95': {('create',)},
   'aws_cloudwatch_metric_alarm.lambda_throttles': {('create',)},
-  'aws_budgets_budget.mediaconvert': {('create',)},
+  'aws_budgets_budget.mediaconvert': {('create',), ('update',)},
 }
 # Round H (H1): one alarm per key API area and per site check, each only created.
 allowed_instances = {
@@ -186,6 +187,15 @@ for r in changes:
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
         if set(changed) - {'threshold', 'evaluation_periods', 'alarm_description'} or after.get('threshold') != 70 or after.get('evaluation_periods') != 2 or after.get('period') != 300:
             raise SystemExit('web CPU alarm change outside 70% for 10 minutes refused: ' + ','.join(changed))
+    if r['address'] == 'aws_sns_topic_subscription.alerts_operations_email' and r['change']['actions'] != ['create']:
+        before, after = r['change']['before'] or {}, r['change']['after'] or {}
+        if (before.get('endpoint'), after.get('endpoint'), after.get('protocol')) != ('operations@beaufortmarine.in', 'info@beaufortmarine.in', 'email') or before.get('topic_arn') != after.get('topic_arn'):
+            raise SystemExit('operations alert subscription may only move from operations@ to info@beaufortmarine.in')
+    if r['address'] == 'aws_budgets_budget.mediaconvert' and r['change']['actions'] == ['update']:
+        before, after = r['change']['before'] or {}, r['change']['after'] or {}
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
+        if changed != ['notification'] or any(sorted(n.get('subscriber_email_addresses') or []) != ['hunupunu@gmail.com', 'info@beaufortmarine.in'] for n in after.get('notification') or []):
+            raise SystemExit('MediaConvert budget update may only move its emails to info@beaufortmarine.in')
     if r['address'] == 'aws_budgets_budget.mediaconvert':
         after = r['change']['after'] or {}
         filters = after.get('cost_filter') or []
@@ -231,8 +241,11 @@ jq -e '[.ScalingPolicies[] | select(.PolicyType == "StepScaling") | .PolicyName]
 echo "WEB_SCALING_VERIFIED min=2 max=8 policies=cpu,memory,requests steps=requests-burst,cpu-burst"
 
 TOPIC_ARN="arn:aws:sns:$AWS_REGION:$EXPECTED_ACCOUNT:sea-n-shore-staging-alerts"
-aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$TOPIC_ARN" --output json \
-  | jq -r '.Subscriptions[] | "ALERT_SUBSCRIPTION protocol=\(.Protocol) status=\(if (.SubscriptionArn | startswith("arn:")) then "confirmed" else .SubscriptionArn end)"'
+aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$TOPIC_ARN" --output json > "$WORK_DIR/subscriptions.json"
+jq -r '.Subscriptions[] | "ALERT_SUBSCRIPTION protocol=\(.Protocol) status=\(if (.SubscriptionArn | startswith("arn:")) then "confirmed" else .SubscriptionArn end)"' "$WORK_DIR/subscriptions.json"
+# Round P3: the operations inbox is info@beaufortmarine.in (it must confirm the subscription once); operations@ is gone.
+jq -e '([.Subscriptions[].Endpoint] | index("info@beaufortmarine.in") != null) and ([.Subscriptions[].Endpoint] | index("operations@beaufortmarine.in") == null)' "$WORK_DIR/subscriptions.json" >/dev/null
+echo "OPERATIONS_ALERT_INBOX_VERIFIED=info@beaufortmarine.in"
 aws cloudwatch describe-alarms --region "$AWS_REGION" --alarm-name-prefix sea-n-shore-staging- --output json > "$WORK_DIR/alarms.json"
 for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-connection-errors web-ephemeral-storage-high \
   alb-target-5xx-rate web-cpu-high web-latency-p95 lambda-throttles \

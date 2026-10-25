@@ -98,7 +98,7 @@ export const ticketReplySchema = z.object({
 })
 
 /** The operations inbox that receives every new ticket and member reply. */
-export const SUPPORT_OPERATIONS_EMAIL = 'operations@beaufortmarine.in'
+export const SUPPORT_OPERATIONS_EMAIL = 'info@beaufortmarine.in'
 
 /** "SNS-1A2B3C4D": a short, readable reference for emails and the member's list (the start of the ticket id). */
 export function supportTicketReference(ticketId: string) {

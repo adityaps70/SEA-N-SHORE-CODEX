@@ -252,12 +252,13 @@ resource "aws_cloudwatch_event_target" "ecs_out_of_memory" {
   }
 }
 
-# Round H (H1): operations monitoring. Alarms go to the same SNS topic, now also emailed to
-# operations@beaufortmarine.in (that inbox must confirm the subscription once).
+# Round H (H1): operations monitoring. Alarms go to the same SNS topic, now also emailed to the
+# operations inbox (that inbox must confirm the subscription once). Round P3: the owner moved it from
+# operations@ to info@beaufortmarine.in.
 variable "operations_alert_email" {
   description = "Operations inbox that receives the web alarms (the SNS subscription must be confirmed from that inbox)."
   type        = string
-  default     = "operations@beaufortmarine.in"
+  default     = "info@beaufortmarine.in"
 }
 
 resource "aws_sns_topic_subscription" "alerts_operations_email" {
