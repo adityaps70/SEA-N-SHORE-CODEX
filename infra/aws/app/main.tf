@@ -96,9 +96,9 @@ variable "min_capacity" {
 }
 
 variable "max_capacity" {
-  description = "Maximum ECS task count for autoscaling."
+  description = "Maximum ECS task count for autoscaling (Round P3: 8, scaling on requests per task as well as CPU and memory)."
   type        = number
-  default     = 4
+  default     = 8
 }
 
 data "aws_availability_zones" "available" {

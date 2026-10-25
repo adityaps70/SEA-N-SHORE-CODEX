@@ -24,7 +24,7 @@ test('web resilience runner is guarded, targeted and refuses anything outside it
   assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /STATE_BACKUP_VERSION/)
   assert.match(script, /Web resilience resources still drift after apply/)
-  assert.match(script, /WEB_SCALING_VERIFIED min=2 max=4 policies=cpu,memory/)
+  assert.match(script, /WEB_SCALING_VERIFIED min=2 max=8 policies=cpu,memory,requests steps=requests-burst,cpu-burst/)
   assert.match(script, /OOM_EVENT_RULE_VERIFIED=true/)
   assert.match(script, /WEB_RESILIENCE_APPLY_VERIFIED=true/)
   assert.doesNotMatch(script, /-auto-approve/)
@@ -34,7 +34,7 @@ test('Round 13 Terraform keeps two tasks, scales on memory and alerts the owner'
   assert.match(main, /variable "task_memory"[\s\S]*?default\s*=\s*2048/)
   assert.match(main, /variable "desired_count"[\s\S]*?default\s*=\s*2/)
   assert.match(main, /variable "min_capacity"[\s\S]*?default\s*=\s*2/)
-  assert.match(main, /variable "max_capacity"[\s\S]*?default\s*=\s*4/)
+  assert.match(main, /variable "max_capacity"[\s\S]*?default\s*=\s*8/)
   assert.match(main, /resource_id\s*=\s*"service\/\$\{local\.name_prefix\}\/\$\{local\.name_prefix\}-web"/)
   assert.match(terraform, /predefined_metric_type = "ECSServiceAverageMemoryUtilization"/)
   assert.match(terraform, /target_value\s*=\s*70/)
@@ -87,5 +87,34 @@ test('Round H (H1) adds operations alerts: app 5xx rate, CPU, per-API server err
   assert.match(script, /select\(\.TreatMissingData == "notBreaching"\)\] \| length == 1/)
   assert.match(script, /SITE_HEALTH_MISSING_DATA_VERIFIED=/)
   assert.match(script, /site-home-down site-api-health-down/)
+})
+
+test('Round P3 scales on requests per task up to 8, adds burst steps, pages on p95, Lambda throttles and CPU 70%/10 min, and caps MediaConvert', () => {
+  // Requests per task as well as CPU and memory; one-minute burst steps add tasks before target tracking reacts.
+  assert.match(terraform, /resource "aws_appautoscaling_policy" "requests"[\s\S]*?target_value\s*=\s*400[\s\S]*?predefined_metric_type = "ALBRequestCountPerTarget"/)
+  assert.match(terraform, /resource_label\s*=\s*"\$\{local\.alb_dimension\}\/\$\{local\.web_target_group_dimension\}"/)
+  assert.match(terraform, /resource "aws_cloudwatch_metric_alarm" "web_requests_burst"[\s\S]*?period\s*=\s*60[\s\S]*?threshold\s*=\s*600[\s\S]*?alarm_actions\s*=\s*\[aws_appautoscaling_policy\.requests_burst\.arn\]/)
+  assert.match(terraform, /resource "aws_cloudwatch_metric_alarm" "web_cpu_burst"[\s\S]*?period\s*=\s*60[\s\S]*?alarm_actions\s*=\s*\[aws_appautoscaling_policy\.cpu_burst\.arn\]/)
+  // Owner alarms.
+  assert.match(terraform, /resource "aws_cloudwatch_metric_alarm" "web_cpu_high"[\s\S]*?period\s*=\s*300\n\s*evaluation_periods\s*=\s*2\n\s*threshold\s*=\s*70/)
+  assert.match(terraform, /resource "aws_cloudwatch_metric_alarm" "web_latency_p95"[\s\S]*?metric_name\s*=\s*"TargetResponseTime"[\s\S]*?extended_statistic\s*=\s*"p95"[\s\S]*?threshold\s*=\s*1\n/)
+  assert.match(terraform, /resource "aws_cloudwatch_metric_alarm" "lambda_throttles"[\s\S]*?namespace\s*=\s*"AWS\/Lambda"[\s\S]*?metric_name\s*=\s*"Throttles"/)
+  for (const alarm of ['web_latency_p95', 'lambda_throttles']) {
+    const block = terraform.slice(terraform.indexOf(`"aws_cloudwatch_metric_alarm" "${alarm}"`))
+    assert.match(block.slice(0, 1500), /alarm_actions\s*=\s*\[aws_sns_topic\.alerts\.arn\]/, alarm)
+  }
+  // About ₹1,000 a month on MediaConvert only, emailed at 80% forecast and 100% actual.
+  assert.match(terraform, /resource "aws_budgets_budget" "mediaconvert"[\s\S]*?limit_amount\s*=\s*"11\.40"[\s\S]*?values\s*=\s*\["AWS Elemental MediaConvert"\]/)
+  // The runner creates only these, updates the CPU alarm only to 70%/10 min and the target only to 2..8, and verifies live.
+  for (const address of ['aws_appautoscaling_policy.requests', 'aws_appautoscaling_policy.requests_burst', 'aws_cloudwatch_metric_alarm.web_requests_burst', 'aws_appautoscaling_policy.cpu_burst', 'aws_cloudwatch_metric_alarm.web_cpu_burst', 'aws_cloudwatch_metric_alarm.web_latency_p95', 'aws_cloudwatch_metric_alarm.lambda_throttles', 'aws_budgets_budget.mediaconvert']) {
+    assert.ok(script.includes(`'${address}': {('create',)}`), address)
+    assert.ok(script.includes(`  ${address}\n`), address)
+  }
+  assert.match(script, /web CPU alarm change outside 70% for 10 minutes refused/)
+  assert.match(script, /scaling target must be min 2 max 8/)
+  assert.match(script, /MediaConvert budget must filter on the MediaConvert service only/)
+  assert.match(script, /MEDIACONVERT_BUDGET_VERIFIED/)
+  assert.match(script, /BURST_ALARM_VERIFIED=/)
+  assert.match(script, /web-latency-p95 lambda-throttles/)
 })
 
