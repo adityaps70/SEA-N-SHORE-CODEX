@@ -60,7 +60,7 @@ test('web resilience workflow waits for exact-head CI and runs the pinned commit
 })
 
 test('Round H (H1) adds operations alerts: app 5xx rate, CPU, per-API server errors and site health', () => {
-  assert.match(terraform, /variable "operations_alert_email"[\s\S]*?default\s*=\s*"operations@beaufortmarine\.in"/)
+  assert.match(terraform, /variable "operations_alert_email"[\s\S]*?default\s*=\s*"info@beaufortmarine\.in"/)
   assert.match(terraform, /resource "aws_sns_topic_subscription" "alerts_operations_email"/)
   assert.match(terraform, /HTTPCode_Target_5XX_Count/)
   assert.match(terraform, /metric_name\s*=\s*"CPUUtilization"/)
@@ -106,15 +106,30 @@ test('Round P3 scales on requests per task up to 8, adds burst steps, pages on p
   // About ₹1,000 a month on MediaConvert only, emailed at 80% forecast and 100% actual.
   assert.match(terraform, /resource "aws_budgets_budget" "mediaconvert"[\s\S]*?limit_amount\s*=\s*"11\.40"[\s\S]*?values\s*=\s*\["AWS Elemental MediaConvert"\]/)
   // The runner creates only these, updates the CPU alarm only to 70%/10 min and the target only to 2..8, and verifies live.
-  for (const address of ['aws_appautoscaling_policy.requests', 'aws_appautoscaling_policy.requests_burst', 'aws_cloudwatch_metric_alarm.web_requests_burst', 'aws_appautoscaling_policy.cpu_burst', 'aws_cloudwatch_metric_alarm.web_cpu_burst', 'aws_cloudwatch_metric_alarm.web_latency_p95', 'aws_cloudwatch_metric_alarm.lambda_throttles', 'aws_budgets_budget.mediaconvert']) {
+  for (const address of ['aws_appautoscaling_policy.requests', 'aws_appautoscaling_policy.requests_burst', 'aws_cloudwatch_metric_alarm.web_requests_burst', 'aws_appautoscaling_policy.cpu_burst', 'aws_cloudwatch_metric_alarm.web_cpu_burst', 'aws_cloudwatch_metric_alarm.web_latency_p95', 'aws_cloudwatch_metric_alarm.lambda_throttles']) {
     assert.ok(script.includes(`'${address}': {('create',)}`), address)
     assert.ok(script.includes(`  ${address}\n`), address)
   }
+  // The budget may also be updated, but only to move its emails (see the owner-inbox test below).
+  assert.ok(script.includes(`'aws_budgets_budget.mediaconvert': {('create',), ('update',)}`))
+  assert.ok(script.includes('  aws_budgets_budget.mediaconvert\n'))
   assert.match(script, /web CPU alarm change outside 70% for 10 minutes refused/)
   assert.match(script, /scaling target must be min 2 max 8/)
   assert.match(script, /MediaConvert budget must filter on the MediaConvert service only/)
   assert.match(script, /MEDIACONVERT_BUDGET_VERIFIED/)
   assert.match(script, /BURST_ALARM_VERIFIED=/)
   assert.match(script, /web-latency-p95 lambda-throttles/)
+})
+
+test('Round P3: the operations inbox moves from operations@ to info@beaufortmarine.in, and nothing else may change with it', () => {
+  assert.doesNotMatch(terraform, /operations@beaufortmarine\.in"/)
+  assert.match(terraform, /resource "aws_budgets_budget" "mediaconvert"[\s\S]*?subscriber_email_addresses = \[var\.alert_email, var\.operations_alert_email\]/)
+  // A subscription endpoint change replaces it; only this exact move is accepted.
+  assert.ok(script.includes(`'aws_sns_topic_subscription.alerts_operations_email': {('create',), ('delete', 'create'), ('create', 'delete')}`))
+  assert.match(script, /operations alert subscription may only move from operations@ to info@beaufortmarine\.in/)
+  assert.match(script, /MediaConvert budget update may only move its emails to info@beaufortmarine\.in/)
+  // After apply: info@ is subscribed and operations@ is gone.
+  assert.match(script, /index\("info@beaufortmarine\.in"\) != null\) and \(\[\.Subscriptions\[\]\.Endpoint\] \| index\("operations@beaufortmarine\.in"\) == null\)/)
+  assert.match(script, /OPERATIONS_ALERT_INBOX_VERIFIED=info@beaufortmarine\.in/)
 })
 

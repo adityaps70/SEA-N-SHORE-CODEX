@@ -3,7 +3,7 @@ import { siteUrlFor } from '@/lib/site-url'
 // Expires is computed per request, so the file never goes stale.
 export const dynamic = 'force-dynamic'
 
-const CONTACT = 'mailto:operations@beaufortmarine.in'
+const CONTACT = 'mailto:info@beaufortmarine.in'
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000
 
 /** Round H (H4): RFC 9116 security.txt, telling researchers where to report vulnerabilities. */
