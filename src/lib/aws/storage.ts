@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
@@ -158,6 +159,24 @@ export async function headMediaObject(key: string): Promise<{
   }
 }
 
+/** Round P3: HEAD with the object's user metadata (`x-amz-meta-*`, lower-case keys) as well. */
+export async function headMediaObjectWithMetadata(key: string): Promise<{
+  contentType: string | null
+  contentLength: number | null
+  metadata: Record<string, string>
+}> {
+  const response = await getS3Client().send(new HeadObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: key,
+  }))
+
+  return {
+    contentType: response.ContentType ?? null,
+    contentLength: typeof response.ContentLength === 'number' ? response.ContentLength : null,
+    metadata: response.Metadata ?? {},
+  }
+}
+
 export async function getMediaObject(input: {
   key: string
   maxBytes?: number
@@ -187,13 +206,54 @@ export async function putMediaObject(input: {
   key: string
   body: Uint8Array | Buffer
   contentType: string
+  cacheControl?: string
+  metadata?: Record<string, string>
 }): Promise<void> {
   await getS3Client().send(new PutObjectCommand({
     Bucket: getMediaBucketName(),
     Key: input.key,
     Body: input.body,
     ContentType: input.contentType,
+    ...(input.cacheControl ? { CacheControl: input.cacheControl } : {}),
+    ...(input.metadata ? { Metadata: input.metadata } : {}),
   }))
+}
+
+/**
+ * Round P3 (B7): copies an object inside the media bucket (S3 does the copy; no bytes pass through
+ * the web task), replacing its metadata with the given type and Cache-Control. Objects up to 5 GB.
+ */
+export async function copyMediaObject(input: {
+  sourceKey: string
+  destinationKey: string
+  contentType: string
+  cacheControl: string
+}): Promise<void> {
+  const bucket = getMediaBucketName()
+  await getS3Client().send(new CopyObjectCommand({
+    Bucket: bucket,
+    Key: input.destinationKey,
+    CopySource: `${bucket}/${input.sourceKey.split('/').map(encodeURIComponent).join('/')}`,
+    MetadataDirective: 'REPLACE',
+    ContentType: input.contentType,
+    CacheControl: input.cacheControl,
+  }))
+}
+
+/**
+ * Whether an object exists. The task role has no s3:ListBucket, so S3 answers a missing key with
+ * 403 rather than 404; with GetObject granted on the whole bucket, both mean "not there". Any other
+ * failure is thrown.
+ */
+export async function mediaObjectExists(key: string): Promise<boolean> {
+  try {
+    await getS3Client().send(new HeadObjectCommand({ Bucket: getMediaBucketName(), Key: key }))
+    return true
+  } catch (error) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode
+    if (status === 404 || status === 403 || (error as { name?: string }).name === 'NotFound') return false
+    throw error
+  }
 }
 
 export async function deleteMediaObject(key: string): Promise<void> {

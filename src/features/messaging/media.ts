@@ -5,6 +5,8 @@ import {
   headMediaObject,
   readMediaObjectPrefix,
 } from '@/lib/aws/storage'
+import { cdnMediaUrl } from '@/lib/media-cdn/media-cdn'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import {
   buildMessageAttachmentStoragePath,
   isInlineMessageAttachment,
@@ -115,6 +117,16 @@ export async function verifyPendingMessageAttachment(input: {
     throw new Error('messaging_attachment_content_mismatch')
   }
 
+  // Round P3 (B7, Part D): photos get their WebP sizes and videos and GIFs their CDN copy before
+  // the message is saved; downloads (documents) are never served from the CDN.
+  if (isInlineMessageAttachment({ mimeType: metadata.mimeType })) {
+    try {
+      await prepareMediaForCdn({ key: input.storagePath, contentType: metadata.mimeType })
+    } catch {
+      throw new Error('messaging_attachment_unavailable')
+    }
+  }
+
   return {
     storagePath: input.storagePath,
     name: metadata.name,
@@ -139,6 +151,9 @@ export async function createMessageAttachmentReadUrl(input: {
   download?: boolean
 }) {
   const inline = isInlineMessageAttachment(input)
+  // Round P3 (B7): inline photos and videos come from the media CDN once it is configured.
+  const cdn = inline && !input.download ? cdnMediaUrl(input.storagePath, input.mimeType, 1600) : null
+  if (cdn) return cdn
   return createMediaDownloadUrl({
     key: input.storagePath,
     contentType: input.mimeType,

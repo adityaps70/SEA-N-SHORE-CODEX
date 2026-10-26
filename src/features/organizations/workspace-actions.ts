@@ -7,6 +7,7 @@ import { requireCapability } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import type { OrganizationAccessRole } from '@/features/access/policy'
 import { createMediaUploadUrl, deleteMediaObject, headMediaObject } from '@/lib/aws/storage'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import { organizationWorkspaceRepository } from './workspace-repository'
 import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
 import { COMPANY_SIZE_VALUES, MAX_SPECIALTIES, TAGLINE_MAX_LENGTH, type CompanySize } from './organization-page-profile'
@@ -342,6 +343,8 @@ export async function completeOrganizationMediaUploadAction(input: {
       await deleteMediaObject(input.key).catch(() => undefined)
       return { error: 'This file is not a real JPG, PNG or WebP image. Choose another image.' }
     }
+    // Round P3 (B7): the image's CDN sizes exist before it is shown anywhere.
+    await prepareMediaForCdn({ key: input.key, contentType: object.contentType })
     try {
       if (input.kind === 'logo') await organizationWorkspaceRepository.updateLogoPath(parsed.data, input.key)
       else await organizationWorkspaceRepository.updateCoverPath(parsed.data, input.key)

@@ -23,6 +23,7 @@ import { getPaymentCapabilities } from '@/features/payments/provider'
 import { isPaymentCurrency } from '@/features/payments/currency'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { jsonLd } from '@/lib/seo/meta'
+import { cdnImageSrcSet } from '@/lib/media-cdn/cdn-url'
 
 function dateTime(value: string, timeZone: string) {
   try {
@@ -151,7 +152,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
       <article className="overflow-hidden rounded-[2rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-0 max-md:shadow-none">
         {event.bannerUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- only organizer supplied public/signed display URLs are stored
-          <img src={event.bannerUrl} alt="" className="max-h-80 w-full object-cover max-md:aspect-[16/9] max-md:max-h-56" />
+          <img src={event.bannerUrl} srcSet={cdnImageSrcSet(event.bannerUrl)} sizes="(max-width: 768px) 100vw, 1024px" alt="" className="max-h-80 w-full object-cover max-md:aspect-[16/9] max-md:max-h-56" />
         ) : <div className="h-36 bg-gradient-to-br from-navy-950 via-navy-800 to-teal-700 max-md:h-28" />}
         <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_300px] max-md:gap-4 max-md:p-4">
           <div className="max-md:flex max-md:flex-col">

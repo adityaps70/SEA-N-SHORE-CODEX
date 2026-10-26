@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { PostCard } from '@/features/feed/components/post-card'
 import type { FeedPost } from '@/features/feed/types'
 import { savedPostLabel, savedPostPreview, type SavedPostPreview } from './saved-post-preview'
+import { cdnImageSrcSet } from '@/lib/media-cdn/cdn-url'
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -24,7 +25,7 @@ function CornerBadges({ preview, onMedia }: { preview: SavedPostPreview; onMedia
 function TileFace({ preview }: { preview: SavedPostPreview }) {
   if (preview.kind === 'image' && preview.mediaUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={preview.mediaUrl} alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
+    return <img src={preview.mediaUrl} srcSet={cdnImageSrcSet(preview.mediaUrl)} sizes="(max-width: 640px) 33vw, 240px" alt="" loading="lazy" className="absolute inset-0 size-full object-cover" />
   }
   if (preview.kind === 'video' && preview.mediaUrl) {
     // #t=0.1 asks the browser to paint the first frame as the still image.

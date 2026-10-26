@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { query } from '@/lib/db/client'
 import { getMediaObject } from '@/lib/aws/storage'
+import { cdnImageRedirect } from '@/lib/media-cdn/cdn-redirect'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,10 @@ export async function GET(
   )
   const storagePath = rows[0]?.cover_path?.trim()
   if (!storagePath) return new Response(null, { status: 404 })
+
+  // Round P3 (B7): the cover's CDN size once the media CDN is configured.
+  const redirect = cdnImageRedirect(storagePath, { width: 1600, cacheControl: 'private, max-age=3600' })
+  if (redirect) return redirect
 
   try {
     const object = await getMediaObject({

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { query } from '@/lib/db/client'
 import { getMediaObject } from '@/lib/aws/storage'
+import { cdnImageRedirect } from '@/lib/media-cdn/cdn-redirect'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,10 @@ export async function GET(
   if (!viewer && !publicLogo) return new Response(null, { status: 401 })
   const storagePath = rows[0]?.logo_path?.trim()
   if (!storagePath) return new Response(null, { status: 404 })
+
+  // Round P3 (B7): the logo's CDN size once the media CDN is configured.
+  const redirect = cdnImageRedirect(storagePath, { width: 320, cacheControl: publicLogo ? 'public, max-age=3600' : 'private, max-age=3600' })
+  if (redirect) return redirect
 
   try {
     const object = await getMediaObject({

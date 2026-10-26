@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react'
 import { unhidePost } from '../actions'
 import type { HiddenPost } from '../types'
 import { AuthorAvatarLink, OrganizationLogoLink, publishedAsHref } from './author-avatar'
+import { cdnImageUrlForWidth } from '@/lib/media-cdn/cdn-url'
 
 function dateLabel(value: string) {
   const date = new Date(value)
@@ -78,7 +79,7 @@ export function HiddenPostCard({ post }: { post: HiddenPost }) {
               </>
             ) : (
               // eslint-disable-next-line @next/next/no-img-element -- first-party feed media route
-              <img src={post.thumbnail.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+              <img src={cdnImageUrlForWidth(post.thumbnail.url, 160)} alt="" loading="lazy" className="h-full w-full object-cover" />
             )}
           </Link>
         ) : null}

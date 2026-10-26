@@ -3,6 +3,7 @@ import { getVerifiedUser } from '@/features/auth/queries'
 import { COMMUNITY_IMAGE_MAX_BYTES, isCommunityImageContentType, isCommunityMediaKind } from '@/features/community/media'
 import { query } from '@/lib/db/client'
 import { getMediaObject } from '@/lib/aws/storage'
+import { cdnImageRedirect } from '@/lib/media-cdn/cdn-redirect'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,10 @@ export async function GET(
   )
   const storagePath = (kind === 'cover' ? rows[0]?.cover_path : rows[0]?.icon_path)?.trim()
   if (!storagePath) return new Response(null, { status: 404 })
+
+  // Round P3 (B7): the image's CDN size once the media CDN is configured.
+  const redirect = cdnImageRedirect(storagePath, { width: kind === 'cover' ? 1600 : 320, cacheControl: 'private, max-age=3600' })
+  if (redirect) return redirect
 
   try {
     const object = await getMediaObject({

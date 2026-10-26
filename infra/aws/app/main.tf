@@ -16,6 +16,11 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.7"
     }
+    # Round P3 (B7): the CloudFront media signing key (media-cdn.tf).
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 

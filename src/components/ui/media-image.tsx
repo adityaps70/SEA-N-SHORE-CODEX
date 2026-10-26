@@ -1,9 +1,12 @@
 'use client'
 
-import Image, { type ImageProps } from 'next/image'
+import Image, { type ImageLoader, type ImageProps } from 'next/image'
 import { useCallback, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { isOptimizedMediaImageUrl } from '@/lib/images/media-image-source'
+import { cdnImageUrlForWidth, isCdnImageUrl } from '@/lib/media-cdn/cdn-url'
+
+const cdnImageLoader: ImageLoader = ({ src, width }) => cdnImageUrlForWidth(src, width)
 
 export type MediaImageProps = Omit<
   ImageProps,
@@ -34,8 +37,9 @@ export const AVATAR_OBJECT_CLASS = 'object-cover object-[50%_25%]'
 /**
  * The one image element for member photos and post images.
  *
- * Signed URLs on the media bucket go through Next's image optimizer, so a 44px avatar downloads
- * an ~88px WebP instead of the multi-megabyte original; give it `sizes` (the rendered width) and
+ * CDN photos (`/m/i/…`, Round P3) are served at their stored size closest above each srcset width
+ * straight from CloudFront; stable signed links on the media bucket go through Next's image
+ * optimizer instead. Either way a 44px avatar downloads a small WebP, not the original; give it `sizes` (the rendered width) and
  * either `fill` inside a positioned box or `width`/`height`. Any other source (first-party API
  * routes that need the session cookie, blob: previews, data: URLs) is shown unoptimized, exactly
  * like a plain <img>. The photo fades in when it has loaded; with `fill`, `fallback` (initials)
@@ -72,6 +76,9 @@ export function MediaImage({ src, alt, fallback = null, className, fill, avatar 
   if (failedSrc === src) return <>{fallback}</>
 
   // next/image also fires onLoad for a photo that finished loading before hydration.
+  // Round P3 (B7): a CDN photo already has its sizes stored; the loader picks the one closest
+  // above each srcset width, reusing the photo's one signed query, and the optimizer is skipped.
+  const cdn = isCdnImageUrl(src)
   const image = (
     <Image
       {...props}
@@ -79,7 +86,7 @@ export function MediaImage({ src, alt, fallback = null, className, fill, avatar 
       ref={watchErrors}
       src={src}
       alt={alt}
-      unoptimized={!isOptimizedMediaImageUrl(src)}
+      {...(cdn ? { loader: cdnImageLoader } : { unoptimized: !isOptimizedMediaImageUrl(src) })}
       onLoad={() => setLoadedSrc(src)}
       className={cn(className, avatar && AVATAR_OBJECT_CLASS, FADE_IN_CLASS, loadedSrc === src ? 'opacity-100' : 'opacity-0')}
     />

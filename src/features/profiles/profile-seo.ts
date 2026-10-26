@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { isMediaImageLink } from '@/lib/images/media-image-route'
+import { cdnImageUrlForWidth, isCdnImageUrl } from '@/lib/media-cdn/cdn-url'
 import { indexableMetadata, metaDescription } from '@/lib/seo/meta'
 import type { PublicProfile } from './types'
 
@@ -18,9 +19,14 @@ export function profileTitle(profile: Pick<PublicProfile, 'fullName' | 'headline
   return profile.headline ? `${profile.fullName} · ${profile.headline}` : profile.fullName
 }
 
-/** The avatar's stable first-party link; short-lived signed storage URLs are never published. */
+/**
+ * The avatar's stable first-party link, or (Round P3) its largest CDN size, which is signed for 30
+ * to 60 days like that link; short-lived signed storage URLs are never published.
+ */
 export function publicAvatarPath(profile: Pick<PublicProfile, 'avatarUrl'>) {
-  return profile.avatarUrl && isMediaImageLink(profile.avatarUrl) ? profile.avatarUrl : null
+  if (!profile.avatarUrl) return null
+  if (isCdnImageUrl(profile.avatarUrl)) return cdnImageUrlForWidth(profile.avatarUrl, 1600)
+  return isMediaImageLink(profile.avatarUrl) ? profile.avatarUrl : null
 }
 
 export function profileMetadata(profile: PublicProfile, options: { allowIndexing: boolean }): Metadata {

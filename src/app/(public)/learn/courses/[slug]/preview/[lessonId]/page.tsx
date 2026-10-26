@@ -9,6 +9,7 @@ import { MaterialBody } from '@/features/learning/components/material-player'
 import type { LearnerLesson } from '@/features/learning/learner-course-repository'
 import { publicCourseRepository, type PreviewLesson } from '@/features/learning/public-course-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { cdnImageSrc } from '@/lib/media-cdn/media-cdn'
 
 type PreviewPageProps = {
   params: Promise<{ slug: string; lessonId: string }>
@@ -67,9 +68,12 @@ export default async function CoursePreviewPage({ params }: PreviewPageProps) {
 
   const lesson = previewAsLesson(preview)
   const [mediaUrl, articleHtml] = await Promise.all([
-    lesson.assetPath ? createMediaReadUrl(lesson.assetPath) : Promise.resolve(null),
+    // Round P3 (B7): image lessons and article images from their CDN size once it is configured.
+    lesson.assetPath
+      ? (lesson.lessonType === 'image' ? cdnImageSrc(lesson.assetPath, 1600) : null) ?? createMediaReadUrl(lesson.assetPath)
+      : Promise.resolve(null),
     lesson.articleFormat === 'html' && lesson.articleBody
-      ? renderArticleHtml(lesson.articleBody, (path) => createMediaReadUrl(path))
+      ? renderArticleHtml(lesson.articleBody, async (path) => cdnImageSrc(path, 1600) ?? createMediaReadUrl(path))
       : Promise.resolve(null),
   ])
   const coursePath = `/learn/courses/${preview.course.slug}`

@@ -7,6 +7,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { removeCommunityMedia } from './media-service'
 import { buildCommunityMediaKey, isCommunityMediaKind, validateCommunityImage, type CommunityMediaKind } from './media'
 import { createMediaUploadUrl, deleteMediaObject, headMediaObject } from '@/lib/aws/storage'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import { communityRepository } from './repository'
 import { isGroupAdminRole } from './types'
 import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
@@ -89,6 +90,8 @@ export async function completeCommunityMediaUploadAction(input: {
       await deleteMediaObject(input.key).catch(() => undefined)
       return { error: 'This file is not a real JPG, PNG or WebP image. Choose another image.' }
     }
+    // Round P3 (B7): the image's CDN sizes exist before it is shown anywhere.
+    await prepareMediaForCdn({ key: input.key, contentType: object.contentType ?? '' })
 
     let previousPath: string | null = null
     try {

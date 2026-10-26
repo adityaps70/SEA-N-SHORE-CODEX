@@ -36,6 +36,7 @@ import { PlayerTabs } from '@/features/learning/components/player-tabs'
 import { sessionRepository } from '@/features/learning/sessions/session-repository'
 import { LearnerSessionsPanel } from '@/features/learning/sessions/components/learner-sessions-panel'
 import { DeviceTimeZoneSync } from '@/features/learning/sessions/components/device-time-zone-sync'
+import { cdnImageSrc } from '@/lib/media-cdn/media-cdn'
 
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -157,10 +158,11 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
   const selectedMedia = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
     ? selectedLesson.lessonType === 'video' || selectedLesson.lessonType === 'audio'
       ? await createLessonMediaUrl(selectedLesson.assetPath)
-      : { url: await createMediaReadUrl(selectedLesson.assetPath), expiresAt: null }
+      // Round P3 (B7): lesson images from their CDN size once the media CDN is configured.
+      : { url: (selectedLesson.lessonType === 'image' ? cdnImageSrc(selectedLesson.assetPath, 1600) : null) ?? await createMediaReadUrl(selectedLesson.assetPath), expiresAt: null }
     : null
   const selectedArticleHtml = selectedLesson?.isAvailable && selectedLesson.articleFormat === 'html' && selectedLesson.articleBody
-    ? await renderArticleHtml(selectedLesson.articleBody, (path) => createMediaReadUrl(path))
+    ? await renderArticleHtml(selectedLesson.articleBody, async (path) => cdnImageSrc(path, 1600) ?? createMediaReadUrl(path))
     : null
   // Learning round C: rating, announcements and the course community. Conveniences: the player works without them.
   // Round D: the learner's live sessions when they are in a batch (a convenience: the player works without it).

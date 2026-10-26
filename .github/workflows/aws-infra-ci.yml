@@ -233,6 +233,10 @@ jobs:
         run: node --test scripts/aws/ecs-resend-secret-policy-release.test.mjs
       - name: Verify newsletter signing secret release contract
         run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
+      - name: Verify signed media CDN infra runner contract
+        run: node --test scripts/aws/media-cdn-infra.test.mjs
+      - name: Verify media CDN backfill runner contract
+        run: node scripts/aws/media-cdn-backfill.test.mjs
       - name: Verify Resend delivery webhook runner contract
         run: node --test scripts/aws/resend-delivery-webhook.test.mjs
       - name: Verify guarded staging data cleanup contract

@@ -446,4 +446,113 @@ class PublicPagesCachePolicyTests(unittest.TestCase):
         self.assertIn('Page cache policy must be create/update/no-op', self.errors(self.plan('pages-policy-id', policy_actions=('delete', 'create'))))
 
 
+def media_origin(**overrides):
+    origin = {'domain_name':guard.MEDIA_ORIGIN_DOMAIN,'origin_id':guard.MEDIA_ORIGIN_ID,'origin_path':'','origin_access_control_id':'oac-id','custom_header':[],'custom_origin_config':[],'s3_origin_config':[]}
+    origin.update(overrides)
+    return origin
+
+
+def media_behavior(**overrides):
+    behavior = {'path_pattern':'/m/*','target_origin_id':guard.MEDIA_ORIGIN_ID,'viewer_protocol_policy':'redirect-to-https','allowed_methods':['GET','HEAD'],'cached_methods':['HEAD','GET'],'compress':False,'cache_policy_id':'media-policy-id','origin_request_policy_id':'','trusted_key_groups':['key-group-id'],'trusted_signers':[],'lambda_function_association':[],'function_association':[]}
+    behavior.update(overrides)
+    return behavior
+
+
+def media_policy_after(policy_id='media-policy-id', **overrides):
+    after = {'id':policy_id,'min_ttl':86400,'default_ttl':31536000,'max_ttl':31536000,'parameters_in_cache_key_and_forwarded_to_origin':[{
+        'enable_accept_encoding_brotli':False,'enable_accept_encoding_gzip':False,
+        'cookies_config':[{'cookie_behavior':overrides.pop('cookie_behavior','none')}],
+        'headers_config':[{'header_behavior':overrides.pop('header_behavior','none')}],
+        'query_strings_config':[{'query_string_behavior':overrides.pop('query','none')}],
+    }]}
+    after.update(overrides)
+    return after
+
+
+def rate_rule_with_media_scope(search='/m/'):
+    rule = rate_rule()
+    rule['statement'][0]['rate_based_statement'][0]['scope_down_statement'] = [{'not_statement':[{'statement':[{'byte_match_statement':[{
+        'field_to_match':[{'uri_path':[{}]}],'positional_constraint':'STARTS_WITH','search_string':search,'text_transformation':[{'priority':0,'type':'NONE'}],
+    }]}]}]}]
+    return rule
+
+
+class SignedMediaTests(unittest.TestCase):
+    """Round P3 (B7): one private media origin and one signed /m/* behavior, nothing looser."""
+
+    def plan(self, behaviors=None, origins=None, policy_actions=('create',), policy_after=None, waf=None, unknown=None):
+        cf = cloudfront_after()
+        cf['origin'] = cf['origin'] + (origins if origins is not None else [media_origin()])
+        cf['ordered_cache_behavior'] = behaviors if behaviors is not None else self.behaviors()
+        change = {'actions':['update'],'after':cf}
+        if unknown is not None:
+            change['after_unknown'] = {'ordered_cache_behavior':unknown}
+        return {'resource_changes':[
+            waf or {'address':'aws_wafv2_web_acl.edge','mode':'managed','change':{'actions':['no-op'],'after':{'id':guard.WAF_ID}}},
+            {'address':'aws_cloudfront_distribution.app','mode':'managed','change':change},
+            function_change(),
+            {'address':guard.NEXT_IMAGE_POLICY_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':image_policy_after()}},
+            {'address':guard.MEDIA_POLICY_ADDRESS,'mode':'managed','change':{'actions':list(policy_actions),'after':policy_after or media_policy_after()}},
+            {'address':guard.MEDIA_KEY_GROUP_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':{'id':'key-group-id'}}},
+            {'address':guard.MEDIA_OAC_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':{'id':'oac-id'}}},
+        ]}
+
+    def behaviors(self, media=None):
+        rest = [ordered_behavior(path, guard.CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else 'image-policy-id') for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
+        return [media or media_behavior()] + rest
+
+    def errors(self, plan):
+        return guard.validate(plan, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET)
+
+    def test_accepts_the_private_media_origin_and_signed_behavior(self):
+        self.assertEqual(self.errors(self.plan()), [])
+        created = self.behaviors(media_behavior(cache_policy_id=None))
+        unknown = [{'cache_policy_id': True, 'default_ttl': True, 'max_ttl': True}] + [{} for _ in guard.EXPECTED_ORDERED_BEHAVIORS]
+        self.assertEqual(self.errors(self.plan(created, policy_after=media_policy_after(policy_id=None), unknown=unknown)), [])
+
+    def test_refuses_unsigned_or_function_backed_media(self):
+        for broken, message in [
+            (media_behavior(trusted_key_groups=[]), 'Media behavior must trust exactly the media key group'),
+            (media_behavior(trusted_key_groups=['other-group']), 'Media behavior must trust exactly the media key group'),
+            (media_behavior(function_association=[{'event_type':'viewer-request','function_arn':guard.FUNCTION_ARN}]), 'Media behavior must be signed GET/HEAD from the media origin over HTTPS, with no functions'),
+            (media_behavior(target_origin_id='sea-n-shore-staging-alb'), 'Media behavior must be signed GET/HEAD from the media origin over HTTPS, with no functions'),
+            (media_behavior(allowed_methods=['GET','HEAD','OPTIONS','PUT','POST','PATCH','DELETE']), 'Media behavior must be signed GET/HEAD from the media origin over HTTPS, with no functions'),
+            (media_behavior(viewer_protocol_policy='allow-all'), 'Media behavior must be signed GET/HEAD from the media origin over HTTPS, with no functions'),
+            (media_behavior(cache_policy_id=guard.CACHING_OPTIMIZED_POLICY_ID), 'Cache policy mismatch for /m/*'),
+        ]:
+            self.assertIn(message, self.errors(self.plan(self.behaviors(broken))))
+
+    def test_refuses_a_public_or_altered_media_origin(self):
+        for origin, message in [
+            (media_origin(domain_name='other-bucket.s3.ap-south-1.amazonaws.com'), 'Media origin must be the private media bucket with no path, headers or custom config'),
+            (media_origin(origin_path='/private'), 'Media origin must be the private media bucket with no path, headers or custom config'),
+            (media_origin(custom_header=[{'name':'X','value':'y'}]), 'Media origin must be the private media bucket with no path, headers or custom config'),
+            (media_origin(origin_access_control_id=''), 'Media origin must read through the media origin access control'),
+            (media_origin(origin_access_control_id='other-oac'), 'Media origin must read through the media origin access control'),
+        ]:
+            self.assertIn(message, self.errors(self.plan(origins=[origin])))
+        self.assertIn('A media origin needs the signed media behavior first', self.errors(self.plan(behaviors=self.behaviors()[1:])))
+        self.assertIn('The signed media behavior needs the media origin', self.errors(self.plan(origins=[])))
+        self.assertIn('At most one media origin', self.errors(self.plan(origins=[media_origin(), media_origin()])))
+
+    def test_media_policy_keys_on_the_path_only(self):
+        message = 'Media cache policy must key on the path only (no cookies, headers or query) for one year'
+        for after in [media_policy_after(query='all'), media_policy_after(cookie_behavior='all'), media_policy_after(header_behavior='whitelist'), media_policy_after(min_ttl=0)]:
+            self.assertIn(message, self.errors(self.plan(policy_after=after)))
+        self.assertIn('Media cache policy must be create/update/no-op', self.errors(self.plan(policy_actions=('delete', 'create'))))
+
+    def test_rate_limit_may_stop_counting_signed_media_and_nothing_else(self):
+        current = {'id':guard.WAF_ID,'rule':[common_rule([count_override('SizeRestrictions_BODY'), count_override('CrossSiteScripting_BODY')]), body_xss_rule(), rate_rule()]}
+        scoped = copy.deepcopy(current); scoped['rule'][2] = rate_rule_with_media_scope()
+        def waf(before, after):
+            return {'address':'aws_wafv2_web_acl.edge','mode':'managed','change':{'actions':['update'],'before':before,'after':after}}
+        self.assertEqual(self.errors(self.plan(waf=waf(current, scoped))), [])
+        wrong_path = copy.deepcopy(current); wrong_path['rule'][2] = rate_rule_with_media_scope('/')
+        self.assertTrue(self.errors(self.plan(waf=waf(current, wrong_path))))
+        higher_limit = copy.deepcopy(scoped); higher_limit['rule'][2]['statement'][0]['rate_based_statement'][0]['limit'] = 10000
+        self.assertTrue(self.errors(self.plan(waf=waf(current, higher_limit))))
+        removed = copy.deepcopy(scoped)
+        self.assertTrue(self.errors(self.plan(waf=waf(removed, current))))
+
+
 if __name__ == '__main__': unittest.main()

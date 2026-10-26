@@ -68,4 +68,10 @@ describe('profile search metadata', () => {
     expect(person.jobTitle).toBe('Chief Officer on LNG carriers')
     expect(person.worksFor).toEqual({ '@type': 'Organization', name: 'Typed Company' })
   })
+  // Round P3 (B7): a CDN photo is signed for 30 to 60 days, like the stable link, so it may be published.
+  it('publishes the largest CDN size of the avatar for share cards', () => {
+    const query = 'Policy=cA__&Signature=cw__&Key-Pair-Id=K2JCJMDEHXQW5F&Hash-Algorithm=SHA256'
+    const person = personJsonLd({ ...profile, avatarUrl: `/m/i/${'A'.repeat(32)}/768.webp?${query}` }, 'https://seanshore.in')
+    expect(person.image).toBe(`https://seanshore.in/m/i/${'A'.repeat(32)}/1600.webp?${query}`)
+  })
 })

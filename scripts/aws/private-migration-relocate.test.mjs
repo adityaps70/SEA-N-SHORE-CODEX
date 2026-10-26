@@ -42,5 +42,11 @@ test('every app bucket refuses plain HTTP and the media bucket refuses the priva
   assert.match(storage, /resource "aws_s3_bucket_policy" "app" \{\n  for_each = aws_s3_bucket\.app/)
   assert.match(storage, /Sid       = "DenyInsecureTransport"[\s\S]*?Condition = \{ Bool = \{ "aws:SecureTransport" = "false" \} \}/)
   assert.match(storage, /each\.key == "media" \? \[[\s\S]*?Sid       = "DenyPrivateMigrationsPrefix"[\s\S]*?Resource  = "\$\{each\.value\.arn\}\/private-migrations\/\*"/)
-  assert.doesNotMatch(storage.slice(storage.indexOf('resource "aws_s3_bucket_policy" "app"')), /Effect    = "Allow"/)
+  // Round P3 (B7): the policy stays deny-only except for exactly one Allow: the app distribution's
+  // read of the media bucket's m/ prefix (signed CDN copies). No other Allow may appear.
+  const policy = storage.slice(storage.indexOf('resource "aws_s3_bucket_policy" "app"'))
+  assert.equal((policy.match(/Effect    = "Allow"/g) ?? []).length, 1)
+  const allow = policy.slice(policy.indexOf('Sid       = "CloudFrontReadsMediaCdnPrefix"'))
+  assert.match(allow, /^Sid       = "CloudFrontReadsMediaCdnPrefix"\n\s+Effect    = "Allow"\n\s+Principal = \{ Service = "cloudfront\.amazonaws\.com" \}\n\s+Action    = "s3:GetObject"\n\s+Resource  = "\$\{each\.value\.arn\}\/m\/\*"\n\s+Condition = \{ StringEquals = \{ "AWS:SourceArn" = local\.app_distribution_arn \} \}/)
+  assert.match(policy, /each\.key == "media" \? \[\n\s+# Round P3 \(B7\)[^\n]*\n[^\n]*\n\s+\{\n\s+Sid       = "CloudFrontReadsMediaCdnPrefix"/)
 })
