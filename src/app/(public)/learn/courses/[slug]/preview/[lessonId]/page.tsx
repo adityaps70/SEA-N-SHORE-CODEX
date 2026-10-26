@@ -10,6 +10,7 @@ import type { LearnerLesson } from '@/features/learning/learner-course-repositor
 import { publicCourseRepository, type PreviewLesson } from '@/features/learning/public-course-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import { cdnImageSrc } from '@/lib/media-cdn/media-cdn'
+import { courseVideoSource, type LessonMediaSource } from '@/features/learning/lesson-media-source'
 
 type PreviewPageProps = {
   params: Promise<{ slug: string; lessonId: string }>
@@ -61,17 +62,22 @@ function previewAsLesson({ lesson }: PreviewLesson): LearnerLesson {
   }
 }
 
+async function previewMedia(assetPath: string | null, lessonType: string): Promise<LessonMediaSource | null> {
+  if (!assetPath) return null
+  if (lessonType === 'video') return courseVideoSource(assetPath, 'preview')
+  return { url: (lessonType === 'image' ? cdnImageSrc(assetPath, 1600) : null) ?? await createMediaReadUrl(assetPath), expiresAt: null }
+}
+
 export default async function CoursePreviewPage({ params }: PreviewPageProps) {
   const { slug, lessonId } = await params
   const preview = await loadPreview(slug, lessonId)
   if (!preview) return notFound()
 
   const lesson = previewAsLesson(preview)
-  const [mediaUrl, articleHtml] = await Promise.all([
-    // Round P3 (B7): image lessons and article images from their CDN size once it is configured.
-    lesson.assetPath
-      ? (lesson.lessonType === 'image' ? cdnImageSrc(lesson.assetPath, 1600) : null) ?? createMediaReadUrl(lesson.assetPath)
-      : Promise.resolve(null),
+  const [media, articleHtml] = await Promise.all([
+    // Round P3 (B7): image lessons and article images from their CDN size once it is configured, and a video
+    // with a ready rendition from its signed MP4 and HLS playlist.
+    previewMedia(lesson.assetPath, lesson.lessonType),
     lesson.articleFormat === 'html' && lesson.articleBody
       ? renderArticleHtml(lesson.articleBody, async (path) => cdnImageSrc(path, 1600) ?? createMediaReadUrl(path))
       : Promise.resolve(null),
@@ -91,7 +97,7 @@ export default async function CoursePreviewPage({ params }: PreviewPageProps) {
         <h1 className="mt-3 text-2xl font-bold tracking-tight text-navy-950 sm:text-3xl">{lesson.title}</h1>
         {lesson.summary ? <p className="mt-2 text-[15px] leading-7 text-muted">{lesson.summary}</p> : null}
         <div className="mt-5">
-          <MaterialBody lesson={lesson} slug={preview.course.slug} mediaUrl={mediaUrl} quiz={null} articleHtml={articleHtml} preview />
+          <MaterialBody lesson={lesson} slug={preview.course.slug} mediaUrl={media?.url ?? null} mediaStream={media?.stream ?? null} quiz={null} articleHtml={articleHtml} preview />
         </div>
       </article>
 

@@ -2,7 +2,7 @@
 
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { createLessonMediaUrl } from '@/lib/aws/storage'
+import { courseVideoSource } from './lesson-media-source'
 import { coursePaymentRepository } from './course-payment-repository'
 import { learnerCourseRepository } from './learner-course-repository'
 import { curriculumLessons } from './next-lesson'
@@ -10,7 +10,7 @@ import { curriculumLessons } from './next-lesson'
 const slugSchema = z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const lessonIdSchema = z.string().uuid()
 
-export type LessonMediaUrlResult = { ok: true; url: string; expiresAt: string } | { ok: false; error: string }
+export type LessonMediaUrlResult = { ok: true; url: string; expiresAt: string | null; stream?: { hls: string } } | { ok: false; error: string }
 
 /**
  * Learning round E (E3): a fresh short-lived URL for the lesson's video or audio, so the player can swap it in
@@ -35,7 +35,8 @@ export async function refreshLessonMediaUrl(slug: string, lessonId: string): Pro
     if (!lesson || !lesson.isAvailable || !lesson.assetPath || !['video', 'audio'].includes(lesson.lessonType)) {
       return { ok: false, error: 'This lesson is not available in your learning enrollment.' }
     }
-    const signed = await createLessonMediaUrl(lesson.assetPath)
+    // Round P3: a ready rendition's signed MP4 and HLS playlist, or the uploaded file's fresh lesson URL.
+    const signed = await courseVideoSource(lesson.assetPath, lesson.lessonType === 'video' ? 'lesson' : 'audio')
     return { ok: true, ...signed }
   } catch {
     return { ok: false, error: 'We could not load this material. Please reload the page.' }

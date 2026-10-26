@@ -10,6 +10,10 @@
 #   key secret and its key id. The next staging deploy rolls it out; until then nothing changes for visitors.
 # disable-once: registers a revision without them (the app falls back to its first-party URLs on the next deploy).
 #
+# Round P3 (Part D): the same runner owns the MediaConvert role and the outbox worker's permission to start jobs
+# with it (infra/aws/app/media-transcode.tf). Once the role exists, enable-once also gives the outbox worker task the
+# role ARN and the media bucket, which switch its transcode sweep on with the next deploy; disable-once removes them.
+#
 # The private key is read only into a private temporary file to sign the probe; it is never printed.
 set -euo pipefail
 umask 077
@@ -29,6 +33,9 @@ MEDIA_BUCKET="sea-n-shore-staging-310356785722-media"
 DISTRIBUTION_ID="EF1K45UVP11XZ"
 WEB_TASK_FAMILY="sea-n-shore-staging-web"
 WEB_CONTAINER="web"
+OUTBOX_TASK_FAMILY="sea-n-shore-staging-outbox-worker"
+OUTBOX_CONTAINER="outbox-worker"
+MEDIACONVERT_ROLE="sea-n-shore-staging-mediaconvert"
 SITE="https://seanshore.in"
 PROBE_KEY="m/_probe/backfill.txt"
 PROBE_BODY="sea-n-shore media cdn probe"
@@ -41,6 +48,9 @@ RESOURCES=(
   "aws_cloudfront_origin_access_control.media"
   "aws_iam_role_policy.ecs_execution_media_cdn_signing_key"
   'aws_s3_bucket_policy.app["media"]'
+  "aws_iam_role.mediaconvert"
+  "aws_iam_role_policy.mediaconvert_media"
+  "aws_iam_role_policy.outbox_worker_mediaconvert"
 )
 
 [[ "${MEDIA_CDN_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
@@ -121,7 +131,10 @@ created_only = {
     'aws_secretsmanager_secret_version.media_cdn_signing_key', 'aws_cloudfront_public_key.media_cdn',
     'aws_cloudfront_key_group.media_cdn',
 }
-create_or_update = {'aws_cloudfront_origin_access_control.media', 'aws_iam_role_policy.ecs_execution_media_cdn_signing_key'}
+create_or_update = {
+    'aws_cloudfront_origin_access_control.media', 'aws_iam_role_policy.ecs_execution_media_cdn_signing_key',
+    'aws_iam_role.mediaconvert', 'aws_iam_role_policy.mediaconvert_media', 'aws_iam_role_policy.outbox_worker_mediaconvert',
+}
 expected_statement = {
     'Sid': 'CloudFrontReadsMediaCdnPrefix', 'Effect': 'Allow',
     'Principal': {'Service': 'cloudfront.amazonaws.com'}, 'Action': 's3:GetObject',
@@ -203,6 +216,23 @@ verify_live() {
   aws s3api get-public-access-block --bucket "$MEDIA_BUCKET" --output json > "$WORK_DIR/public-access.json"
   jq -e '.PublicAccessBlockConfiguration | .BlockPublicAcls and .BlockPublicPolicy and .IgnorePublicAcls and .RestrictPublicBuckets' "$WORK_DIR/public-access.json" >/dev/null
   echo "MEDIA_CDN_KEY_PAIR_ID=$key_id"
+
+  # Round P3 (Part D): MediaConvert may only read learning/ and write m/v/; the worker may only start and read
+  # jobs, and pass only that role, only to MediaConvert.
+  aws iam get-role --role-name "$MEDIACONVERT_ROLE" --output json > "$WORK_DIR/mediaconvert-role.json"
+  jq -e '.Role.AssumeRolePolicyDocument.Statement == [{"Effect":"Allow","Principal":{"Service":"mediaconvert.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":"310356785722"}}}]' "$WORK_DIR/mediaconvert-role.json" >/dev/null
+  aws iam get-role-policy --role-name "$MEDIACONVERT_ROLE" --policy-name sea-n-shore-staging-mediaconvert-media --output json > "$WORK_DIR/mediaconvert-policy.json"
+  jq -e --arg bucket "$MEDIA_BUCKET" '
+    [.PolicyDocument.Statement[] | {Action: (if (.Action | type) == "array" then .Action else [.Action] end), Resource}]
+    == [{"Action":["s3:GetObject"],"Resource":("arn:aws:s3:::" + $bucket + "/learning/*")},{"Action":["s3:PutObject"],"Resource":("arn:aws:s3:::" + $bucket + "/m/v/*")}]
+  ' "$WORK_DIR/mediaconvert-policy.json" >/dev/null
+  aws iam get-role-policy --role-name sea-n-shore-staging-outbox-worker --policy-name sea-n-shore-staging-outbox-worker-mediaconvert --output json > "$WORK_DIR/outbox-mediaconvert.json"
+  jq -e '
+    (.PolicyDocument.Statement | length) == 2
+    and ([.PolicyDocument.Statement[] | select(.Sid == "PassOnlyTheMediaConvertRole")][0] | .Resource == "arn:aws:iam::310356785722:role/sea-n-shore-staging-mediaconvert" and .Condition.StringEquals["iam:PassedToService"] == "mediaconvert.amazonaws.com")
+    and ([.PolicyDocument.Statement[] | select(.Sid == "StartAndReadCourseVideoJobs")][0].Action | sort) == ["mediaconvert:CreateJob", "mediaconvert:GetJob"]
+  ' "$WORK_DIR/outbox-mediaconvert.json" >/dev/null
+  echo "MEDIA_TRANSCODE_ROLE_VERIFIED=true"
   echo "MEDIA_CDN_INFRA_LIVE_VERIFIED=true"
 }
 
@@ -266,6 +296,29 @@ register_web_revision() {
   echo "MEDIA_CDN_WEB_TASK_REVISION=${task_arn##*/}"
 }
 
+# Round P3 (Part D): the outbox worker's transcode sweep switches on with the MediaConvert role ARN and the bucket.
+register_outbox_revision() {
+  local mode="$1" current="$WORK_DIR/outbox-current.json" next="$WORK_DIR/outbox-next.json" task_arn role_arn
+  role_arn="arn:aws:iam::310356785722:role/$MEDIACONVERT_ROLE"
+  aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$OUTBOX_TASK_FAMILY" --query taskDefinition --output json > "$current"
+  jq --arg name "$OUTBOX_CONTAINER" --arg mode "$mode" --arg role "$role_arn" --arg bucket "$MEDIA_BUCKET" '
+    del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+    | .containerDefinitions |= map(
+        if .name == $name then
+          .environment = (((.environment // []) | map(select(.name != "MEDIA_TRANSCODE_ROLE_ARN" and .name != "AWS_MEDIA_BUCKET")))
+            + (if $mode == "enable" then [{"name":"MEDIA_TRANSCODE_ROLE_ARN","value":$role},{"name":"AWS_MEDIA_BUCKET","value":$bucket}] else [] end))
+        else . end
+      )
+  ' "$current" > "$next"
+  if jq -e --slurpfile before "$current" '.containerDefinitions == $before[0].containerDefinitions' "$next" >/dev/null; then
+    echo "MEDIA_TRANSCODE_OUTBOX_REVISION=already-$mode"
+    return
+  fi
+  task_arn="$(aws ecs register-task-definition --region "$AWS_REGION" --cli-input-json "file://$next" --query taskDefinition.taskDefinitionArn --output text)"
+  [[ "$task_arn" == arn:aws:ecs:ap-south-1:310356785722:task-definition/"$OUTBOX_TASK_FAMILY":* ]]
+  echo "MEDIA_TRANSCODE_OUTBOX_REVISION=${task_arn##*/}"
+}
+
 if [[ "$ACTION" == "plan" ]]; then
   if [[ "$CHANGE_COUNT" -eq 0 ]]; then verify_live; fi
   echo "MEDIA_CDN_INFRA_PLAN_ONLY_NO_APPLY"
@@ -303,8 +356,10 @@ SECRET_ARN="$(aws secretsmanager describe-secret --region "$AWS_REGION" --secret
 if [[ "$ACTION" == "enable-once" ]]; then
   prove_signed_path "$KEY_ID"
   register_web_revision enable "$KEY_ID" "$SECRET_ARN"
+  register_outbox_revision enable
   echo "MEDIA_CDN_SIGNING_ENABLED_FOR_NEXT_DEPLOY=true"
 else
   register_web_revision disable "$KEY_ID" "$SECRET_ARN"
+  register_outbox_revision disable
   echo "MEDIA_CDN_SIGNING_DISABLED_FOR_NEXT_DEPLOY=true"
 fi

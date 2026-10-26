@@ -8,6 +8,8 @@ import { ArticleReader } from './article-reader'
 import { AssignmentActivity } from './assignment-activity'
 import { QuizLessonActivity } from './quiz-lesson-activity'
 import { ResumableLessonMedia } from './resumable-lesson-media'
+import { StreamableVideo } from './streamable-video'
+import type { VideoStream } from './use-hls-stream'
 import { ScormPlayer, type ScormLessonHeader } from './scorm-player'
 import { ViewCompletionBeacon } from './view-completion-beacon'
 import { buttonClass } from '@/components/ui/interactive-styles'
@@ -25,6 +27,8 @@ type Props = {
   preview?: boolean
   /** Round E: when the signed video/audio URL expires (the player refreshes it shortly before). */
   mediaExpiresAt?: string | null
+  /** Round P3: a video's ready rendition (HLS); `mediaUrl` is then its signed 720p MP4. */
+  mediaStream?: VideoStream | null
   /** Round E: the faint video watermark (member code and date; never a name or email). */
   watermark?: string | null
   /** S2: a SCORM lesson's compact header (breadcrumb and duration), drawn by the player above the package. */
@@ -86,7 +90,7 @@ function LockedMaterial({ lesson }: { lesson: LearnerLesson }) {
 }
 
 /** The material itself (no completion controls). Also used on its own for free previews. */
-export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false, mediaExpiresAt = null, watermark = null, scormHeader = null }: Props) {
+export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, articleHtml, preview = false, mediaExpiresAt = null, mediaStream = null, watermark = null, scormHeader = null }: Props) {
   switch (lesson.lessonType) {
     case 'article': {
       // Round E (E5): a readable measure (68ch) at the article size (17/30), with the reading time.
@@ -111,9 +115,9 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
     case 'video':
       if (preview && mediaUrl) {
         return (
-          <video controls controlsList="nodownload noremoteplayback" disableRemotePlayback preload="metadata" src={mediaUrl} className="aspect-video w-full rounded-2xl bg-navy-950">
+          <StreamableVideo controls controlsList="nodownload noremoteplayback" disableRemotePlayback preload="metadata" src={mediaUrl} stream={mediaStream} className="aspect-video w-full rounded-2xl bg-navy-950">
             {lesson.hasCaptions ? <track kind="captions" src={`/api/learn/captions/${lesson.id}`} srcLang="en" label="Captions" default /> : null}
-          </video>
+          </StreamableVideo>
         )
       }
       return mediaUrl ? (
@@ -130,6 +134,7 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           captionsSrc={lesson.hasCaptions ? `/api/learn/captions/${lesson.id}` : null}
           expiresAt={mediaExpiresAt}
           watermark={watermark}
+          stream={mediaStream}
         />
       ) : lesson.externalUrl ? (
         <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">

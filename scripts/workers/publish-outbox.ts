@@ -21,6 +21,7 @@ import { SITE_HEALTH_PROBE_MS, runSiteHealthProbe } from '../../src/features/ops
 import { createSupportEmailSweep } from '../../src/features/support/support-email-sending'
 import { createNotificationEmailWorker } from '../../src/features/notification-emails/sending'
 import { createProductionAccountSecurityEmailWorker } from '../../src/features/account-security/security-email-runtime'
+import { createMediaTranscodeSweep } from '../../src/features/learning/media-transcode-worker'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -105,6 +106,10 @@ const notificationEmailWorker = createNotificationEmailWorker()
 // Round H (H3): account security notices (the old address after an email change), every minute. Idempotent.
 const ACCOUNT_SECURITY_EMAIL_SWEEP_MS = 60 * 1000
 let nextAccountSecurityEmailSweepAt = 0
+// Round P3 (Part D, option a): course video transcodes, once a minute (off until the worker has the role).
+const MEDIA_TRANSCODE_SWEEP_MS = 60 * 1000
+let nextMediaTranscodeSweepAt = 0
+const mediaTranscodeSweep = createMediaTranscodeSweep()
 const accountSecurityEmailWorker = createProductionAccountSecurityEmailWorker()
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
@@ -403,6 +408,16 @@ async function runAccountSecurityEmailSweepIfDue() {
   }
 }
 
+async function runMediaTranscodeSweepIfDue() {
+  if (!mediaTranscodeSweep || Date.now() < nextMediaTranscodeSweepAt) return
+  nextMediaTranscodeSweepAt = Date.now() + MEDIA_TRANSCODE_SWEEP_MS
+  try {
+    await mediaTranscodeSweep()
+  } catch (error) {
+    console.error('[media_transcode_sweep_error]', error instanceof Error ? error.name : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -431,6 +446,7 @@ async function main() {
       await runSiteHealthProbeIfDue()
       await runNotificationEmailSweepIfDue()
       await runAccountSecurityEmailSweepIfDue()
+      await runMediaTranscodeSweepIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

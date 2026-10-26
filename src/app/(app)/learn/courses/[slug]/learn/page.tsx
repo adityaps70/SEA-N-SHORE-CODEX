@@ -19,7 +19,7 @@ import {
 } from '@/features/learning/learner-course-repository'
 import { curriculumLessons, defaultPlayerLesson } from '@/features/learning/next-lesson'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
-import { createLessonMediaUrl, createMediaReadUrl } from '@/lib/aws/storage'
+import { createMediaReadUrl } from '@/lib/aws/storage'
 import { renderArticleHtml } from '@/features/learning/article-html'
 import { FocusModeToggle, FocusSidebarToggle, PlayerShell, SidebarRailToggle } from '@/features/learning/components/player-shell'
 import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
@@ -37,6 +37,7 @@ import { sessionRepository } from '@/features/learning/sessions/session-reposito
 import { LearnerSessionsPanel } from '@/features/learning/sessions/components/learner-sessions-panel'
 import { DeviceTimeZoneSync } from '@/features/learning/sessions/components/device-time-zone-sync'
 import { cdnImageSrc } from '@/lib/media-cdn/media-cdn'
+import { courseVideoSource } from '@/features/learning/lesson-media-source'
 
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -155,9 +156,10 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     ? await learnerQuizRepository.getQuizForLearner(user.id, course.slug, selectedLesson.id)
     : null
   // Round E: video and audio get a short-lived (20 minute) inline URL that the player refreshes on its own.
-  const selectedMedia = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
+  // Round P3: a video with a ready rendition gets its signed MP4 and HLS playlist instead.
+  const selectedMedia: { url: string; expiresAt: string | null; stream?: { hls: string } } | null = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
     ? selectedLesson.lessonType === 'video' || selectedLesson.lessonType === 'audio'
-      ? await createLessonMediaUrl(selectedLesson.assetPath)
+      ? await courseVideoSource(selectedLesson.assetPath, selectedLesson.lessonType === 'video' ? 'lesson' : 'audio')
       // Round P3 (B7): lesson images from their CDN size once the media CDN is configured.
       : { url: (selectedLesson.lessonType === 'image' ? cdnImageSrc(selectedLesson.assetPath, 1600) : null) ?? await createMediaReadUrl(selectedLesson.assetPath), expiresAt: null }
     : null
@@ -389,6 +391,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                         lesson={selectedLesson}
                         mediaUrl={selectedMedia?.url ?? null}
                         mediaExpiresAt={selectedMedia?.expiresAt ?? null}
+                        {...(selectedMedia?.stream ? { mediaStream: selectedMedia.stream } : {})}
                         watermark={selectedLesson.lessonType === 'video' ? videoWatermark(user.id) : null}
                         slug={course.slug}
                         quiz={selectedQuiz}

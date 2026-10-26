@@ -5,6 +5,7 @@ import { query as databaseQuery } from '../../src/lib/db/client'
 import { getMediaObject, headMediaObjectWithMetadata, mediaObjectExists, putMediaObject } from '../../src/lib/aws/storage'
 import { prepareMediaForCdn, writeImageVariants } from '../../src/lib/media-cdn/prepare-media'
 import { runMediaCdnBackfillApply, runMediaCdnBackfillPlan } from '../../src/features/media/media-cdn-backfill-task'
+import { runCourseVideoBackfillPlan, runCourseVideoBackfillQueue } from '../../src/features/learning/course-video-backfill-task'
 
 const mode = process.env.MEDIA_CDN_BACKFILL_MODE ?? 'plan'
 
@@ -20,8 +21,12 @@ const deps = {
 }
 
 async function main() {
-  if (mode === 'plan') await runMediaCdnBackfillPlan(deps)
-  else if (mode === 'apply-once') await runMediaCdnBackfillApply(deps)
+  if (mode === 'plan') {
+    await runMediaCdnBackfillPlan(deps)
+    // Round P3 (Part D): the course videos still to transcode, with the estimate the owner approves first.
+    await runCourseVideoBackfillPlan(deps)
+  } else if (mode === 'apply-once') await runMediaCdnBackfillApply(deps)
+  else if (mode === 'video-queue-once') await runCourseVideoBackfillQueue(deps)
   else throw new Error(`Unsupported mode: ${mode}`)
 }
 

@@ -10,12 +10,12 @@ const worker = fs.readFileSync('scripts/workers/media-cdn-backfill.ts', 'utf8')
 const builder = fs.readFileSync('scripts/build-workers.mjs', 'utf8')
 const dockerfile = fs.readFileSync('Dockerfile', 'utf8')
 
-assert.ok(['plan', 'apply-once'].includes(guard), 'the guard reads plan or apply-once')
+assert.ok(['plan', 'apply-once', 'video-queue-once'].includes(guard), 'the guard reads plan, apply-once or video-queue-once')
 
 // The runner starts the backfill worker from the deployed web image, overriding only its command and one variable.
 assert.match(script, /310356785722/)
 assert.match(script, /"\$\{MEDIA_CDN_BACKFILL_EXPECTED_SHA:-\}" =~ \^\[0-9a-f\]\{40\}\$/)
-assert.match(script, /plan\|apply-once/)
+assert.match(script, /plan\|apply-once\|video-queue-once/)
 assert.match(script, /aws ecs run-task/)
 assert.match(script, /containerOverrides:\[\{name:"web",command:\["node",\$worker\],environment:\$environment\}\]/)
 assert.match(script, /WORKER="dist\/workers\/media-cdn-backfill\.mjs"/)
@@ -51,5 +51,14 @@ assert.match(workflow, /bash scripts\/aws\/arm-commit-guard\.sh/)
 assert.match(workflow, /MEDIA_CDN_BACKFILL_EXPECTED_SHA/)
 assert.match(workflow, /MEDIA_CDN_BACKFILL_ACTION/)
 assert.match(workflow, /bash scripts\/aws\/media-cdn-backfill\.sh/)
+
+// Round P3 (Part D): the course video queue writes one kind of row only, for videos without a rendition.
+const videoTask = fs.readFileSync('src/features/learning/course-video-backfill-task.ts', 'utf8')
+const videoWrites = [...videoTask.matchAll(/\b(insert into|update|delete from)\s+public\.(\w+)/gi)].map((match) => `${match[1].toLowerCase()} ${match[2]}`)
+assert.deepEqual(videoWrites, ['insert into learning_media_renditions'], 'the video queue only inserts rendition rows')
+assert.match(videoTask, /on conflict \(source_path\) do nothing/)
+assert.match(worker, /mode === 'video-queue-once'\) await runCourseVideoBackfillQueue\(deps\)/)
+assert.match(script, /MEDIA_CDN_BACKFILL_VIDEO_QUEUE_VERIFIED=true/)
+assert.match(workflow, /- video-queue-once/)
 
 console.log('media CDN backfill runner contract: ok')

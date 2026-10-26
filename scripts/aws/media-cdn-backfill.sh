@@ -8,6 +8,8 @@
 # apply-once: re-encodes those originals in place (same key and format, at most 2048 px, no EXIF or GPS; S3
 # versioning keeps the previous version until a separately approved clean-up), writes every missing CDN copy and
 # the signed probe object, then checks nothing is missing. It never deletes anything.
+# video-queue-once (Round P3, Part D): queues the course videos the plan counted for MediaConvert (one insert per
+# video into learning_media_renditions); the outbox worker transcodes them under its monthly minute cap.
 set -euo pipefail
 umask 077
 export AWS_PAGER=""
@@ -28,8 +30,8 @@ git diff --quiet HEAD -- "$0" "$ACTION_FILE" || { echo "Runner files differ from
 
 ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 if [[ -n "${MEDIA_CDN_BACKFILL_ACTION:-}" ]]; then ACTION="$(tr -d '[:space:]' <<<"$MEDIA_CDN_BACKFILL_ACTION")"; fi
-case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported media CDN backfill action: $ACTION" >&2; exit 1 ;; esac
-if [[ "$ACTION" == "apply-once" ]]; then
+case "$ACTION" in plan|apply-once|video-queue-once) ;; *) echo "Unsupported media CDN backfill action: $ACTION" >&2; exit 1 ;; esac
+if [[ "$ACTION" != "plan" ]]; then
   [[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$MEDIA_CDN_BACKFILL_EXPECTED_SHA" ]] || { echo "The feature branch has moved past the approved commit; refusing." >&2; exit 1; }
 fi
 
@@ -72,12 +74,15 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 # Only the task's own count lines (the task never prints a key, name or file content).
-tr '\t' '\n' <<<"$LOGS" | grep -oE 'MEDIA_CDN_BACKFILL_[A-Z_]+([= ].*)?' || true
+tr '\t' '\n' <<<"$LOGS" | grep -oE 'MEDIA_(CDN|TRANSCODE)_BACKFILL_[A-Z_]+([= ].*)?' || true
 
 [[ "$EXIT_CODE" == "0" ]] || { echo "The backfill task failed: $(jq -r '.tasks[0].stoppedReason // empty' <<<"$TASK_JSON")" >&2; exit 1; }
 if [[ "$ACTION" == "plan" ]]; then
   grep -q 'MEDIA_CDN_BACKFILL_PLAN_VERIFIED=true' <<<"$LOGS" || { echo "The plan report is incomplete." >&2; exit 1; }
   echo "MEDIA_CDN_BACKFILL_PLAN_ONLY_NO_APPLY"
+elif [[ "$ACTION" == "video-queue-once" ]]; then
+  grep -q 'MEDIA_TRANSCODE_BACKFILL_QUEUE_VERIFIED=true' <<<"$LOGS" || { echo "The course videos were not queued." >&2; exit 1; }
+  echo "MEDIA_CDN_BACKFILL_VIDEO_QUEUE_VERIFIED=true"
 else
   grep -q 'MEDIA_CDN_BACKFILL_COMPLETE=true' <<<"$LOGS" || { echo "The backfill did not verify complete." >&2; exit 1; }
   echo "MEDIA_CDN_BACKFILL_APPLY_VERIFIED=true"

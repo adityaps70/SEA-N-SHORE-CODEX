@@ -35,6 +35,24 @@ describe('ResumableLessonMedia', () => {
 
   afterEach(() => cleanup())
 
+  // Round P3: a ready rendition plays through hls.js where it can; jsdom has no Media Source Extensions, so the
+  // player falls back to the rendition's signed 720p MP4 (and never shows a src while it decides).
+  it('plays a ready rendition, falling back to its signed MP4 where hls.js cannot play', async () => {
+    const mp4 = '/m/v/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/mp4/video-720p.mp4?Policy=p&Signature=s&Key-Pair-Id=K2JCJMDEHXQW5F&Hash-Algorithm=SHA256'
+    const { container } = render(
+      <ResumableLessonMedia
+        kind="video"
+        src={mp4}
+        stream={{ hls: mp4.replace('mp4/video-720p.mp4', 'hls/master.m3u8') }}
+        slug={slug}
+        lessonId={lessonId}
+        initialPositionSeconds={0}
+      />,
+    )
+    expect(container.querySelector('video')).not.toHaveAttribute('src')
+    await waitFor(() => expect(container.querySelector('video')).toHaveAttribute('src', mp4))
+  })
+
   it('offers to resume from the saved position instead of jumping there (round E)', () => {
     const { container } = render(
       <ResumableLessonMedia

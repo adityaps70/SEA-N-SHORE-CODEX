@@ -18,6 +18,7 @@ on:
         options:
           - plan
           - apply-once
+          - video-queue-once
         default: plan
       expected_sha:
         description: "Exact feature-branch SHA approved for execution"
@@ -151,15 +152,15 @@ jobs:
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
             ACTION="${REQUESTED_ACTION:-plan}"
-            case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported media CDN backfill action: $ACTION" >&2; exit 1 ;; esac
-            if [[ "$ACTION" == "apply-once" ]]; then
+            case "$ACTION" in plan|apply-once|video-queue-once) ;; *) echo "Unsupported media CDN backfill action: $ACTION" >&2; exit 1 ;; esac
+            if [[ "$ACTION" != "plan" ]]; then
               [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "expected_sha must be an exact commit SHA." >&2; exit 1; }
               [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]] || { echo "expected_sha does not match GITHUB_SHA." >&2; exit 1; }
               [[ "$CONFIRMATION" == "I_APPROVE_MEDIA_CDN_BACKFILL" ]] || { echo "Explicit launch confirmation is required." >&2; exit 1; }
             fi
           else
             ACTION="$(cut -d' ' -f1 < scripts/aws/media-cdn-backfill-action.txt | tr -d '[:space:]')"
-            case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported media CDN backfill action: $ACTION" >&2; exit 1 ;; esac
+            case "$ACTION" in plan|apply-once|video-queue-once) ;; *) echo "Unsupported media CDN backfill action: $ACTION" >&2; exit 1 ;; esac
           fi
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
 
@@ -253,7 +254,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
-          case "$ACTION" in plan|apply-once) ;; *) exit 1 ;; esac
+          case "$ACTION" in plan|apply-once|video-queue-once) ;; *) exit 1 ;; esac
           bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA"
           python3 - "$TRIGGER_SHA" "$ACTION" > /tmp/ssm-parameters.json <<'PYTHON'
           import json, shlex, sys
@@ -297,6 +298,8 @@ jobs:
           [[ "$(jq -r '.Status' /tmp/result.json)" == Success ]]
           if [[ "$ACTION" == "plan" ]]; then
             grep -q 'MEDIA_CDN_BACKFILL_PLAN_ONLY_NO_APPLY' <<<"$STDOUT_CONTENT"
+          elif [[ "$ACTION" == "video-queue-once" ]]; then
+            grep -q 'MEDIA_CDN_BACKFILL_VIDEO_QUEUE_VERIFIED=true' <<<"$STDOUT_CONTENT"
           else
             grep -q 'MEDIA_CDN_BACKFILL_APPLY_VERIFIED=true' <<<"$STDOUT_CONTENT"
           fi

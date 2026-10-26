@@ -6,6 +6,7 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/app/media-cdn.tf
+      - infra/aws/app/media-transcode.tf
       - infra/aws/app/bucket-policies.tf
       - scripts/aws/media-cdn-infra.sh
       - scripts/aws/media-cdn-infra-action.txt
@@ -72,7 +73,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/media-cdn-infra-action.txt
-          RUNNER_FILES: "infra/aws/app/media-cdn.tf infra/aws/app/bucket-policies.tf scripts/aws/media-cdn-infra.sh scripts/aws/media-cdn-infra.test.mjs"
+          RUNNER_FILES: "infra/aws/app/media-cdn.tf infra/aws/app/media-transcode.tf infra/aws/app/bucket-policies.tf scripts/aws/media-cdn-infra.sh scripts/aws/media-cdn-infra.test.mjs"
         shell: bash
         run: |
           set -euo pipefail

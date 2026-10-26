@@ -14,11 +14,16 @@ import { createHash, createPrivateKey, sign, type KeyObject } from 'node:crypto'
  * - `private` (post, message and lesson media): 6-hour windows, so a link copied out of a post a
  *   viewer can no longer see stops working within 12 hours.
  */
-export type MediaCdnAccess = 'public' | 'private'
+export type MediaCdnAccess = 'public' | 'private' | 'lesson'
 
+/**
+ * - `lesson` (Round P3, Part D: paid lesson videos): 1-hour windows; the lesson player fetches a fresh query
+ *   before it expires.
+ */
 export const MEDIA_CDN_WINDOW_SECONDS: Record<MediaCdnAccess, number> = {
   public: 30 * 24 * 60 * 60,
   private: 6 * 60 * 60,
+  lesson: 60 * 60,
 }
 
 type Environment = Record<string, string | undefined>
