@@ -3,6 +3,7 @@ import { ArrowRight, CalendarDays, MapPin, Monitor, Users } from 'lucide-react'
 import type { CalendarEvent } from '../calendar-types'
 import { eventCardDateLine } from '../event-dates'
 import { eventFormatLabel, eventPlaceShort, eventPriceLabel } from '../event-labels'
+import { cdnImageSrcSet } from '@/lib/media-cdn/cdn-url'
 
 function dateLabel(value: string, timeZone: string) {
   try {
@@ -33,7 +34,7 @@ export function EventCard({ event, showStatus = false, reason = null }: { event:
       <article className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] transition group-hover:-translate-y-0.5 group-hover:border-teal-200 group-hover:shadow-lg max-md:flex-row max-md:items-start max-md:gap-3 max-md:rounded-none max-md:border-0 max-md:px-4 max-md:py-3 max-md:shadow-none max-md:group-hover:translate-y-0 max-md:group-hover:shadow-none">
       {event.bannerUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- only organizer supplied public/signed display URLs are stored
-        <img src={event.bannerUrl} alt="" className="h-40 w-full object-cover max-md:h-[72px] max-md:w-24 max-md:shrink-0 max-md:rounded-xl" loading="lazy" />
+        <img src={event.bannerUrl} srcSet={cdnImageSrcSet(event.bannerUrl)} sizes="(max-width: 767px) 96px, 400px" alt="" className="h-40 w-full object-cover max-md:h-[72px] max-md:w-24 max-md:shrink-0 max-md:rounded-xl" loading="lazy" />
       ) : (
         <div className="flex h-32 items-end bg-gradient-to-br from-navy-950 via-navy-800 to-teal-700 p-5 text-white max-md:h-[72px] max-md:w-24 max-md:shrink-0 max-md:rounded-xl max-md:p-0">
           <span className="text-xs font-bold uppercase tracking-[0.18em] max-md:hidden">Sea N Shore Events</span>

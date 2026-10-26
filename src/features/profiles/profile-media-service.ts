@@ -1,4 +1,5 @@
 import { deleteMediaObject, putMediaObject } from '@/lib/aws/storage'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import { buildProfileMediaKey, validateProfileImage } from './profile-media'
 import { profileMediaRepository, type ProfileMediaKind } from './profile-media-repository'
 
@@ -12,6 +13,8 @@ export function createProfileMediaService(input: {
   putObject: typeof putMediaObject
   deleteObject: typeof deleteMediaObject
   replaceMediaPath: (profileId: string, kind: ProfileMediaKind, nextPath: string | null) => Promise<string | null>
+  /** Round P3 (B7): writes the photo's CDN sizes before it is shown anywhere. */
+  prepareForCdn?: typeof prepareMediaForCdn
 }) {
   async function upload(profileId: string, kind: ProfileMediaKind, file: UploadInput) {
     const validation = validateProfileImage(file)
@@ -19,6 +22,14 @@ export function createProfileMediaService(input: {
 
     const key = buildProfileMediaKey(profileId, kind, file.type)
     await input.putObject({ key, body: file.bytes, contentType: file.type })
+    if (input.prepareForCdn) {
+      try {
+        await input.prepareForCdn({ key, contentType: file.type, body: file.bytes })
+      } catch (error) {
+        await input.deleteObject(key).catch(() => undefined)
+        throw error
+      }
+    }
 
     let previousPath: string | null = null
     try {
@@ -46,6 +57,7 @@ const productionService = createProfileMediaService({
   putObject: putMediaObject,
   deleteObject: deleteMediaObject,
   replaceMediaPath: profileMediaRepository.replaceMediaPath,
+  prepareForCdn: prepareMediaForCdn,
 })
 
 export const uploadProfileMedia = productionService.upload

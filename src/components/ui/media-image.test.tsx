@@ -21,6 +21,27 @@ describe('MediaImage', () => {
     expect(image).toHaveAttribute('loading', 'lazy')
   })
 
+  // Round P3 (B7): CDN photos have their sizes stored; nothing goes through the optimizer.
+  it('serves a CDN photo at its stored sizes straight from CloudFront, reusing its one signed query', () => {
+    const query = 'Policy=cG9saWN5&Signature=c2ln&Key-Pair-Id=K2JCJMDEHXQW5F&Hash-Algorithm=SHA256'
+    const src = `/m/i/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/768.webp?${query}`
+    render(<MediaImage src={src} alt="Member B profile photo" width={44} height={44} sizes="44px" />)
+
+    const image = screen.getByRole('img', { name: 'Member B profile photo' })
+    // next/image points the fallback src at the largest candidate; browsers pick from srcset.
+    expect(image.getAttribute('src')).toBe(`/m/i/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1600.webp?${query}`)
+    const entries = (image.getAttribute('srcset') ?? '').split(', ').map((entry) => entry.split(' '))
+    const forDescriptor = (descriptor: string) => entries.find(([, width]) => width === descriptor)?.[0]
+    expect(forDescriptor('96w')).toBe(`/m/i/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/320.webp?${query}`)
+    expect(forDescriptor('640w')).toBe(`/m/i/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/768.webp?${query}`)
+    expect(forDescriptor('1080w')).toBe(`/m/i/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/1600.webp?${query}`)
+    for (const [candidate] of entries) {
+      expect(candidate).toMatch(/^\/m\/i\/A{32}\/(?:320|768|1600)\.webp\?/)
+      expect(candidate!.endsWith(query)).toBe(true)
+    }
+    expect(image.getAttribute('srcset')).not.toContain('/_next/image')
+  })
+
   it('fills a positioned box when asked to', () => {
     render(
       <span className="relative size-11 overflow-hidden rounded-full">

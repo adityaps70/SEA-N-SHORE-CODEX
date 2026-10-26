@@ -3,6 +3,7 @@ import { getVerifiedUser } from '@/features/auth/queries'
 import { POST_DOCUMENT_MAX_BYTES } from '@/features/feed/media-policy'
 import { feedRepository } from '@/features/feed/repository'
 import { createMediaDownloadUrl, getMediaObject, headMediaObject, streamMediaObject } from '@/lib/aws/storage'
+import { cdnMediaUrl } from '@/lib/media-cdn/media-cdn'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -118,7 +119,9 @@ export async function GET(
         },
       })
     }
-    const location = await createMediaDownloadUrl({
+    // Round P3 (B7): to the CDN copy once the media CDN is configured (posters, which are uploaded
+    // without a server-side confirm step, stay on S3).
+    const location = (media.poster ? null : cdnMediaUrl(media.key, media.contentType)) ?? await createMediaDownloadUrl({
       key: media.key,
       contentType: media.contentType,
       contentDisposition: 'inline',

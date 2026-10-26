@@ -2,6 +2,7 @@ import { Bell, Play } from 'lucide-react'
 import Link from 'next/link'
 import { AuthorAvatarLink } from '@/features/feed/components/author-avatar'
 import type { NetworkNotification } from '../types'
+import { cdnImageUrlForWidth } from '@/lib/media-cdn/cdn-url'
 
 /**
  * The actor's round profile photo (initials when there is none) that opens their profile.
@@ -50,7 +51,7 @@ export function NotificationPostThumb({ notification, size = 'size-12', onOpen }
         </>
       ) : preview.mediaUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- first-party feed media route
-        <img src={preview.mediaUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+        <img src={cdnImageUrlForWidth(preview.mediaUrl, 96)} alt="" loading="lazy" className="h-full w-full object-cover" />
       ) : (
         <span aria-hidden="true" className="block h-full w-full overflow-hidden break-words p-1 text-left text-[9px] font-medium leading-[11px] text-navy-900 [overflow-wrap:anywhere]">
           {preview.text || 'Post'}

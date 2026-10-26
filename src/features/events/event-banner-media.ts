@@ -1,5 +1,6 @@
 import { createMediaUploadUrl, headMediaObject } from '@/lib/aws/storage'
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import {
   EVENT_BANNER_MAX_BYTES,
   buildEventBannerStoragePath,
@@ -41,6 +42,12 @@ export async function verifyEventBannerReference(profileId: string, reference: s
   const content = await verifyStoredUploadSignature(reference, expectedMime, stored.contentLength)
   if (content === 'unavailable') throw new Error('event_banner_unavailable')
   if (content === 'mismatch') throw new Error('event_banner_metadata_mismatch')
+  // Round P3 (B7): the banner's CDN sizes (an unchanged banner re-checked on save already has them).
+  try {
+    await prepareMediaForCdn({ key: reference, contentType: expectedMime, skipIfPresent: true })
+  } catch {
+    throw new Error('event_banner_unavailable')
+  }
 }
 
 export async function resolveEventBannerReference(reference: string | null): Promise<string | null> {

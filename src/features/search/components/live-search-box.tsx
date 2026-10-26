@@ -7,6 +7,7 @@ import { clearRecentSearchesAction, getRecentSearchesAction, recordSearchAction 
 import { viewerInitials } from '@/components/navigation/viewer-avatar'
 import { createSearchClient, type SearchClientState, type SuggestItem } from '../search-client'
 import { highlightParts } from '../highlight'
+import { cdnImageUrlForWidth } from '@/lib/media-cdn/cdn-url'
 
 /**
  * Round G (G4): search as you type, an ARIA combobox (WAI-ARIA 1.2 list autocomplete).
@@ -227,7 +228,7 @@ export function LiveSearchBox({
                 <li key={`${item.kind}-${item.id}`} id={optionId(index)} role="option" aria-selected={selected} className={base} onPointerDown={(event) => event.preventDefault()} onClick={() => choose(option)}>
                   {item.avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- a 32 px signed thumbnail; the optimizer link is already sized
-                    <img src={item.avatarUrl} alt="" width={32} height={32} className={`size-8 shrink-0 object-cover ${item.kind === 'person' ? 'rounded-full' : 'rounded-lg'}`} />
+                    <img src={cdnImageUrlForWidth(item.avatarUrl, 64)} alt="" width={32} height={32} className={`size-8 shrink-0 object-cover ${item.kind === 'person' ? 'rounded-full' : 'rounded-lg'}`} />
                   ) : item.kind === 'person' ? (
                     // Round H (H6): people without a photo show their initials, as everywhere else.
                     <span aria-hidden="true" data-testid="suggestion-initials" className="grid size-8 shrink-0 place-items-center rounded-full bg-mist-100 text-xs font-semibold text-navy-950">{viewerInitials(item.name)}</span>

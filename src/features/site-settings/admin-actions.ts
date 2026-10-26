@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { createMediaUploadUrl } from '@/lib/aws/storage'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import { plainIssueMessage } from '@/lib/validation/plain-messages'
 import { siteSettingsRepository, SiteSettingValidationError } from './repository'
 import {
@@ -122,6 +123,19 @@ function parseAboutJson(raw: FormDataEntryValue | null): unknown {
   }
 }
 
+const SITE_IMAGE_MIME_BY_EXTENSION: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' }
+
+async function prepareAboutImagesForCdn(about: AboutPageContent) {
+  const paths = [
+    ...[...about.founders, ...about.team].map((person) => person.photoPath),
+    ...about.partners.map((partner) => partner.logoPath),
+  ].filter((path): path is string => Boolean(path))
+  for (const path of new Set(paths)) {
+    const contentType = SITE_IMAGE_MIME_BY_EXTENSION[path.slice(path.lastIndexOf('.') + 1)]
+    if (contentType) await prepareMediaForCdn({ key: path, contentType, skipIfPresent: true })
+  }
+}
+
 export async function saveAboutPageAction(
   _previous: SiteSettingsFormState<AboutPageContent>,
   formData: FormData,
@@ -136,6 +150,13 @@ export async function saveAboutPageAction(
   const parsed = aboutPageSchema.safeParse(raw)
   if (!parsed.success) {
     return { status: 'error', message: 'Please fix the highlighted fields and try again.', fieldErrors: fieldErrorsFrom(parsed.error) }
+  }
+  // Round P3 (B7): every About page image has its CDN sizes before the page shows it (images
+  // already on the page have them and are skipped).
+  try {
+    await prepareAboutImagesForCdn(parsed.data)
+  } catch {
+    return { status: 'error', message: 'An image could not be prepared. Upload it again and save.' }
   }
   try {
     const saved = await siteSettingsRepository.set('about_page', parsed.data, adminId)

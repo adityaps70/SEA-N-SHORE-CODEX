@@ -102,7 +102,7 @@ PY
 echo 'EDGE_PROVIDER_LOCK_VERIFIED=true'
 PLAN_EXIT=0
 terraform_plan_bounded "$RECOVERY_DIR/plan.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image -target=aws_cloudfront_cache_policy.public_pages \
+  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image -target=aws_cloudfront_cache_policy.public_pages -target=aws_cloudfront_cache_policy.media_cdn \
   -var-file="$RECOVERY_DIR/variables.json" -out="$RECOVERY_DIR/edge.tfplan" \
   2> "$RECOVERY_DIR/plan.err" || PLAN_EXIT=$?
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
@@ -114,6 +114,19 @@ jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .M
 # policy, which never keys on cookies (signed-in HTML stays on CachingDisabled).
 aws cloudfront get-cache-policy --id 658327ea-f89d-4fab-a63d-7e88639e58f6 --output json > "$RECOVERY_DIR/optimized-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig | .Name == "Managed-CachingOptimized" and .ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.CookieBehavior == "none" and .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior == "none"' "$RECOVERY_DIR/optimized-policy.json" >/dev/null
+# Round P3 (B7): the media key group and origin access control come from media-cdn-infra.sh. Until that
+# has run they would be created here: a plan says so and stops (green), an apply refuses.
+for media_address in aws_cloudfront_key_group.media_cdn aws_cloudfront_origin_access_control.media; do
+  if jq -e --arg address "$media_address" '[.resource_changes[]? | select(.address == $address and .change.actions != ["no-op"])] | length > 0' "$RECOVERY_DIR/plan.json" >/dev/null; then
+    if [[ "$ACTION" == plan ]]; then
+      echo "EDGE_MEDIA_PREREQUISITES_MISSING=$media_address (apply media-cdn-infra.sh first)"
+      echo 'EDGE_RECOVERY_PLAN_VERIFIED_NO_APPLY'
+      exit 0
+    fi
+    echo "Edge apply refused: $media_address does not exist yet; apply media-cdn-infra.sh first." >&2
+    exit 1
+  fi
+done
 python3 scripts/aws/check-edge-plan.py "$RECOVERY_DIR/plan.json" "$ORIGIN" "$CERT_ARN"
 jq '[.resource_changes[] | {address, actions: .change.actions}]' "$RECOVERY_DIR/plan.json"
 echo "PLAN_SHA256=$(sha256sum "$RECOVERY_DIR/edge.tfplan" | cut -d' ' -f1)"
@@ -127,7 +140,9 @@ fi
 # plus the repository redirect function (create/update) are allowed, and at least one must change.
 # Round 14 (3.1): the image cache policy the distribution references may be created or updated too.
 # Round P3 (B4): so may the page cache policy (check-edge-plan.py validates its exact settings).
-EDGE_ADDRESSES='["aws_cloudfront_cache_policy.next_image", "aws_cloudfront_cache_policy.public_pages", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
+# Round P3 (B7): and the media cache policy. The media key group, public key and origin access
+# control come from media-cdn-infra.sh first, so here they must be no-ops like every dependency.
+EDGE_ADDRESSES='["aws_cloudfront_cache_policy.media_cdn", "aws_cloudfront_cache_policy.next_image", "aws_cloudfront_cache_policy.public_pages", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
 jq -e --argjson edge "$EDGE_ADDRESSES" '
   [.resource_changes[] | select(.mode == "managed") | select((.address | IN($edge[])) | not) | select(.change.actions != ["no-op"])] | length == 0
 ' "$RECOVERY_DIR/plan.json" >/dev/null || {
@@ -137,8 +152,9 @@ jq -e --argjson edge "$EDGE_ADDRESSES" '
 if [[ -n "$STATE_CF_ID" ]]; then
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 5
+    | ($changes | length) == 6
       and ([ $changes[].address ] | sort) == ($edge | sort)
+      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.media_cdn") ][0].actions as $mp | ($mp == ["no-op"] or $mp == ["update"] or $mp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["update"] or $cp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_pages") ][0].actions as $pp | ($pp == ["no-op"] or $pp == ["update"] or $pp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
@@ -154,8 +170,9 @@ if [[ -n "$STATE_CF_ID" ]]; then
 else
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 5
+    | ($changes | length) == 6
       and ([ $changes[].address ] | sort) == ($edge | sort)
+      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.media_cdn") ][0].actions as $mp | ($mp == ["no-op"] or $mp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_pages") ][0].actions as $pp | ($pp == ["no-op"] or $pp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
@@ -207,12 +224,44 @@ IMAGE_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == 
 [[ -n "$IMAGE_POLICY_ID" && "$IMAGE_POLICY_ID" != null ]]
 PAGES_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_cache_policy" and .name == "public_pages") | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json")"
 [[ -n "$PAGES_POLICY_ID" && "$PAGES_POLICY_ID" != null ]]
-jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" --arg pages "$PAGES_POLICY_ID" '
+state_id() { jq -r --arg type "$1" --arg name "$2" '.resources[] | select(.mode == "managed" and .type == $type and .name == $name) | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json"; }
+MEDIA_POLICY_ID="$(state_id aws_cloudfront_cache_policy media_cdn)"
+MEDIA_KEY_GROUP_ID="$(state_id aws_cloudfront_key_group media_cdn)"
+MEDIA_OAC_ID="$(state_id aws_cloudfront_origin_access_control media)"
+for value in "$MEDIA_POLICY_ID" "$MEDIA_KEY_GROUP_ID" "$MEDIA_OAC_ID"; do [[ -n "$value" && "$value" != null ]]; done
+jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" --arg pages "$PAGES_POLICY_ID" --arg media "$MEDIA_POLICY_ID" '
   .Distribution.DistributionConfig as $config
   | $config.DefaultCacheBehavior.CachePolicyId == $pages
-    and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized]])
-    and all($config.CacheBehaviors.Items[]?; ((.GrpcConfig.Enabled // false) == false) and .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
+    and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/m/*", $media], ["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized]])
+    and all($config.CacheBehaviors.Items[]? | select(.PathPattern != "/m/*"); ((.GrpcConfig.Enabled // false) == false) and .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
 ' "$RECOVERY_DIR/live.json" >/dev/null
+# Round P3 (B7): /m/* answers only signed requests (the media key group), from the private media
+# bucket through origin access control, with no viewer function.
+jq -e --arg group "$MEDIA_KEY_GROUP_ID" --arg oac "$MEDIA_OAC_ID" '
+  .Distribution.DistributionConfig as $config
+  | ([$config.CacheBehaviors.Items[]? | select(.PathPattern == "/m/*")] | length == 1)
+    and ([$config.CacheBehaviors.Items[]? | select(.PathPattern == "/m/*")][0] as $media
+      | $media.TargetOriginId == "sea-n-shore-staging-media"
+        and $media.ViewerProtocolPolicy == "redirect-to-https"
+        and $media.AllowedMethods.Quantity == 2
+        and $media.TrustedKeyGroups.Enabled == true and $media.TrustedKeyGroups.Quantity == 1 and $media.TrustedKeyGroups.Items == [$group]
+        and (($media.TrustedSigners.Enabled // false) == false)
+        and (($media.FunctionAssociations.Quantity // 0) == 0) and (($media.LambdaFunctionAssociations.Quantity // 0) == 0)
+        and (($media.OriginRequestPolicyId // "") == ""))
+    and ([$config.Origins.Items[] | select(.Id == "sea-n-shore-staging-media")] as $origins
+      | ($origins | length) == 1
+        and $origins[0].DomainName == "sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com"
+        and $origins[0].OriginAccessControlId == $oac
+        and (($origins[0].S3OriginConfig.OriginAccessIdentity // "") == "")
+        and (($origins[0].CustomHeaders.Quantity // 0) == 0)
+        and (($origins[0].OriginPath // "") == ""))
+' "$RECOVERY_DIR/live.json" >/dev/null
+aws cloudfront get-cache-policy --id "$MEDIA_POLICY_ID" --output json > "$RECOVERY_DIR/live-media-policy.json"
+jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 86400 and .DefaultTTL == 31536000 and .MaxTTL == 31536000
+  and .ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.CookieBehavior == "none"
+  and .ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig.HeaderBehavior == "none"
+  and .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior == "none"' "$RECOVERY_DIR/live-media-policy.json" >/dev/null
+echo 'EDGE_SIGNED_MEDIA_BEHAVIOR_VERIFIED=true'
 aws cloudfront get-cache-policy --id "$IMAGE_POLICY_ID" --output json > "$RECOVERY_DIR/live-image-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin | .CookiesConfig.CookieBehavior == "none" and (.HeadersConfig.Headers.Items == ["Accept"]) and ((.QueryStringsConfig.QueryStrings.Items | sort) == ["q", "url", "w"])' "$RECOVERY_DIR/live-image-policy.json" >/dev/null
 echo 'EDGE_STATIC_ASSET_CACHING_VERIFIED=true'
@@ -232,12 +281,13 @@ DOMAIN="$(jq -r '.Distribution.DomainName' "$RECOVERY_DIR/live.json")"
 [[ "$DOMAIN" == "d3prih0q6jofyr.cloudfront.net" ]]
 jq -e --arg domain "$DOMAIN" --arg origin "$ORIGIN" --rawfile verify "$RECOVERY_DIR/origin-verify" '
   .Distribution.DistributionConfig.Origins
-  | .Quantity == 1
-    and .Items[0].DomainName == $origin
-    and .Items[0].CustomOriginConfig.OriginProtocolPolicy == "https-only"
-    and .Items[0].CustomHeaders.Quantity == 2
-    and ([.Items[0].CustomHeaders.Items[] | select(.HeaderName == "X-Forwarded-Host") | .HeaderValue] == [$domain])
-    and ([.Items[0].CustomHeaders.Items[] | select(.HeaderName == "X-Origin-Verify") | .HeaderValue] == [($verify | rtrimstr("\n"))])
+  | ([.Items[] | select(.Id == "sea-n-shore-staging-alb")]) as $alb
+  | .Quantity == 2 and ($alb | length) == 1
+    and $alb[0].DomainName == $origin
+    and $alb[0].CustomOriginConfig.OriginProtocolPolicy == "https-only"
+    and $alb[0].CustomHeaders.Quantity == 2
+    and ([$alb[0].CustomHeaders.Items[] | select(.HeaderName == "X-Forwarded-Host") | .HeaderValue] == [$domain])
+    and ([$alb[0].CustomHeaders.Items[] | select(.HeaderName == "X-Origin-Verify") | .HeaderValue] == [($verify | rtrimstr("\n"))])
 ' "$RECOVERY_DIR/live.json" >/dev/null
 echo 'EDGE_HTTPS_ORIGIN_WITH_VERIFY_HEADER=true'
 
@@ -284,7 +334,7 @@ inner = not_statements[0]['Statement']['AndStatement']['Statements']
 assert len(inner) == 2
 
 def decoded(value):
-    if value in ('POST', '/profile'):
+    if value in ('POST', '/profile', '/m/'):
         return value
     try:
         return base64.b64decode(value, validate=True).decode('utf-8')
@@ -314,6 +364,15 @@ rate_statement = rate['Statement']['RateBasedStatement']
 assert rate_statement['AggregateKeyType'] == 'IP'
 assert rate_statement['Limit'] == 2000
 assert rate_statement['EvaluationWindowSec'] == 300
+# Round P3 (B7): the only scope-down allowed leaves signed media (/m/*) uncounted.
+scope = rate_statement.get('ScopeDownStatement')
+if scope is not None:
+    match = scope['NotStatement']['Statement']['ByteMatchStatement']
+    assert set(match['FieldToMatch']) == {'UriPath'}
+    assert match['PositionalConstraint'] == 'STARTS_WITH'
+    assert decoded(match['SearchString']) == '/m/'
+    assert match['TextTransformations'] == [{'Priority': 0, 'Type': 'NONE'}]
+    print('RATE_LIMIT_SKIPS_SIGNED_MEDIA_VERIFIED=true')
 print('PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED=true')
 PY
 
@@ -374,6 +433,10 @@ for attempt in 1 2 3; do
   fi
 done
 echo 'SIGNED_IN_AND_PERSONAL_NEVER_EDGE_CACHED_VERIFIED=true'
+# Round P3 (B7): an unsigned media request is refused at the edge, never served from the bucket.
+UNSIGNED_STATUS="$(curl --silent --show-error --max-time 45 --resolve "seanshore.in:443:$EDGE_IP" -o /dev/null -w '%{http_code}' "https://seanshore.in/m/i/edge-probe-$PROBE/320.webp")"
+[[ "$UNSIGNED_STATUS" == 403 ]] || { echo "An unsigned media request answered $UNSIGNED_STATUS instead of 403." >&2; exit 1; }
+echo 'UNSIGNED_MEDIA_REFUSED_VERIFIED=true'
 
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region ap-south-1 > "$RECOVERY_DIR/ecs-after.json"
 jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDefinition == $before[0].services[0].taskDefinition and .desiredCount == $before[0].services[0].desiredCount and .runningCount == .desiredCount and .pendingCount == 0 and all(.deployments[]; .rolloutState == "COMPLETED" and .failedTasks == 0)' "$RECOVERY_DIR/ecs-after.json" >/dev/null

@@ -29,7 +29,8 @@ RUN npm run build \
     && npm run build:workers \
     && test -f dist/workers/publish-outbox.mjs \
     && test -f dist/workers/consume-notifications.mjs \
-    && test -f dist/workers/learning-round-e-content.mjs
+    && test -f dist/workers/learning-round-e-content.mjs \
+    && test -f dist/workers/media-cdn-backfill.mjs
 
 FROM ${NODE_BASE_IMAGE} AS runner
 WORKDIR /app

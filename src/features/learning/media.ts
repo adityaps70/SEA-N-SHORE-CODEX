@@ -4,6 +4,9 @@ import {
   deleteMediaObject,
   headMediaObject,
 } from '@/lib/aws/storage'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
+import { query as databaseQuery } from '@/lib/db/client'
+import { enqueueRendition } from './media-renditions'
 import {
   buildLearningMediaStoragePath,
   isOwnedLearningMediaStoragePath,
@@ -82,9 +85,27 @@ export async function verifyLearningMediaObject(input: {
     if (content === 'unavailable') throw new Error('learning_media_unavailable')
     if (content === 'mismatch') throw new Error('learning_media_content_mismatch')
   }
+  // Round P3 (B7): course thumbnails and lesson images get their CDN sizes (an unchanged file
+  // re-checked on save already has them).
+  if (CDN_IMAGE_KINDS.has(input.kind)) {
+    try {
+      await prepareMediaForCdn({ key: input.storagePath, contentType: metadata.mimeType, skipIfPresent: true })
+    } catch {
+      throw new Error('learning_media_unavailable')
+    }
+  }
+  // Round P3 (Part D): a newly uploaded trailer or lesson video is queued for MediaConvert. The players use the
+  // uploaded file until its rendition is ready, so a queueing hiccup never blocks the save.
+  if (!input.alreadyAttached && (input.kind === 'course_trailer' || input.kind === 'lesson_video')) {
+    await enqueueRendition(databaseQuery, input.storagePath).catch((error: unknown) => {
+      console.error('[learning_media_transcode_enqueue_failed]', { errorName: error instanceof Error ? error.name : 'unknown' })
+    })
+  }
 
   return stored
 }
+
+const CDN_IMAGE_KINDS: ReadonlySet<LearningMediaKind> = new Set(['course_thumbnail', 'lesson_image'])
 
 export async function removeLearningMediaObject(input: {
   userId: string

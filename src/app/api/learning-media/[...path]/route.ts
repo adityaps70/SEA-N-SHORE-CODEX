@@ -1,6 +1,7 @@
 import { getVerifiedUser } from '@/features/auth/queries'
 import { publicCourseRepository } from '@/features/learning/public-course-repository'
 import { getMediaObject } from '@/lib/aws/storage'
+import { cdnImageRedirect } from '@/lib/media-cdn/cdn-redirect'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const THUMBNAIL_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpe?g|png|webp)$/i
@@ -28,6 +29,10 @@ export async function GET(
   const user = await getVerifiedUser()
   const publicCover = user ? false : await publicCourseRepository.isPublicCourseThumbnail(key).catch(() => false)
   if (!user && !publicCover) return new Response('Unauthorized', { status: 401 })
+
+  // Round P3 (B7): the cover's CDN size once the media CDN is configured.
+  const redirect = cdnImageRedirect(key, { width: 768, cacheControl: publicCover ? 'public, max-age=600' : 'private, max-age=3600' })
+  if (redirect) return redirect
 
   try {
     const object = await getMediaObject({ key, maxBytes: MAX_THUMBNAIL_BYTES })

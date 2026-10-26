@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { useVideoPreload } from '@/lib/browser/data-saver'
+import { StreamableVideo } from './streamable-video'
+import type { VideoStream } from './use-hls-stream'
 
 /**
  * Learning round E (E3): the course page lays out the trailer twice (phone header and desktop hero), but only one
@@ -24,6 +26,7 @@ function isPhone() {
 export function CourseTrailer({
   slot,
   src,
+  stream = null,
   poster,
   label,
   className,
@@ -31,6 +34,8 @@ export function CourseTrailer({
 }: {
   slot: 'phone' | 'desktop'
   src: string
+  /** Round P3: the trailer's ready rendition (HLS); `src` is then its signed 720p MP4. */
+  stream?: VideoStream | null
   poster?: string
   label: string
   className?: string
@@ -44,13 +49,14 @@ export function CourseTrailer({
   const preload = useVideoPreload()
   if (!active) return <>{fallback}</>
   return (
-    <video
+    <StreamableVideo
       controls
       controlsList="nodownload noremoteplayback"
       disableRemotePlayback
       onContextMenu={(event) => event.preventDefault()}
       preload={preload}
       src={src}
+      stream={stream}
       poster={poster}
       aria-label={label}
       className={className}

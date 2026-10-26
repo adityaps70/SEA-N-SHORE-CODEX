@@ -26,7 +26,6 @@ import { jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { courseJsonLd, courseMetadata } from '@/features/learning/course-seo'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
 import { publicCourseRepository, type PublicCurriculumSection } from '@/features/learning/public-course-repository'
-import { createMediaReadUrl } from '@/lib/aws/storage'
 import { CourseTrailer } from '@/features/learning/components/course-trailer'
 import { CourseActionBar, type CourseActionBarMode } from '@/features/learning/components/course-action-bar'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
@@ -50,6 +49,8 @@ import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 import { CurriculumAccordion, type CurriculumModuleView } from '@/features/learning/components/curriculum-accordion'
 import { courseRatingRepository, type OwnerReplyView, type PublicCourseReviews } from '@/features/learning/course-rating-repository'
 import { CourseReviewsSection, formatAverageRating } from '@/features/learning/components/course-reviews-section'
+import { courseVideoSource } from '@/features/learning/lesson-media-source'
+import type { VideoStream } from '@/features/learning/components/use-hls-stream'
 
 type PublishedCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -189,7 +190,7 @@ function RatingSummary({ reviews, className = '' }: { reviews: PublicCourseRevie
 }
 
 /** Phone course header (round 8): cover, chips, title, trainer link and learners. */
-function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIEWS }: { course: MarketplaceCourse; overview: PublishedCourseOverview; trailerUrl: string | null; reviews?: PublicCourseReviews }) {
+function PhoneCourseHeader({ course, overview, trailerUrl, trailerStream = null, reviews = EMPTY_REVIEWS }: { course: MarketplaceCourse; overview: PublishedCourseOverview; trailerUrl: string | null; trailerStream?: VideoStream | null; reviews?: PublicCourseReviews }) {
   const duration = formatCourseDuration(overview.durationSeconds)
   const publisherHref = overview.publisher
     ? overview.publisher.kind === 'organization' ? `/organizations/${overview.publisher.slug}` : `/people/${overview.publisher.slug}`
@@ -202,6 +203,7 @@ function PhoneCourseHeader({ course, overview, trailerUrl, reviews = EMPTY_REVIE
           <CourseTrailer
             slot="phone"
             src={trailerUrl}
+            stream={trailerStream}
             poster={course.thumbnailPath ? `/api/learning-media/${course.thumbnailPath}` : undefined}
             label={`${course.title} trailer`}
             className="absolute inset-0 size-full bg-navy-950 object-contain"
@@ -368,12 +370,13 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
 
   // Public page: signed-out visitors see the course and its free previews; enrolling needs an account.
   const user = await getVerifiedUser()
-  const [enrollment, overview, curriculum, trailerUrl, reviews, alsoTook, listPriceSales, publisher, certificateSettings, replyOwnerView] = await Promise.all([
+  const [enrollment, overview, curriculum, trailer, reviews, alsoTook, listPriceSales, publisher, certificateSettings, replyOwnerView] = await Promise.all([
     user ? enrollmentRepository.getLearnerEnrollment(user.id, course.id) : Promise.resolve(null),
     // The summary and outline are conveniences: the course page must still render without them.
     marketplaceRepository.getPublishedCourseOverview(course.id).catch(() => EMPTY_OVERVIEW),
     publicCourseRepository.getPublicCurriculum(course.id).catch(() => [] as PublicCurriculumSection[]),
-    course.trailerPath ? createMediaReadUrl(course.trailerPath).catch(() => null) : Promise.resolve(null),
+    // Round P3: a ready rendition's signed MP4 and HLS playlist, or the uploaded file.
+    course.trailerPath ? courseVideoSource(course.trailerPath, 'trailer').catch(() => null) : Promise.resolve(null),
     courseRatingRepository.getPublicReviews(course.id).catch(() => EMPTY_REVIEWS),
     // Round G (G5): co-enrolment (at least 3 shared learners), signed-in members, suggestions switch on.
     getLearnersAlsoTook(course.id, user?.id ?? null).catch(() => null),
@@ -384,6 +387,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
     // Round H: the course owner replies to reviews (null for everyone else).
     user ? loadReplyOwnerView(user.id, course.id) : Promise.resolve(null),
   ])
+  const trailerUrl = trailer?.url ?? null
   const listPriceRecentlyCharged = wasListPriceCharged(listPriceSales, { courseId: course.id, listPriceMinor: course.priceMinor, currency: course.currency })
   const publisherPhotoUrl = publisher?.photoPath ? await createMediaImageSrc(publisher.photoPath).catch(() => null) : null
   const totalDuration = formatCourseDuration(overview.durationSeconds)
@@ -424,7 +428,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
         <ArrowLeft aria-hidden="true" className="size-4" /> Explore courses
       </Link>
 
-      <PhoneCourseHeader course={course} overview={overview} trailerUrl={trailerUrl} reviews={reviews} />
+      <PhoneCourseHeader course={course} overview={overview} trailerUrl={trailerUrl} trailerStream={trailer?.stream ?? null} reviews={reviews} />
 
       <section id="course-access" className="mt-4 scroll-mt-20 overflow-hidden rounded-[1.9rem] bg-navy-950 text-white shadow-[var(--shadow-card)] max-md:order-3 max-md:rounded-2xl">
         <div className="grid lg:grid-cols-[1.45fr_0.55fr]">
@@ -453,6 +457,7 @@ export default async function PublishedCoursePage({ params, searchParams }: Publ
               <CourseTrailer
                 slot="desktop"
                 src={trailerUrl}
+                stream={trailer?.stream ?? null}
                 poster={course.thumbnailPath ? `/api/learning-media/${course.thumbnailPath}` : undefined}
                 label={`${course.title} trailer`}
                 className="mt-6 aspect-video w-full max-w-3xl rounded-2xl bg-navy-900"

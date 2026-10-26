@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Allow only bounded staging CloudFront, canonical-host redirect function and profile-upload WAF changes."""
+"""Allow only bounded staging CloudFront, canonical-host redirect function, profile-upload WAF and signed-media changes."""
 import copy
 import json
 import os
@@ -19,6 +19,21 @@ PUBLIC_PAGES_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.public_pages'
 PUBLIC_PAGES_SESSION_COOKIES = ['sns_cognito_access', 'sns_cognito_refresh']
 PUBLIC_PAGES_KEY_HEADERS = ['next-router-prefetch', 'next-router-segment-prefetch', 'next-router-state-tree', 'rsc']
 PUBLIC_PAGES_MAX_TTL = 300
+# Round P3 (B7): signed media. A second origin (the private media bucket through origin access
+# control) and a first ordered behavior for /m/* that trusts the media key group, with the
+# path-only one-year cache policy below and no viewer function. Plans without them stay valid.
+MEDIA_ORIGIN_ID = 'sea-n-shore-staging-media'
+MEDIA_ORIGIN_DOMAIN = 'sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com'
+MEDIA_PATH = '/m/*'
+MEDIA_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.media_cdn'
+MEDIA_KEY_GROUP_ADDRESS = 'aws_cloudfront_key_group.media_cdn'
+MEDIA_OAC_ADDRESS = 'aws_cloudfront_origin_access_control.media'
+MEDIA_RATE_SCOPE_DOWN = {'not_statement': [{'statement': [{'byte_match_statement': [{
+    'field_to_match': [{'uri_path': [{}]}],
+    'positional_constraint': 'STARTS_WITH',
+    'search_string': '/m/',
+    'text_transformation': [{'priority': 0, 'type': 'NONE'}],
+}]}]}]}
 EXPECTED_ORDERED_BEHAVIORS = [
     ('/_next/static/*', 'optimized'),
     ('/_next/image*', 'next_image'),
@@ -166,6 +181,20 @@ def _normalize_waf(waf):
         names.add(name)
     group.pop('rule_action_override', None)
 
+    has_media_scope = False
+    for rule in normalized.get('rule', []):
+        if rule.get('name') != 'PerIpRateLimit':
+            continue
+        for statement in rule.get('statement', []) or []:
+            for rate in statement.get('rate_based_statement', []) or []:
+                scope = rate.get('scope_down_statement')
+                if scope in (None, []):
+                    continue
+                if not (isinstance(scope, list) and len(scope) == 1 and _compact(scope[0]) == MEDIA_RATE_SCOPE_DOWN):
+                    return None
+                rate.pop('scope_down_statement')
+                has_media_scope = True
+
     xss_rules = [rule for rule in normalized.get('rule', []) if rule.get('name') == XSS_BLOCK_RULE]
     if len(xss_rules) > 1:
         return None
@@ -175,7 +204,7 @@ def _normalize_waf(waf):
     if has_xss_rule:
         normalized['rule'] = [rule for rule in normalized.get('rule', []) if rule.get('name') != XSS_BLOCK_RULE]
 
-    return _compact(normalized), names, has_xss_rule
+    return _compact(normalized), names, has_xss_rule, has_media_scope
 
 
 def _diagnose_override_shape(label, waf):
@@ -243,8 +272,8 @@ def _validate_waf_update(change):
     if normalized_before is None or normalized_after is None:
         return False
 
-    before_base, before_overrides, before_xss_rule = normalized_before
-    after_base, after_overrides, after_xss_rule = normalized_after
+    before_base, before_overrides, before_xss_rule, before_media_scope = normalized_before
+    after_base, after_overrides, after_xss_rule, after_media_scope = normalized_after
     if before_base != after_base:
         print('WAF_NORMALIZED_DIFF_BEGIN', file=sys.stderr)
         for difference in _diff_paths(before_base, after_base):
@@ -268,7 +297,17 @@ def _validate_waf_update(change):
         and after_overrides == {SIZE_OVERRIDE, XSS_OVERRIDE}
         and after_xss_rule
     )
-    return size_transition or xss_transition
+    # Round P3 (B7): with the profile-media rules unchanged, the rate limit stops counting signed
+    # media (/m/*); nothing else may change with it.
+    media_scope_transition = (
+        before_overrides == after_overrides == {SIZE_OVERRIDE, XSS_OVERRIDE}
+        and before_xss_rule and after_xss_rule
+        and not before_media_scope
+        and after_media_scope
+    )
+    if (size_transition or xss_transition) and before_media_scope != after_media_scope:
+        return False
+    return size_transition or xss_transition or media_scope_transition
 
 
 def rendered_function_code(redirect_edge_host, template_path=None):
@@ -342,6 +381,8 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Image cache policy must be create/update/no-op')
         elif address == PUBLIC_PAGES_POLICY_ADDRESS:
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Page cache policy must be create/update/no-op')
+        elif address == MEDIA_POLICY_ADDRESS:
+            if actions not in [['create'], ['update'], ['no-op']]: errors.append('Media cache policy must be create/update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
 
@@ -376,6 +417,15 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
     pages_policy_id = (pages_policy_change.get('after') or {}).get('id')
     if pages_policy_change:
         _validate_public_pages_policy(pages_policy_change.get('after') or {}, errors)
+    media_policy_change = changes.get(MEDIA_POLICY_ADDRESS, {}).get('change', {})
+    if media_policy_change.get('actions') in [['create'], ['update']]:
+        _validate_media_policy(media_policy_change.get('after') or {}, errors)
+    media = {
+        'policy_created': media_policy_change.get('actions') == ['create'],
+        'policy_id': (media_policy_change.get('after') or {}).get('id'),
+        'key_group_id': ((changes.get(MEDIA_KEY_GROUP_ADDRESS, {}).get('change', {}) or {}).get('after') or {}).get('id'),
+        'oac_id': ((changes.get(MEDIA_OAC_ADDRESS, {}).get('change', {}) or {}).get('after') or {}).get('id'),
+    }
     for field in ['aliases','enabled','web_acl_id','viewer_certificate','custom_error_response']:
         if has_unknown(unknown.get(field)): errors.append('Unknown safety field: ' + field)
     for block, fields in {'origin':['domain_name','origin_path','origin_id','custom_header','custom_origin_config'], 'default_cache_behavior':['target_origin_id','viewer_protocol_policy','cache_policy_id','origin_request_policy_id','allowed_methods','function_association','lambda_function_association']}.items():
@@ -406,7 +456,13 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
         or cert[0].get('iam_certificate_id') not in [None, '']
     ):
         errors.append('seanshore.in ACM certificate with SNI and TLSv1.2_2021 required')
-    origins = cf.get('origin', [])
+    all_origins = cf.get('origin', []) or []
+    media_origins = [o for o in all_origins if o.get('origin_id') == MEDIA_ORIGIN_ID]
+    origins = [o for o in all_origins if o.get('origin_id') != MEDIA_ORIGIN_ID]
+    if len(media_origins) > 1:
+        errors.append('At most one media origin')
+    for media_origin in media_origins:
+        _validate_media_origin(media_origin, media, errors)
     if len(origins) != 1 or origins[0].get('domain_name') != origin:
         errors.append('Unexpected origin')
     if len(origins) == 1:
@@ -439,8 +495,65 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             if arn != FUNCTION_ARN and not (arn in [None, ''] and function_created):
                 errors.append('Redirect association must reference the repository CloudFront function')
     if cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
-    _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors)
+    _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors, media, bool(media_origins))
     return errors
+
+
+def _validate_media_policy(after, errors):
+    params = (after.get('parameters_in_cache_key_and_forwarded_to_origin') or [{}])[0]
+    cookies = (params.get('cookies_config') or [{}])[0]
+    headers = (params.get('headers_config') or [{}])[0]
+    queries = (params.get('query_strings_config') or [{}])[0]
+    if (
+        after.get('min_ttl') != 86400 or after.get('default_ttl') != 31536000 or after.get('max_ttl') != 31536000
+        or cookies.get('cookie_behavior') != 'none'
+        or headers.get('header_behavior') != 'none'
+        or queries.get('query_string_behavior') != 'none'
+    ):
+        errors.append('Media cache policy must key on the path only (no cookies, headers or query) for one year')
+
+
+def _validate_media_origin(o, media, errors):
+    if (
+        o.get('domain_name') != MEDIA_ORIGIN_DOMAIN
+        or o.get('origin_path') not in [None, '']
+        or o.get('custom_header')
+        or o.get('custom_origin_config')
+        or any((config or {}).get('origin_access_identity') not in [None, ''] for config in (o.get('s3_origin_config') or []))
+    ):
+        errors.append('Media origin must be the private media bucket with no path, headers or custom config')
+    if not o.get('origin_access_control_id') or (media.get('oac_id') and o.get('origin_access_control_id') != media['oac_id']):
+        errors.append('Media origin must read through the media origin access control')
+
+
+def _validate_media_behavior(behavior, unknown, media, errors):
+    for f, value in (unknown or {}).items():
+        if not has_unknown(value):
+            continue
+        if f == 'cache_policy_id' and media.get('policy_created'):
+            continue
+        if f in ('default_ttl', 'max_ttl'):
+            continue
+        if f == 'grpc_config' and _only_grpc_enabled_unknown(value) and not _grpc_enabled(behavior):
+            continue
+        errors.append('Unknown safety field in ordered behavior ' + MEDIA_PATH + ': ' + f + '=' + json.dumps(value))
+    policy = behavior.get('cache_policy_id')
+    if not ((media.get('policy_id') and policy == media['policy_id']) or (media.get('policy_created') and policy in [None, ''])):
+        errors.append('Cache policy mismatch for ' + MEDIA_PATH)
+    key_groups = behavior.get('trusted_key_groups') or []
+    if len(key_groups) != 1 or not key_groups[0] or (media.get('key_group_id') and key_groups[0] != media['key_group_id']):
+        errors.append('Media behavior must trust exactly the media key group')
+    if (
+        behavior.get('target_origin_id') != MEDIA_ORIGIN_ID
+        or behavior.get('viewer_protocol_policy') != 'redirect-to-https'
+        or sorted(behavior.get('allowed_methods') or []) != ['GET', 'HEAD']
+        or sorted(behavior.get('cached_methods') or []) != ['GET', 'HEAD']
+        or behavior.get('origin_request_policy_id') not in [None, '']
+        or behavior.get('function_association')
+        or behavior.get('lambda_function_association')
+        or behavior.get('trusted_signers')
+    ):
+        errors.append('Media behavior must be signed GET/HEAD from the media origin over HTTPS, with no functions')
 
 
 def _validate_next_image_policy(after, errors):
@@ -475,16 +588,28 @@ def _validate_public_pages_policy(after, errors):
         errors.append('Page cache policy must store only origin-marked public responses (TTL 0/0/300), keyed on the session cookies, RSC headers and query')
 
 
-def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors):
+def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors, media=None, has_media_origin=False):
+    media = media or {}
     behaviors = cf.get('ordered_cache_behavior') or []
     if not behaviors:
-        return
-    if [b.get('path_pattern') for b in behaviors] != [path for path, _ in EXPECTED_ORDERED_BEHAVIORS]:
-        errors.append('Ordered cache behaviors must be exactly the static asset and image paths')
+        if has_media_origin:
+            errors.append('A media origin needs the signed media behavior')
         return
     unknown_behaviors = unknown.get('ordered_cache_behavior') or []
     if unknown_behaviors is True:
         errors.append('Unknown block: ordered_cache_behavior')
+        return
+    if behaviors[0].get('path_pattern') == MEDIA_PATH:
+        if not has_media_origin:
+            errors.append('The signed media behavior needs the media origin')
+        media_unknown = unknown_behaviors[0] if unknown_behaviors and isinstance(unknown_behaviors[0], dict) else {}
+        _validate_media_behavior(behaviors[0], media_unknown, media, errors)
+        behaviors = behaviors[1:]
+        unknown_behaviors = unknown_behaviors[1:]
+    elif has_media_origin:
+        errors.append('A media origin needs the signed media behavior first')
+    if [b.get('path_pattern') for b in behaviors] != [path for path, _ in EXPECTED_ORDERED_BEHAVIORS]:
+        errors.append('Ordered cache behaviors must be exactly the static asset and image paths')
         return
     image_policy_id = (image_policy_change.get('after') or {}).get('id')
     for index, (behavior, (path, policy)) in enumerate(zip(behaviors, EXPECTED_ORDERED_BEHAVIORS)):

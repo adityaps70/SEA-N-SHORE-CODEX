@@ -7,6 +7,8 @@ import {
 } from '@/lib/aws/storage'
 import { PDFDocument } from 'pdf-lib'
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
+import { cdnImageSrc } from '@/lib/media-cdn/media-cdn'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 import {
   POST_DOCUMENT_MAX_BYTES,
   POST_DOCUMENT_MAX_PAGES,
@@ -26,6 +28,15 @@ function buildFirstPartyMediaUrl(path: string): string {
   return `/api/feed-media/${encodedPath}`
 }
 
+const POST_PHOTO = /\.(?:jpe?g|png|webp)$/i
+
+/**
+ * URLs for post media the viewer may already see (callers resolve only visible posts).
+ * Round P3 (B7): post photos go straight to their signed CDN sizes once the media CDN is
+ * configured. Videos and PDFs keep the first-party route, which checks visibility on every
+ * request: videos redirect from it (to the CDN once configured), and the video player derives the
+ * poster and its backfill from that route's URL; PDFs are read same-origin by pdf.js.
+ */
 export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string, string>> {
   if (!paths.length) return new Map()
 
@@ -34,7 +45,7 @@ export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string,
       path,
       path.startsWith('profiles/')
         ? await createMediaImageSrc(path)
-        : buildFirstPartyMediaUrl(path),
+        : (POST_PHOTO.test(path) ? cdnImageSrc(path) : null) ?? buildFirstPartyMediaUrl(path),
     ] as const),
   )
 
@@ -141,6 +152,14 @@ export async function verifyPendingPostMedia(input: {
     if (input.pageCount == null || input.pageCount !== pageCount) {
       throw new Error('feed_media_document_page_mismatch')
     }
+  }
+
+  // Round P3 (B7, Part D): a photo's WebP sizes or a video's CDN copy, before the post is saved.
+  try {
+    await prepareMediaForCdn({ key: input.storagePath, contentType: metadata.mimeType })
+  } catch (error) {
+    console.error('[feed-media] cdn_prepare_failed', { errorName: safeErrorName(error) })
+    throw new Error('feed_media_unavailable')
   }
 }
 

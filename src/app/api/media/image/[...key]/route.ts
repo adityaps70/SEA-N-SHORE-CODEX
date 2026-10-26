@@ -1,4 +1,5 @@
 import { getMediaObject } from '@/lib/aws/storage'
+import { cdnImageRedirect } from '@/lib/media-cdn/cdn-redirect'
 import { MEDIA_IMAGE_MAX_BYTES, verifyMediaImageLink } from '@/lib/images/media-image-link'
 
 export const runtime = 'nodejs'
@@ -27,6 +28,11 @@ export async function GET(
   const url = new URL(request.url)
   const check = verifyMediaImageLink(storageKey, url.searchParams.get('w'), url.searchParams.get('s'))
   if (!check.ok) return new Response(null, { status: check.reason === 'not_configured' ? 503 : 404 })
+
+  // Round P3 (B7): links handed out before the media CDN (shared profile cards, cached pages)
+  // redirect to the photo's largest CDN size once it is configured.
+  const redirect = cdnImageRedirect(storageKey, { width: 1600, cacheControl: 'private, max-age=86400' })
+  if (redirect) return redirect
 
   try {
     const object = await getMediaObject({ key: storageKey, maxBytes: MEDIA_IMAGE_MAX_BYTES })

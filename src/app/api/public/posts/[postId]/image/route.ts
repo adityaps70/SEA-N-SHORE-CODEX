@@ -1,6 +1,7 @@
 import { feedRepository } from '@/features/feed/repository'
 import { isPostId } from '@/features/feed/queries'
 import { getMediaObject } from '@/lib/aws/storage'
+import { cdnImageRedirect } from '@/lib/media-cdn/cdn-redirect'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
 
@@ -28,6 +29,10 @@ export async function GET(
 
   const storagePath = await feedRepository.getPublicPostImagePath(postId).catch(() => null)
   if (!storagePath) return new Response(null, { status: 404 })
+
+  // Round P3 (B7): the photo's CDN size once the media CDN is configured.
+  const redirect = cdnImageRedirect(storagePath, { width: 1600, cacheControl: 'public, max-age=300' })
+  if (redirect) return redirect
 
   try {
     const object = await getMediaObject({ key: storagePath, maxBytes: MAX_IMAGE_BYTES })

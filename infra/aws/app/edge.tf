@@ -124,6 +124,27 @@ resource "aws_wafv2_web_acl" "edge" {
         aggregate_key_type    = "IP"
         evaluation_window_sec = 300
         limit                 = 2000
+
+        # Round P3 (B7): signed media (/m/*) is not counted. Each photo is one request, and many
+        # people share one ship or office address; CloudFront refuses any /m/ request without a
+        # valid signature before it reaches the bucket.
+        scope_down_statement {
+          not_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "STARTS_WITH"
+                search_string         = "/m/"
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
       }
     }
 
@@ -296,6 +317,13 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
+  # Round P3 (B7): the private media bucket, read through origin access control (media-cdn.tf).
+  origin {
+    domain_name              = aws_s3_bucket.app["media"].bucket_regional_domain_name
+    origin_id                = local.media_cdn_origin_id
+    origin_access_control_id = aws_cloudfront_origin_access_control.media.id
+  }
+
   default_cache_behavior {
     target_origin_id         = "sea-n-shore-staging-alb"
     viewer_protocol_policy   = "redirect-to-https"
@@ -311,6 +339,18 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
+  # Round P3 (B7): signed media only. Every request must carry a signature from the media key group;
+  # there is no viewer function (the redirect function must not rewrite a signed URL).
+  ordered_cache_behavior {
+    path_pattern           = "/m/*"
+    target_origin_id       = local.media_cdn_origin_id
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = false
+    cache_policy_id        = aws_cloudfront_cache_policy.media_cdn.id
+    trusted_key_groups     = [aws_cloudfront_key_group.media_cdn.id]
+  }
   ordered_cache_behavior {
     path_pattern           = "/_next/static/*"
     target_origin_id       = "sea-n-shore-staging-alb"

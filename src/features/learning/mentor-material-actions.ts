@@ -11,6 +11,7 @@ import { articleImagePaths, articlePlainText, sanitizeArticleHtml } from './arti
 import { mentorMaterialRepository, type MentorMaterialDraft, type MaterialType } from './mentor-material-repository'
 import type { LearningMediaKind } from './media-policy'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
+import { prepareMediaForCdn } from '@/lib/media-cdn/prepare-media'
 
 const uuidSchema = z.string().uuid()
 const materialTypeSchema = z.enum([
@@ -147,6 +148,8 @@ function uploadKind(materialType: MaterialType): LearningMediaKind | null {
  * Rich-text articles are sanitized on the server before they are saved, and may only show images
  * uploaded to this course (or, for a draft revision, to the published course it copies).
  */
+const ARTICLE_IMAGE_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
+
 async function prepareArticle(userId: string, courseId: string, draft: MentorMaterialDraft): Promise<MentorMaterialDraft> {
   if (draft.materialType !== 'article' || draft.articleFormat !== 'html' || !draft.articleBody) return draft
   const articleBody = sanitizeArticleHtml(draft.articleBody)
@@ -155,6 +158,16 @@ async function prepareArticle(userId: string, courseId: string, draft: MentorMat
   const allowedCourses = await learningMediaRepository.courseMediaScope(userId, courseId)
   for (const path of articleImagePaths(articleBody)) {
     if (!allowedCourses.includes(path.split('/')[2] ?? '')) throw new Error('article_image_invalid')
+  }
+  // Round P3 (B7): each article image has its CDN sizes (images already in the article are skipped).
+  for (const path of new Set(articleImagePaths(articleBody))) {
+    const contentType = ARTICLE_IMAGE_TYPES[path.slice(path.lastIndexOf('.') + 1).toLowerCase()]
+    if (!contentType) continue
+    try {
+      await prepareMediaForCdn({ key: path, contentType, skipIfPresent: true })
+    } catch {
+      throw new Error('article_image_invalid')
+    }
   }
   return { ...draft, articleBody }
 }

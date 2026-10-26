@@ -130,6 +130,34 @@ jq -e '.DistributionList.IsTruncated == false and (.DistributionList.Quantity | 
 echo "LIVE_CLOUDFRONT_COUNT=$(jq -r '.DistributionList.Quantity' "$EVIDENCE_DIR/distributions.json")"
 jq '[.DistributionList.Items[]? | {Id, DomainName, Status, Enabled, WebACLId, Aliases, Origins: [.Origins.Items[]? | {Id, DomainName}]}]' "$EVIDENCE_DIR/distributions.json"
 aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 --output json | jq '.WebACLs'
+# Round P3 (B7): read-only, the signed-media public key, key group and origin access control must
+# exist under the same id and name as in state. Uses the loop's type, state_name, id and live_name.
+check_media_signing_resource() {
+  local read_command name_path id_path
+  case "$type" in
+    aws_cloudfront_public_key) read_command=(aws cloudfront get-public-key --id "$id"); name_path='.PublicKey.PublicKeyConfig.Name'; id_path='.PublicKey.Id' ;;
+    aws_cloudfront_key_group) read_command=(aws cloudfront get-key-group --id "$id"); name_path='.KeyGroup.KeyGroupConfig.Name'; id_path='.KeyGroup.Id' ;;
+    *) read_command=(aws cloudfront get-origin-access-control --id "$id"); name_path='.OriginAccessControl.OriginAccessControlConfig.Name'; id_path='.OriginAccessControl.Id' ;;
+  esac
+  if [[ -z "$live_name" || "$live_name" == "null" ]]; then
+    LIVE_CHECK_FAILED=1
+    echo "$type.$state_name LIVE_QUERY_SKIPPED id=$id reason=missing-name-in-state"
+    return
+  fi
+  if "${read_command[@]}" --output json > "$EVIDENCE_DIR/edge-media-resource.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
+    if jq -e --arg id "$id" --arg name "$live_name" "($id_path) == \$id and ($name_path) == \$name" "$EVIDENCE_DIR/edge-media-resource.json" >/dev/null; then
+      echo "$type.$state_name LIVE=true id=$id name=$live_name"
+    else
+      LIVE_CHECK_FAILED=1
+      echo "$type.$state_name LIVE_QUERY_FAILED id=$id name=$live_name reason=state-id-name-mismatch"
+    fi
+  else
+    LIVE_CHECK_FAILED=1
+    ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+    echo "$type.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
+  fi
+}
+
 echo "=== LIVE EDGE RESOURCE CHECK ==="
 LIVE_CHECK_FAILED=0
 while IFS=$'\t' read -r type state_name id live_name; do
@@ -198,6 +226,15 @@ while IFS=$'\t' read -r type state_name id live_name; do
         ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
         echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
       fi
+      ;;
+    aws_cloudfront_public_key)
+      check_media_signing_resource
+      ;;
+    aws_cloudfront_key_group)
+      check_media_signing_resource
+      ;;
+    aws_cloudfront_origin_access_control)
+      check_media_signing_resource
       ;;
     aws_wafv2_web_acl)
       if [[ -z "$live_name" || "$live_name" == "null" ]]; then

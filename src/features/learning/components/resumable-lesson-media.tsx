@@ -20,6 +20,8 @@ import { saveLearningPlaybackPosition } from '../learner-progress-actions'
 import { announceLessonCompleted } from '../lesson-completion-events'
 import { PLAYBACK_RATES, seekLimit } from '../media-watch-policy'
 import { formatTimestamp, parseWebVtt, type CaptionCue } from '../webvtt'
+import { useDataSaver } from '@/lib/browser/data-saver'
+import { useHlsStream, type VideoStream } from './use-hls-stream'
 
 type ResumableLessonMediaProps = {
   kind: 'video' | 'audio'
@@ -39,6 +41,11 @@ type ResumableLessonMediaProps = {
   expiresAt?: string | null
   /** Round E: a faint moving watermark over the video, e.g. "SNS-1A2B3C4D · 11 Oct 2026". Never a name or email. */
   watermark?: string | null
+  /**
+   * Round P3: the video's ready MediaConvert rendition (adaptive HLS, 360p and 720p). `src` is then its signed 720p
+   * MP4, used where hls.js cannot play.
+   */
+  stream?: VideoStream | null
 }
 
 const CHECKPOINT_SECONDS = 15
@@ -88,6 +95,7 @@ export function ResumableLessonMedia({
   captionsSrc = null,
   expiresAt: initialExpiresAt = null,
   watermark = null,
+  stream: initialStream = null,
 }: ResumableLessonMediaProps) {
   const router = useRouter()
   const announcedRef = useRef(completed)
@@ -107,6 +115,14 @@ export function ResumableLessonMedia({
   // The source whose metadata was handled (see the catch-up effect below).
   const metadataSeenRef = useRef<string | null>(null)
   const [src, setSrc] = useState(initialSrc)
+  const [stream, setStream] = useState<VideoStream | null>(kind === 'video' ? initialStream : null)
+  const [mediaNode, setMediaNode] = useState<HTMLMediaElement | null>(null)
+  const dataSaver = useDataSaver()
+  const streamMode = useHlsStream(mediaNode, stream, dataSaver)
+  const streamModeRef = useRef(streamMode)
+  useEffect(() => {
+    streamModeRef.current = streamMode
+  }, [streamMode])
   const [expiresAt, setExpiresAt] = useState(initialExpiresAt)
   const [rate, setRate] = useState(1)
   const [seekNotice, setSeekNotice] = useState(false)
@@ -177,6 +193,7 @@ export function ResumableLessonMedia({
 
   const setMediaRef = useCallback((node: HTMLMediaElement | null) => {
     mediaRef.current = node
+    setMediaNode(node)
   }, [])
 
   // Round E: swap in a fresh short-lived URL, keeping the learner's place (and playback, if it was playing).
@@ -190,9 +207,11 @@ export function ResumableLessonMedia({
         return false
       }
       const media = mediaRef.current
-      if (media) restoreRef.current = { time: media.currentTime, play: !media.paused && !media.ended }
+      // HLS keeps playing: only the signed query changes. A file source reloads, so remember the place.
+      if (media && streamModeRef.current !== 'hls') restoreRef.current = { time: media.currentTime, play: !media.paused && !media.ended }
       setMediaError(null)
       setSrc(result.url)
+      setStream(kind === 'video' ? result.stream ?? null : null)
       setExpiresAt(result.expiresAt)
       return true
     } catch {
@@ -201,7 +220,7 @@ export function ResumableLessonMedia({
     } finally {
       refreshingRef.current = false
     }
-  }, [lessonId, slug])
+  }, [kind, lessonId, slug])
 
   useEffect(() => {
     if (!expiresAt) return
@@ -458,8 +477,9 @@ export function ResumableLessonMedia({
   )
 
   const mediaHandlers = {
-    preload: 'metadata' as const,
-    src,
+    preload: (dataSaver ? 'none' : 'metadata') as 'none' | 'metadata',
+    // Round P3: no src attribute while hls.js may attach (it owns the element's source then).
+    src: streamMode === 'file' ? src : undefined,
     onLoadedMetadata: handleLoadedMetadata,
     onTimeUpdate: handleTimeUpdate,
     onSeeking: handleSeeking,

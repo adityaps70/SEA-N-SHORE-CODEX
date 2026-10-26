@@ -316,6 +316,25 @@ describe('feed media adapter', () => {
     expect([...urls.values()].every((url) => url.startsWith('/'))).toBe(true)
   })
 
+  // Round P3 (B7): once the media CDN is configured, photos go straight to their signed sizes;
+  // videos and PDFs keep the visibility-checking route.
+  it('hands out signed CDN sizes for post photos once the media CDN is configured', async () => {
+    const { generateKeyPairSync } = await import('node:crypto')
+    const pem = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    const saved = { ...process.env }
+    Object.assign(process.env, { MEDIA_CDN_SIGNING_KEY: pem, MEDIA_CDN_KEY_PAIR_ID: 'K2JCJMDEHXQW5F', NEXT_PUBLIC_SITE_URL: 'https://seanshore.in' })
+    try {
+      const photo = `${profileId}/${postId}/${randomId}.jpg`
+      const pdf = `${profileId}/${postId}/${randomId}.pdf`
+      const urls = await resolveFeedMediaUrls([photo, videoPath, pdf])
+      expect(urls.get(photo)).toMatch(/^\/m\/i\/[A-Za-z0-9_-]{32}\/768\.webp\?Policy=.+&Signature=.+&Key-Pair-Id=K2JCJMDEHXQW5F&Hash-Algorithm=SHA256$/)
+      expect(urls.get(videoPath)).toBe(`/api/feed-media/${videoPath}`)
+      expect(urls.get(pdf)).toBe(`/api/feed-media/${pdf}`)
+    } finally {
+      process.env = saved
+    }
+  })
+
   it('deletes the exact S3 storage key', async () => {
     await removeFeedImage(`${profileId}/${postId}/image.webp`)
 

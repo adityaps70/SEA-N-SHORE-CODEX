@@ -15,6 +15,7 @@ on:
       - scripts/aws/server-action-edge-header.test.mjs
       - scripts/aws/canonical-host-redirect.test.mjs
       - infra/aws/app/edge.tf
+      - infra/aws/app/media-cdn.tf
       - infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl
   workflow_dispatch:
 
@@ -77,7 +78,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/edge-recovery-action.txt
-          RUNNER_FILES: "scripts/aws/edge-recovery.sh scripts/aws/check-edge-plan.py scripts/aws/check-edge-plan.test.py scripts/aws/server-action-edge-header.test.mjs scripts/aws/canonical-host-redirect.test.mjs infra/aws/app/edge.tf infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl"
+          RUNNER_FILES: "scripts/aws/edge-recovery.sh scripts/aws/check-edge-plan.py scripts/aws/check-edge-plan.test.py scripts/aws/server-action-edge-header.test.mjs scripts/aws/canonical-host-redirect.test.mjs infra/aws/app/edge.tf infra/aws/app/media-cdn.tf infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl"
         shell: bash
         run: |
           set -euo pipefail

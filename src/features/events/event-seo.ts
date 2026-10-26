@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { isMediaImageLink } from '@/lib/images/media-image-route'
+import { cdnImageUrlForWidth, isCdnImageUrl } from '@/lib/media-cdn/cdn-url'
 import { indexableMetadata, metaDescription } from '@/lib/seo/meta'
 import type { CalendarEvent } from './calendar-types'
 
@@ -37,6 +38,8 @@ export function eventMetadata(event: EventSeoInput): Metadata {
 function bannerAddress(bannerUrl: string | null, origin: string) {
   if (!bannerUrl) return null
   if (isMediaImageLink(bannerUrl)) return `${origin}${bannerUrl}`
+  // Round P3: a CDN banner is signed for 30 to 60 days, like the stable link.
+  if (isCdnImageUrl(bannerUrl)) return `${origin}${cdnImageUrlForWidth(bannerUrl, 1600)}`
   return /^https:\/\//i.test(bannerUrl) && !/[?&]X-Amz-/i.test(bannerUrl) ? bannerUrl : null
 }
 
