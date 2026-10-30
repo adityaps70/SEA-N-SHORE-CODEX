@@ -10,7 +10,7 @@ import {
   rankPersonaFor,
   roleByKey,
 } from '@/features/roles/taxonomy'
-import { certificateCheck, experienceCheck, pushCheck, rankCheck, roleExperienceCheck, vesselCheck, visaCheck } from './match-checks'
+import { certificateCheck, experienceCheck, pushCheck, rankCheck, roleExperienceCheck, vesselCheck } from './match-checks'
 import type { JobCandidateProfile, JobListing, JobMatchBand, JobMatchCheck, JobMatchResult, JobProfileGap } from './types'
 
 /**
@@ -18,7 +18,9 @@ import type { JobCandidateProfile, JobListing, JobMatchBand, JobMatchCheck, JobM
  * - Only what the job specifies is scored: a blank criterion is left out (no free points), and the
  *   score is points earned / points possible × 100. Nothing comparable → score null.
  * - Weights when specified: rank / role 35, sea experience 15, vessel types 15, certificates 20
- *   (verified 1, self-reported 0.75, expired 0), visas 10, trading region 5.
+ *   (verified 1, self-reported 0.75, expired 0), trading region 5.
+ * - Visa is never compared (Hotfix P5): members and posters write "N/A" and the like there, so it is
+ *   information on the job page only.
  * - Rank / role is a gate on taxonomy keys: accepted or one level more senior = full credit; one
  *   level below the most junior accepted rank = half credit and the total capped at 60; anything
  *   else (two or more below, another department, officer vs rating, "Other", no rank) = no credit
@@ -30,7 +32,6 @@ export const MATCH_WEIGHTS = {
   experience: 15,
   vessel: 15,
   certificates: 20,
-  visas: 10,
   region: 5,
 } as const
 
@@ -272,21 +273,6 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
     }
     earned += MATCH_WEIGHTS.certificates * (matchedCertificates / job.certificateRequirements.length)
     if (matchedCertificates === job.certificateRequirements.length) reasons.push('Required certificates are valid')
-  }
-
-  // Visa eligibility.
-  if (job.visaRequirements.length) {
-    possible += MATCH_WEIGHTS.visas
-    const matchedVisas = job.visaRequirements.filter((visa) => includesCI(profile.visas, visa))
-    earned += MATCH_WEIGHTS.visas * (matchedVisas.length / job.visaRequirements.length)
-    for (const visa of job.visaRequirements) {
-      if (!includesCI(profile.visas, visa)) {
-        pushUnique(missingRequirements, visa)
-        warnings.push(`${visa} visa requirement is not present on your profile.`)
-        pushCheck(checks, visaCheck(visa, profile.visas))
-      }
-    }
-    if (matchedVisas.length === job.visaRequirements.length) reasons.push('Visa requirements match your profile')
   }
 
   // Trading / sailing region: "Worldwide" or blank is not a requirement.

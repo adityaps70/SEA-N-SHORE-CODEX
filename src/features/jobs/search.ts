@@ -57,7 +57,6 @@ export function parseJobSearchParams(params: JobSearchParams): JobSearchFilters 
     salaryMax: numberOrNull(params.salaryMax, { allowZero: true }),
     regions: list(params.region),
     certificates: list(params.certificate),
-    visas: list(params.visa),
     verifiedOnly: flag(params.verified),
     urgentOnly: flag(params.urgent),
     easyApplyOnly: flag(params.easyApply),

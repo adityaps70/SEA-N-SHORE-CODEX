@@ -44,7 +44,9 @@ describe('"Check before applying" items (Round H, H7)', () => {
     expect(match.missingRequirements.length).toBeGreaterThan(0)
     expect(find(match.checks, 'certificate')).toEqual({ key: 'certificate', label: 'Certificate', required: 'COC: Master', yours: 'COC: Chief Mate' })
     expect(find(match.checks, 'vessel')).toEqual({ key: 'vessel', label: 'Vessel type', required: 'Oil Tanker', yours: 'Bulk Carrier' })
-    expect(find(match.checks, 'visa')).toEqual({ key: 'visa', label: 'Visa', required: 'US C1/D', yours: 'Schengen' })
+    // Hotfix P5: visa is never checked, whatever the job lists.
+    expect(match.checks?.some((check) => check.label === 'Visa')).toBe(false)
+    expect(match.missingRequirements).not.toContain('US C1/D')
     // Chief Officer is one step below Master: not a gap, so no rank check.
     expect(find(match.checks, 'rank')).toBeUndefined()
   })

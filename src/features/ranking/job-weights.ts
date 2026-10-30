@@ -3,7 +3,7 @@
  * Best match and Suggested candidates). Change the numbers here and bump JOB_WEIGHTS_VERSION; tests
  * check eligibility and order, not exact scores.
  */
-export const JOB_WEIGHTS_VERSION = 'jobs-2026-10-13.1'
+export const JOB_WEIGHTS_VERSION = 'jobs-2026-10-30.1'
 
 export const JOB_WEIGHTS = {
   /** Points per criterion. A criterion counts only when the job specifies it. */
@@ -15,7 +15,6 @@ export const JOB_WEIGHTS = {
     seaTime: 15,
     availability: 10,
     skills: 10,
-    visas: 10,
     tradingArea: 5,
     location: 5,
   },

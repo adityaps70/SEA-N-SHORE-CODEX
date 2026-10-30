@@ -77,7 +77,7 @@ describe('Your Maritime Match', () => {
     expect(withOldValue.reasons.join(' ')).not.toMatch(/availability/i)
   })
 
-  it('surfaces missing visas and expired credentials as eligibility warnings', () => {
+  it('surfaces expired credentials as eligibility warnings, and never visas (hotfix P5)', () => {
     const result = scoreJobMatch(job, {
       ...profile,
       visas: [],
@@ -88,9 +88,10 @@ describe('Your Maritime Match', () => {
     }, new Date('2026-09-11T00:00:00.000Z'))
 
     expect(result.score).toBeLessThan(95)
-    expect(result.missingRequirements).toEqual(expect.arrayContaining(['US C1/D', 'STCW']))
-    expect(result.warnings.join(' ')).toMatch(/visa/i)
+    expect(result.missingRequirements).toEqual(['STCW'])
+    expect(result.warnings.join(' ')).not.toMatch(/visa/i)
     expect(result.warnings.join(' ')).toMatch(/expired/i)
+    expect(result.checks?.some((check) => check.label === 'Visa')).toBe(false)
   })
 
   it('does not recommend a sea job as a strong fit when current rank and vessel experience miss', () => {

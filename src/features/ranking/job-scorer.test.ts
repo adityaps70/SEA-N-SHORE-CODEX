@@ -82,11 +82,15 @@ describe('jobs match v2: hard requirements', () => {
     expect(scoreJobV2(job({ certificateList: list }), seafarer(), today).eligible).toBe(true)
   })
 
-  it('a missing required visa is not eligible; a preferred one only lowers the score', () => {
-    expect(scoreJobV2(job({ visaList: [{ name: 'US C1/D', required: true }] }), seafarer(), today).ineligibleReason).toBe('Not eligible: needs US C1/D visa')
+  it('a listed visa, required or preferred, is never eligibility or points (hotfix P5)', () => {
+    const required = scoreJobV2(job({ acceptedRoleKeys: ['second_officer'], visaList: [{ name: 'US C1/D', required: true }] }), seafarer(), today)
+    expect(required.eligible).toBe(true)
+    expect(required.ineligibleReason).toBeNull()
+    expect(required.parts).not.toHaveProperty('visas')
+    expect(required.score).toBe(scoreJobV2(job({ acceptedRoleKeys: ['second_officer'] }), seafarer(), today).score)
     const preferred = scoreJobV2(job({ visaList: [{ name: 'US C1/D', required: false }, { name: 'Schengen', required: false }] }), seafarer({ visas: ['Schengen'] }), today)
     expect(preferred.eligible).toBe(true)
-    expect(preferred.parts.visas).toBe(5)
+    expect(preferred).toMatchObject({ score: null, criteria: 0 })
   })
 })
 

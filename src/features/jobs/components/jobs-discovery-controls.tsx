@@ -3,7 +3,7 @@
 import { Filter, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTransition } from 'react'
-import { MARITIME_CERTIFICATES, MARITIME_VISAS, VESSEL_TYPES } from '../catalog'
+import { MARITIME_CERTIFICATES, VESSEL_TYPES } from '../catalog'
 import { jobDepartments, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { activeJobFilters } from '../filter-state'
 import type { JobSearchFilters } from '../types'
@@ -108,14 +108,13 @@ export function JobsDiscoveryControls({ filters, resultCount, className = '' }: 
           <input defaultValue={filters.regions[0] ?? ''} onBlur={(event) => update('region', event.currentTarget.value.trim())} placeholder="Any region" className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 px-3 text-sm text-ink" />
         </label>
 
-        <details className="rounded-xl border border-mist-100 p-3" open={activeFilters.some((item) => ['experience', 'joining', 'salaryMin', 'certificate', 'visa', 'verified', 'easyApply'].includes(item.key))}>
+        <details className="rounded-xl border border-mist-100 p-3" open={activeFilters.some((item) => ['experience', 'joining', 'salaryMin', 'certificate', 'verified', 'easyApply'].includes(item.key))}>
           <summary className="cursor-pointer rounded-lg text-sm font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">Advanced filters</summary>
           <div className="mt-3 space-y-4">
             <label className="block text-xs font-semibold text-navy-950">Experience (years)<input type="number" min="0" max="70" step="0.5" defaultValue={filters.minExperienceYears ?? ''} onBlur={(event) => update('experience', event.currentTarget.value)} placeholder="e.g. 4" className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 px-3 text-sm text-ink" /></label>
             <label className="block text-xs font-semibold text-navy-950">Joining within<select value={filters.joiningWithinDays ?? ''} onChange={(event) => update('joining', event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink"><option value="">Any date</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option></select></label>
             <label className="block text-xs font-semibold text-navy-950">Minimum salary<input type="number" min="0" defaultValue={filters.salaryMin ?? ''} onBlur={(event) => update('salaryMin', event.currentTarget.value)} placeholder="e.g. 7000" className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 px-3 text-sm text-ink" /></label>
             <label className="block text-xs font-semibold text-navy-950">Certificate<select value={filters.certificates[0] ?? ''} onChange={(event) => update('certificate', event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink"><option value="">Any certificate</option>{MARITIME_CERTIFICATES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-            <label className="block text-xs font-semibold text-navy-950">Visa<select value={filters.visas[0] ?? ''} onChange={(event) => update('visa', event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink"><option value="">Any visa</option>{MARITIME_VISAS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             <label className="flex items-center gap-2 text-sm font-medium text-ink"><input type="checkbox" checked={filters.verifiedOnly} onChange={(event) => update('verified', event.target.checked ? '1' : '')} className="size-4 accent-teal-600" />Verified employers</label>
             <label className="flex items-center gap-2 text-sm font-medium text-ink"><input type="checkbox" checked={filters.easyApplyOnly} onChange={(event) => update('easyApply', event.target.checked ? '1' : '')} className="size-4 accent-teal-600" />Easy Apply only</label>
           </div>

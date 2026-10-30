@@ -62,10 +62,6 @@ export function certificateCheck(name: string, detail: CertificateCheckState): J
   return { key: 'certificate', label: 'Certificate', required: detail.state === 'self_reported' ? `${name} (verified)` : name, yours }
 }
 
-export function visaCheck(visa: string, memberVisas: readonly string[]): JobMatchCheck {
-  return { key: 'visa', label: 'Visa', required: visa, yours: listOr(memberVisas, 'No visas on your profile') }
-}
-
 export function availabilityCheck(joinBy: Date, availableFrom: Date): JobMatchCheck {
   return { key: 'availability', label: 'Availability', required: `Join by ${dateLabel(joinBy)}`, yours: `Available from ${dateLabel(availableFrom)}` }
 }

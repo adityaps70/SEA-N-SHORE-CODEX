@@ -21,6 +21,7 @@ import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { recruiterMessageAccess } from '@/features/messaging/recruiter-contact-queries'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { formatYears } from '@/lib/format'
+import { displayableVisas } from '@/features/jobs/visa-display'
 import { dgProfileDownloadHref } from '@/features/profiles/profile-document-policy'
 import { profileDocumentRepository } from '@/features/profiles/profile-document-repository'
 
@@ -317,7 +318,7 @@ export default async function HiringApplicantReviewPage({
               </div>
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wide text-muted">Visas</h3>
-                <div className="mt-2 flex flex-wrap gap-2">{candidate.visas.length ? candidate.visas.map((visa) => <span key={visa} className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-navy-950">{visa}</span>) : <span className="text-sm text-muted">No active visas listed.</span>}</div>
+                <div className="mt-2 flex flex-wrap gap-2">{displayableVisas(candidate.visas).length ? displayableVisas(candidate.visas).map((visa) => <span key={visa} className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-navy-950">{visa}</span>) : <span className="text-sm text-muted">No active visas listed.</span>}</div>
               </div>
             </div>
           </section>

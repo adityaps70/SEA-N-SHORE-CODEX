@@ -107,7 +107,7 @@ export function faqGroups({ googleEnabled = false }: FaqOptions = {}): FaqGroup[
           id: 'maritime-match',
           question: 'What is Maritime Match?',
           answer:
-            'Every job shows a Maritime Match score: how well your Passport fits the role, based on things like rank, vessel type, years of experience, certificates, visas, trading areas and availability. It also lists what matches and what to check before you apply. It is a guide to help you decide — the employer still makes the hiring decision.',
+            'Every job shows a Maritime Match score: how well your Passport fits the role, based on things like rank, vessel type, years of experience, certificates, trading areas and availability. It also lists what matches and what to check before you apply. It is a guide to help you decide — the employer still makes the hiring decision.',
         },
         {
           id: 'apply',

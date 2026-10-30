@@ -70,7 +70,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const ranked = !signedOut && version === 2 && (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you')
   const alertQuery = serialize(rawParams) || 'mode=for-you'
   const alertHref = signedOut ? authHrefWithReturn('/auth/sign-in', `/jobs/alerts?${alertQuery}`) : `/jobs/alerts?${alertQuery}`
-  const activeFilterCount = [filters.department ? 1 : 0, filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
+  const activeFilterCount = [filters.department ? 1 : 0, filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
   const hasSearchConstraints = Boolean(filters.query || activeFilterCount || filters.mode !== 'for-you')
   const sortLabel = filters.sort === 'recommended'
     ? 'Recommended'

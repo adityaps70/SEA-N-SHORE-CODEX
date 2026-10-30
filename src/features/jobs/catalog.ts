@@ -83,4 +83,3 @@ export const MARITIME_CERTIFICATES = [
   'Dynamic Positioning',
 ] as const
 
-export const MARITIME_VISAS = ['US C1/D', 'Schengen', 'UK Transit', 'Australian MCV'] as const

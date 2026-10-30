@@ -49,7 +49,7 @@ describe('JobsMobileToolbar (phones)', () => {
     fireEvent.click(screen.getByRole('button', { name: /All filters/ }))
 
     const sheet = screen.getByRole('dialog', { name: 'All filters' })
-    for (const heading of ['Sort by', 'Department and rank', 'Vessel type', 'Joining within', 'Experience and salary', 'Certificates and visas', 'Employer and apply']) {
+    for (const heading of ['Sort by', 'Department and rank', 'Vessel type', 'Joining within', 'Experience and salary', 'Certificates', 'Employer and apply']) {
       expect(within(sheet).getByRole('heading', { name: heading })).toBeInTheDocument()
     }
     for (const sort of ['Recommended', 'Newest', 'Joining soonest', 'Highest salary']) {
@@ -66,7 +66,8 @@ describe('JobsMobileToolbar (phones)', () => {
     expect(within(sheet).getByLabelText('Experience (years)')).toBeInTheDocument()
     expect(within(sheet).getByLabelText('Minimum salary')).toBeInTheDocument()
     expect(within(sheet).getByLabelText('Certificate')).toBeInTheDocument()
-    expect(within(sheet).getByLabelText('Visa')).toBeInTheDocument()
+    // Hotfix P5: visa is no longer a job filter.
+    expect(within(sheet).queryByLabelText('Visa')).toBeNull()
     expect(within(sheet).getByRole('switch', { name: 'Verified employers' })).toBeInTheDocument()
     expect(within(sheet).getByRole('switch', { name: 'Easy Apply only' })).toBeInTheDocument()
     expect(within(sheet).getByRole('button', { name: 'Reset' })).toBeEnabled()

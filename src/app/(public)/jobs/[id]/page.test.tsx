@@ -103,6 +103,30 @@ describe('job detail page', () => {
   })
 })
 
+describe('job detail page visa / documents note (hotfix P5)', () => {
+  function withVisas(visaRequirements: string[], visaList?: Array<{ name: string; required: boolean }>) {
+    vi.clearAllMocks()
+    mocks.getVerifiedUser.mockResolvedValue(null)
+    mocks.getSignedOutJobDetailState.mockResolvedValue({ job: { ...job, visaRequirements, visaList }, alreadyApplied: false, isSaved: false, match: null, gateMatch: null, profileReady: false })
+  }
+
+  it('never shows "N/A"-style values: no section when every value is one', async () => {
+    withVisas(['N/A', 'none'], [{ name: 'N/A', required: true }, { name: 'none', required: false }, { name: '  nil ', required: false }])
+    const { container } = render(await JobDetailPage({ params: Promise.resolve({ id: job.id }) }))
+    expect(screen.queryByRole('heading', { name: /visa/i })).toBeNull()
+    expect(container.textContent).not.toMatch(/\bN\/A\b|\bnone\b|\bnil\b/i)
+  })
+
+  it('shows real values as information, required or preferred, without the placeholders', async () => {
+    withVisas(['US C1/D', 'NA'], [{ name: 'US C1/D', required: true }, { name: 'NA', required: true }, { name: 'Schengen', required: false }])
+    render(await JobDetailPage({ params: Promise.resolve({ id: job.id }) }))
+    const section = screen.getByRole('heading', { name: 'Visa / documents' }).closest('section')!
+    expect(within(section).getByText('US C1/D')).toBeInTheDocument()
+    expect(within(section).getByText('Schengen')).toBeInTheDocument()
+    expect(within(section).queryByText('NA')).toBeNull()
+  })
+})
+
 function jobPosting(container: HTMLElement) {
   const script = container.querySelector('script[type="application/ld+json"]')
   expect(script).not.toBeNull()

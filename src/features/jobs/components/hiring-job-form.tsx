@@ -699,10 +699,13 @@ function HiringJobFormFields(props: HiringJobFormProps & {
             <input className={inputClass} name="certificates" defaultValue={join(values.certificates)} placeholder="STCW, Advanced Oil Tanker" />
           </label>
 
-          <label className={labelClass}>
-            Visas
-            <input className={inputClass} name="visas" defaultValue={join(values.visas)} placeholder="US C1/D, Schengen" />
-          </label>
+          <div className="space-y-1.5">
+            <label className={`block ${labelClass}`}>
+              Visa / documents note (optional)
+              <input className={inputClass} name="visas" defaultValue={join(values.visas)} placeholder="US C1/D, Schengen" aria-describedby="hiring-job-visas-hint" />
+            </label>
+            <span id="hiring-job-visas-hint" className="block text-xs font-normal text-muted">Shown on the job page for information. Not used for matching or eligibility.</span>
+          </div>
 
           <label className={`${labelClass} sm:col-span-2`}>
             Other requirements

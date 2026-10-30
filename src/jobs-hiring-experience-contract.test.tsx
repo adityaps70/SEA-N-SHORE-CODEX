@@ -62,7 +62,7 @@ describe('premium hiring workspace contract', () => {
     expect(form).toContain('Salary')
     expect(form).toContain('Sailing regions')
     expect(form).toContain('Certificates')
-    expect(form).toContain('Visas')
+    expect(form).toContain('Visa / documents note (optional)')
     expect(form).toContain('Urgent joining')
     expect(form).toContain('Easy Apply')
   })

@@ -9,7 +9,7 @@ import {
   vesselTypeCodes,
 } from '@/features/taxonomy/maritime-taxonomy'
 import { candidatePersona, candidateRoleKeys, isSeaJob, jobAcceptedRoleKeys } from '@/features/jobs/matching'
-import { availabilityCheck, certificateCheck, experienceCheck, pushCheck, rankCheck, vesselCheck, visaCheck } from '@/features/jobs/match-checks'
+import { availabilityCheck, certificateCheck, experienceCheck, pushCheck, rankCheck, vesselCheck } from '@/features/jobs/match-checks'
 import type { JobCandidateProfile, JobCredential, JobListing, JobMatchBand, JobMatchCheck, JobMatchResult, JobProfileGap } from '@/features/jobs/types'
 import { JOB_WEIGHTS, JOB_WEIGHTS_VERSION, jobFreshness, specificityFactor } from './job-weights'
 
@@ -19,8 +19,10 @@ import { JOB_WEIGHTS, JOB_WEIGHTS_VERSION, jobFreshness, specificityFactor } fro
  * - Only criteria the job specifies count: score = points earned / points possible × 100, times a
  *   specificity factor (a job with 0 or 1 criteria can never be Strong). Shown as a band, not a %.
  * - Hard requirements are eligibility, not points: a rank more than one ladder step away (or in
- *   another department), a required COC grade missing or expired, a required visa missing. An
- *   ineligible job keeps its score but sorts below every eligible one, labelled "Not eligible: needs X".
+ *   another department), a required COC grade missing or expired. An ineligible job keeps its score
+ *   but sorts below every eligible one, labelled "Not eligible: needs X".
+ * - Visa is never compared (Hotfix P5): it is information on the job page only, never points or
+ *   eligibility, because members and posters write "N/A" and the like there.
  * - Weights live in job-weights.ts.
  */
 const W = JOB_WEIGHTS.criteria
@@ -290,21 +292,6 @@ export function scoreJobV2(job: JobListing, profile: JobCandidateProfile, today 
       add('skills', W.skills, matched.length / Math.min(jobWords.length, JOB_WEIGHTS.skillsWordsForFull))
       if (matched.length) reasons.push(`Your skills mention ${matched.slice(0, 3).map((word) => `“${word}”`).join(', ')}`)
     }
-  }
-
-  // Visas: proportional over every listed visa; a missing required one is not eligible.
-  const visas = job.visaList ?? job.visaRequirements.map((name) => ({ name, required: true }))
-  if (visas.length) {
-    const held = new Set(profile.visas.map(normaliseTaxonomyText))
-    const matched = visas.filter((visa) => held.has(normaliseTaxonomyText(visa.name)))
-    add('visas', W.visas, matched.length / visas.length)
-    for (const visa of visas) {
-      if (held.has(normaliseTaxonomyText(visa.name))) continue
-      pushUnique(missingRequirements, visa.name)
-      pushCheck(checks, visaCheck(visa.name, profile.visas))
-      if (visa.required) hardFails.push(`${visa.name} visa`)
-    }
-    if (matched.length === visas.length) reasons.push('Visa requirements match your profile')
   }
 
   // Trading area ("Worldwide" or blank is not a requirement).
