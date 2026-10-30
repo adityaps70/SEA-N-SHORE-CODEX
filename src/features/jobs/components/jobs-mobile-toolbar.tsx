@@ -5,7 +5,7 @@ import { MapPin, Search, SlidersHorizontal, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition, type ReactNode } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
-import { JOB_DISCOVERY_MODES, MARITIME_CERTIFICATES, MARITIME_VISAS, VESSEL_TYPES } from '../catalog'
+import { JOB_DISCOVERY_MODES, MARITIME_CERTIFICATES, VESSEL_TYPES } from '../catalog'
 import { jobDepartments, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { JOB_JOINING_WINDOWS, JOB_SORT_OPTIONS, activeJobFilters } from '../filter-state'
 import type { JobSearchFilters } from '../types'
@@ -303,17 +303,11 @@ export function JobsMobileToolbar({ filters, resultCount, signedOut = false }: J
             </label>
           </FilterSection>
 
-          <FilterSection title="Certificates and visas" id="job-filter-credentials">
+          <FilterSection title="Certificates" id="job-filter-credentials">
             <label className="block text-[13px] font-semibold text-navy-900">Certificate
               <select value={filters.certificates[0] ?? ''} onChange={(event) => update('certificate', event.target.value || null)} className={FIELD_CLASS}>
                 <option value="">Any certificate</option>
                 {MARITIME_CERTIFICATES.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label className="mt-3 block text-[13px] font-semibold text-navy-900">Visa
-              <select value={filters.visas[0] ?? ''} onChange={(event) => update('visa', event.target.value || null)} className={FIELD_CLASS}>
-                <option value="">Any visa</option>
-                {MARITIME_VISAS.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
           </FilterSection>

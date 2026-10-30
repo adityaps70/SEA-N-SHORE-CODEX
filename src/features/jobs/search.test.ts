@@ -14,6 +14,7 @@ describe('jobs search filters', () => {
       salaryMax: '10000',
       region: 'Worldwide,Middle East',
       certificate: 'STCW,Advanced Oil Tanker',
+      // Hotfix P5: an old link with a visa parameter still works; the parameter is ignored.
       visa: 'US C1/D',
       verified: '1',
       urgent: '1',
@@ -33,13 +34,18 @@ describe('jobs search filters', () => {
       salaryMax: 10000,
       regions: ['Worldwide', 'Middle East'],
       certificates: ['STCW', 'Advanced Oil Tanker'],
-      visas: ['US C1/D'],
       verifiedOnly: true,
       urgentOnly: true,
       easyApplyOnly: true,
       postedWithinDays: 7,
       sort: 'recommended',
     })
+  })
+
+  it('ignores the visa parameter of an old link: the same filters as without it (hotfix P5)', () => {
+    const withoutVisa = { mode: 'sea', rank: 'second_officer', certificate: 'ECDIS' }
+    expect(parseJobSearchParams({ ...withoutVisa, visa: 'US C1/D,N/A' })).toEqual(parseJobSearchParams(withoutVisa))
+    expect(parseJobSearchParams({ visa: 'Schengen' })).not.toHaveProperty('visas')
   })
 
   it('normalizes invalid numerics and unsupported modes instead of leaking them to SQL', () => {

@@ -159,6 +159,8 @@ jobs:
         run: node --test scripts/aws/stay-signed-in-migration.test.mjs
       - name: Verify community category counts contract (read-only; counts only)
         run: node --test scripts/aws/community-category-counts.test.mjs
+      - name: Verify jobs visa counts contract (read-only; counts only)
+        run: node --test scripts/aws/jobs-visa-counts.test.mjs
       - name: Verify community categories migration runner contract (0093)
         run: node --test scripts/aws/community-categories-migration.test.mjs
       - name: Verify job shares migration runner contract (0094)

@@ -53,7 +53,7 @@ export function alertFilters(stored: unknown): JobSearchFilters {
     salaryMax: numberOrNull(value.salaryMax),
     regions: strings(value.regions),
     certificates: strings(value.certificates),
-    visas: strings(value.visas),
+    // Hotfix P5: a saved visa condition is dropped; the alert keeps matching on the rest.
     verifiedOnly: value.verifiedOnly === true,
     urgentOnly: value.urgentOnly === true || value.mode === 'urgent',
     easyApplyOnly: value.easyApplyOnly === true,

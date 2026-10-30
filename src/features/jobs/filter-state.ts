@@ -15,7 +15,6 @@ export function activeJobFilters(filters: JobSearchFilters): ActiveJobFilter[] {
     ...filters.vesselTypes.map((value) => ({ key: 'vessel', label: value })),
     ...filters.regions.map((value) => ({ key: 'region', label: value })),
     ...filters.certificates.map((value) => ({ key: 'certificate', label: value })),
-    ...filters.visas.map((value) => ({ key: 'visa', label: value })),
     ...(filters.minExperienceYears !== null ? [{ key: 'experience', label: `${filters.minExperienceYears}+ years` }] : []),
     ...(filters.joiningWithinDays !== null ? [{ key: 'joining', label: `Join ≤ ${filters.joiningWithinDays} days` }] : []),
     ...(filters.salaryMin !== null ? [{ key: 'salaryMin', label: `Salary ≥ ${filters.salaryMin}` }] : []),

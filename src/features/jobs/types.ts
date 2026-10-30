@@ -42,7 +42,6 @@ export type JobSearchFilters = {
   salaryMax: number | null
   regions: string[]
   certificates: string[]
-  visas: string[]
   verifiedOnly: boolean
   urgentOnly: boolean
   easyApplyOnly: boolean
@@ -106,7 +105,7 @@ export type JobProfileGap = { key: JobProfileGapKey; label: string }
 
 /** Round H (H7): one "Check before applying" item: what the job requires and what the profile has. */
 export type JobMatchCheck = {
-  key: 'rank' | 'experience' | 'vessel' | 'certificate' | 'visa' | 'availability'
+  key: 'rank' | 'experience' | 'vessel' | 'certificate' | 'availability'
   label: string
   required: string
   yours: string
@@ -180,7 +179,10 @@ export type JobListing = {
   visaRequirements: string[]
   urgent: boolean
   easyApply: boolean
-  /** Round G (G3): taxonomy codes and every listed certificate and visa (required or preferred). */
+  /**
+   * Round G (G3): taxonomy codes and every listed certificate and visa (required or preferred).
+   * Visas are information only (Hotfix P5): never searched, scored or checked for eligibility.
+   */
   vesselTypeCodes?: string[]
   certificateList?: Array<{ name: string; code: string | null; required: boolean }>
   visaList?: Array<{ name: string; required: boolean }>

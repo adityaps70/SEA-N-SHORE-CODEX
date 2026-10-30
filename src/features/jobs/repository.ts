@@ -533,13 +533,6 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         where cr.job_id = j.id and cr.required = true and lower(cr.certificate_name) = any(${certParam}::text[])
       )`)
     }
-    if (filters.visas.length) {
-      const visaParam = bind(normalizeLower(filters.visas))
-      where.push(`exists (
-        select 1 from public.job_visa_requirements vr
-        where vr.job_id = j.id and vr.required = true and lower(vr.visa_name) = any(${visaParam}::text[])
-      )`)
-    }
     if (filters.verifiedOnly) where.push('coalesce(c.is_verified, false) = true')
     // Round H (H7): urgent lasts 14 days from urgent_since.
     if (filters.urgentOnly) where.push(`j.urgent = true and ${urgentActiveSql('j')}`)

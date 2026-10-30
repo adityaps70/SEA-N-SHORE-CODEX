@@ -173,7 +173,7 @@ function fillEverything() {
     ['spinbutton', 'Maximum years', '20'],
     ['textbox', 'Sailing regions', 'Worldwide'],
     ['textbox', 'Certificates', 'STCW, Advanced Oil Tanker'],
-    ['textbox', 'Visas', 'US C1/D'],
+    ['textbox', 'Visa / documents note (optional)', 'US C1/D'],
     ['textbox', 'Other requirements', 'Tanker command experience.'],
     ['spinbutton', 'Salary minimum', '15000'],
     ['spinbutton', 'Salary maximum', '12000'],

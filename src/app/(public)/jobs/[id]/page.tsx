@@ -27,6 +27,7 @@ import { getJobDetailState, getJobPageExtras, getSignedOutJobDetailState } from 
 import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { evaluateApplyGate } from '@/features/jobs/apply-gate'
 import { ApplyGateNotice } from '@/features/jobs/components/apply-gate-notice'
+import { jobVisaNote } from '@/features/jobs/visa-display'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { jsonLd } from '@/lib/seo/meta'
@@ -87,6 +88,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
   const display = jobMatchDisplay(match)
   // Round 12: the same minimum-match gate applyToJob enforces on the server (always the round-12 match).
   const gate = evaluateApplyGate(job, gateMatch ?? match)
+  const visaNote = jobVisaNote(job)
   const closedNotice = alreadyApplied
     ? null
     : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">{closedReason === 'joining_passed' ? 'The joining date for this job has passed. It no longer takes applications.' : `Applications for this job closed on ${formatDate(job.applyUntil)}.`}</p>
@@ -168,7 +170,8 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
             <section aria-labelledby="job-description-heading"><h2 id="job-description-heading" className="text-xl font-semibold text-navy-950 max-md:text-lg max-md:font-bold">About the role</h2><ClampedText text={job.description} className="mt-3 whitespace-pre-line text-sm leading-7 text-ink max-md:mt-2 max-md:text-[15px] max-md:leading-6" /></section>
             {job.requirements ? <section aria-labelledby="job-requirements-heading"><h2 id="job-requirements-heading" className="text-xl font-semibold text-navy-950">Requirements</h2><p className="mt-3 whitespace-pre-line text-sm leading-7 text-ink">{job.requirements}</p></section> : null}
             {job.certificateRequirements.length ? <section><h2 className="text-xl font-semibold text-navy-950">Certificates</h2><div className="mt-3 flex flex-wrap gap-2">{job.certificateRequirements.map((item) => <span key={item} className="rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
-            {job.visaRequirements.length ? <section><h2 className="text-xl font-semibold text-navy-950">Visa requirements</h2><div className="mt-3 flex flex-wrap gap-2">{job.visaRequirements.map((item) => <span key={item} className="rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
+            {/* Hotfix P5: information from the poster, never compared with a profile; "N/A"-style values are not shown. */}
+            {visaNote.length ? <section><h2 className="text-xl font-semibold text-navy-950">Visa / documents</h2><div className="mt-3 flex flex-wrap gap-2">{visaNote.map((item) => <span key={item} className="rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
           </div>
         </article>
 
