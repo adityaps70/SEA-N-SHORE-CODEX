@@ -76,6 +76,8 @@ describe('tightened Content Security Policy (Round H, H4)', () => {
       "'self'",
       bucket,
       'wss://abc123.execute-api.ap-south-1.amazonaws.com',
+      // Round P3: the sign-in domain (a soft navigation that ends at sign-in follows the redirect).
+      'https://auth.seanshore.in',
       'https://*.cashfree.com',
       'https://api.razorpay.com',
       'https://lumberjack.razorpay.com',

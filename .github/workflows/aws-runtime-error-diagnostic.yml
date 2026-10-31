@@ -92,7 +92,7 @@ jobs:
           CSP_START_MS=$(( ( $(date +%s) - CSP_SINCE_HOURS * 3600 ) * 1000 ))
           aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$CSP_START_MS" \
             --filter-pattern '{ $.event = "csp_violation_summary" }' --output json > /tmp/csp-events.json
-          echo "=== CSP REPORT-ONLY SUMMARIES, LAST ${CSP_SINCE_HOURS} HOURS (count, directive, blocked host) ==="
+          echo "=== CSP REPORT-ONLY SUMMARIES, LAST ${CSP_SINCE_HOURS} HOURS (count, directive, blocked host, source, section) ==="
           echo "CSP_WINDOW_START=$(date -u -d "@$(( CSP_START_MS / 1000 ))" +%Y-%m-%dT%H:%M:%SZ)"
           jq -r -f scripts/aws/csp-violation-summary.jq /tmp/csp-events.json | awk 'NR <= 60'
           echo "RUNTIME_ERROR_DIAGNOSTIC_COMPLETE=true"

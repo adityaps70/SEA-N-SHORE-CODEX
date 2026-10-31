@@ -47,8 +47,8 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
       windowSeconds: 60,
       total: 4,
       violations: [
-        { directive: 'script-src-elem', blocked: 'evil.example.com', count: 3 },
-        { directive: 'img-src', blocked: 'data', count: 1 },
+        { directive: 'script-src-elem', blocked: 'evil.example.com', source: 'none', section: 'api', count: 3 },
+        { directive: 'img-src', blocked: 'data', source: 'none', section: 'api', count: 1 },
       ],
     })
     for (const leaked of ['secret', 'session', 'abc', 'cookie', 'x.js', '/profile', '3f1c2b9e', '?']) expect(line).not.toContain(leaked)
@@ -65,8 +65,8 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
     await post(report)
     vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
     expect(summaries(log)).toEqual([
-      expect.objectContaining({ total: 2, violations: [{ directive: 'connect-src', blocked: 'other.example:8443', count: 2 }] }),
-      expect.objectContaining({ total: 1, violations: [{ directive: 'connect-src', blocked: 'other.example:8443', count: 1 }] }),
+      expect.objectContaining({ total: 2, violations: [{ directive: 'connect-src', blocked: 'other.example:8443', source: 'none', section: 'api', count: 2 }] }),
+      expect.objectContaining({ total: 1, violations: [{ directive: 'connect-src', blocked: 'other.example:8443', source: 'none', section: 'api', count: 1 }] }),
     ])
   })
 
@@ -75,7 +75,7 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
     const batch = Array.from({ length: 9 }, () => ({ type: 'csp-violation', body: { documentURL: 'https://seanshore.in/jobs', effectiveDirective: 'img-src', blockedURL: 'inline' } }))
     expect((await post(JSON.stringify(batch))).status).toBe(204)
     vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
-    expect(summaries(log)).toEqual([expect.objectContaining({ total: 5, violations: [{ directive: 'img-src', blocked: 'inline', count: 5 }] })])
+    expect(summaries(log)).toEqual([expect.objectContaining({ total: 5, violations: [{ directive: 'img-src', blocked: 'inline', source: 'none', section: 'api', count: 5 }] })])
   })
 
   it('reduces odd directives and blocked values to safe labels', async () => {
@@ -84,8 +84,8 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
     await post(JSON.stringify({ 'csp-report': { 'effective-directive': '<script>', 'blocked-uri': 'not a url with spaces/and?query=1' } }))
     vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
     expect(summaries(log)[0]?.violations).toEqual([
-      { directive: 'style-src-attr', blocked: 'blob', count: 1 },
-      { directive: 'other', blocked: 'other', count: 1 },
+      { directive: 'style-src-attr', blocked: 'blob', source: 'none', section: 'api', count: 1 },
+      { directive: 'other', blocked: 'other', source: 'none', section: 'api', count: 1 },
     ])
   })
 
@@ -101,12 +101,35 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
     expect(summaries(log)).toEqual([expect.objectContaining({
       total: 20,
       violations: [
-        { directive: 'connect-src', blocked: 'rt.example.com', count: 18 },
-        { directive: 'style-src-attr', blocked: 'inline', count: 1 },
-        { directive: 'img-src', blocked: 'cdn.example.com', count: 1 },
+        { directive: 'connect-src', blocked: 'rt.example.com', source: 'none', section: 'other', count: 18 },
+        { directive: 'style-src-attr', blocked: 'inline', source: 'none', section: 'other', count: 1 },
+        { directive: 'img-src', blocked: 'cdn.example.com', source: 'none', section: 'other', count: 1 },
       ],
     })])
     expect(summaries(log)[0]).not.toHaveProperty('rateLimited')
+  })
+
+  it('keeps the source by origin only and the section from a fixed list (Round P3, enforcement prep)', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const violations = [
+      { directive: 'script-src', blocked: 'eval', source: 'extension', section: 'jobs' },
+      { directive: 'script-src', blocked: 'wasm-eval', source: 'https://sdk.cashfree.com', section: 'payments' },
+      { directive: 'script-src', blocked: 'eval', source: 'https://sdk.cashfree.com/js/v3/cashfree.js?session=secret', section: 'payments' },
+      { directive: 'connect-src', blocked: 'https://auth.seanshore.in', source: 'self', section: 'learn' },
+      { directive: 'frame-src', blocked: 'none', source: 'javascript:alert(1)', section: 'courses-11111111-1111' },
+      { directive: 'script-src-attr', blocked: 'inline', source: { not: 'a string' }, section: 42 },
+    ]
+    expect((await post(JSON.stringify({ violations }))).status).toBe(204)
+    vi.advanceTimersByTime(CSP_REPORT_FLUSH_INTERVAL_MS)
+    expect(summaries(log)[0].violations).toEqual([
+      { directive: 'script-src', blocked: 'eval', source: 'extension', section: 'jobs', count: 1 },
+      { directive: 'script-src', blocked: 'wasm-eval', source: 'sdk.cashfree.com', section: 'payments', count: 1 },
+      { directive: 'script-src', blocked: 'eval', source: 'sdk.cashfree.com', section: 'payments', count: 1 },
+      { directive: 'connect-src', blocked: 'auth.seanshore.in', source: 'self', section: 'learn', count: 1 },
+      { directive: 'frame-src', blocked: 'none', source: 'other', section: 'other', count: 1 },
+      { directive: 'script-src-attr', blocked: 'inline', source: 'none', section: 'other', count: 1 },
+    ])
+    expect(JSON.stringify(summaries(log))).not.toMatch(/session|secret|cashfree\.js|alert|1111/)
   })
 
   it('rate-limits each visitor (Round P3) and counts what it turned away, without touching other visitors', async () => {
@@ -121,8 +144,8 @@ describe('CSP report endpoint (Round 14, 2.4; Round H, H4)', () => {
       total: CSP_REPORT_REQUESTS_PER_MINUTE + 1,
       rateLimited: 12,
       violations: [
-        { directive: 'script-src-elem', blocked: 'inline', count: CSP_REPORT_REQUESTS_PER_MINUTE },
-        { directive: 'img-src', blocked: 'data', count: 1 },
+        { directive: 'script-src-elem', blocked: 'inline', source: 'none', section: 'other', count: CSP_REPORT_REQUESTS_PER_MINUTE },
+        { directive: 'img-src', blocked: 'data', source: 'none', section: 'other', count: 1 },
       ],
     })])
 
