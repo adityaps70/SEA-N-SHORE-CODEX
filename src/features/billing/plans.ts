@@ -12,6 +12,7 @@
  */
 
 import { formatMoney } from '@/features/payments/currency'
+import { addCalendarMonths } from '@/lib/calendar-months'
 
 export const PAID_PLAN_CODES = ['creator_pro', 'organization_pro'] as const
 export type PaidPlanCode = typeof PAID_PLAN_CODES[number]
@@ -85,13 +86,7 @@ export function isBillingInterval(value: unknown): value is BillingInterval {
  * of the next month (31 Jan + 1 month = 28/29 Feb), like card and UPI mandates do.
  */
 export function addInterval(date: Date, interval: BillingInterval, count = 1): Date {
-  const result = new Date(date.getTime())
-  const day = result.getUTCDate()
-  result.setUTCDate(1)
-  result.setUTCMonth(result.getUTCMonth() + count * INTERVAL_MONTHS[interval])
-  const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate()
-  result.setUTCDate(Math.min(day, lastDay))
-  return result
+  return addCalendarMonths(date, count * INTERVAL_MONTHS[interval])
 }
 
 export function addDays(date: Date, days: number) {

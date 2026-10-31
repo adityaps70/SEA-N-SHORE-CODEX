@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { QueryResultRow } from 'pg'
+import { addCalendarMonths } from '@/lib/calendar-months'
 import { createTestDatabase, type TestDatabase } from '@/lib/db/test-database'
 
 /**
@@ -183,30 +184,45 @@ describe('pricing plans and access expiry (C3)', () => {
       `insert into public.learning_course_plans (course_id, name, price_minor, discount_price_minor, currency, access_months, position) values ($1, 'Self-paced', 30000, 25000, 'INR', 6, 1) returning id`,
       [course.courseId],
     )
-    return { mentor, course, standardId: standard[0]!.id as string, sixMonthsId: sixMonths[0]!.id as string }
+    const year = await db.query(
+      `insert into public.learning_course_plans (course_id, name, price_minor, currency, access_months, position) values ($1, 'Yearly', 45000, 'INR', 12, 2) returning id`,
+      [course.courseId],
+    )
+    return { mentor, course, standardId: standard[0]!.id as string, sixMonthsId: sixMonths[0]!.id as string, yearId: year[0]!.id as string }
+  }
+
+  // Fixed instants, so the test never depends on today's date. A plan ends on the same day of the month, clamped to
+  // the month's last day (31 Oct + 6 months = 30 Apr), exactly as the database stores it.
+  const BOUGHT_AT = new Date('2030-10-31T10:15:30.000Z')
+  const RENEWED_EARLY_AT = new Date('2030-12-15T09:00:00.000Z')
+  const RENEWED_AFTER_END_AT = new Date('2031-11-20T07:30:00.000Z')
+
+  async function accessEnd(enrollmentId: unknown) {
+    const rows = await db.query(`select access_expires_at from public.learning_enrollments where id = $1`, [enrollmentId])
+    return new Date(rows[0]!.access_expires_at as string)
   }
 
   it('sells a plan at its own price and access period, ends access read-only, and renews from the end or from now', async () => {
     const { course, sixMonthsId } = await planCourse()
     const learner = await buyer('Fixture Buyer H')
-    const start = new Date()
-    const { order } = await checkout(learner, course, { planId: sixMonthsId, now: start })
+    const { order } = await checkout(learner, course, { planId: sixMonthsId, now: BOUGHT_AT })
     expect(order).toMatchObject({ planId: sixMonthsId, planName: 'Self-paced', accessMonths: 6, listPriceMinor: 30_000, amountMinor: 25_000 })
-    await pay(order.id, 25_000, start)
+    await pay(order.id, 25_000, BOUGHT_AT)
     const enrolled = await db.query(`select id, plan_id, access_expires_at from public.learning_enrollments where learner_id = $1 and course_id = $2`, [learner, course.courseId])
     expect(enrolled[0]).toMatchObject({ plan_id: sixMonthsId })
-    const expiresAt = new Date(enrolled[0]!.access_expires_at as string)
-    const expected = new Date(start)
-    expected.setUTCMonth(expected.getUTCMonth() + 6)
-    expect(Math.abs(expiresAt.getTime() - expected.getTime())).toBeLessThan(60_000)
+    const expiresAt = await accessEnd(enrolled[0]!.id)
+    expect(expiresAt.toISOString()).toBe('2031-04-30T10:15:30.000Z')
+    expect(expiresAt.getTime()).toBe(addCalendarMonths(BOUGHT_AT, 6).getTime())
 
-    // Renewing early extends from the current end (no days lost).
-    const early = await checkout(learner, course, { planId: sixMonthsId })
-    await pay(early.order.id, 25_000)
-    const extended = new Date((await db.query(`select access_expires_at from public.learning_enrollments where id = $1`, [enrolled[0]!.id]))[0]!.access_expires_at as string)
-    expect(Math.round((extended.getTime() - expiresAt.getTime()) / 86_400_000)).toBeGreaterThanOrEqual(181)
+    // Renewing early extends from the current end (no days lost): 30 Apr + 6 months = 30 Oct.
+    const early = await checkout(learner, course, { planId: sixMonthsId, now: RENEWED_EARLY_AT })
+    await pay(early.order.id, 25_000, RENEWED_EARLY_AT)
+    const extended = await accessEnd(enrolled[0]!.id)
+    expect(extended.toISOString()).toBe('2031-10-30T10:15:30.000Z')
+    expect(extended.getTime()).toBe(addCalendarMonths(expiresAt, 6).getTime())
 
     // Access ends: the outline, progress and results stay; every material is closed and nothing new is recorded.
+    // (Ended a day before the database's own clock, so this holds whatever today's date is.)
     await fixtures.completeLessons(db.query, String(enrolled[0]!.id), [course.lessons.intro!])
     await db.query(`update public.learning_enrollments set access_expires_at = now() - interval '1 day' where id = $1`, [enrolled[0]!.id])
     const player = await createLearnerCourseRepository({ query: db.query }).getLearnerCourse(learner, course.slug)
@@ -216,15 +232,39 @@ describe('pricing plans and access expiry (C3)', () => {
     await createLearnerProgressRepository({ transaction: db.transaction }).completeLesson(learner, course.slug, course.lessons.checklist!).catch(() => null)
     expect(await db.query(`select 1 from public.learning_progress where enrollment_id = $1 and lesson_id = $2 and completed`, [enrolled[0]!.id, course.lessons.checklist])).toEqual([])
 
-    // Renewing after the end runs from now.
-    const renewal = await checkout(learner, course, { planId: sixMonthsId })
-    await pay(renewal.order.id, 25_000)
-    const renewedTo = new Date((await db.query(`select access_expires_at from public.learning_enrollments where id = $1`, [enrolled[0]!.id]))[0]!.access_expires_at as string)
-    const fromNow = new Date()
-    fromNow.setUTCMonth(fromNow.getUTCMonth() + 6)
-    expect(Math.abs(renewedTo.getTime() - fromNow.getTime())).toBeLessThan(120_000)
-    expect((await createLearnerCourseRepository({ query: db.query }).getLearnerCourse(learner, course.slug))?.accessExpired).toBe(false)
+    // Renewing after the end runs from the renewal, not from the old end.
+    await db.query(`update public.learning_enrollments set access_expires_at = $2 where id = $1`, [enrolled[0]!.id, new Date(RENEWED_AFTER_END_AT.getTime() - 86_400_000).toISOString()])
+    const renewal = await checkout(learner, course, { planId: sixMonthsId, now: RENEWED_AFTER_END_AT })
+    await pay(renewal.order.id, 25_000, RENEWED_AFTER_END_AT)
+    const renewedTo = await accessEnd(enrolled[0]!.id)
+    expect(renewedTo.toISOString()).toBe('2032-05-20T07:30:00.000Z')
+    expect(renewedTo.getTime()).toBe(addCalendarMonths(RENEWED_AFTER_END_AT, 6).getTime())
+    const atRenewal = createLearnerCourseRepository({ query: db.query, now: () => RENEWED_AFTER_END_AT })
+    expect((await atRenewal.getLearnerCourse(learner, course.slug))?.accessExpired).toBe(false)
   }, 120_000)
+
+  it.each([
+    ['31 Aug + 6 months', '2030-08-31T12:00:00.000Z', 6, '2031-02-28T12:00:00.000Z'],
+    ['29 Feb + 12 months', '2032-02-29T12:00:00.000Z', 12, '2033-02-28T12:00:00.000Z'],
+  ])('ends a plan bought on %s on the clamped day', async (_label, boughtAt, months, expected) => {
+    const { course, sixMonthsId, yearId } = await planCourse()
+    const learner = await buyer(`Fixture Buyer ${months}m`)
+    const now = new Date(boughtAt)
+    const planId = months === 6 ? sixMonthsId : yearId
+    const { order } = await checkout(learner, course, { planId, now })
+    await pay(order.id, order.amountMinor, now)
+    const enrolled = await db.query(`select id from public.learning_enrollments where learner_id = $1 and course_id = $2`, [learner, course.courseId])
+    const end = await accessEnd(enrolled[0]!.id)
+    expect(end.toISOString()).toBe(expected)
+    expect(end.getTime()).toBe(addCalendarMonths(now, months).getTime())
+  }, 120_000)
+
+  it('adds months in the database exactly as the app does, for every plan length (31 Jan + 1 month = 28 Feb)', async () => {
+    for (const [at, months] of [['2031-01-31T08:00:00.000Z', 1], ['2032-01-31T08:00:00.000Z', 1], ['2030-10-31T10:15:30.000Z', 6], ['2030-08-31T00:00:00.000Z', 6], ['2032-02-29T12:00:00.000Z', 12], ['2030-12-31T23:59:59.000Z', 12]] as const) {
+      const rows = await db.query(`select ($1::timestamptz + make_interval(months => $2::integer)) as ends_at`, [at, months])
+      expect(new Date(rows[0]!.ends_at as string).toISOString()).toBe(addCalendarMonths(new Date(at), months).toISOString())
+    }
+  })
 
   it('keeps lifetime access exactly as before: a lifetime buyer cannot buy again, and a plan from another course is refused', async () => {
     const { course, standardId } = await planCourse()
