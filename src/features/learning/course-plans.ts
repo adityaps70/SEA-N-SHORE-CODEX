@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { formatMoney, maxTicketPriceMinor, minTicketPriceMinor } from '@/features/payments/currency'
 import { PAYMENT_CURRENCIES, type PaymentCurrency } from '@/features/payments/types'
 import { coursePrice, formatCourseAmount, type CoursePrice } from './course-pricing'
+import { addCalendarMonths } from '@/lib/calendar-months'
 
 /**
  * Pricing plans and access periods (learning round C, C3). A paid course sells one or more plans, each with its own
@@ -49,9 +50,8 @@ export function accessExpiresAt(months: AccessMonths, input: { now: Date; curren
   if (months === null) return null
   const current = input.currentExpiresAt ?? null
   const start = current && current.getTime() > input.now.getTime() ? current : input.now
-  const end = new Date(start.getTime())
-  end.setUTCMonth(end.getUTCMonth() + months)
-  return end
+  // Same day of the month, clamped to the month's last day (31 Oct + 6 months = 30 Apr), as the database stores it.
+  return addCalendarMonths(start, months)
 }
 
 /** Access that has ended: the course is read-only until the learner renews. */

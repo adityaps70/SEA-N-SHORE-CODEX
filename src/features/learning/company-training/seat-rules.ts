@@ -1,5 +1,6 @@
 import { formatMoney } from '@/features/payments/currency'
 import type { PaymentCurrency } from '@/features/payments/types'
+import { addCalendarMonths } from '@/lib/calendar-months'
 
 /**
  * Company training (round D, part 3): the rules for seat packs, shared by the server and the company pages. Safe to
@@ -84,10 +85,9 @@ export function seatPackInvoiceDescription(input: { courseTitle: string; planNam
   return `${course}: online course access for company crew, ${seats} at ${each} each${discount}`.slice(0, 300)
 }
 
+/** Same day of the month, clamped to the month's last day (29 Feb + 12 months = 28 Feb), as the database stores it. */
 export function addMonths(at: Date, months: number) {
-  const end = new Date(at.getTime())
-  end.setUTCMonth(end.getUTCMonth() + months)
-  return end
+  return addCalendarMonths(at, months)
 }
 
 /** The last moment an unassigned seat of a pack bought at `paidAt` can be given to someone. */
