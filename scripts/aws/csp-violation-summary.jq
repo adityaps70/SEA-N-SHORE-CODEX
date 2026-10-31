@@ -2,13 +2,14 @@
 # csp_violation_summary lines (src/lib/security/csp-report-summary.ts: directive, bare blocked host, count; no URLs,
 # paths or samples). Output: SUMMARY_LINES, TOTAL_REPORTS, RATE_LIMITED_REQUESTS (Round P3: report requests turned away
 # unread by the endpoint's per-visitor limit), FIRST and LAST (UTC), then one TSV row per directive and blocked host, most
-# reports first.
+# reports first. Round P3: each row also names the source (the host of the script that caused it, or self, extension,
+# none) and the site section; summaries written before that show `-` for both.
 [.events[] | {at: ((.timestamp / 1000) | floor | todate), summary: (.message | fromjson? // empty)} | select(.summary.event == "csp_violation_summary")]
 | . as $lines
-| ([$lines[].summary.violations[]?] | group_by([.directive, .blocked]) | map({directive: .[0].directive, blocked: .[0].blocked, count: (map(.count) | add)}) | sort_by(-.count)) as $rows
+| ([$lines[].summary.violations[]? | .source //= "-" | .section //= "-"] | group_by([.directive, .blocked, .source, .section]) | map({directive: .[0].directive, blocked: .[0].blocked, source: .[0].source, section: .[0].section, count: (map(.count) | add)}) | sort_by(-.count)) as $rows
 | "CSP_SUMMARY_LINES=\($lines | length)",
   "CSP_TOTAL_REPORTS=\([$lines[].summary.total] | add // 0)",
   "CSP_RATE_LIMITED_REQUESTS=\([$lines[].summary.rateLimited // 0] | add // 0)",
   "CSP_FIRST_SUMMARY_AT=\($lines | map(.at) | min // "none")",
   "CSP_LAST_SUMMARY_AT=\($lines | map(.at) | max // "none")",
-  ($rows[] | [.count, .directive, .blocked] | @tsv)
+  ($rows[] | [.count, .directive, .blocked, .source, .section] | @tsv)

@@ -36,15 +36,18 @@ test('totals CSP summaries per directive and blocked host, and says when there a
     event('a', 1_760_000_000_000, summary(3, [{ directive: 'script-src-elem', blocked: 'inline', count: 2 }, { directive: 'img-src', blocked: 'cdn.example.com', count: 1 }])),
     event('b', 1_760_000_600_000, JSON.stringify({ ...JSON.parse(summary(1, [{ directive: 'script-src-elem', blocked: 'inline', count: 1 }])), rateLimited: 7 })),
     event('b', 1_760_000_700_000, 'not json'),
+    // Round P3: newer summaries also name the source and the site section.
+    event('c', 1_760_000_800_000, summary(2, [{ directive: 'script-src', blocked: 'eval', source: 'extension', section: 'jobs', count: 2 }])),
   ]).trim().split('\n')
   assert.deepEqual(out, [
-    'CSP_SUMMARY_LINES=2',
-    'CSP_TOTAL_REPORTS=4',
+    'CSP_SUMMARY_LINES=3',
+    'CSP_TOTAL_REPORTS=6',
     'CSP_RATE_LIMITED_REQUESTS=7',
     'CSP_FIRST_SUMMARY_AT=2025-10-09T08:53:20Z',
-    'CSP_LAST_SUMMARY_AT=2025-10-09T09:03:20Z',
-    '3\tscript-src-elem\tinline',
-    '1\timg-src\tcdn.example.com',
+    'CSP_LAST_SUMMARY_AT=2025-10-09T09:06:40Z',
+    '3\tscript-src-elem\tinline\t-\t-',
+    '2\tscript-src\teval\textension\tjobs',
+    '1\timg-src\tcdn.example.com\t-\t-',
   ])
   assert.deepEqual(jq('scripts/aws/csp-violation-summary.jq', []).trim().split('\n'), [
     'CSP_SUMMARY_LINES=0',

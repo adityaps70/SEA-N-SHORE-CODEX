@@ -117,7 +117,8 @@ export function pageContentSecurityPolicy(nonce: string, sources?: ContentSecuri
     // data: and blob: cover inline icons and local previews of photos before they upload.
     directive('img-src', "'self'", 'data:', 'blob:', mediaOrigins),
     directive('font-src', "'self'", 'data:'),
-    directive('connect-src', "'self'", mediaOrigins, realtimeOrigins, CASHFREE_HOSTS, RAZORPAY_CONNECT, development ? ['ws:'] : []),
+    // Round P3: the sign-in domain too; a soft navigation to a page that sends the visitor to sign in follows the redirect.
+    directive('connect-src', "'self'", mediaOrigins, realtimeOrigins, signInOrigins, CASHFREE_HOSTS, RAZORPAY_CONNECT, development ? ['ws:'] : []),
     // Feed videos redirect from /api/feed-media to S3; lesson audio and video are pre-signed S3
     // GETs; blob: plays local previews of videos before they upload.
     directive('media-src', "'self'", 'blob:', mediaOrigins),

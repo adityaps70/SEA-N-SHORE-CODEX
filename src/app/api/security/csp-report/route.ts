@@ -1,7 +1,7 @@
 import { siteOrigin } from '@/lib/site-url'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { cspReportOverRateLimit } from '@/lib/security/csp-report-rate-limit'
-import { cspBlockedHost, cspDirectiveName, recordCspRateLimited, recordCspViolation } from '@/lib/security/csp-report-summary'
+import { cspBlockedHost, cspDirectiveName, cspSection, cspSource, recordCspRateLimited, recordCspViolation } from '@/lib/security/csp-report-summary'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,30 +10,36 @@ const MAX_REPORTS_PER_REQUEST = 5
 /** Round P3: the page reporter (csp-reporter-script.ts) sends unique violations in batches of this size. */
 const MAX_BEACON_VIOLATIONS = 20
 
-type Violation = { directive: string; blocked: string }
+type Violation = { directive: string; blocked: string; source: string; section: string }
 
-function violation(directive: unknown, blocked: unknown): Violation[] {
+function violation(directive: unknown, blocked: unknown, source: unknown, section: unknown): Violation[] {
   if (typeof directive !== 'string' || !directive.trim()) return []
-  return [{ directive: cspDirectiveName(directive), blocked: cspBlockedHost(blocked) }]
+  return [{ directive: cspDirectiveName(directive), blocked: cspBlockedHost(blocked), source: cspSource(source), section: cspSection(section) }]
 }
 
 /**
- * Accepts the page reporter's batch ({"violations": [{directive, blocked}]}), the legacy report-uri
- * body ({"csp-report": …}) and Reporting API arrays.
+ * Accepts the page reporter's batch ({"violations": [{directive, blocked, source, section}]}), the
+ * legacy report-uri body ({"csp-report": …}, only API responses still name report-uri) and
+ * Reporting API arrays.
  */
 function violations(payload: unknown): Violation[] {
   const beacon = (payload as { violations?: unknown })?.violations
   if (Array.isArray(beacon)) {
     return beacon.slice(0, MAX_BEACON_VIOLATIONS).flatMap((item) => {
-      const entry = item as { directive?: unknown; blocked?: unknown } | null
-      return entry && typeof entry === 'object' ? violation(entry.directive, entry.blocked) : []
+      const entry = item as { directive?: unknown; blocked?: unknown; source?: unknown; section?: unknown } | null
+      return entry && typeof entry === 'object' ? violation(entry.directive, entry.blocked, entry.source, entry.section) : []
     })
   }
   const items = Array.isArray(payload) ? payload.map((entry) => (entry as { body?: unknown })?.body) : [(payload as { 'csp-report'?: unknown })?.['csp-report']]
   return items.slice(0, MAX_REPORTS_PER_REQUEST).flatMap((item) => {
     if (!item || typeof item !== 'object') return []
     const report = item as Record<string, unknown>
-    return violation(report['effective-directive'] ?? report.effectiveDirective ?? report['violated-directive'], report['blocked-uri'] ?? report.blockedURL)
+    return violation(
+      report['effective-directive'] ?? report.effectiveDirective ?? report['violated-directive'],
+      report['blocked-uri'] ?? report.blockedURL,
+      report['source-file'] ?? report.sourceFile,
+      'api',
+    )
   })
 }
 
@@ -59,6 +65,6 @@ export async function POST(request: Request) {
   } catch {
     return new Response(null, { status: 204 })
   }
-  for (const entry of violations(payload)) recordCspViolation(entry.directive, entry.blocked)
+  for (const entry of violations(payload)) recordCspViolation(entry.directive, entry.blocked, Date.now(), entry.source, entry.section)
   return new Response(null, { status: 204 })
 }

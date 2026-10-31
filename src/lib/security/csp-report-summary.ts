@@ -2,12 +2,14 @@
  * Round H (H4): CSP violation reports are counted in memory per (directive, blocked host) and
  * written as one summary line at most once a minute. Only a directive name and a bare host (or a
  * keyword such as `inline`) are kept: never full URLs, query strings, document paths or samples.
+ * Round P3 (enforcement prep): also per source (the host of the script that caused it, or `self`,
+ * `extension`, `none`) and site section (a fixed list of top-level sections, else `other`).
  */
 export const CSP_REPORT_FLUSH_INTERVAL_MS = 60_000
 
 // Bounds memory when a page (or someone posting junk) produces many distinct hosts in one window.
 const MAX_DISTINCT_KEYS = 100
-const OVERFLOW_KEY = 'other\nother'
+const OVERFLOW_KEY = 'other\nother\nother\nother'
 
 let counts = new Map<string, number>()
 // Round P3: report requests the endpoint's per-visitor rate limit turned away, unread. They are
@@ -39,6 +41,37 @@ export function cspBlockedHost(value: unknown): string {
   }
 }
 
+/**
+ * Which script caused a violation, reduced to `self`, `extension`, `none`, or the bare host of
+ * another origin (a payment provider's, say). Anything else is `other`.
+ */
+export function cspSource(value: unknown): string {
+  if (typeof value !== 'string' || !value || value === 'none') return 'none'
+  if (value === 'self' || value === 'extension') return value
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'http:' || url.protocol === 'https:') return url.host.slice(0, 100) || 'other'
+    return /extension:$/.test(url.protocol) ? 'extension' : 'other'
+  } catch {
+    return 'other'
+  }
+}
+
+/** The site's top-level sections (`home` is `/`). A page's first path segment never holds an ID. */
+export const CSP_SECTIONS: ReadonlySet<string> = new Set([
+  'home', 'about', 'accessibility', 'account-deleted', 'activities', 'admin', 'auth', 'certificates', 'community',
+  'contact', 'copyright', 'creator', 'email', 'events', 'hashtags', 'help', 'hiring', 'jobs', 'learn', 'messages',
+  'network', 'newsletter', 'notifications', 'onboarding', 'organization-conversion', 'organizations', 'payments',
+  'people', 'plans', 'posts', 'pricing', 'privacy', 'profile', 'refunds', 'saved', 'search', 'settings', 'shipping',
+  'terms', 'api',
+])
+
+/** A site section from the fixed list, or `other`. */
+export function cspSection(value: unknown): string {
+  const section = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return CSP_SECTIONS.has(section) ? section : 'other'
+}
+
 function startWindow(now: number) {
   if (flushTimer) return
   windowStartedAt = now
@@ -48,8 +81,8 @@ function startWindow(now: number) {
   flushTimer = timer
 }
 
-export function recordCspViolation(directive: string, blocked: string, now = Date.now()): void {
-  let key = `${directive}\n${blocked}`
+export function recordCspViolation(directive: string, blocked: string, now = Date.now(), source = 'none', section = 'other'): void {
+  let key = `${directive}\n${blocked}\n${source}\n${section}`
   if (!counts.has(key) && counts.size >= MAX_DISTINCT_KEYS) key = OVERFLOW_KEY
   startWindow(now)
   counts.set(key, (counts.get(key) ?? 0) + 1)
@@ -68,8 +101,8 @@ export function flushCspViolationSummary(now = Date.now()): void {
   if (counts.size === 0 && rateLimited === 0) return
   const violations = [...counts]
     .map(([key, count]) => {
-      const [directive, blocked] = key.split('\n')
-      return { directive, blocked, count }
+      const [directive, blocked, source, section] = key.split('\n')
+      return { directive, blocked, source, section, count }
     })
     .sort((a, b) => b.count - a.count)
   const total = violations.reduce((sum, entry) => sum + entry.count, 0)

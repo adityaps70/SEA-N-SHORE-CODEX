@@ -27,7 +27,7 @@ describe('CSP violation summary (Round H, H4)', () => {
     const summary = JSON.parse(String(log.mock.calls[0]?.[0]))
     expect(summary.total).toBe(150)
     expect(summary.violations).toHaveLength(101)
-    expect(summary.violations[0]).toEqual({ directive: 'other', blocked: 'other', count: 50 })
+    expect(summary.violations[0]).toEqual({ directive: 'other', blocked: 'other', source: 'other', section: 'other', count: 50 })
   })
 
   it('writes nothing for an empty window', () => {
