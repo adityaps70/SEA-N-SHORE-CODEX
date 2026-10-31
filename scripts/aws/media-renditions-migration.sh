@@ -131,6 +131,11 @@ for migration in "${MIGRATIONS[@]}"; do
 done
 
 if [[ "${#PENDING[@]}" -eq 0 ]]; then
+  # Read-only progress of the transcode queue: totals per status and per error code, never a path or an id.
+  data_api --output json --sql "SELECT status, count(*)::bigint, coalesce(sum(duration_seconds), 0)::bigint FROM public.learning_media_renditions GROUP BY status ORDER BY status" \
+    | jq -r '.records[]? | "MEDIA_RENDITIONS_STATUS status=\(.[0].stringValue) count=\(.[1].longValue) source_minutes=\((.[2].longValue / 60) | floor)"'
+  data_api --output json --sql "SELECT coalesce(error_code, 'none'), count(*)::bigint FROM public.learning_media_renditions WHERE status = 'error' GROUP BY 1 ORDER BY 1" \
+    | jq -r '.records[]? | "MEDIA_RENDITIONS_ERROR code=\(.[0].stringValue) count=\(.[1].longValue)"'
   echo "MEDIA_RENDITIONS_MIGRATION_ALREADY_APPLIED=true"
   exit 0
 fi
