@@ -92,4 +92,12 @@ assert.match(workflow, /I_APPROVE_MEDIA_RENDITIONS_STAGING_MIGRATION/)
 assert.match(workflow, /bash scripts\/aws\/media-renditions-migration\.sh/)
 assert.match(workflow, /trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM/)
 
+// Round P3 (Part D): with nothing pending, the runner reports the transcode queue's progress, read-only and in totals
+// only: no path, job id or output folder is ever selected.
+const progress = nothingPending.split('\n').filter((line) => line.includes('learning_media_renditions')).join('\n')
+assert.equal((progress.match(/--sql "SELECT /g) ?? []).length, 2, 'two read-only totals queries')
+assert.doesNotMatch(progress, /source_path|job_id|output_folder|INSERT|UPDATE|DELETE|transaction/i)
+assert.match(nothingPending, /MEDIA_RENDITIONS_STATUS status=/)
+assert.match(nothingPending, /MEDIA_RENDITIONS_ERROR code=/)
+
 console.log('MEDIA_RENDITIONS_MIGRATION_CONTRACT_VERIFIED=true')
