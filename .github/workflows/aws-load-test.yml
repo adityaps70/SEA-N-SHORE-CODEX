@@ -280,6 +280,10 @@ jobs:
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
           WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          # The 50 accounts are created for this run and deleted after it (report job), with counts reported.
+          CREATED="$(bash scripts/aws/load-test-host-command.sh create-once "$GITHUB_SHA" "$GITHUB_RUN_ID")"
+          grep -E '^LOAD_TEST_ACCOUNTS_(CREATED|CREATE_ONCE_VERIFIED)' <<<"$CREATED"
+          grep -q '^LOAD_TEST_ACCOUNTS_CREATE_ONCE_VERIFIED=true$' <<<"$CREATED" || { echo "The test accounts were not created." >&2; exit 1; }
           PUBLIC_KEY="$(node scripts/load-test/sessions.mjs keypair "$WORK")"
           OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY")"
           grep -q '^LOAD_TEST_SESSIONS_READY=true$' <<<"$OUTPUT" || { echo "The host did not prepare the sessions." >&2; exit 1; }
@@ -510,7 +514,7 @@ jobs:
           node scripts/aws/capacity-media-report.cjs
 
       # Signed-in mix: every test account's sessions end now (Cognito global sign-out), whatever happened above.
-      - name: Sign out every test account (signed-in mix)
+      - name: Sign out and delete every test account (signed-in mix)
         if: always() && needs.window.outputs.mix == 'signed-in'
         shell: bash
         run: |
@@ -518,6 +522,9 @@ jobs:
           OUTPUT="$(bash scripts/aws/load-test-host-command.sh sign-out "$GITHUB_SHA" "$GITHUB_RUN_ID")"
           grep -q '^LOAD_TEST_SIGNED_OUT=true$' <<<"$OUTPUT"
           echo "LOAD_TEST_SIGNED_OUT=true"
+          DELETED="$(bash scripts/aws/load-test-host-command.sh delete-once "$GITHUB_SHA" "$GITHUB_RUN_ID")"
+          grep -E '^LOAD_TEST_ACCOUNTS_(DELETED|AFTER_DELETE|DELETE_ONCE_VERIFIED)' <<<"$DELETED" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q '^LOAD_TEST_ACCOUNTS_DELETE_ONCE_VERIFIED=true$' <<<"$DELETED"
 
       - name: Delete the host checkout bundle
         if: always() && needs.window.outputs.mix == 'signed-in'

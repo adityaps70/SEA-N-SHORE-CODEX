@@ -29,10 +29,11 @@ git diff --quiet HEAD -- "$0" "$ACTION_FILE" || { echo "Runner files differ from
 ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 if [[ -n "${LOAD_TEST_ACCOUNTS_ACTION:-}" ]]; then ACTION="$(tr -d '[:space:]' <<<"$LOAD_TEST_ACCOUNTS_ACTION")"; fi
 case "$ACTION" in plan|create-once|delete-once) ;; *) echo "Unsupported load-test accounts action: $ACTION" >&2; exit 1 ;; esac
-# The armed load test (aws-load-test.yml, guarded by its own owner-merged arm) asks for the run's sessions and, after
-# the run, for the sign-out. Both need the run id; sessions also need the run's public key.
+# The armed signed-in load test (aws-load-test.yml, guarded by its own owner-merged arm) creates the accounts and gets
+# their sessions before the run, and signs them out and deletes them after it. Each needs the run id; sessions also
+# need the run's public key.
 if [[ -n "${LOAD_TEST_SESSIONS_MODE:-}" ]]; then
-  case "$LOAD_TEST_SESSIONS_MODE" in sessions|sign-out) ACTION="$LOAD_TEST_SESSIONS_MODE" ;; *) echo "Unsupported sessions mode." >&2; exit 1 ;; esac
+  case "$LOAD_TEST_SESSIONS_MODE" in create-once|sessions|sign-out|delete-once) ACTION="$LOAD_TEST_SESSIONS_MODE" ;; *) echo "Unsupported sessions mode." >&2; exit 1 ;; esac
   [[ "${LOAD_TEST_RUN_ID:-}" =~ ^[0-9]{6,20}$ ]] || { echo "LOAD_TEST_RUN_ID is required." >&2; exit 1; }
   if [[ "$ACTION" == sessions ]]; then
     [[ "${LOAD_TEST_SESSIONS_PUBLIC_KEY:-}" =~ ^[A-Za-z0-9+/=]{300,2000}$ ]] || { echo "The run's public key is missing." >&2; exit 1; }

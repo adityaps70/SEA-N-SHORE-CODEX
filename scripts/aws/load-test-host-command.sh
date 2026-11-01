@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Round ARCH (Phase 1): from the load test workflow (GitHub runner, OIDC role), asks the bootstrap host to run the
-# load-test accounts worker for this run: "sessions" (with the run's public key) or "sign-out". The host runs
+# load-test accounts worker for this run: create-once, sessions (with the run's public key), sign-out or delete-once. The host runs
 # scripts/aws/load-test-accounts.sh from the exact commit (CI checkout bundle). Prints the host's output lines, which
 # carry counts, a short-lived link to the sealed sessions and the build's action ids, never a token.
-#   bash scripts/aws/load-test-host-command.sh <sessions|sign-out> <sha> <run-id> [public-key-base64]
+#   bash scripts/aws/load-test-host-command.sh <create-once|sessions|sign-out|delete-once> <sha> <run-id> [public-key-base64]
 set -euo pipefail
 MODE="$1" SHA="$2" RUN_ID="$3" PUBLIC_KEY="${4:-}"
 AWS_REGION="${AWS_REGION:-ap-south-1}"
-case "$MODE" in sessions|sign-out) ;; *) echo "Unsupported mode." >&2; exit 1 ;; esac
+case "$MODE" in create-once|sessions|sign-out|delete-once) ;; *) echo "Unsupported mode." >&2; exit 1 ;; esac
 [[ "$SHA" =~ ^[0-9a-f]{40}$ && "$RUN_ID" =~ ^[0-9]{6,20}$ ]] || { echo "SHA and run id are required." >&2; exit 1; }
 if [[ "$MODE" == sessions ]]; then [[ "$PUBLIC_KEY" =~ ^[A-Za-z0-9+/=]{300,2000}$ ]] || { echo "The public key is required." >&2; exit 1; }; fi
 

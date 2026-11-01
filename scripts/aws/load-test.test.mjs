@@ -128,6 +128,9 @@ test('owner-armed, approved, inside 01:00-03:00 IST, and the traffic never holds
   assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('load'), /rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('report'), /load-test-host-command\.sh sign-out/)
+  // Accounts exist only for the run: created before the sessions, deleted (with counts) after the sign-out.
+  assert.match(sessions, /load-test-host-command\.sh create-once[\s\S]*sessions\.mjs keypair/)
+  assert.match(jobOf('report'), /sign-out[\s\S]*load-test-host-command\.sh delete-once[\s\S]*DELETE_ONCE_VERIFIED=true/)
   // Stop rule 3: the monitor cancels the run when Aurora sits at its maximum ACU for 5 minutes.
   assert.match(jobOf('monitor'), /node scripts\/load-test\/aurora-stop\.mjs "\$VALUES" "\$LOAD_TEST_AURORA_MAX_ACU"/)
   assert.match(jobOf('monitor'), /LOAD_TEST_AURORA_MAX_ACU: "2"/)
