@@ -21,8 +21,8 @@ describe('reserved recipients (Round ARCH: load-test accounts never get email)',
   })
 
   it('refuses a reserved recipient before the sender or the do-not-email list is called', async () => {
-    const send = vi.fn(async () => ({ id: 'm1' }))
-    const isSuppressed = vi.fn(async () => false)
+    const send = vi.fn<(input: { to: string }) => Promise<{ id: string }>>(async () => ({ id: 'm1' }))
+    const isSuppressed = vi.fn<(email: string) => Promise<boolean>>(async () => false)
     const client = withEmailSuppression({ sendEmail: send }, isSuppressed)
     await expect(client.sendEmail({ to: 'loadtest-07@loadtest.seanshore.invalid' })).rejects.toMatchObject({ code: 'recipient_do_not_email' })
     expect(send).not.toHaveBeenCalled()
