@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import { hashtagBodySearchPattern } from '@/features/hashtags/parse'
+import { loadTestAuthorVisibleSql } from '@/features/load-test/load-test-sql'
 import type { FeedCommentRow, FeedPostRow, FeedViewerState, HiddenPostSourceRow } from './mappers'
 import type { FeedCursor, FeedPostType, PostAudience, PostCategory, PostReactionType, ReactionTargetType, RecentlyDeletedPost } from './types'
 
@@ -325,6 +326,7 @@ function visibilitySql() {
       or (
         author.account_status = 'active'
         and author.onboarding_completed_at is not null
+        and ${loadTestAuthorVisibleSql('author', '$1')}
         and not exists (
           select 1 from public.user_blocks b
           where (b.blocker_id = $1 and b.blocked_id = p.author_id)
@@ -366,6 +368,7 @@ export function publicPostSql(postRef = 'p', authorRef = 'author') {
     and ${postRef}.group_id is null
     and ${authorRef}.account_status = 'active'
     and ${authorRef}.onboarding_completed_at is not null
+    and not ${authorRef}.is_load_test
     and (
       ${postRef}.post_type <> 'repost'
       or exists (

@@ -1,3 +1,4 @@
+import { isLoadTestProfileSql } from '@/features/load-test/load-test-sql'
 import { query as databaseQuery } from '@/lib/db/client'
 
 /**
@@ -37,6 +38,7 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
          select $1, p.id
          from public.posts p
          where p.id = any($2::uuid[])
+           and not ${isLoadTestProfileSql('$1::uuid')}
          on conflict (viewer_id, post_id) do update
            set seen_count = i.seen_count + 1, last_seen_at = now()
            where i.last_seen_at < now() - $3::interval
@@ -143,14 +145,18 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
     return rows.length > 0
   }
 
-  /** Adds `amount` to today's total for an admin health metric (counts only, no member ids). */
-  async function incrementMetric(metric: string, amount = 1) {
+  /**
+   * Adds `amount` to today's total for an admin health metric (counts only, no member ids). When the action's member
+   * is given and is a load-test account (Round ARCH), nothing is counted.
+   */
+  async function incrementMetric(metric: string, amount = 1, actorProfileId: string | null = null) {
     if (amount <= 0) return
     await queryRows(
       `insert into public.ranking_metrics_daily (day, metric, value)
-       values ((now() at time zone 'utc')::date, $1, $2)
+       select (now() at time zone 'utc')::date, $1, $2
+       where $3::uuid is null or not ${isLoadTestProfileSql('$3::uuid')}
        on conflict (day, metric) do update set value = public.ranking_metrics_daily.value + excluded.value`,
-      [metric, amount],
+      [metric, amount, actorProfileId],
     )
   }
 
@@ -171,9 +177,9 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
 export const signalsRepository = createSignalsRepository()
 
 /** Metrics are best effort: a failure is logged without ids and never breaks the request. */
-export async function incrementRankingMetric(metric: string, amount = 1) {
+export async function incrementRankingMetric(metric: string, amount = 1, actorProfileId: string | null = null) {
   try {
-    await signalsRepository.incrementMetric(metric, amount)
+    await signalsRepository.incrementMetric(metric, amount, actorProfileId)
   } catch (error) {
     console.warn('[ranking_metric_failed]', { metric, code: (error as { code?: string })?.code ?? null })
   }

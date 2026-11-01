@@ -544,6 +544,7 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
        where p.id <> $1
          and p.account_status = 'active'
          and p.onboarding_completed_at is not null
+         and not p.is_load_test
          ${blockVisibilitySql(1)}
          ${searchSql}
        order by p.updated_at desc, p.id asc
