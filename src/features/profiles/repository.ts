@@ -195,6 +195,7 @@ function peopleSuggestionSql(roundG = false) {
           and e.target_profile_id = cp.id
           and e.created_at > now() - $9::interval
       )
+      and not cp.is_load_test
       and not ${syntheticTextSql("concat_ws(' ', cp.slug, cp.full_name, cp.headline, cp.summary, cmp.rank, cmp.current_company)", '$10')}
       ${roundG ? ROUND_G_PEOPLE_EXCLUSIONS_SQL : ''}
     order by score desc, cp.updated_at desc, cp.id asc

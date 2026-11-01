@@ -247,6 +247,8 @@ jobs:
         run: node --test scripts/aws/load-test.test.mjs
       - name: Verify CloudWatch Logs IAM scan contract
         run: node --test scripts/aws/cwl-iam-scan.test.mjs
+      - name: Verify load test accounts migration runner contract
+        run: node --test scripts/aws/load-test-accounts-migration.test.mjs
       - name: Verify Resend delivery webhook runner contract
         run: node --test scripts/aws/resend-delivery-webhook.test.mjs
       - name: Verify guarded staging data cleanup contract

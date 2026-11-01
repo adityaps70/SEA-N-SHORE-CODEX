@@ -79,6 +79,7 @@ export function eligiblePersonSql(alias: string, maritimeAlias: string) {
     and ${alias}.slug is not null
     and coalesce(${alias}.identity_root, 'professional') <> 'organisation'
     and ${alias}.profile_type is distinct from 'company'
+    and not ${alias}.is_load_test
     and ${alias}.id not in (select id from excluded where id is not null)
     and not exists (
       select 1 from public.member_preferences opt_out
@@ -382,6 +383,7 @@ export function createPeopleCandidateRepository(input: { query?: Query } = {}) {
       `select p.id from public.profiles p
        where p.account_status = 'active' and p.onboarding_completed_at is not null
          and coalesce(p.identity_root, 'professional') <> 'organisation'
+         and not p.is_load_test
          and ($1::uuid is null or p.id > $1::uuid)
        order by p.id
        limit $2`,

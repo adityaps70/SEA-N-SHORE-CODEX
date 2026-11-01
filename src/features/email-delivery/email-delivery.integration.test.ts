@@ -109,7 +109,9 @@ describe('recording Resend delivery events', () => {
     const sendEmail = vi.fn<(input: { to: string }) => Promise<{ messageId: string }>>(async () => ({ messageId: 'x' }))
     const guarded = withEmailSuppression({ sendEmail })
     await expect(guarded.sendEmail({ to: sent.email.toUpperCase() })).rejects.toMatchObject({ code: 'recipient_do_not_email', retryable: false })
-    await expect(guarded.sendEmail({ to: 'fixture-fine@example.test' })).resolves.toEqual({ messageId: 'x' })
+    // A reserved address (example.test, *.invalid: the load-test accounts) can never receive mail and is refused too.
+    await expect(guarded.sendEmail({ to: 'fixture-reserved@example.test' })).rejects.toMatchObject({ code: 'recipient_do_not_email', retryable: false })
+    await expect(guarded.sendEmail({ to: 'fixture-fine@crew-mail.co' })).resolves.toEqual({ messageId: 'x' })
     expect(sendEmail).toHaveBeenCalledTimes(1)
   })
 })
