@@ -15,3 +15,8 @@ export function loadTestAuthorVisibleSql(authorAlias: string, viewerParam: strin
 export function isLoadTestProfileSql(profileIdSql: string) {
   return `exists (select 1 from public.profiles load_test_profile where load_test_profile.id = ${profileIdSql} and load_test_profile.is_load_test)`
 }
+
+/** SQL true when community `groupAlias` is a real community, or when the viewer (`viewerParam`) is a load-test account. */
+export function loadTestGroupVisibleSql(groupAlias: string, viewerParam: string) {
+  return `(not ${groupAlias}.is_load_test or ${isLoadTestProfileSql(viewerParam)})`
+}

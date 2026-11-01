@@ -1,3 +1,4 @@
+import { loadTestGroupVisibleSql } from '@/features/load-test/load-test-sql'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import {
@@ -252,6 +253,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     const rows = await queryRows(
       `${GROUP_SELECT}
        where g.archived_at is null
+         and ${loadTestGroupVisibleSql('g', '$1')}
          ${search ? `and (g.name ilike $3 escape '\\' or g.description ilike $3 escape '\\')` : ''}
        ${DIRECTORY_ORDER}
        limit $2`,
@@ -277,7 +279,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
   } = {}) {
     const search = options.search?.trim() ?? ''
     const values: unknown[] = [viewerId]
-    const where = ['g.archived_at is null']
+    const where = ['g.archived_at is null', loadTestGroupVisibleSql('g', '$1')]
     if (search) {
       values.push(likePattern(search))
       where.push(`(g.name ilike $${values.length} escape '\\' or g.description ilike $${values.length} escape '\\')`)
@@ -376,6 +378,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
            ${memberCountSql('g.id')}::int as members
          from public.community_groups g
          where g.archived_at is null
+           and not g.is_load_test
            and not exists (
              select 1 from public.community_group_memberships own
              where own.group_id = g.id and own.profile_id = $1 and own.status in ('active', 'pending')
@@ -434,6 +437,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
        from public.community_groups g
        join public.community_categories cc on cc.id = g.category_id and cc.hidden_at is null
        where g.archived_at is null
+         and not g.is_load_test
          and (g.name ilike $1 escape '\\' or g.description ilike $1 escape '\\')
        group by cc.id
        order by cc.position, lower(cc.name), cc.id`,

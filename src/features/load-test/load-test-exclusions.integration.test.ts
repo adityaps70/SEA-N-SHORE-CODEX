@@ -19,6 +19,7 @@ vi.mock('@/lib/db/client', () => ({
 const { createFeedRepository } = await import('@/features/feed/repository')
 const { createFeedCandidateRepository } = await import('@/features/ranking/feed-candidates')
 const { createSignalsRepository } = await import('@/features/signals/repository')
+const { createCommunityRepository } = await import('@/features/community/repository')
 
 beforeAll(async () => {
   db = await createTestDatabase()
@@ -56,7 +57,7 @@ async function follow(follower: string, following: string) {
 }
 
 beforeEach(async () => {
-  for (const table of ['post_impressions', 'ranking_metrics_daily', 'posts', 'follows', 'profiles']) await db.query(`delete from public.${table}`)
+  for (const table of ['post_impressions', 'ranking_metrics_daily', 'posts', 'community_groups', 'follows', 'profiles']) await db.query(`delete from public.${table}`)
   ids.real = await member('Placeholder Real Member')
   ids.realAuthor = await member('Placeholder Real Author')
   ids.testA = await member('Load Test A', true)
@@ -110,5 +111,24 @@ describe('load-test accounts never reach real members (Round ARCH)', () => {
     expect(Number(rows[0]?.value)).toBe(3)
     const impressions = await db.query(`select viewer_id from public.post_impressions`)
     expect(impressions.map((row) => row.viewer_id)).toEqual([ids.real])
+  })
+
+  it('keeps the hidden test community out of real members\' community directory and search, but not test accounts\'', async () => {
+    const groups = await db.query(
+      `insert into public.community_groups (name, slug, visibility, description, created_by, is_load_test)
+       values ('Placeholder Real Group', 'placeholder-real-group', 'public', 'Placeholder description', $1, false),
+              ('Load Test Group', 'load-test-group', 'private', 'Placeholder description', $2, true)
+       returning id, is_load_test`,
+      [ids.realAuthor, ids.testA],
+    )
+    const testGroup = groups.find((row) => row.is_load_test === true)!.id as string
+    const realGroup = groups.find((row) => row.is_load_test === false)!.id as string
+    const community = createCommunityRepository()
+    const realDirectory = (await community.listDirectory(ids.real)).map((group) => group.id)
+    expect(realDirectory).toContain(realGroup)
+    expect(realDirectory).not.toContain(testGroup)
+    const realBrowse = (await community.browseDirectory(ids.real, { search: 'Group' })).groups.map((group) => group.id)
+    expect(realBrowse).not.toContain(testGroup)
+    expect((await community.listDirectory(ids.testB)).map((group) => group.id)).toContain(testGroup)
   })
 })
