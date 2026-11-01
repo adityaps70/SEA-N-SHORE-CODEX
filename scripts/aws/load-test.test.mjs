@@ -110,9 +110,28 @@ test('owner-armed, approved, inside 01:00-03:00 IST, and the traffic never holds
   assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
   assert.match(window, /NOW > START \+ 900/)
   assert.match(window, /WAIT > 330 \* 60/)
-  assert.match(window, /== run-once \]\]/)
+  assert.match(window, /run-once\) echo "mix=signed-out"/)
+  assert.match(window, /run-signed-in-once\) echo "mix=signed-in"/)
+  assert.match(window, /\*\) echo "Not armed for a run." >&2; exit 1 ;;/)
   assert.match(window, /Branch moved after the load test was approved/)
   for (const id of ['plan', 'window', 'load']) assert.doesNotMatch(jobOf(id), /configure-aws-credentials|AWS_ROLE_TO_ASSUME/, id)
+  // Signed in: the sessions job seals everything; shards only ever open their own sealed part with the GitHub secret.
+  const sessions = jobOf('sessions')
+  assert.match(sessions, /node scripts\/load-test\/sessions\.mjs keypair "\$WORK"/)
+  assert.match(sessions, /aws s3 rm --only-show-errors/)
+  assert.match(sessions, /LOAD_TEST_HANDOFF_KEY: \$\{\{ secrets\.LOAD_TEST_HANDOFF_KEY \}\}/)
+  // The opened sessions only ever go from one file into seal-shards: never printed, never an output.
+  assert.doesNotMatch(sessions, /cat "\$WORK|echo "\$\(cat|tee [^|]*sessions/)
+  assert.deepEqual([...sessions.matchAll(/[^\n]*\$WORK\/sessions\.json[^\n]*/g)].map((m) => m[0].trim().split(' ').slice(0, 3).join(' ')), [
+    'node scripts/load-test/sessions.mjs open', 'SEALED="$(node scripts/load-test/sessions.mjs seal-shards',
+  ])
+  assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\$LOAD_TEST_SESSIONS_FILE"/)
+  assert.match(jobOf('load'), /rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
+  assert.match(jobOf('report'), /load-test-host-command\.sh sign-out/)
+  // Stop rule 3: the monitor cancels the run when Aurora sits at its maximum ACU for 5 minutes.
+  assert.match(jobOf('monitor'), /node scripts\/load-test\/aurora-stop\.mjs "\$VALUES" "\$LOAD_TEST_AURORA_MAX_ACU"/)
+  assert.match(jobOf('monitor'), /LOAD_TEST_AURORA_MAX_ACU: "2"/)
+  assert.match(read('../../infra/aws/app/aws-native-variables.tf'), /variable "aurora_max_acu" \{[^}]*default\s+= 2/)
   assert.match(jobOf('load'), /needs\.window\.result == 'success'/)
   assert.match(jobOf('report'), /needs\.apply-gate\.result == 'success'/)
   assert.match(jobOf('report'), /REPORT_SECTIONS: usage/)
@@ -139,4 +158,13 @@ test('sessions move from the sessions job to the shards sealed end to end', () =
   assert.deepEqual(openShard(sealedShard, key), parts[3])
   assert.throws(() => openShard(sealedShard, randomBytes(32)))
   assert.throws(() => handoffKey('short'), /32 random bytes/)
+})
+
+test('the Aurora stop rule needs 5 one-minute maximums all at the maximum ACU', async () => {
+  const { auroraAtMax } = await import('../load-test/aurora-stop.mjs')
+  assert.equal(auroraAtMax([2, 2, 2, 2, 2], 2), true)
+  assert.equal(auroraAtMax([1.5, 2, 2, 2, 2, 2], 2), true)
+  assert.equal(auroraAtMax([2, 2, 2, 1.5, 2], 2), false)
+  assert.equal(auroraAtMax([2, 2, 2, 2], 2), false)
+  assert.equal(auroraAtMax('nope', 2), false)
 })

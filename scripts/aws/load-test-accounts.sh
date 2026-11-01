@@ -92,7 +92,7 @@ if [[ "$ACTION" == "sessions" ]]; then
   TOTAL="$(head -1 <<<"$PARTS" | sed -E 's#^[^ ]+ [0-9]+/([0-9]+) .*#\1#')"
   [[ "$TOTAL" =~ ^[0-9]+$ && "$(grep -c . <<<"$PARTS")" == "$TOTAL" ]] || { echo "The sealed sessions are incomplete." >&2; exit 1; }
   SEALED_FILE="$(mktemp)"
-  trap 'rm -f "$SEALED_FILE"' EXIT
+  trap 'rm -f "$SEALED_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
   sort -t' ' -k2,2n <<<"$PARTS" | sed -E 's#^[^ ]+ [^ ]+ ##' | tr -d '\n' > "$SEALED_FILE"
   KEY="ci-checkouts/load-test-sessions/${LOAD_TEST_RUN_ID}.sealed"
   aws s3 cp --region "$AWS_REGION" --only-show-errors "$SEALED_FILE" "s3://sea-n-shore-staging-310356785722-migration/$KEY"
