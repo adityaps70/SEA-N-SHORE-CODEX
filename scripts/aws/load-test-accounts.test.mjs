@@ -47,3 +47,24 @@ test('the worker and service never print an address, name, password or token, an
   assert.match(service, /throw new Error\('load_test_flag_on_real_account'\)/)
   assert.match(service, /delete from public\.profiles where id = \$1 and is_load_test returning id/)
 })
+
+test('Cognito sends no email or SMS for the test accounts, and the clean-up empties Cognito too', () => {
+  // Created by an administrator with Cognito's message suppressed and the address already verified, so the pool's
+  // automatic email verification sends no code; the password is set as permanent (confirmed, no message).
+  assert.match(worker, /new AdminCreateUserCommand\(\{\s+UserPoolId: poolId,\s+Username: email,\s+MessageAction: 'SUPPRESS',/)
+  assert.match(worker, /\{ Name: 'email_verified', Value: 'true' \}/)
+  assert.match(worker, /new AdminSetUserPasswordCommand\(\{ UserPoolId: poolId, Username: email, Password: password, Permanent: true \}\)/)
+  // Never the self-service flows that send codes, and no attribute change that would trigger a new verification.
+  assert.doesNotMatch(worker, /SignUpCommand|ConfirmSignUp|ResendConfirmationCode|ForgotPassword|AdminResetUserPassword|UpdateUserAttributes|GetUserAttributeVerificationCode/)
+  // The pool has no SMS set up and only optional authenticator-app MFA, so a password sign-in raises no message.
+  const auth = read('../../infra/aws/app/auth.tf')
+  assert.match(auth, /mfa_configuration\s+= "OPTIONAL"/)
+  assert.doesNotMatch(auth, /sms_configuration\s*\{|email_mfa_configuration/)
+  // Admin-created users pass the pre-sign-up trigger untouched, and the email sender Lambda skips .invalid anyway.
+  assert.match(read('../../infra/aws/app/lambda/cognito-pre-sign-up-link.mjs'), /if \(event\?\.triggerSource === 'PreSignUp_SignUp'\)/)
+  assert.match(read('../../infra/aws/app/lambda/cognito-resend-email-sender.mjs'), /const RESERVED_TLDS = new Set\(\['test', 'example', 'invalid', 'localhost'\]\)/)
+  // Clean-up deletes every test address from Cognito, re-checks it, and reports both counts.
+  assert.match(worker, /new AdminDeleteUserCommand\(\{ UserPoolId: poolId, Username: email \}\)/)
+  assert.match(service, /LOAD_TEST_ACCOUNTS_DELETED profiles=\$\{deleted\} cognito_users=\$\{cognitoDeleted\} cognito_users_left=\$\{cognitoLeft\}/)
+  assert.match(service, /cognitoLeft !== 0\) throw new Error\('load_test_delete_incomplete'\)/)
+})

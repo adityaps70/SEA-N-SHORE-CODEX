@@ -35,10 +35,14 @@ const lines: string[] = []
 let subSequence = 0
 
 function accounts() {
+  return createLoadTestAccounts(accountsDeps())
+}
+
+function accountsDeps(): Parameters<typeof createLoadTestAccounts>[0] {
   const onboarding = createOnboardingService({
     withTransaction: (fn) => db.transaction((query) => fn(createOnboardingRepositoryForClient({ query: async (text: string, values?: readonly unknown[]) => ({ rows: await query(text, values) }) } as never))),
   })
-  return createLoadTestAccounts({
+  return {
     query: (text, values) => db.query(text, values) as Promise<Array<Record<string, unknown>>>,
     transaction: (work) => db.transaction((query) => work(query as never)),
     cognito: {
@@ -60,7 +64,7 @@ function accounts() {
     provisionProfile: (principal) => provisionProfileForCognitoPrincipal(principal),
     completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
     log: (line) => lines.push(line),
-  })
+  }
 }
 
 describe('load-test accounts (Round ARCH)', () => {
@@ -106,9 +110,11 @@ describe('load-test accounts (Round ARCH)', () => {
     await db.query(`update public.profiles set is_load_test = true where id = $1`, [realRows[0]!.id])
     await expect(accounts().remove()).rejects.toThrow('load_test_flag_on_real_account')
     await db.query(`update public.profiles set is_load_test = false where id = $1`, [realRows[0]!.id])
+    lines.length = 0
     await accounts().remove()
     expect(await accounts().counts()).toEqual({ profiles: 0, communities: 0, follows: 0, mixedFollows: 0, posts: 0 })
     expect(users.size).toBe(0)
+    expect(lines).toContain(`LOAD_TEST_ACCOUNTS_DELETED profiles=${LOAD_TEST_ACCOUNT_COUNT} cognito_users=${LOAD_TEST_ACCOUNT_COUNT} cognito_users_left=0`)
     const real = await db.query(`select count(*)::int as n from public.profiles where id = $1`, [realRows[0]!.id])
     expect(real[0]!.n).toBe(1)
   })
@@ -123,4 +129,18 @@ describe('load-test accounts (Round ARCH)', () => {
     expect(actionIdsFromManifest(manifest)).toEqual({ loadTopFeedPage: 'a'.repeat(42), loadUnreadNotificationCount: 'b'.repeat(42) })
     expect(() => actionIdsFromManifest({ node: {} })).toThrow('load_test_action_missing_loadTopFeedPage')
   })
+
+  it('fails the clean-up when a Cognito user cannot be deleted', async () => {
+    await accounts().create()
+    const stuck = createLoadTestAccounts({ ...depsWithStuckDelete() })
+    await expect(stuck.remove()).rejects.toThrow('load_test_delete_incomplete')
+    users.clear()
+    await db.query(`delete from public.community_groups where is_load_test`)
+    await db.query(`delete from public.profiles where is_load_test`)
+  })
 })
+
+function depsWithStuckDelete() {
+  const base = accountsDeps()
+  return { ...base, cognito: { ...base.cognito, deleteUser: async () => undefined } }
+}

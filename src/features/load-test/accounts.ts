@@ -228,10 +228,13 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
         cognitoDeleted += 1
       }
     }
-    deps.log(`LOAD_TEST_ACCOUNTS_DELETED profiles=${deleted} cognito_users=${cognitoDeleted}`)
+    // Cognito is checked again, address by address: the clean-up only passes when no test user is left there either.
+    let cognitoLeft = 0
+    for (const index of indexes) if (await deps.cognito.findUserSub(loadTestEmail(index))) cognitoLeft += 1
+    deps.log(`LOAD_TEST_ACCOUNTS_DELETED profiles=${deleted} cognito_users=${cognitoDeleted} cognito_users_left=${cognitoLeft}`)
     const after = await counts()
     report('AFTER_DELETE', after)
-    if (after.profiles !== 0 || after.communities !== 0) throw new Error('load_test_delete_incomplete')
+    if (after.profiles !== 0 || after.communities !== 0 || cognitoLeft !== 0) throw new Error('load_test_delete_incomplete')
     deps.log('LOAD_TEST_ACCOUNTS_DELETE_VERIFIED=true')
   }
 
