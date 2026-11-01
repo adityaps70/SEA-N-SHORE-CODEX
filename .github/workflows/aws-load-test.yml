@@ -1,0 +1,361 @@
+name: AWS Load Test
+
+# Round P3: the one-off load test the owner approved. Signed-out, read-only page fetches of the live site
+# (landing, /jobs, one job page, one course page, privacy) from LOAD_TEST_SHARDS GitHub runners, ramping
+# 100 -> 300 -> 600 -> 1,000 -> 2,000 -> 3,000 requests/min, 5 minutes per step, starting at 01:00 IST.
+# Stop rules (scripts/load-test/stop-watch.mjs): any step's p95 over 2 s, server errors over 1% or WAF blocks
+# over 1% stops every shard at once.
+#
+# It runs only when scripts/aws/load-test-action.txt reads "run-once <sha>" from an owner-merged arm PR, after
+# approval in staging-apply. Approve between 20:00 and 01:15 IST: one small job then waits for 01:00 IST.
+# "plan" sends no traffic to the site: it runs the contract test and the whole pipeline against a local
+# server on the runner.
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - scripts/aws/load-test-action.txt
+      - scripts/aws/load-test.test.mjs
+      - scripts/load-test/**
+      - .github/workflows/aws-load-test.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-load-test
+  cancel-in-progress: false
+
+env:
+  LOAD_TEST_SHARDS: "8"
+  LOAD_TEST_TOTAL_RPM: "100,300,600,1000,2000,3000"
+  LOAD_TEST_STEP_SECONDS: "300"
+  LOAD_TEST_BASE_URL: https://seanshore.in
+  K6_DEB_URL: https://dl.k6.io/deb/dists/stable/main/binary-amd64/k6-v2.2.0-amd64.deb
+  K6_DEB_SHA256: 58b6468440332f882dba76efa87fb3b6d6eea0e3bd96090e3a5d5159f35832e0
+
+jobs:
+  apply-gate:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      approval: ${{ steps.apply_guard.outputs.approval }}
+      skip: ${{ steps.plan_scope.outputs.skip }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the guard file
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            scripts/aws/load-test-action.txt
+            scripts/aws/arm-commit-guard.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Decide whether this run sends traffic to the site
+        id: apply_guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(cut -d' ' -f1 < scripts/aws/load-test-action.txt | tr -d '[:space:]')"
+          case "$ACTION" in
+            plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Guard action: $ACTION"
+
+      - name: Require an owner-merged arm naming the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/load-test-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
+
+      # Actions minutes: a plan run is skipped when this push changed none of the load test's own files.
+      - name: Skip a plan run when none of this runner's scripts changed
+        id: plan_scope
+        env:
+          GUARD_FILE: scripts/aws/load-test-action.txt
+          RUNNER_FILES: "scripts/aws/load-test.test.mjs scripts/load-test/**"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP=false
+          ACTION="$(cut -d' ' -f1 < "$GUARD_FILE" | tr -d '[:space:]')"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then
+            SKIP="$(python3 -c '
+          import fnmatch, json, os, sys
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          commits = event.get("commits") or []
+          files = {f for c in commits for k in ("added", "modified", "removed") for f in (c.get(k) or [])}
+          watched = os.environ["RUNNER_FILES"].split()
+          complete = bool(commits) and len(commits) < 2048 and bool(files)
+          print("true" if complete and not any(fnmatch.fnmatch(f, p) for f in files for p in watched) else "false")
+          ')"
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          echo "Plan run skipped: $SKIP"
+
+  plan:
+    needs:
+      - apply-gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-gate.outputs.approval != 'true' && (needs.apply-approval.result == 'success' || needs.apply-approval.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Verify the load test contract
+        run: node --test scripts/aws/load-test.test.mjs
+
+      - name: Install the pinned k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/k6.deb "$K6_DEB_URL"
+          echo "$K6_DEB_SHA256  /tmp/k6.deb" | sha256sum -c -
+          sudo dpkg -i /tmp/k6.deb
+          k6 version
+
+      - name: Run the whole pipeline against a local server (no traffic to the site)
+        shell: bash
+        env:
+          LOAD_TEST_BASE_URL: http://127.0.0.1:8099
+          LOAD_TEST_SHARD: "0"
+          LOAD_TEST_SHARDS: "1"
+          LOAD_TEST_TOTAL_RPM: "60,120"
+          LOAD_TEST_STEP_SECONDS: "40"
+          LOAD_TEST_JOB_PATH: /jobs/00000000-0000-4000-8000-000000000000
+          LOAD_TEST_COURSE_PATH: /learn/courses/smoke-course
+        run: |
+          set -euo pipefail
+          node scripts/load-test/smoke-server.mjs 8099 &
+          sleep 1
+          k6 run --quiet --out csv=/tmp/k6.csv scripts/load-test/p3-load-test.js &
+          K6=$!
+          node scripts/load-test/stop-watch.mjs watch /tmp/k6.csv "$K6" /tmp/stop.txt &
+          wait "$K6"
+          mkdir -p /tmp/shards
+          node scripts/load-test/stop-watch.mjs summarize /tmp/k6.csv /tmp/shards/shard-0.json
+          node scripts/load-test/report.mjs /tmp/shards "$LOAD_TEST_TOTAL_RPM" "$LOAD_TEST_STEP_SECONDS" /tmp/stop.txt | tee /tmp/report.txt
+          grep -q '^LOAD_TEST_RESULT highest_step_within_limits=2 ' /tmp/report.txt
+          [[ ! -f /tmp/stop.txt ]]
+          echo "LOAD_TEST_PLAN_ONLY_NO_TRAFFIC"
+
+  apply-approval:
+    needs: apply-gate
+    if: needs.apply-gate.outputs.approval == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    timeout-minutes: 10
+    steps:
+      - name: Approved for the load test
+        run: echo "Approved in staging-apply."
+
+  # Waits for 01:00 IST (19:30 UTC). Refuses an approval earlier than 19:30 IST (the wait would pass this job's
+  # time limit) or later than 01:15 IST (the run would no longer fit the 01:00-03:00 window).
+  window:
+    needs:
+      - apply-gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    outputs:
+      job_path: ${{ steps.pages.outputs.job_path }}
+      course_path: ${{ steps.pages.outputs.course_path }}
+      started_at: ${{ steps.pages.outputs.started_at }}
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Verify the load test contract and the armed action
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/aws/load-test.test.mjs
+          [[ "$(cut -d' ' -f1 < scripts/aws/load-test-action.txt)" == run-once ]] || { echo "Not armed for run-once." >&2; exit 1; }
+
+      - name: Wait for 01:00 IST
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +%s)
+          START=$(date -u -d "$(date -u +%F) 19:30:00" +%s)
+          if (( NOW > START + 900 )); then echo "Approved after 01:15 IST; refusing so the run stays inside 01:00-03:00 IST." >&2; exit 1; fi
+          WAIT=$(( START - NOW ))
+          if (( WAIT > 330 * 60 )); then echo "Approved before 19:30 IST; approve between 20:00 and 01:15 IST." >&2; exit 1; fi
+          if (( WAIT > 0 )); then echo "Waiting $(( WAIT / 60 )) minutes for 01:00 IST."; sleep "$WAIT"; fi
+
+      - name: Guard against a moved branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || { echo "Branch moved after the load test was approved; refusing a stale run." >&2; exit 1; }
+
+      - name: Pick one public job page and one public course page
+        id: pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='SeaNShore-LoadTest/1'
+          JOB=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/jobs" | grep -oE 'href="/jobs/[0-9a-f-]{36}"' | head -1 | sed -E 's/^href="|"$//g')
+          COURSE=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/learn" | grep -oE 'href="/learn/courses/[a-z0-9-]+"' | head -1 | sed -E 's/^href="|"$//g')
+          [[ "$JOB" =~ ^/jobs/[0-9a-f-]{36}$ ]] || { echo "No public job page found." >&2; exit 1; }
+          [[ "$COURSE" =~ ^/learn/courses/[a-z0-9-]+$ ]] || { echo "No public course page found." >&2; exit 1; }
+          echo "job_path=$JOB" >> "$GITHUB_OUTPUT"
+          echo "course_path=$COURSE" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(date -u +%Y-%m-%dT%H:%M:00Z)" >> "$GITHUB_OUTPUT"
+          echo "LOAD_TEST_WINDOW_OPEN"
+
+  load:
+    needs:
+      - apply-gate
+      - window
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.window.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      LOAD_TEST_SHARD: ${{ matrix.shard }}
+      LOAD_TEST_JOB_PATH: ${{ needs.window.outputs.job_path }}
+      LOAD_TEST_COURSE_PATH: ${{ needs.window.outputs.course_path }}
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            scripts/load-test
+          sparse-checkout-cone-mode: false
+
+      - name: Install the pinned k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/k6.deb "$K6_DEB_URL"
+          echo "$K6_DEB_SHA256  /tmp/k6.deb" | sha256sum -c -
+          sudo dpkg -i /tmp/k6.deb
+
+      - name: Run this shard with the stop rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          k6 run --quiet --out csv=/tmp/k6.csv scripts/load-test/p3-load-test.js &
+          K6=$!
+          node scripts/load-test/stop-watch.mjs watch /tmp/k6.csv "$K6" /tmp/stop.txt &
+          wait "$K6" || echo "k6 exited with $?"
+
+      - name: Summarize this shard
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shard
+          if [[ -f /tmp/k6.csv ]]; then node scripts/load-test/stop-watch.mjs summarize /tmp/k6.csv "/tmp/shard/shard-$LOAD_TEST_SHARD.json"; fi
+          if [[ -f /tmp/stop.txt ]]; then cp /tmp/stop.txt "/tmp/shard/stop-$LOAD_TEST_SHARD.txt"; fi
+
+      - name: Upload this shard's numbers
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: load-test-shard-${{ matrix.shard }}
+          path: /tmp/shard
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # A stop on any shard stops every shard: cancelling the run interrupts the others' k6 (they still
+      # summarize and upload), and the report job still runs.
+      - name: Stop every shard when a stop rule fired
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f /tmp/stop.txt ]]; then
+            echo "LOAD_TEST_STOP $(cat /tmp/stop.txt)"
+            curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/cancel" >/dev/null
+          fi
+
+  report:
+    needs:
+      - apply-gate
+      - apply-approval
+      - window
+      - load
+    if: ${{ always() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ap-south-1
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download the shards' numbers
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: load-test-shard-*
+          path: /tmp/shards
+
+      - name: Load test report (aggregates only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t STOPS < <(find /tmp/shards -name 'stop-*.txt' 2>/dev/null)
+          node scripts/load-test/report.mjs /tmp/shards "$LOAD_TEST_TOTAL_RPM" "$LOAD_TEST_STEP_SECONDS" "${STOPS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT_ID" == 310356785722 ]] || { echo "Refusing the report in unexpected AWS account $ACCOUNT_ID." >&2; exit 1; }
+
+      - name: Discover bootstrap instance
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          [[ "$COUNT" -eq 1 ]] || { echo "Expected exactly one running bootstrap; found $COUNT." >&2; exit 1; }
+          echo "instance_id=$(jq -r '.[0]' <<<"$INSTANCE_IDS")" >> "$GITHUB_OUTPUT"
+
+      # The read-only capacity report's usage section over the test window: ALB, ECS, Aurora, CloudFront and
+      # Lambda metrics (describe, get and list only; scripts/aws/capacity-media-report-guard.test.mjs).
+      - name: Site metrics during the test (read-only)
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          REPORT_SECTIONS: usage
+          REPORT_START: ${{ needs.window.outputs.started_at }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 300
+          export REPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
+          node scripts/aws/capacity-media-report.cjs

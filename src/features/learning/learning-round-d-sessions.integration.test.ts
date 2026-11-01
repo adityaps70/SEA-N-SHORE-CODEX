@@ -94,11 +94,14 @@ describe('reminders (D2)', () => {
   it('queues the 24-hour and the 1-hour reminder once each, in the learner’s time zone', async () => {
     const { mentor, batchId, learnerId } = await batchWithLearner()
     await memberTimeZoneRepository.save(learnerId, { source: 'manual', timeZone: 'Europe/London' })
-    const startsAt = new Date(Math.ceil((Date.now() + 20 * HOUR) / 60_000) * 60_000)
+    // A fixed clock, far from every other fixture's dates. The sweep covers every batch, so on the real clock this
+    // test also picked up the series test's sessions (2–11 Nov 2026) whenever it ran within 24 hours of them.
+    const NOW = new Date('2031-03-10T06:00:00.000Z')
+    const startsAt = new Date(NOW.getTime() + 20 * HOUR)
     await oneOff(mentor.userId, batchId, startsAt, 'Fixture reminder session')
 
-    expect((await sweepSessionReminders(db.query)).queued).toBe(1)
-    expect((await sweepSessionReminders(db.query)).queued).toBe(0)
+    expect((await sweepSessionReminders(db.query, NOW)).queued).toBe(1)
+    expect((await sweepSessionReminders(db.query, NOW)).queued).toBe(0)
     const later = new Date(startsAt.getTime() - 30 * 60_000)
     expect((await sweepSessionReminders(db.query, later)).queued).toBe(1)
     expect((await sweepSessionReminders(db.query, later)).queued).toBe(0)
