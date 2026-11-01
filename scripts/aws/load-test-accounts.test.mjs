@@ -41,7 +41,7 @@ test('the worker and service never print an address, name, password or token, an
   const logged = [...service.matchAll(/deps\.log\(`([^`]*)`\)/g)].map((match) => match[1])
   assert.ok(logged.length >= 6, `found ${logged.length} templated log lines`)
   for (const line of logged) assert.doesNotMatch(line, /\$\{(email|password|tokens?|activation|name)/, line)
-  assert.match(service, /LOAD_TEST_SESSIONS_SEALED \$\{encryptSessions\(result, publicKeyPem\)\}/)
+  assert.match(service, /const sealed = encryptSessions\(result, publicKeyPem\)/)
   assert.doesNotMatch(worker, /console\.(log|info)\((?!line\))/)
   // Deleting refuses a flagged profile that is not one of the test addresses, and deletes only flagged rows.
   assert.match(service, /throw new Error\('load_test_flag_on_real_account'\)/)

@@ -16,7 +16,8 @@ import { query as databaseQuery, withTransaction } from '../../src/lib/db/client
 import { provisionProfileForCognitoPrincipal } from '../../src/features/auth/identity-repository'
 import { createOnboardingService } from '../../src/features/profiles/onboarding-service'
 import { createOnboardingRepositoryForClient } from '../../src/features/profiles/onboarding-repository'
-import { createLoadTestAccounts } from '../../src/features/load-test/accounts'
+import { readFileSync } from 'node:fs'
+import { actionIdsFromManifest, createLoadTestAccounts } from '../../src/features/load-test/accounts'
 
 const mode = process.env.LOAD_TEST_ACCOUNTS_MODE ?? 'plan'
 const poolId = process.env.AWS_COGNITO_USER_POOL_ID ?? ''
@@ -69,6 +70,7 @@ const accounts = createLoadTestAccounts({
   },
   provisionProfile: provisionProfileForCognitoPrincipal,
   completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
+  readActionIds: async () => actionIdsFromManifest(JSON.parse(readFileSync('.next/server/server-reference-manifest.json', 'utf8'))),
   log: (line) => console.info(line),
 })
 

@@ -86,7 +86,9 @@ describe('load-test accounts (Round ARCH)', () => {
     const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
     lines.length = 0
     await accounts().sessions(publicKey.export({ type: 'spki', format: 'pem' }).toString())
-    const sealed = lines.find((line) => line.startsWith('LOAD_TEST_SESSIONS_SEALED '))!.split(' ')[1]!
+    const parts = lines.filter((line) => line.startsWith('LOAD_TEST_SESSIONS_SEALED_PART '))
+    expect(parts.length).toBeGreaterThan(0)
+    const sealed = parts.map((line) => line.split(' ')[2]).join('')
     expect(lines.join('\n')).not.toMatch(/access-|refresh-|loadtest-/)
     const [wrapped, iv, tag, body] = sealed.split('.').map((part) => Buffer.from(part, 'base64'))
     const key = privateDecrypt({ key: privateKey, padding: cryptoConstants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, wrapped!)
@@ -109,5 +111,16 @@ describe('load-test accounts (Round ARCH)', () => {
     expect(users.size).toBe(0)
     const real = await db.query(`select count(*)::int as n from public.profiles where id = $1`, [realRows[0]!.id])
     expect(real[0]!.n).toBe(1)
+  })
+
+  it('reads the read-only action ids from the build manifest and refuses a build without them', async () => {
+    const { actionIdsFromManifest } = await import('./accounts')
+    const manifest = { node: {
+      ['a'.repeat(42)]: { filename: 'src/features/feed/actions.ts', exportedName: 'loadTopFeedPage' },
+      ['b'.repeat(42)]: { filename: 'src/features/notifications/actions.ts', exportedName: 'loadUnreadNotificationCount' },
+      ['c'.repeat(42)]: { filename: 'src/features/feed/actions.ts', exportedName: 'setPostLiked' },
+    } }
+    expect(actionIdsFromManifest(manifest)).toEqual({ loadTopFeedPage: 'a'.repeat(42), loadUnreadNotificationCount: 'b'.repeat(42) })
+    expect(() => actionIdsFromManifest({ node: {} })).toThrow('load_test_action_missing_loadTopFeedPage')
   })
 })

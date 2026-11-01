@@ -80,7 +80,34 @@ export type LoadTestAccountDeps = {
   provisionProfile(principal: CognitoPrincipal): Promise<string>
   completeActivation(profileId: string, input: OnboardingActivationInput): Promise<unknown>
   randomPassword?: () => string
+  /** The deployed build's ids for the read-only server actions the signed-in load test calls (not secret). */
+  readActionIds?: () => Promise<Record<string, string>>
   log(line: string): void
+}
+
+const SEALED_PART_LENGTH = 8000
+
+export function sealedParts(sealed: string) {
+  const parts: string[] = []
+  for (let i = 0; i < sealed.length; i += SEALED_PART_LENGTH) parts.push(sealed.slice(i, i + SEALED_PART_LENGTH))
+  return parts
+}
+
+/** The read-only server actions the signed-in mix calls, by file and export name. */
+export const LOAD_TEST_ACTIONS = {
+  loadTopFeedPage: 'src/features/feed/actions.ts',
+  loadUnreadNotificationCount: 'src/features/notifications/actions.ts',
+} as const
+
+/** Picks those actions' ids from the build's server-reference manifest (.next/server/server-reference-manifest.json). */
+export function actionIdsFromManifest(manifest: { node?: Record<string, { filename?: string; exportedName?: string }> }) {
+  const ids: Record<string, string> = {}
+  for (const [id, entry] of Object.entries(manifest.node ?? {})) {
+    const name = entry.exportedName as keyof typeof LOAD_TEST_ACTIONS | undefined
+    if (name && LOAD_TEST_ACTIONS[name] === entry.filename && /^[0-9a-f]{40,44}$/.test(id)) ids[name] = id
+  }
+  for (const name of Object.keys(LOAD_TEST_ACTIONS)) if (!ids[name]) throw new Error(`load_test_action_missing_${name}`)
+  return ids
 }
 
 export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
@@ -221,7 +248,11 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
       result.push({ index, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
     }
     deps.log(`LOAD_TEST_SESSIONS count=${result.length}`)
-    deps.log(`LOAD_TEST_SESSIONS_SEALED ${encryptSessions(result, publicKeyPem)}`)
+    // Container logs split long lines, so the sealed bundle is printed in numbered parts the runner joins.
+    const sealed = encryptSessions(result, publicKeyPem)
+    const parts = sealedParts(sealed)
+    parts.forEach((part, i) => deps.log(`LOAD_TEST_SESSIONS_SEALED_PART ${i + 1}/${parts.length} ${part}`))
+    if (deps.readActionIds) deps.log(`LOAD_TEST_ACTIONS ${JSON.stringify(await deps.readActionIds())}`)
     deps.log('LOAD_TEST_SESSIONS_VERIFIED=true')
   }
 
