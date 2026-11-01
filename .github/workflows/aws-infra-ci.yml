@@ -11,6 +11,7 @@ on:
       - public/brand/**
       - infra/aws/**
       - scripts/aws/**
+      - scripts/load-test/**
       - scripts/migration/**
       - scripts/workers/**
       - vitest.config.ts
@@ -28,6 +29,7 @@ on:
       - public/brand/**
       - infra/aws/**
       - scripts/aws/**
+      - scripts/load-test/**
       - scripts/migration/**
       - scripts/workers/**
       - vitest.config.ts
@@ -241,6 +243,8 @@ jobs:
         run: node scripts/aws/media-cdn-backfill.test.mjs
       - name: Verify media renditions migration runner contract
         run: node --test scripts/aws/media-renditions-migration.test.mjs
+      - name: Verify load test contract
+        run: node --test scripts/aws/load-test.test.mjs
       - name: Verify Resend delivery webhook runner contract
         run: node --test scripts/aws/resend-delivery-webhook.test.mjs
       - name: Verify guarded staging data cleanup contract

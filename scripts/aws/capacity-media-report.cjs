@@ -14,7 +14,13 @@ assert.match(instanceId || '', /^i-[0-9a-f]+$/)
 
 const remoteScript = readFileSync('scripts/aws/capacity-media-report-remote.py', 'utf8')
 const encoded = Buffer.from(remoteScript, 'utf8').toString('base64')
-const SECTIONS = ['config', 'usage', 'media']
+const ALL_SECTIONS = ['config', 'usage', 'media']
+// The load test (aws-load-test.yml) asks for the usage section over its own window only.
+const SECTIONS = (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s)), 'unknown report section')
+const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
+for (const value of Object.values(WINDOW)) assert.match(value, /^$|^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/)
+assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
 
 function quote(value) {
   return `'${String(value).replaceAll("'", `'"'"'`)}'`
@@ -33,6 +39,8 @@ async function runSection(section) {
   const remote = `set -euo pipefail
 export AWS_REGION=${quote(region)}
 export REPORT_SECTION=${quote(section)}
+export REPORT_START=${quote(WINDOW.start)}
+export REPORT_END=${quote(WINDOW.end)}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

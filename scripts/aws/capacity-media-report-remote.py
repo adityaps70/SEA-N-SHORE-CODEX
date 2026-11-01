@@ -26,6 +26,11 @@ DAYS = int(os.environ.get("REPORT_DAYS", "14"))
 SECTION = os.environ.get("REPORT_SECTION", "config")
 NOW = dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
 START = NOW - dt.timedelta(days=DAYS)
+# The load test report covers only its own window (REPORT_START/REPORT_END, whole UTC minutes).
+if os.environ.get("REPORT_START") and os.environ.get("REPORT_END"):
+    START = dt.datetime.strptime(os.environ["REPORT_START"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+    NOW = dt.datetime.strptime(os.environ["REPORT_END"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+    assert START < NOW <= START + dt.timedelta(hours=6), "the report window must be under 6 hours"
 COUNTS = Counter()
 
 
