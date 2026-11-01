@@ -69,7 +69,7 @@ test('Infra CI: superseded runs cancel; heavy jobs follow the change scope; cont
 })
 
 // Behaviour of scripts/aws/infra-ci-scope.sh on real git history, with the GitHub API stubbed.
-function scope({ event = 'push', before, parentCi = 'success', api = true, setup }) {
+function scope({ event = 'push', ref, before, parentCi = 'success', api = true, setup }) {
   const root = mkdtempSync(join(tmpdir(), 'ci-scope-'))
   const repo = join(root, 'repo')
   const sh = (cmd) => execSync(cmd, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
@@ -90,25 +90,37 @@ function scope({ event = 'push', before, parentCi = 'success', api = true, setup
   writeFileSync(out, '')
   execSync(`bash "${join(process.cwd(), 'scripts/aws/infra-ci-scope.sh')}"`, {
     cwd: repo, stdio: 'ignore',
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_SHA: sh('git rev-parse HEAD'), GITHUB_REPOSITORY: 'o/r', GH_TOKEN: 'x', BEFORE: before ?? base, GITHUB_OUTPUT: out },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_SHA: sh('git rev-parse HEAD'), GITHUB_REPOSITORY: 'o/r', GH_TOKEN: 'x', BEFORE: before ?? base, GITHUB_OUTPUT: out, GITHUB_REF: ref ?? FEATURE },
   })
   const result = Object.fromEntries(readFileSync(out, 'utf8').trim().split('\n').map((line) => line.split('=')))
   rmSync(root, { recursive: true, force: true })
   return Object.fromEntries(['application', 'terraform', 'guard', 'container'].map((job) => [job, result[job] === 'true']))
 }
 const ALL = { application: true, terraform: true, guard: true, container: true }
+const FEATURE = 'refs/heads/feat/aws-native-phase-0-1'
 const NONE = { application: false, terraform: false, guard: false, container: false }
 
 test('scope: rearms, workflow-only changes and merges of verified trees skip the heavy jobs', () => {
   assert.deepEqual(scope({ setup: ({ write, sh }) => { write('scripts/aws/x-action.txt', 'apply-once\n'); sh('git commit -qam arm') } }), NONE)
   assert.deepEqual(scope({ setup: ({ write, sh }) => { write('.github/workflows/w.yml', 'v2\n'); sh('git commit -qam wf') } }), NONE)
-  assert.deepEqual(scope({
-    before: undefined,
-    setup: ({ write, sh, base }) => {
-      sh('git checkout -qb pr'); write('src/a.ts', 'v2\n'); sh('git commit -qam feature')
-      sh(`git checkout -q ${base} && git checkout -qb main && git merge -q --no-ff pr -m merge`)
-    },
-  }), NONE)
+  // A merge reuses its PR branch's checks, but builds the image once if its inputs changed: PR branches no longer
+  // build it.
+  const merge = (file) => ({ write, sh, base }) => {
+    sh('git checkout -qb pr'); write(file, 'v2\n'); sh('git commit -qam feature')
+    sh(`git checkout -q ${base} && git checkout -qb main && git merge -q --no-ff pr -m merge`)
+  }
+  assert.deepEqual(scope({ before: undefined, ref: FEATURE, setup: merge('src/a.ts') }), { ...NONE, container: true })
+  assert.deepEqual(scope({ before: undefined, ref: FEATURE, setup: merge('infra/aws/app/main.tf') }), NONE)
+  assert.deepEqual(scope({ before: undefined, ref: FEATURE, parentCi: 'failure', setup: merge('infra/aws/app/main.tf') }), ALL)
+})
+
+test('scope: a push to any branch but the feature branch never builds the image', () => {
+  const app = ({ write, sh }) => { write('src/a.ts', 'v2\n'); sh('git commit -qam app') }
+  assert.deepEqual(scope({ ref: 'refs/heads/claude/new-session-x', setup: app }), { application: true, terraform: false, guard: false, container: false })
+  assert.deepEqual(scope({ ref: 'refs/heads/claude/new-session-x', parentCi: 'failure', setup: app }), { ...ALL, container: false })
+  assert.deepEqual(scope({ ref: FEATURE, setup: app }), { application: true, terraform: false, guard: false, container: true })
+  // A manual run still builds everything.
+  assert.deepEqual(scope({ event: 'workflow_dispatch', ref: 'refs/heads/claude/new-session-x', setup: app }), ALL)
 })
 
 test('scope: each heavy job still runs when its own inputs changed', () => {
