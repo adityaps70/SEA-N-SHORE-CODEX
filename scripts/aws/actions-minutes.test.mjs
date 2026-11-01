@@ -90,7 +90,7 @@ function scope({ event = 'push', ref, before, parentCi = 'success', api = true, 
   writeFileSync(out, '')
   execSync(`bash "${join(process.cwd(), 'scripts/aws/infra-ci-scope.sh')}"`, {
     cwd: repo, stdio: 'ignore',
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_SHA: sh('git rev-parse HEAD'), GITHUB_REPOSITORY: 'o/r', GH_TOKEN: 'x', BEFORE: before ?? base, GITHUB_OUTPUT: out, ...(ref ? { GITHUB_REF: ref } : {}) },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_EVENT_NAME: event, GITHUB_SHA: sh('git rev-parse HEAD'), GITHUB_REPOSITORY: 'o/r', GH_TOKEN: 'x', BEFORE: before ?? base, GITHUB_OUTPUT: out, GITHUB_REF: ref ?? FEATURE },
   })
   const result = Object.fromEntries(readFileSync(out, 'utf8').trim().split('\n').map((line) => line.split('=')))
   rmSync(root, { recursive: true, force: true })
