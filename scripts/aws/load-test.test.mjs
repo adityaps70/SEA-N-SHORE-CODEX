@@ -88,14 +88,20 @@ test('the report merges shards and names the highest step within limits, with ag
   assert.doesNotMatch(lines.join('\n'), /https?:|\/jobs\/|@/)
 })
 
-test('owner-armed, approved, inside 01:00-03:00 IST, and the traffic never holds AWS credentials', () => {
+test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, once per arm, no AWS credentials in the traffic', () => {
   assert.match(jobOf('apply-gate'), /GUARD_FILE: scripts\/aws\/load-test-action\.txt\n\s+shell: bash\n\s+run: bash scripts\/aws\/arm-commit-guard\.sh/)
   assert.match(jobOf('apply-approval'), /environment: staging-apply/)
   const window = jobOf('window')
   assert.match(window, /needs\.apply-approval\.result == 'success'/)
+  // Merging the arm (a push) sends no traffic: only a start from the nightly schedule reaches the window.
+  assert.match(window, /github\.event_name == 'workflow_dispatch' \}\}/)
+  assert.match(window, /\[\[ "\$TRIGGERING_ACTOR" == "github-actions\[bot\]" \]\]/)
   assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
-  assert.match(window, /NOW > START \+ 900/)
-  assert.match(window, /WAIT > 330 \* 60/)
+  assert.match(window, /NOW < START \|\| NOW > START \+ 2700/)
+  assert.doesNotMatch(window, /sleep/)
+  assert.match(window, /event=workflow_dispatch&head_sha=\$GITHUB_SHA/)
+  assert.match(window, /select\(\.id != \$GITHUB_RUN_ID\)\] \| length/)
+  assert.match(window, /\[\[ "\$EARLIER" == 0 \]\]/)
   assert.match(window, /== run-once \]\]/)
   assert.match(window, /Branch moved after the load test was approved/)
   for (const id of ['plan', 'window', 'load']) assert.doesNotMatch(jobOf(id), /configure-aws-credentials|AWS_ROLE_TO_ASSUME/, id)
@@ -105,6 +111,22 @@ test('owner-armed, approved, inside 01:00-03:00 IST, and the traffic never holds
   // The plan run never touches the site: it runs the pipeline against a local server.
   assert.match(jobOf('plan'), /LOAD_TEST_BASE_URL: http:\/\/127\.0\.0\.1:8099/)
   assert.match(jobOf('plan'), /LOAD_TEST_PLAN_ONLY_NO_TRAFFIC/)
+})
+
+test('the nightly start fires at 01:05 IST from the default branch and starts only an unused run-once arm', () => {
+  const nightly = read('../../.github/workflows/load-test-nightly.yml')
+  assert.match(nightly, /\non:\n  schedule:\n    - cron: "35 19 \* \* \*"\n\n/)
+  assert.doesNotMatch(nightly, /push:|pull_request|workflow_dispatch:/)
+  assert.match(nightly, /permissions:\n  contents: read\n  actions: write\n\n/)
+  assert.match(nightly, /timeout-minutes: 5\n/)
+  assert.doesNotMatch(nightly, /configure-aws-credentials|AWS_ROLE_TO_ASSUME|secrets\./)
+  assert.match(nightly, /BRANCH: feat\/aws-native-phase-0-1\n/)
+  assert.match(nightly, /contents\/\$GUARD_FILE\?ref=\$HEAD/)
+  assert.match(nightly, /if \[\[ ! "\$GUARD" =~ \^run-once\\ \[0-9a-f\]\{40\}\$ \]\]; then\n.*\n\s+exit 0\n/)
+  assert.match(nightly, /event=workflow_dispatch&head_sha=\$HEAD/)
+  // It starts exactly one thing: AWS Load Test on the feature branch, after both checks.
+  assert.deepEqual(nightly.match(/gh workflow run [^\n]+/g), ['gh workflow run aws-load-test.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"'])
+  assert.ok(nightly.indexOf('gh workflow run') > nightly.indexOf('already started once'))
 })
 
 test('k6 is a pinned package checked against its SHA-256 before it runs', () => {
