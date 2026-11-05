@@ -133,6 +133,18 @@ test('the nightly start fires at 01:05 IST from the default branch and starts on
   assert.ok(nightly.indexOf('gh workflow run') > nightly.indexOf('already started once'))
 })
 
+test('the page picker finds a job and a course link with or without a query string', () => {
+  const window = jobOf('window')
+  const job = new RegExp(/grep -oE '(href="\/jobs\/[^']+)' <<<"\$JOBS_HTML"/.exec(window)[1])
+  const course = new RegExp(/grep -oE '(href="\/learn\/courses\/[^']+)' <<<"\$LEARN_HTML"/.exec(window)[1])
+  const strip = (m) => m.replace(/^href="/, '').replace(/["?]$/, '')
+  const id = '8fed15f6-552d-4896-9717-656718a77b58'
+  for (const html of [`<a href="/jobs/${id}?src=jobs">`, `<a href="/jobs/${id}">`]) assert.equal(strip(job.exec(html)[0]), `/jobs/${id}`)
+  for (const html of ['<a href="/learn/courses/oil-record-book?x=1">', '<a href="/learn/courses/oil-record-book">']) assert.equal(strip(course.exec(html)[0]), '/learn/courses/oil-record-book')
+  assert.equal(job.exec('<a href="/jobs/new">'), null)
+  assert.match(window, /s\/\^href="\/\/; s\/\["\?\]\$\/\/' \|\| true\)/)
+})
+
 test('k6 is a pinned package checked against its SHA-256 before it runs', () => {
   assert.match(workflow, /K6_DEB_URL: https:\/\/dl\.k6\.io\/deb\/dists\/stable\/main\/binary-amd64\/k6-v2\.2\.0-amd64\.deb/)
   assert.match(workflow, /K6_DEB_SHA256: [0-9a-f]{64}\n/)

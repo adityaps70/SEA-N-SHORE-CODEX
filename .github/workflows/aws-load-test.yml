@@ -226,8 +226,11 @@ jobs:
         run: |
           set -euo pipefail
           UA='SeaNShore-LoadTest/1'
-          JOB=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/jobs" | grep -oE 'href="/jobs/[0-9a-f-]{36}"' | head -1 | sed -E 's/^href="|"$//g')
-          COURSE=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/learn" | grep -oE 'href="/learn/courses/[a-z0-9-]+"' | head -1 | sed -E 's/^href="|"$//g')
+          JOBS_HTML=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/jobs")
+          LEARN_HTML=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/learn")
+          # Links may carry a query string (e.g. /jobs/<id>?src=jobs); keep only the path.
+          JOB=$(grep -oE 'href="/jobs/[0-9a-f-]{36}["?]' <<<"$JOBS_HTML" | head -1 | sed -E 's/^href="//; s/["?]$//' || true)
+          COURSE=$(grep -oE 'href="/learn/courses/[a-z0-9-]+["?]' <<<"$LEARN_HTML" | head -1 | sed -E 's/^href="//; s/["?]$//' || true)
           [[ "$JOB" =~ ^/jobs/[0-9a-f-]{36}$ ]] || { echo "No public job page found." >&2; exit 1; }
           [[ "$COURSE" =~ ^/learn/courses/[a-z0-9-]+$ ]] || { echo "No public course page found." >&2; exit 1; }
           echo "job_path=$JOB" >> "$GITHUB_OUTPUT"
