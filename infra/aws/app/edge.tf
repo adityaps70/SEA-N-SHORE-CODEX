@@ -128,6 +128,88 @@ resource "aws_wafv2_web_acl" "edge" {
         # Round P3 (B7): signed media (/m/*) is not counted. Each photo is one request, and many
         # people share one ship or office address; CloudFront refuses any /m/ request without a
         # valid signature before it reaches the bucket.
+        # ARCH decision 6 (ship IPs): signed-in requests (with the session cookie) are not counted
+        # here either, so one busy ship cannot block itself; PerSessionRateLimit limits each session
+        # and PerIpCeiling stays as the hard limit per address.
+        scope_down_statement {
+          and_statement {
+            statement {
+              not_statement {
+                statement {
+                  byte_match_statement {
+                    field_to_match {
+                      uri_path {}
+                    }
+                    positional_constraint = "STARTS_WITH"
+                    search_string         = "/m/"
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+              }
+            }
+            statement {
+              not_statement {
+                statement {
+                  size_constraint_statement {
+                    comparison_operator = "GT"
+                    size                = 0
+                    field_to_match {
+                      cookies {
+                        match_pattern {
+                          included_cookies = ["sns_cognito_refresh"]
+                        }
+                        match_scope       = "VALUE"
+                        oversize_handling = "MATCH"
+                      }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # ARCH decision 6: signed-in traffic is limited per session (the refresh-token cookie), not per
+  # address, at 1,000 requests per 5 minutes. A request without that cookie is not counted here.
+  rule {
+    name     = "PerSessionRateLimit"
+    priority = 21
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        aggregate_key_type    = "CUSTOM_KEYS"
+        evaluation_window_sec = 300
+        limit                 = 1000
+
+        custom_key {
+          cookie {
+            name = "sns_cognito_refresh"
+            text_transformation {
+              priority = 0
+              type     = "NONE"
+            }
+          }
+        }
+
         scope_down_statement {
           not_statement {
             statement {
@@ -150,7 +232,49 @@ resource "aws_wafv2_web_acl" "edge" {
 
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "${local.name_prefix}-rate-limit"
+      metric_name                = "${local.name_prefix}-session-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # ARCH decision 6: a hard ceiling per address for all traffic (signed-in or not), 10x the
+  # signed-out limit, so a whole ship of signed-in people fits under it.
+  rule {
+    name     = "PerIpCeiling"
+    priority = 22
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+        limit                 = 20000
+
+        scope_down_statement {
+          not_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "STARTS_WITH"
+                search_string         = "/m/"
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-ip-ceiling"
       sampled_requests_enabled   = true
     }
   }
