@@ -16,6 +16,16 @@ test('no AWS access at all, and the token can only read the repository', () => {
   assert.doesNotMatch(workflow, /AURORA_SECRET_ARN|seanshore\.in/)
 })
 
+test('the job runs only from exactly two branches: feat and the owner-approved working branch', () => {
+  const guards = workflow.match(/^    if: .*github\.ref.*$/gm) ?? []
+  assert.deepEqual(guards, ["    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1' || github.ref == 'refs/heads/claude/new-session-ezd1t1'"])
+  const refs = workflow.match(/refs\/heads\/[A-Za-z0-9._/-]+/g) ?? []
+  assert.deepEqual([...new Set(refs)].sort(), ['refs/heads/claude/new-session-ezd1t1', 'refs/heads/feat/aws-native-phase-0-1'])
+  assert.doesNotMatch(workflow, /startsWith\(github\.ref|contains\(github\.ref|github\.ref != /)
+  // A push still runs only the keyless self-test, and only on feat.
+  assert.match(workflow, /\non:\n  push:\n    branches:\n      - feat\/aws-native-phase-0-1\n    paths:/)
+})
+
 test('only the TEST secrets, only in the key check and the test step, only on a manual start', () => {
   const uses = workflow.match(/secrets\.[A-Z_]+/g) ?? []
   assert.deepEqual([...new Set(uses)].sort(), ['secrets.CASHFREE_TEST_CLIENT_ID', 'secrets.CASHFREE_TEST_CLIENT_SECRET'])
