@@ -63,10 +63,12 @@ test('Cashfree production is unreachable from the runner and from the browser', 
   assert.match(config, /retries: 0/)
 })
 
-test('the CSP is enforced only in this throwaway build, by the one switch', () => {
-  assert.match(workflow, /sed -i 's\/\^export const ENFORCE_CONTENT_SECURITY_POLICY = false\$\/export const ENFORCE_CONTENT_SECURITY_POLICY = true\/'/)
-  assert.match(workflow, /\[\[ "\$\(git diff --name-only\)" == "\$FILE" \]\]/)
-  assert.match(read('../../src/lib/security/content-security-policy.ts'), /\nexport const ENFORCE_CONTENT_SECURITY_POLICY = false\n/)
+test('the build under test is the deployed app with its CSP enforced, unchanged', () => {
+  // Since 7 Nov the app enforces its CSP, so the workflow only checks the switch and changes no file.
+  assert.match(read('../../src/lib/security/content-security-policy.ts'), /\nexport const ENFORCE_CONTENT_SECURITY_POLICY = true\n/)
+  assert.match(workflow, /grep -q '\^export const ENFORCE_CONTENT_SECURITY_POLICY = true\$' "\$FILE"/)
+  assert.match(workflow, /\[\[ -z "\$\(git diff --name-only\)" \]\]/)
+  assert.doesNotMatch(workflow, /sed -i/)
   assert.match(spec, /response\?\.headers\(\)\['content-security-policy'\]/)
   assert.match(spec, /expect\(violations, 'no CSP violation on our pages with the policy enforced'\)\.toEqual\(\[\]\)/)
 })

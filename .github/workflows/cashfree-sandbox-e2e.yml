@@ -147,16 +147,14 @@ jobs:
       - name: Apply every migration and add the fixtures
         run: npx tsx scripts/e2e/cashfree-sandbox/seed.ts
 
-      # The one change from the deployed app: this build sends the policy as Content-Security-Policy (enforced).
-      - name: Enforce the CSP in this build only
+      # The app enforces its CSP (Content-Security-Policy); this build is the deployed app, unchanged.
+      - name: Check the CSP is enforced in this build
         shell: bash
         run: |
           set -euo pipefail
           FILE=src/lib/security/content-security-policy.ts
-          grep -q '^export const ENFORCE_CONTENT_SECURITY_POLICY = false$' "$FILE"
-          sed -i 's/^export const ENFORCE_CONTENT_SECURITY_POLICY = false$/export const ENFORCE_CONTENT_SECURITY_POLICY = true/' "$FILE"
           grep -q '^export const ENFORCE_CONTENT_SECURITY_POLICY = true$' "$FILE"
-          [[ "$(git diff --name-only)" == "$FILE" ]]
+          [[ -z "$(git diff --name-only)" ]]
           echo "CSP_ENFORCED_IN_THIS_BUILD=true"
 
       - name: Build the app copy
