@@ -34,6 +34,52 @@ MEDIA_RATE_SCOPE_DOWN = {'not_statement': [{'statement': [{'byte_match_statement
     'search_string': '/m/',
     'text_transformation': [{'priority': 0, 'type': 'NONE'}],
 }]}]}]}
+# ARCH decision 6 (ship IPs): signed-in traffic is limited per session cookie, not per address.
+SESSION_COOKIE = 'sns_cognito_refresh'
+SESSION_RATE_RULE = 'PerSessionRateLimit'
+IP_CEILING_RULE = 'PerIpCeiling'
+_NO_TRANSFORM = [{'priority': 0, 'type': 'NONE'}]
+SIGNED_OUT_RATE_SCOPE_DOWN = {'and_statement': [{'statement': [
+    MEDIA_RATE_SCOPE_DOWN,
+    {'not_statement': [{'statement': [{'size_constraint_statement': [{
+        'comparison_operator': 'GT',
+        'size': 0,
+        'field_to_match': [{'cookies': [{
+            'match_pattern': [{'included_cookies': [SESSION_COOKIE]}],
+            'match_scope': 'VALUE',
+            'oversize_handling': 'MATCH',
+        }]}],
+        'text_transformation': _NO_TRANSFORM,
+    }]}]}]},
+]}]}
+
+
+def _ship_ip_rule(name, priority, metric, rate):
+    rate = dict(rate, evaluation_window_sec=300, scope_down_statement=[MEDIA_RATE_SCOPE_DOWN])
+    return {
+        'name': name,
+        'priority': priority,
+        'action': [{'block': [{}]}],
+        'statement': [{'rate_based_statement': [rate]}],
+        'visibility_config': [{
+            'cloudwatch_metrics_enabled': True,
+            'metric_name': 'sea-n-shore-staging-' + metric,
+            'sampled_requests_enabled': True,
+        }],
+    }
+
+
+EXPECTED_SHIP_IP_RULES = {
+    SESSION_RATE_RULE: _ship_ip_rule(SESSION_RATE_RULE, 21, 'session-rate-limit', {
+        'aggregate_key_type': 'CUSTOM_KEYS',
+        'limit': 1000,
+        'custom_key': [{'cookie': [{'name': SESSION_COOKIE, 'text_transformation': _NO_TRANSFORM}]}],
+    }),
+    IP_CEILING_RULE: _ship_ip_rule(IP_CEILING_RULE, 22, 'ip-ceiling', {
+        'aggregate_key_type': 'IP',
+        'limit': 20000,
+    }),
+}
 EXPECTED_ORDERED_BEHAVIORS = [
     ('/_next/static/*', 'optimized'),
     ('/_next/image*', 'next_image'),
@@ -182,6 +228,7 @@ def _normalize_waf(waf):
     group.pop('rule_action_override', None)
 
     has_media_scope = False
+    has_signed_out_scope = False
     for rule in normalized.get('rule', []):
         if rule.get('name') != 'PerIpRateLimit':
             continue
@@ -190,10 +237,31 @@ def _normalize_waf(waf):
                 scope = rate.get('scope_down_statement')
                 if scope in (None, []):
                     continue
-                if not (isinstance(scope, list) and len(scope) == 1 and _compact(scope[0]) == MEDIA_RATE_SCOPE_DOWN):
+                if not (isinstance(scope, list) and len(scope) == 1):
+                    return None
+                if _compact(scope[0]) == MEDIA_RATE_SCOPE_DOWN:
+                    has_media_scope = True
+                elif _compact(scope[0]) == SIGNED_OUT_RATE_SCOPE_DOWN:
+                    # The signed-out scope keeps the media exception and adds the session-cookie one.
+                    has_media_scope = True
+                    has_signed_out_scope = True
+                else:
                     return None
                 rate.pop('scope_down_statement')
-                has_media_scope = True
+
+    # ARCH decision 6: the two ship-IP rules are all or nothing, each exactly as approved, and only
+    # together with the signed-out scope on PerIpRateLimit.
+    ship_rules = [rule for rule in normalized.get('rule', []) if rule.get('name') in EXPECTED_SHIP_IP_RULES]
+    ship_names = [rule.get('name') for rule in ship_rules]
+    if len(ship_names) != len(set(ship_names)):
+        return None
+    for rule in ship_rules:
+        if _compact(rule) != EXPECTED_SHIP_IP_RULES[rule['name']]:
+            return None
+    has_ship_ip = bool(ship_rules)
+    if has_ship_ip != has_signed_out_scope or (has_ship_ip and set(ship_names) != set(EXPECTED_SHIP_IP_RULES)):
+        return None
+    normalized['rule'] = [rule for rule in normalized.get('rule', []) if rule.get('name') not in EXPECTED_SHIP_IP_RULES]
 
     xss_rules = [rule for rule in normalized.get('rule', []) if rule.get('name') == XSS_BLOCK_RULE]
     if len(xss_rules) > 1:
@@ -204,7 +272,7 @@ def _normalize_waf(waf):
     if has_xss_rule:
         normalized['rule'] = [rule for rule in normalized.get('rule', []) if rule.get('name') != XSS_BLOCK_RULE]
 
-    return _compact(normalized), names, has_xss_rule, has_media_scope
+    return _compact(normalized), names, has_xss_rule, has_media_scope, has_ship_ip
 
 
 def _diagnose_override_shape(label, waf):
@@ -272,8 +340,8 @@ def _validate_waf_update(change):
     if normalized_before is None or normalized_after is None:
         return False
 
-    before_base, before_overrides, before_xss_rule, before_media_scope = normalized_before
-    after_base, after_overrides, after_xss_rule, after_media_scope = normalized_after
+    before_base, before_overrides, before_xss_rule, before_media_scope, before_ship_ip = normalized_before
+    after_base, after_overrides, after_xss_rule, after_media_scope, after_ship_ip = normalized_after
     if before_base != after_base:
         print('WAF_NORMALIZED_DIFF_BEGIN', file=sys.stderr)
         for difference in _diff_paths(before_base, after_base):
@@ -305,9 +373,21 @@ def _validate_waf_update(change):
         and not before_media_scope
         and after_media_scope
     )
+    # ARCH decision 6 (ship IPs): with the profile-media rules and the media exception unchanged,
+    # PerIpRateLimit stops counting signed-in requests and the exact per-session limit and per-IP
+    # ceiling are added; nothing else may change with them.
+    ship_ip_transition = (
+        before_overrides == after_overrides == {SIZE_OVERRIDE, XSS_OVERRIDE}
+        and before_xss_rule and after_xss_rule
+        and before_media_scope and after_media_scope
+        and not before_ship_ip
+        and after_ship_ip
+    )
     if (size_transition or xss_transition) and before_media_scope != after_media_scope:
         return False
-    return size_transition or xss_transition or media_scope_transition
+    if (size_transition or xss_transition or media_scope_transition) and before_ship_ip != after_ship_ip:
+        return False
+    return size_transition or xss_transition or media_scope_transition or ship_ip_transition
 
 
 def rendered_function_code(redirect_edge_host, template_path=None):

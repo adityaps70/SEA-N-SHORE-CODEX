@@ -555,4 +555,91 @@ class SignedMediaTests(unittest.TestCase):
         self.assertTrue(self.errors(self.plan(waf=waf(removed, current))))
 
 
+def signed_out_rate_rule(cookie='sns_cognito_refresh'):
+    rule = rate_rule_with_media_scope()
+    media = rule['statement'][0]['rate_based_statement'][0]['scope_down_statement'][0]
+    rule['statement'][0]['rate_based_statement'][0]['scope_down_statement'] = [{'and_statement':[{'statement':[
+        media,
+        {'not_statement':[{'statement':[{'size_constraint_statement':[{
+            'comparison_operator':'GT','size':0,
+            'field_to_match':[{'cookies':[{'match_pattern':[{'all':[],'included_cookies':[cookie],'excluded_cookies':[]}],'match_scope':'VALUE','oversize_handling':'MATCH'}]}],
+            'text_transformation':[{'priority':0,'type':'NONE'}],
+        }]}]}]},
+    ]}]}]
+    return rule
+
+
+def ship_rule(name, priority, metric, aggregate, limit, custom_key=None):
+    rate = {'aggregate_key_type':aggregate,'evaluation_window_sec':300,'limit':limit,'forwarded_ip_config':[],
+            'scope_down_statement':rate_rule_with_media_scope()['statement'][0]['rate_based_statement'][0]['scope_down_statement']}
+    if custom_key is not None:
+        rate['custom_key'] = custom_key
+    return {'name':name,'priority':priority,'action':[{'block':[{}]}],'captcha_config':[],'rule_label':[],
+            'statement':[{'rate_based_statement':[rate]}],
+            'visibility_config':[{'cloudwatch_metrics_enabled':True,'metric_name':'sea-n-shore-staging-'+metric,'sampled_requests_enabled':True}]}
+
+
+def session_rule(limit=1000, cookie='sns_cognito_refresh'):
+    key = [{'cookie':[{'name':cookie,'text_transformation':[{'priority':0,'type':'NONE'}]}],'header':[],'ip':[],'query_argument':[]}]
+    return ship_rule('PerSessionRateLimit', 21, 'session-rate-limit', 'CUSTOM_KEYS', limit, key)
+
+
+def ceiling_rule(limit=20000):
+    return ship_rule('PerIpCeiling', 22, 'ip-ceiling', 'IP', limit)
+
+
+class ShipIpRateLimitTests(SignedMediaTests):
+    """ARCH decision 6: signed-in traffic limited per session, a per-IP ceiling, nothing looser."""
+
+    def current(self):
+        return {'id':guard.WAF_ID,'rule':[common_rule([count_override('SizeRestrictions_BODY'), count_override('CrossSiteScripting_BODY')]), body_xss_rule(), rate_rule_with_media_scope()]}
+
+    def shipped(self, rate=None, session=None, ceiling=None):
+        waf = self.current()
+        waf['rule'][2] = rate or signed_out_rate_rule()
+        waf['rule'] += [r for r in (session if session is not None else session_rule(), ceiling if ceiling is not None else ceiling_rule()) if r]
+        return waf
+
+    def errors_for(self, before, after):
+        return self.errors(self.plan(waf={'address':'aws_wafv2_web_acl.edge','mode':'managed','change':{'actions':['update'],'before':before,'after':after}}))
+
+    def test_accepts_exactly_the_approved_ship_ip_rules(self):
+        self.assertEqual(self.errors_for(self.current(), self.shipped()), [])
+
+    def test_refuses_looser_or_partial_variants(self):
+        for after in [
+            self.shipped(session=session_rule(limit=5000)),
+            self.shipped(session=session_rule(cookie='sns_cognito_access')),
+            self.shipped(ceiling=ceiling_rule(limit=100000)),
+            self.shipped(rate=signed_out_rate_rule(cookie='anything')),
+            self.shipped(session=False),
+            self.shipped(ceiling=False),
+            self.shipped(rate=rate_rule_with_media_scope()),
+            self.shipped(session=False, ceiling=False),
+        ]:
+            if after == self.current():
+                continue
+            self.assertTrue(self.errors_for(self.current(), after))
+        higher = self.shipped(); higher['rule'][2]['statement'][0]['rate_based_statement'][0]['limit'] = 10000
+        self.assertTrue(self.errors_for(self.current(), higher))
+
+    def test_refuses_removing_the_ship_ip_rules_or_mixing_them_with_other_changes(self):
+        self.assertTrue(self.errors_for(self.shipped(), self.current()))
+        mixed = self.shipped(); mixed['rule'][0] = common_rule([count_override('SizeRestrictions_BODY')])
+        self.assertTrue(self.errors_for(self.current(), mixed))
+        unscoped_before = self.current(); unscoped_before['rule'][2] = rate_rule()
+        self.assertTrue(self.errors_for(unscoped_before, self.shipped()))
+
+    def test_the_terraform_matches_the_checker(self):
+        tf = (Path(__file__).resolve().parents[2] / 'infra' / 'aws' / 'app' / 'edge.tf').read_text()
+        for needle in ['name     = "PerSessionRateLimit"\n    priority = 21', 'name     = "PerIpCeiling"\n    priority = 22',
+                       'aggregate_key_type    = "CUSTOM_KEYS"\n        evaluation_window_sec = 300\n        limit                 = 1000',
+                       'aggregate_key_type    = "IP"\n        evaluation_window_sec = 300\n        limit                 = 20000',
+                       'aggregate_key_type    = "IP"\n        evaluation_window_sec = 300\n        limit                 = 2000\n',
+                       'name = "sns_cognito_refresh"', 'included_cookies = ["sns_cognito_refresh"]',
+                       'metric_name                = "${local.name_prefix}-session-rate-limit"', 'metric_name                = "${local.name_prefix}-ip-ceiling"']:
+            self.assertIn(needle, tf)
+        self.assertEqual(tf.count('search_string         = "/m/"'), 3)
+
+
 if __name__ == '__main__': unittest.main()
