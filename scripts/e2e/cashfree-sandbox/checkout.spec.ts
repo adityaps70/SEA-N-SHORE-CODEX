@@ -56,6 +56,10 @@ async function visibleIn(scope: Page | Frame, locator: ReturnType<Page['locator'
  */
 const SUBMIT_BUTTON = /^(proceed to pay|verify and pay|pay now|pay ₹ ?[\d,.]+|verify|continue)$/i
 const OTP_SUBMIT_BUTTON = /^(submit|verify|confirm|continue|submit otp|verify otp)$/i
+// After "Proceed to Pay" Cashfree may offer to save the card ("Pay and Save Card"); the test card is never saved.
+const SKIP_SAVING_CARD_BUTTON = /^pay without saving the card$/i
+// No single Cashfree action may hold the loop: a click on a covered button otherwise waits for the whole test.
+const ACTION_TIMEOUT = { timeout: 10_000 }
 
 function submitButton(scope: Page | Frame, name: RegExp = SUBMIT_BUTTON) {
   return scope.getByRole('button', { name }).and(scope.locator(':enabled'))
@@ -64,7 +68,7 @@ function submitButton(scope: Page | Frame, name: RegExp = SUBMIT_BUTTON) {
 async function fillIfEmpty(locator: ReturnType<Page['locator']>, value: string) {
   const field = locator.first()
   if (!(await field.isVisible().catch(() => false))) return
-  if ((await field.inputValue().catch(() => '')).trim() === '') await field.fill(value).catch(() => {})
+  if ((await field.inputValue(ACTION_TIMEOUT).catch(() => '')).trim() === '') await field.fill(value, ACTION_TIMEOUT).catch(() => {})
 }
 
 /**
@@ -77,16 +81,33 @@ async function completeSandboxPayment(page: Page, done: () => Promise<boolean>, 
   const lastSubmit = new Map<string, number>()
   const submitOnce = async (scope: Page | Frame, key: string, button: ReturnType<Page['locator']>) => {
     if (Date.now() - (lastSubmit.get(key) ?? 0) < 15_000) return
+    // Once the save-card prompt is answered the card form underneath is not sent again while Cashfree processes it.
+    if (key === 'card' && lastSubmit.has('save-card-prompt')) return
     if (!(await visibleIn(scope, button))) return
     lastSubmit.set(key, Date.now())
     console.log(`SANDBOX_STEP item=${label} screen=${key}`)
-    await button.first().click().catch(() => {})
+    await button.first().click(ACTION_TIMEOUT).catch(() => {})
+  }
+  // A Cashfree screen none of the steps below knows: log its button names once (sandbox labels only), for the fix.
+  const reported = new Set<string>()
+  const reportScreen = async (scope: Page | Frame) => {
+    const names = (await scope.getByRole('button').evaluateAll((els) => els
+      .filter((el) => (el as HTMLElement).offsetParent !== null)
+      .map((el) => (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40))
+      .filter(Boolean)).catch(() => [] as string[])).slice(0, 15)
+    const line = `url=${new URL(scope.url()).pathname} buttons=${JSON.stringify(names)}`
+    if (reported.has(line)) return
+    reported.add(line)
+    console.log(`SANDBOX_SCREEN item=${label} ${line}`)
   }
   let step = 0
   while (Date.now() < deadline) {
     if (await done()) return
     const scopes: Array<Page | Frame> = [...page.context().pages().filter((p) => /cashfree\.com/.test(p.url())), ...page.frames().filter((f) => /cashfree\.com/.test(f.url()))]
     for (const scope of scopes) {
+      // Checked first: the card form stays underneath this prompt and still counts as visible.
+      const skipSavingCard = scope.getByRole('button', { name: SKIP_SAVING_CARD_BUTTON })
+      if (await visibleIn(scope, skipSavingCard)) { await submitOnce(scope, 'save-card-prompt', skipSavingCard); continue }
       const upiId = scope.locator('input[placeholder*="UPI" i], input[name*="vpa" i], input[placeholder*="@"]')
       if (await visibleIn(scope, upiId)) {
         await fillIfEmpty(upiId, SANDBOX_UPI)
@@ -112,9 +133,10 @@ async function completeSandboxPayment(page: Page, done: () => Promise<boolean>, 
       const success = scope.getByRole('button', { name: /^(success|authori[sz]e|approve|simulate success)$/i })
       if (await visibleIn(scope, success)) { await submitOnce(scope, 'simulator', success); continue }
       const upiTab = scope.getByText(/^UPI( ID)?$/i)
-      if (await visibleIn(scope, upiTab)) { await upiTab.first().click().catch(() => {}); continue }
+      if (await visibleIn(scope, upiTab)) { await upiTab.first().click(ACTION_TIMEOUT).catch(() => {}); continue }
       const cardTab = scope.getByText(/^(Cards?|Debit\/Credit Card)$/i)
-      if (await visibleIn(scope, cardTab)) { await cardTab.first().click().catch(() => {}); continue }
+      if (await visibleIn(scope, cardTab)) { await cardTab.first().click(ACTION_TIMEOUT).catch(() => {}); continue }
+      await reportScreen(scope)
     }
     step += 1
     if (step % 15 === 0) await page.screenshot({ path: `/tmp/cashfree-sandbox-results/${label}-waiting-${step}.png` }).catch(() => {})
