@@ -56,7 +56,9 @@ env:
 
 jobs:
   sandbox-e2e:
-    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    # Temporary, owner-approved 7 Nov: also the working branch, so the test script can be iterated there with the
+    # TEST keys. The PR that lands the passing script narrows this back to feat/aws-native-phase-0-1 only.
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1' || github.ref == 'refs/heads/claude/new-session-ezd1t1'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
