@@ -1,0 +1,168 @@
+name: Cashfree Sandbox Checkout E2E
+
+# Before the Content Security Policy is enforced: one signed-in member buys a course, an organization Pro plan and an
+# event ticket through Cashfree's SANDBOX on a copy of the app built with the CSP ENFORCED, all on this runner.
+#
+# Nothing live is touched: no AWS credentials, a throwaway Postgres service with every migration and fixtures only,
+# and a stand-in for the Cognito API (cognito-idp is pointed at 127.0.0.1 here) instead of the live user pool.
+# Payments use only the repository secrets CASHFREE_TEST_CLIENT_ID / CASHFREE_TEST_CLIENT_SECRET, refused unless
+# they are Cashfree TEST keys, and Cashfree's production API and payment hosts are unreachable from this runner.
+#
+# A push of these files runs the self-test: migrations, fixtures, the CSP-enforced build and a sign-in through the
+# Cognito stand-in, with no Cashfree keys. A manual start (workflow_dispatch) adds the three sandbox checkouts.
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/cashfree-sandbox-e2e.yml
+      - scripts/e2e/cashfree-sandbox/**
+      - scripts/aws/cashfree-sandbox-e2e.test.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cashfree-sandbox-e2e
+  cancel-in-progress: false
+
+env:
+  CASHFREE_ENVIRONMENT: sandbox
+  PAYMENTS_PROVIDER: cashfree
+  NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+  AWS_COGNITO_REGION: ap-south-1
+  AWS_COGNITO_USER_POOL_ID: ap-south-1_SandboxE2E
+  AWS_COGNITO_CLIENT_ID: sandboxe2eclient0000
+  AURORA_HOST: 127.0.0.1
+  AURORA_PORT: "5432"
+  AURORA_DATABASE: sea_n_shore
+  AURORA_USER: sandbox_e2e
+  AURORA_PASSWORD: sandbox-e2e-only
+  AURORA_SSL: "false"
+  E2E_MEMBER_EMAIL: sandbox-buyer@example.com
+  E2E_MEMBER_SUB: 7d0f3a52-0000-4000-8000-sandboxe2e01
+  SANDBOX_FIXTURES_PATH: /tmp/cashfree-sandbox-fixtures.json
+  NODE_EXTRA_CA_CERTS: /tmp/fake-cognito/cert.pem
+  # A throwaway value so the realtime ticket route answers on the runner (no realtime server runs here).
+  REALTIME_TICKET_SECRET: sandbox-e2e-realtime-ticket-secret-not-used-elsewhere
+
+jobs:
+  sandbox-e2e:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sandbox_e2e
+          POSTGRES_PASSWORD: sandbox-e2e-only
+          POSTGRES_DB: sea_n_shore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sandbox_e2e -d sea_n_shore"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      RUN_CHECKOUTS: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Use Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Install dependencies with known-good npm
+        run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+
+      - name: Verify the sandbox E2E contract
+        run: node --test scripts/aws/cashfree-sandbox-e2e.test.mjs
+
+      # Only TEST keys: Cashfree sandbox App IDs start with TEST and sandbox secret keys carry _test_. Anything else
+      # stops the run before the app is built.
+      - name: Refuse anything but Cashfree TEST keys
+        if: env.RUN_CHECKOUTS == 'true'
+        env:
+          CASHFREE_TEST_CLIENT_ID: ${{ secrets.CASHFREE_TEST_CLIENT_ID }}
+          CASHFREE_TEST_CLIENT_SECRET: ${{ secrets.CASHFREE_TEST_CLIENT_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$CASHFREE_TEST_CLIENT_ID" && -n "$CASHFREE_TEST_CLIENT_SECRET" ]] || { echo "CASHFREE_TEST_CLIENT_ID / CASHFREE_TEST_CLIENT_SECRET are not set." >&2; exit 1; }
+          [[ "$CASHFREE_TEST_CLIENT_ID" == TEST* ]] || { echo "CASHFREE_TEST_CLIENT_ID is not a Cashfree TEST App ID; refusing." >&2; exit 1; }
+          [[ "$CASHFREE_TEST_CLIENT_SECRET" == *_test_* ]] || { echo "CASHFREE_TEST_CLIENT_SECRET is not a Cashfree TEST secret key; refusing." >&2; exit 1; }
+          [[ "$CASHFREE_ENVIRONMENT" == sandbox ]]
+          echo "CASHFREE_TEST_KEYS_VERIFIED=true"
+
+      - name: Make Cashfree production unreachable and point Cognito at the stand-in
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 192.0.2.1 is a documentation-only address (RFC 5737): nothing answers there, unlike 0.0.0.0 (this runner).
+          for host in api.cashfree.com payments.cashfree.com payout-api.cashfree.com; do echo "192.0.2.1 $host" | sudo tee -a /etc/hosts >/dev/null; done
+          echo "127.0.0.1 cognito-idp.${AWS_COGNITO_REGION}.amazonaws.com" | sudo tee -a /etc/hosts >/dev/null
+          mkdir -p /tmp/fake-cognito
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=cognito-idp.${AWS_COGNITO_REGION}.amazonaws.com" \
+            -addext "subjectAltName=DNS:cognito-idp.${AWS_COGNITO_REGION}.amazonaws.com" \
+            -keyout /tmp/fake-cognito/key.pem -out /tmp/fake-cognito/cert.pem 2>/dev/null
+          ! curl -s --max-time 5 -o /dev/null https://api.cashfree.com/ || { echo "Cashfree production is still reachable." >&2; exit 1; }
+          echo "CASHFREE_PRODUCTION_UNREACHABLE=true"
+
+      - name: Start the Cognito stand-in
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASSWORD="Sbx!$(openssl rand -hex 12)Aa9"
+          echo "::add-mask::$PASSWORD"
+          echo "E2E_MEMBER_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          sudo -E env E2E_MEMBER_PASSWORD="$PASSWORD" "$(command -v node)" scripts/e2e/cashfree-sandbox/fake-cognito.mjs /tmp/fake-cognito/cert.pem /tmp/fake-cognito/key.pem 443 > /tmp/fake-cognito/log.txt 2>&1 &
+          for i in $(seq 1 20); do grep -q FAKE_COGNITO_LISTENING /tmp/fake-cognito/log.txt && break; sleep 0.5; done
+          STATUS=$(curl -s --cacert /tmp/fake-cognito/cert.pem -o /dev/null -w '%{http_code}' -X POST \
+            -H 'x-amz-target: AWSCognitoIdentityProviderService.GetUser' -H 'content-type: application/x-amz-json-1.1' \
+            -d '{"AccessToken":"nope"}' "https://cognito-idp.${AWS_COGNITO_REGION}.amazonaws.com/")
+          [[ "$STATUS" == 400 ]] || { echo "The Cognito stand-in did not answer ($STATUS)." >&2; cat /tmp/fake-cognito/log.txt >&2; exit 1; }
+          echo "FAKE_COGNITO_READY=true"
+
+      - name: Apply every migration and add the fixtures
+        run: npx tsx scripts/e2e/cashfree-sandbox/seed.ts
+
+      # The one change from the deployed app: this build sends the policy as Content-Security-Policy (enforced).
+      - name: Enforce the CSP in this build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=src/lib/security/content-security-policy.ts
+          grep -q '^export const ENFORCE_CONTENT_SECURITY_POLICY = false$' "$FILE"
+          sed -i 's/^export const ENFORCE_CONTENT_SECURITY_POLICY = false$/export const ENFORCE_CONTENT_SECURITY_POLICY = true/' "$FILE"
+          grep -q '^export const ENFORCE_CONTENT_SECURITY_POLICY = true$' "$FILE"
+          [[ "$(git diff --name-only)" == "$FILE" ]]
+          echo "CSP_ENFORCED_IN_THIS_BUILD=true"
+
+      - name: Build the app copy
+        run: npm run build
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # A push runs only the sign-in check (no Cashfree keys in this step); a manual start adds the three checkouts.
+      - name: Sign-in check, then the sandbox checkouts on a manual start (CSP enforced)
+        env:
+          CASHFREE_CLIENT_ID: ${{ github.event_name == 'workflow_dispatch' && secrets.CASHFREE_TEST_CLIENT_ID || '' }}
+          CASHFREE_CLIENT_SECRET: ${{ github.event_name == 'workflow_dispatch' && secrets.CASHFREE_TEST_CLIENT_SECRET || '' }}
+        run: npx playwright test --config scripts/e2e/cashfree-sandbox/playwright.config.ts
+
+      - name: Keep the report, screenshots and traces (sandbox pages and fixture data only)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cashfree-sandbox-e2e
+          path: |
+            /tmp/cashfree-sandbox-report
+            /tmp/cashfree-sandbox-results
+            /tmp/fake-cognito/log.txt
+          if-no-files-found: ignore
+          retention-days: 3
