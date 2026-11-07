@@ -119,7 +119,7 @@ jobs:
           [[ "$CASHFREE_ENVIRONMENT" == sandbox ]]
           umask 077
           HEADERS="$(mktemp)"
-          trap 'rm -f "$HEADERS"' EXIT
+          trap 'rm -f "$HEADERS"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
           printf 'x-client-id: %s\nx-client-secret: %s\nx-api-version: 2026-01-01\n' "$CASHFREE_TEST_CLIENT_ID" "$CASHFREE_TEST_CLIENT_SECRET" > "$HEADERS"
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H @"$HEADERS" \
             "https://sandbox.cashfree.com/pg/orders/sns_credential_check_${GITHUB_RUN_ID}_does_not_exist")
