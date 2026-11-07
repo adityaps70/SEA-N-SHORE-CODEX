@@ -127,7 +127,10 @@ export function pageContentSecurityPolicy(nonce: string, sources?: ContentSecuri
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
-    directive('form-action', "'self'", signInOrigins),
+    // Cashfree's SDK opens every checkout by submitting a form from this page: the course and ticket pop-up posts
+    // into its frame, redirect checkouts and the Pro auto-pay (subscriptionsCheckout) post to api./sandbox.cashfree.com.
+    // Same Cashfree-only scope as frame-src and connect-src; any other outside host stays refused.
+    directive('form-action', "'self'", signInOrigins, CASHFREE_HOSTS),
     "frame-ancestors 'none'",
     // Round P3: no report-uri on pages. The page's own reporter (csp-reporter-script.ts, inlined
     // with this nonce) sends each unique violation once per page load instead of one request each.
