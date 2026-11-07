@@ -168,7 +168,7 @@ jobs:
 
   # Started only by the nightly schedule (01:05 IST). Refuses a start outside 01:00-01:45 IST (the ramp then ends
   # by about 02:20, inside the 01:00-03:00 window), and a second start on the same armed commit.
-  # ONE-OFF, owner-approved for 5 Nov 2026 only: merging the arm (a push) starts the run at once when it lands
+  # ONE-OFF, owner-approved for one day only (moved from 5 Nov to 7 Nov 2026): merging the arm (a push) starts the run at once when it lands
   # between 12:00 and 17:15 IST on DAYTIME_DATE, so the run ends by 18:00 IST. Removed again after that run.
   window:
     needs:
@@ -196,7 +196,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-          DAYTIME_DATE: "2026-11-05"
+          DAYTIME_DATE: "2026-11-07"
         shell: bash
         run: |
           set -euo pipefail
