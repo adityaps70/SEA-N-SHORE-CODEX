@@ -21,10 +21,28 @@ test('only the TEST secrets, only in the key check and the test step, only on a 
   assert.deepEqual([...new Set(uses)].sort(), ['secrets.CASHFREE_TEST_CLIENT_ID', 'secrets.CASHFREE_TEST_CLIENT_SECRET'])
   assert.equal(uses.length, 4)
   assert.match(workflow, /CASHFREE_CLIENT_ID: \$\{\{ github\.event_name == 'workflow_dispatch' && secrets\.CASHFREE_TEST_CLIENT_ID \|\| '' \}\}/)
-  assert.match(workflow, /\[\[ "\$CASHFREE_TEST_CLIENT_ID" == TEST\* \]\] \|\| \{ echo "CASHFREE_TEST_CLIENT_ID is not a Cashfree TEST App ID; refusing\." >&2; exit 1; \}/)
-  assert.match(workflow, /\[\[ "\$CASHFREE_TEST_CLIENT_SECRET" == \*_test_\* \]\]/)
   assert.match(workflow, /\n  CASHFREE_ENVIRONMENT: sandbox\n/)
-  assert.match(spec, /expect\(process\.env\.CASHFREE_CLIENT_ID \?\? ''\)\.toMatch\(\/\^TEST\/\)/)
+})
+
+test('the keys must be accepted by Cashfree sandbox, checked read-only, before anything runs', () => {
+  const step = workflow.slice(workflow.indexOf('- name: Check the keys against Cashfree sandbox (read-only)'), workflow.indexOf('- name: Start the Cognito stand-in'))
+  assert.ok(step.length > 100)
+  // After production is made unreachable, and before the Cognito stand-in, the build and the checkouts.
+  assert.ok(workflow.indexOf('- name: Make Cashfree production unreachable') < workflow.indexOf('- name: Check the keys against Cashfree sandbox'))
+  // One GET of an order id that cannot exist: it creates nothing.
+  assert.equal((step.match(/curl /g) ?? []).length, 1)
+  assert.doesNotMatch(step, /-X |--request|-d |--data/)
+  assert.match(step, /"https:\/\/sandbox\.cashfree\.com\/pg\/orders\/sns_credential_check_\$\{GITHUB_RUN_ID\}_does_not_exist"/)
+  // Only 404 (unknown order, key accepted) continues; 401/403 and anything else stop.
+  assert.match(step, /404\) echo "CASHFREE_SANDBOX_KEYS_ACCEPTED=true" ;;/)
+  assert.match(step, /401\|403\) echo "Cashfree sandbox refused these keys \(HTTP \$STATUS\)[^"]*" >&2; exit 1 ;;/)
+  assert.match(step, /\*\) echo "Unexpected answer from Cashfree sandbox \(HTTP \$STATUS\); stopping\." >&2; exit 1 ;;/)
+  // The keys go in a private header file, never on the command line or in the log, and the body is discarded.
+  assert.match(step, /umask 077/)
+  assert.match(step, /-H @"\$HEADERS"/)
+  assert.match(step, /-o \/dev\/null/)
+  assert.doesNotMatch(step, /echo[^\n]*\$CASHFREE_TEST_CLIENT_(ID|SECRET)/)
+  assert.doesNotMatch(workflow, /TEST\*|_test_\*/)
 })
 
 test('Cashfree production is unreachable from the runner and from the browser', () => {
@@ -50,7 +68,11 @@ test('the seed only ever writes to the runner database', () => {
 test('success is the server confirming with Cashfree, read from the database, for all three items', () => {
   for (const table of ['course_payment_orders', 'event_payment_orders', 'subscription_checkouts']) assert.ok(spec.includes(`public.${table}`), table)
   assert.match(spec, /c\.provider_environment = 'sandbox'/)
-  assert.match(spec, /SANDBOX_CHECKOUT_RESULT course=paid event_ticket=paid organization_pro=active csp_violations=0/)
+  assert.match(spec, /SANDBOX_CHECKOUT_RESULT course=paid event_ticket=paid organization_pro=\$\{runPro \? 'active' : 'skipped'\} csp_violations=0/)
+  // The Pro step runs only when asked for (Cashfree sandbox Subscriptions must be enabled first).
+  assert.match(workflow, /pro_plan:\n        description: [^\n]+\n        type: boolean\n        default: false\n/)
+  assert.match(workflow, /RUN_PRO_PLAN: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.pro_plan \}\}/)
+  assert.match(spec, /const runPro = process\.env\.RUN_PRO_PLAN === 'true'/)
 })
 
 test('the Cognito stand-in answers only sign-in, page-load and sign-out calls', async () => {
