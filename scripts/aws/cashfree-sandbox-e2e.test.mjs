@@ -87,6 +87,13 @@ test("Cashfree's submit button is matched by its whole name, never a wallet tile
   assert.match(spec, /if \(Date\.now\(\) - \(lastSubmit\.get\(key\) \?\? 0\) < 15_000\) return/)
 })
 
+test('our own checkout controls are the visible ones, never a hidden streaming copy or the phone bar', () => {
+  // Run of 7 Nov: while the course page streamed, a hidden copy of the purchase panel matched 'Billing state' too.
+  assert.match(spec, /getByLabel\('Billing state'\)\.filter\(\{ visible: true \}\)\.selectOption\('27'\)/)
+  assert.match(spec, /getByRole\('button', \{ name: \/\^Buy course\/ \}\)\.filter\(\{ visible: true \}\)\.click\(\)/)
+  assert.match(spec, /getByRole\('button', \{ name: \/\^Pay \.\* and register\$\/ \}\)\.filter\(\{ visible: true \}\)\.click\(\)/)
+})
+
 test('the Cognito stand-in answers only sign-in, page-load and sign-out calls', async () => {
   Object.assign(process.env, { E2E_MEMBER_EMAIL: 'buyer@example.com', E2E_MEMBER_PASSWORD: 'pw-1', E2E_MEMBER_SUB: 'sub-1', AWS_COGNITO_CLIENT_ID: 'client-1' })
   const { handle } = await import('../e2e/cashfree-sandbox/fake-cognito.mjs')

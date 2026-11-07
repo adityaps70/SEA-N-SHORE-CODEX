@@ -151,8 +151,10 @@ test('sandbox checkouts with the CSP enforced: course, organization Pro plan, ev
 
   await test.step('course', async () => {
     await page.goto(`/learn/courses/${fixtures.courseSlug}#course-access`)
-    await page.getByLabel('Billing state').selectOption('27')
-    await page.getByRole('button', { name: /^Buy course/ }).click()
+    // While the page streams, React can hold a hidden copy of the purchase panel (<div hidden id="S:…">) next to the
+    // shown one, so both selects match the label: use the one the member can see.
+    await page.getByLabel('Billing state').filter({ visible: true }).selectOption('27')
+    await page.getByRole('button', { name: /^Buy course/ }).filter({ visible: true }).click()
     await completeSandboxPayment(page, async () => Boolean(await one(
       `select 1 from public.course_payment_orders o join public.learning_enrollments e on e.payment_order_id = o.id
         where o.profile_id = $1 and o.course_id = $2 and o.status = 'paid' and o.provider = 'cashfree' and o.enrollment_confirmed_at is not null
@@ -164,7 +166,8 @@ test('sandbox checkouts with the CSP enforced: course, organization Pro plan, ev
 
   await test.step('event ticket', async () => {
     await page.goto(`/events/${fixtures.eventId}`)
-    await page.getByRole('button', { name: /^Pay .* and register$/ }).click()
+    // The page's own button, not the phone sticky bar's copy of it.
+    await page.getByRole('button', { name: /^Pay .* and register$/ }).filter({ visible: true }).click()
     await completeSandboxPayment(page, async () => Boolean(await one(
       `select 1 from public.event_payment_orders o join public.event_attendees a on a.payment_order_id = o.id
         where o.event_id = $1 and o.profile_id = $2 and a.user_id = $2 and o.status = 'paid' and o.provider = 'cashfree' and o.registration_confirmed_at is not null`,
