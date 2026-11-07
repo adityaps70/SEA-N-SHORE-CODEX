@@ -87,6 +87,21 @@ test("Cashfree's submit button is matched by its whole name, never a wallet tile
   assert.match(spec, /if \(Date\.now\(\) - \(lastSubmit\.get\(key\) \?\? 0\) < 15_000\) return/)
 })
 
+test("Cashfree's save-card prompt is declined first, and no Cashfree action can hold the whole test", () => {
+  // Run of 7 Nov: after "Proceed to Pay" Cashfree asked to save the card; the covered button's click then waited 12 minutes.
+  const literal = spec.match(/const SKIP_SAVING_CARD_BUTTON = \/(.+)\/i\n/)
+  assert.ok(literal)
+  const skip = new RegExp(literal[1], 'i')
+  assert.ok(skip.test('Pay without saving the card'))
+  assert.ok(!skip.test('Pay and Save Card'))
+  const loop = spec.slice(spec.indexOf('for (const scope of scopes)'))
+  assert.ok(loop.indexOf('SKIP_SAVING_CARD_BUTTON') < loop.indexOf('const cardNumber'), 'the prompt is checked before the card form under it')
+  assert.match(spec, /const ACTION_TIMEOUT = \{ timeout: 10_000 \}/)
+  assert.match(spec, /if \(key === 'card' && lastSubmit\.has\('save-card-prompt'\)\) return/)
+  assert.doesNotMatch(spec, /\.click\(\)\.catch/, 'every Cashfree click has a time limit')
+  assert.doesNotMatch(spec, /\.fill\(value\)/, 'every Cashfree fill has a time limit')
+})
+
 test('our own checkout controls are the visible ones, never a hidden streaming copy or the phone bar', () => {
   // Run of 7 Nov: while the course page streamed, a hidden copy of the purchase panel matched 'Billing state' too.
   assert.match(spec, /getByLabel\('Billing state'\)\.filter\(\{ visible: true \}\)\.selectOption\('27'\)/)
