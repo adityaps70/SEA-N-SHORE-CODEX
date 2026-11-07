@@ -364,15 +364,57 @@ rate_statement = rate['Statement']['RateBasedStatement']
 assert rate_statement['AggregateKeyType'] == 'IP'
 assert rate_statement['Limit'] == 2000
 assert rate_statement['EvaluationWindowSec'] == 300
-# Round P3 (B7): the only scope-down allowed leaves signed media (/m/*) uncounted.
-scope = rate_statement.get('ScopeDownStatement')
-if scope is not None:
+NO_TRANSFORM = [{'Priority': 0, 'Type': 'NONE'}]
+
+def skips_signed_media(scope):
     match = scope['NotStatement']['Statement']['ByteMatchStatement']
     assert set(match['FieldToMatch']) == {'UriPath'}
     assert match['PositionalConstraint'] == 'STARTS_WITH'
     assert decoded(match['SearchString']) == '/m/'
-    assert match['TextTransformations'] == [{'Priority': 0, 'Type': 'NONE'}]
+    assert match['TextTransformations'] == NO_TRANSFORM
+
+def skips_session_cookie(scope):
+    size = scope['NotStatement']['Statement']['SizeConstraintStatement']
+    assert size['ComparisonOperator'] == 'GT' and size['Size'] == 0
+    assert size['TextTransformations'] == NO_TRANSFORM
+    assert size['FieldToMatch'] == {'Cookies': {
+        'MatchPattern': {'IncludedCookies': ['sns_cognito_refresh']},
+        'MatchScope': 'VALUE',
+        'OversizeHandling': 'MATCH',
+    }}
+
+# Round P3 (B7): signed media (/m/*) is never counted. ARCH decision 6 (ship IPs): PerIpRateLimit may
+# also skip signed-in requests, but only together with the exact per-session limit and per-IP ceiling.
+scope = rate_statement.get('ScopeDownStatement')
+signed_out_only = False
+if scope is not None:
+    if 'AndStatement' in scope:
+        parts = scope['AndStatement']['Statements']
+        assert len(parts) == 2
+        skips_signed_media(parts[0])
+        skips_session_cookie(parts[1])
+        signed_out_only = True
+    else:
+        skips_signed_media(scope)
     print('RATE_LIMIT_SKIPS_SIGNED_MEDIA_VERIFIED=true')
+
+ship_rules = {rule['Name']: rule for rule in rules if rule['Name'] in ('PerSessionRateLimit', 'PerIpCeiling')}
+if signed_out_only or ship_rules:
+    assert signed_out_only and set(ship_rules) == {'PerSessionRateLimit', 'PerIpCeiling'}
+    for name, priority, key, limit in [('PerSessionRateLimit', 21, 'CUSTOM_KEYS', 1000), ('PerIpCeiling', 22, 'IP', 20000)]:
+        rule = ship_rules[name]
+        assert rule['Priority'] == priority
+        assert set(rule['Action']) == {'Block'}
+        statement = rule['Statement']['RateBasedStatement']
+        assert statement['AggregateKeyType'] == key
+        assert statement['Limit'] == limit
+        assert statement['EvaluationWindowSec'] == 300
+        skips_signed_media(statement['ScopeDownStatement'])
+    assert ship_rules['PerSessionRateLimit']['Statement']['RateBasedStatement']['CustomKeys'] == [
+        {'Cookie': {'Name': 'sns_cognito_refresh', 'TextTransformations': NO_TRANSFORM}}
+    ]
+    assert 'CustomKeys' not in ship_rules['PerIpCeiling']['Statement']['RateBasedStatement']
+    print('SHIP_IP_RATE_LIMITS_VERIFIED=true')
 print('PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED=true')
 PY
 

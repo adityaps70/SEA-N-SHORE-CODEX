@@ -31,3 +31,56 @@ test('the edge health check sends the health check token to /api/health/home fro
   assert.doesNotMatch(script, /x-health-check-token: \$[A-Z]/)
 })
 
+
+test('ARCH decision 6: the post-apply WAF check accepts the live ship-IP rules and refuses looser or partial ones', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const script = await read('./edge-recovery.sh')
+  const check = /\npython3 - "\$RECOVERY_DIR\/live-waf\.json" <<'PY'\n([\s\S]*?)\nPY\n/.exec(script)[1]
+  // Rule definitions read from the live web ACL by the edge-state audit after the ship-IP apply (no ids or secrets).
+  const live = JSON.parse(await read('./fixtures/edge-waf-ship-ip.json'))
+  const dir = mkdtempSync(join(tmpdir(), 'waf-check-'))
+  const run = (waf) => {
+    writeFileSync(join(dir, 'check.py'), check)
+    writeFileSync(join(dir, 'waf.json'), JSON.stringify(waf))
+    try {
+      return { ok: true, out: execFileSync('python3', ['-I', join(dir, 'check.py'), join(dir, 'waf.json')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) }
+    } catch {
+      return { ok: false }
+    }
+  }
+  const variant = (change) => { const waf = structuredClone(live); change(waf.WebACL.Rules); return waf }
+  const rule = (rules, name) => rules.find((r) => r.Name === name)
+  try {
+    const accepted = run(live)
+    assert.ok(accepted.ok)
+    assert.match(accepted.out, /SHIP_IP_RATE_LIMITS_VERIFIED=true/)
+    // The pre-change shape (media exception only, no ship-IP rules) still passes, without the ship-IP line.
+    const before = run(variant((rules) => {
+      const rate = rule(rules, 'PerIpRateLimit').Statement.RateBasedStatement
+      rate.ScopeDownStatement = rate.ScopeDownStatement.AndStatement.Statements[0]
+      rules.splice(0, rules.length, ...rules.filter((r) => !['PerSessionRateLimit', 'PerIpCeiling'].includes(r.Name)))
+    }))
+    assert.ok(before.ok)
+    assert.doesNotMatch(before.out, /SHIP_IP/)
+    for (const [label, change] of [
+      ['ceiling raised', (rules) => { rule(rules, 'PerIpCeiling').Statement.RateBasedStatement.Limit = 100000 }],
+      ['session limit raised', (rules) => { rule(rules, 'PerSessionRateLimit').Statement.RateBasedStatement.Limit = 5000 }],
+      ['other cookie', (rules) => { rule(rules, 'PerSessionRateLimit').Statement.RateBasedStatement.CustomKeys[0].Cookie.Name = 'other' }],
+      ['session rule missing', (rules) => { rules.splice(rules.indexOf(rule(rules, 'PerSessionRateLimit')), 1) }],
+      ['ceiling missing', (rules) => { rules.splice(rules.indexOf(rule(rules, 'PerIpCeiling')), 1) }],
+      ['signed-out scope without its rules', (rules) => { rules.splice(0, rules.length, ...rules.filter((r) => !['PerSessionRateLimit', 'PerIpCeiling'].includes(r.Name))) }],
+      ['rules without the signed-out scope', (rules) => {
+        const rate = rule(rules, 'PerIpRateLimit').Statement.RateBasedStatement
+        rate.ScopeDownStatement = rate.ScopeDownStatement.AndStatement.Statements[0]
+      }],
+      ['signed-out limit raised', (rules) => { rule(rules, 'PerIpRateLimit').Statement.RateBasedStatement.Limit = 10000 }],
+    ]) {
+      assert.equal(run(variant(change)).ok, false, label)
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
