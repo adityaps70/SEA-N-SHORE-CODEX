@@ -10,10 +10,12 @@ export const CSP_REPORT_PATH = '/api/security/csp-report'
 
 /**
  * Round H (H4): the one switch for enforcing. While false, every policy goes out as
- * Content-Security-Policy-Report-Only; flipping it (after a clean week of reports) enforces the
- * same policies as Content-Security-Policy.
+ * Content-Security-Policy-Report-Only; true enforces the same policies as Content-Security-Policy.
+ * Enforced 7 Nov 2026 after the report window and a Cashfree sandbox checkout (course and event
+ * ticket, run 42404197330) passed on an enforced build with no violation. Rollback: set it back
+ * to false and deploy.
  */
-export const ENFORCE_CONTENT_SECURITY_POLICY = false
+export const ENFORCE_CONTENT_SECURITY_POLICY = true
 
 export const CONTENT_SECURITY_POLICY_HEADER = ENFORCE_CONTENT_SECURITY_POLICY
   ? 'Content-Security-Policy'

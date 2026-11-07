@@ -62,9 +62,9 @@ describe('report-only Content Security Policy (Round 14, 2.4)', () => {
 })
 
 describe('tightened Content Security Policy (Round H, H4)', () => {
-  it('stays report-only until the single enforce switch is flipped', () => {
-    expect(ENFORCE_CONTENT_SECURITY_POLICY).toBe(false)
-    expect(CONTENT_SECURITY_POLICY_HEADER).toBe('Content-Security-Policy-Report-Only')
+  it('is enforced by the single switch', () => {
+    expect(ENFORCE_CONTENT_SECURITY_POLICY).toBe(true)
+    expect(CONTENT_SECURITY_POLICY_HEADER).toBe('Content-Security-Policy')
   })
 
   it('names the exact media bucket, realtime endpoint and Cognito domain from the runtime environment', () => {
