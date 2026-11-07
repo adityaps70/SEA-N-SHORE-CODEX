@@ -45,6 +45,8 @@ test('the script only reads signed-out public pages and marks every request', ()
   assert.match(script, /const PATHS = \['\/', '\/jobs', JOB_PATH, COURSE_PATH, '\/privacy'\]/)
   assert.match(script, /userAgent: 'SeaNShore-LoadTest\/1'/)
   assert.match(script, /'X-SNS-Load-Test': 'P3'/)
+  // Requests look like browser page loads, so public pages can be served from the edge cache as for real visitors.
+  assert.match(script, /Accept: 'text\/html,application\/xhtml\+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate'/)
   assert.match(script, /redirects: 0/)
   assert.match(script, /discardResponseBodies: true/)
   assert.match(script, /maxVUs: 100/)
@@ -94,8 +96,12 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   const window = jobOf('window')
   assert.match(window, /needs\.apply-approval\.result == 'success'/)
   // Merging the arm (a push) sends no traffic: only a start from the nightly schedule reaches the window.
-  assert.match(window, /github\.event_name == 'workflow_dispatch' \}\}/)
+  assert.match(window, /\(github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'push'\) \}\}/)
   assert.match(window, /\[\[ "\$TRIGGERING_ACTOR" == "github-actions\[bot\]" \]\]/)
+  // ONE-OFF (owner-approved for one day, moved from 5 Nov to 7 Nov 2026): a push run may start between 12:00 and 17:15 IST that day.
+  assert.match(window, /DAYTIME_DATE: "2026-11-07"\n/)
+  assert.match(window, /DAY_START=\$\(date -u -d "\$DAYTIME_DATE 06:30:00" \+%s\)/)
+  assert.match(window, /NOW < DAY_START \|\| NOW > DAY_START \+ 18900/)
   assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
   assert.match(window, /NOW < START \|\| NOW > START \+ 2700/)
   assert.doesNotMatch(window, /sleep/)
