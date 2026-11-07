@@ -168,11 +168,13 @@ jobs:
 
   # Started only by the nightly schedule (01:05 IST). Refuses a start outside 01:00-01:45 IST (the ramp then ends
   # by about 02:20, inside the 01:00-03:00 window), and a second start on the same armed commit.
+  # ONE-OFF, owner-approved for one day only (moved from 5 Nov to 7 Nov 2026): merging the arm (a push) starts the run at once when it lands
+  # between 12:00 and 17:15 IST on DAYTIME_DATE, so the run ends by 18:00 IST. Removed again after that run.
   window:
     needs:
       - apply-gate
       - apply-approval
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && github.event_name == 'workflow_dispatch' }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -190,17 +192,23 @@ jobs:
           node --test scripts/aws/load-test.test.mjs
           [[ "$(cut -d' ' -f1 < scripts/aws/load-test-action.txt)" == run-once ]] || { echo "Not armed for run-once." >&2; exit 1; }
 
-      - name: Require the nightly start inside 01:00-01:45 IST, once per arm
+      - name: Require the nightly start inside 01:00-01:45 IST (or the one-off daytime window), once per arm
         env:
           GH_TOKEN: ${{ github.token }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          DAYTIME_DATE: "2026-11-07"
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$TRIGGERING_ACTOR" == "github-actions[bot]" ]] || { echo "Only the nightly start may begin the load test (started by $TRIGGERING_ACTOR)." >&2; exit 1; }
           NOW=$(date -u +%s)
-          START=$(date -u -d "$(date -u +%F) 19:30:00" +%s)
-          if (( NOW < START || NOW > START + 2700 )); then echo "Started outside 01:00-01:45 IST; refusing so the run stays inside 01:00-03:00 IST." >&2; exit 1; fi
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            DAY_START=$(date -u -d "$DAYTIME_DATE 06:30:00" +%s)
+            if (( NOW < DAY_START || NOW > DAY_START + 18900 )); then echo "Merged outside the one-off daytime window (12:00-17:15 IST on $DAYTIME_DATE); only the nightly start may begin the load test." >&2; exit 1; fi
+          else
+            [[ "$TRIGGERING_ACTOR" == "github-actions[bot]" ]] || { echo "Only the nightly start may begin the load test (started by $TRIGGERING_ACTOR)." >&2; exit 1; }
+            START=$(date -u -d "$(date -u +%F) 19:30:00" +%s)
+            if (( NOW < START || NOW > START + 2700 )); then echo "Started outside 01:00-01:45 IST; refusing so the run stays inside 01:00-03:00 IST." >&2; exit 1; fi
+          fi
           EARLIER=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/aws-load-test.yml/runs?event=workflow_dispatch&head_sha=$GITHUB_SHA&per_page=100" \
             --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)] | length")
           [[ "$EARLIER" == 0 ]] || { echo "This arm was already started once; re-arm for another run." >&2; exit 1; }

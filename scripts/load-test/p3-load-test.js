@@ -67,7 +67,9 @@ export default function loadTestIteration(data) {
   const step = Math.min(TOTAL_RPM.length, Math.floor((Date.now() - data.startedAt) / 1000 / STEP_SECONDS) + 1)
   const path = PATHS[Math.floor(Math.random() * PATHS.length)]
   const res = http.get(BASE_URL + path, {
-    headers: { 'X-SNS-Load-Test': 'P3' },
+    // A browser's page load: without these the site treats the fetch as a non-page request, so it is never
+    // cacheable and the run measures only the uncached path (the 7 Nov morning run did exactly that).
+    headers: { 'X-SNS-Load-Test': 'P3', Accept: 'text/html,application/xhtml+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' },
     redirects: 0,
     timeout: '20s',
     tags: { name: path === JOB_PATH ? '/jobs/:id' : path === COURSE_PATH ? '/learn/courses/:slug' : path },
