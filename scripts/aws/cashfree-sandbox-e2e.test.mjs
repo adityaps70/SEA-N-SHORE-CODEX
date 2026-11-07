@@ -112,6 +112,20 @@ test("Cashfree's save-card prompt is declined first, and no Cashfree action can 
   assert.doesNotMatch(spec, /\.fill\(value\)/, 'every Cashfree fill has a time limit')
 })
 
+test("Cashfree's sandbox simulator gets OTP 111000, the SUCCESS status, then Submit, before the generic OTP step", () => {
+  // Run of 7 Nov: the simulator's SUCCESS is a <div data-status>, and its Submit stays disabled until one is chosen.
+  const loop = spec.slice(spec.indexOf('for (const scope of scopes)'))
+  const simulator = loop.indexOf(`'#status-container [data-status="SUCCESS"]'`)
+  assert.ok(simulator > 0)
+  assert.ok(simulator < loop.indexOf('const otp = '), 'the simulator is handled before the generic OTP step')
+  assert.ok(loop.indexOf("'simulator-status'") < loop.indexOf("'simulator-submit'"), 'status before Submit')
+  assert.match(spec, /fillIfEmpty\(scope\.locator\('#basic-otp'\), SANDBOX_OTP\)/)
+  assert.match(spec, /const SANDBOX_OTP = '111000'/)
+  assert.doesNotMatch(spec, /data-status="(FAILED|PENDING|USER_DROPPED)"/)
+  // Logged Cashfree URLs drop long path segments (session tokens).
+  assert.match(spec, /part\.length > 24 \? '…' : part/)
+})
+
 test('our own checkout controls are the visible ones, never a hidden streaming copy or the phone bar', () => {
   // Run of 7 Nov: while the course page streamed, a hidden copy of the purchase panel matched 'Billing state' too.
   assert.match(spec, /getByLabel\('Billing state'\)\.filter\(\{ visible: true \}\)\.selectOption\('27'\)/)
