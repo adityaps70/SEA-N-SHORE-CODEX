@@ -50,7 +50,11 @@ test('the seed only ever writes to the runner database', () => {
 test('success is the server confirming with Cashfree, read from the database, for all three items', () => {
   for (const table of ['course_payment_orders', 'event_payment_orders', 'subscription_checkouts']) assert.ok(spec.includes(`public.${table}`), table)
   assert.match(spec, /c\.provider_environment = 'sandbox'/)
-  assert.match(spec, /SANDBOX_CHECKOUT_RESULT course=paid event_ticket=paid organization_pro=active csp_violations=0/)
+  assert.match(spec, /SANDBOX_CHECKOUT_RESULT course=paid event_ticket=paid organization_pro=\$\{runPro \? 'active' : 'skipped'\} csp_violations=0/)
+  // The Pro step runs only when asked for (Cashfree sandbox Subscriptions must be enabled first).
+  assert.match(workflow, /pro_plan:\n        description: [^\n]+\n        type: boolean\n        default: false\n/)
+  assert.match(workflow, /RUN_PRO_PLAN: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.pro_plan \}\}/)
+  assert.match(spec, /const runPro = process\.env\.RUN_PRO_PLAN === 'true'/)
 })
 
 test('the Cognito stand-in answers only sign-in, page-load and sign-out calls', async () => {

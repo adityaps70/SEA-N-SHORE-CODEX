@@ -20,6 +20,11 @@ on:
       - scripts/e2e/cashfree-sandbox/**
       - scripts/aws/cashfree-sandbox-e2e.test.mjs
   workflow_dispatch:
+    inputs:
+      pro_plan:
+        description: Also run the organization Pro plan (needs Cashfree sandbox Subscriptions enabled)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,6 +72,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       RUN_CHECKOUTS: ${{ github.event_name == 'workflow_dispatch' }}
+      RUN_PRO_PLAN: ${{ github.event_name == 'workflow_dispatch' && inputs.pro_plan }}
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
