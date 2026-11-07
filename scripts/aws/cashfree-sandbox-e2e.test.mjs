@@ -16,12 +16,13 @@ test('no AWS access at all, and the token can only read the repository', () => {
   assert.doesNotMatch(workflow, /AURORA_SECRET_ARN|seanshore\.in/)
 })
 
-test('the job runs only from exactly two branches: feat and the owner-approved working branch', () => {
+test('the job runs only from feat/aws-native-phase-0-1', () => {
+  // The working branch was allowed for a while on 7 Nov to iterate the script; that rule is not kept.
   const guards = workflow.match(/^    if: .*github\.ref.*$/gm) ?? []
-  assert.deepEqual(guards, ["    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1' || github.ref == 'refs/heads/claude/new-session-ezd1t1'"])
+  assert.deepEqual(guards, ["    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'"])
   const refs = workflow.match(/refs\/heads\/[A-Za-z0-9._/-]+/g) ?? []
-  assert.deepEqual([...new Set(refs)].sort(), ['refs/heads/claude/new-session-ezd1t1', 'refs/heads/feat/aws-native-phase-0-1'])
-  assert.doesNotMatch(workflow, /startsWith\(github\.ref|contains\(github\.ref|github\.ref != /)
+  assert.deepEqual([...new Set(refs)], ['refs/heads/feat/aws-native-phase-0-1'])
+  assert.doesNotMatch(workflow, /claude\/new-session|startsWith\(github\.ref|contains\(github\.ref|github\.ref != /)
   // A push still runs only the keyless self-test, and only on feat.
   assert.match(workflow, /\non:\n  push:\n    branches:\n      - feat\/aws-native-phase-0-1\n    paths:/)
 })
@@ -110,6 +111,20 @@ test("Cashfree's save-card prompt is declined first, and no Cashfree action can 
   assert.match(spec, /if \(key === 'card' && lastSubmit\.has\('save-card-prompt'\)\) return/)
   assert.doesNotMatch(spec, /\.click\(\)\.catch/, 'every Cashfree click has a time limit')
   assert.doesNotMatch(spec, /\.fill\(value\)/, 'every Cashfree fill has a time limit')
+})
+
+test("Cashfree's sandbox simulator gets OTP 111000, the SUCCESS status, then Submit, before the generic OTP step", () => {
+  // Run of 7 Nov: the simulator's SUCCESS is a <div data-status>, and its Submit stays disabled until one is chosen.
+  const loop = spec.slice(spec.indexOf('for (const scope of scopes)'))
+  const simulator = loop.indexOf(`'#status-container [data-status="SUCCESS"]'`)
+  assert.ok(simulator > 0)
+  assert.ok(simulator < loop.indexOf('const otp = '), 'the simulator is handled before the generic OTP step')
+  assert.ok(loop.indexOf("'simulator-status'") < loop.indexOf("'simulator-submit'"), 'status before Submit')
+  assert.match(spec, /fillIfEmpty\(scope\.locator\('#basic-otp'\), SANDBOX_OTP\)/)
+  assert.match(spec, /const SANDBOX_OTP = '111000'/)
+  assert.doesNotMatch(spec, /data-status="(FAILED|PENDING|USER_DROPPED)"/)
+  // Logged Cashfree URLs drop long path segments (session tokens).
+  assert.match(spec, /part\.length > 24 \? '…' : part/)
 })
 
 test('our own checkout controls are the visible ones, never a hidden streaming copy or the phone bar', () => {

@@ -95,7 +95,9 @@ async function completeSandboxPayment(page: Page, done: () => Promise<boolean>, 
       .filter((el) => (el as HTMLElement).offsetParent !== null)
       .map((el) => (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40))
       .filter(Boolean)).catch(() => [] as string[])).slice(0, 15)
-    const line = `url=${new URL(scope.url()).pathname} buttons=${JSON.stringify(names)}`
+    // Long path segments are Cashfree session tokens: keep them out of the log.
+    const path = new URL(scope.url()).pathname.split('/').map((part) => (part.length > 24 ? '…' : part)).join('/')
+    const line = `url=${path} buttons=${JSON.stringify(names)}`
     if (reported.has(line)) return
     reported.add(line)
     console.log(`SANDBOX_SCREEN item=${label} ${line}`)
@@ -108,6 +110,16 @@ async function completeSandboxPayment(page: Page, done: () => Promise<boolean>, 
       // Checked first: the card form stays underneath this prompt and still counts as visible.
       const skipSavingCard = scope.getByRole('button', { name: SKIP_SAVING_CARD_BUTTON })
       if (await visibleIn(scope, skipSavingCard)) { await submitOnce(scope, 'save-card-prompt', skipSavingCard); continue }
+      // Cashfree's sandbox bank simulator (payments-test.cashfree.com, its own window): OTP 111000, choose the SUCCESS
+      // status (a <div data-status>, not a button), then Submit, which stays disabled until a status is chosen.
+      // Checked before the generic OTP step, whose selector also matches this page's OTP field.
+      const simulatorSuccess = scope.locator('#status-container [data-status="SUCCESS"]')
+      if (await visibleIn(scope, simulatorSuccess)) {
+        await fillIfEmpty(scope.locator('#basic-otp'), SANDBOX_OTP)
+        await submitOnce(scope, 'simulator-status', simulatorSuccess)
+        await submitOnce(scope, 'simulator-submit', scope.locator('button:enabled', { hasText: /Submit\s*$/ }))
+        continue
+      }
       const upiId = scope.locator('input[placeholder*="UPI" i], input[name*="vpa" i], input[placeholder*="@"]')
       if (await visibleIn(scope, upiId)) {
         await fillIfEmpty(upiId, SANDBOX_UPI)
