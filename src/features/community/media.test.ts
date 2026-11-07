@@ -47,3 +47,13 @@ describe('community media policy', () => {
     expect(isCommunityImageContentType(null)).toBe(false)
   })
 })
+
+describe('browser-safe module', () => {
+  // The community creation form imports this file in the browser. A Node built-in here makes the bundler
+  // ship a crypto polyfill whose module loader calls eval, which an enforced CSP blocks.
+  it('imports no Node built-ins', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const source = await readFile(new URL('./media.ts', import.meta.url), 'utf8')
+    expect(source).not.toMatch(/from ['"](node:)?(crypto|fs|path|os|vm|buffer)['"]/)
+  })
+})
