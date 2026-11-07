@@ -50,11 +50,38 @@ async function visibleIn(scope: Page | Frame, locator: ReturnType<Page['locator'
 }
 
 /**
+ * Cashfree's submit buttons, matched by their whole accessible name. A loose /pay/ also matches the Samsung Pay
+ * wallet tile above the card form (role="button", shown first), which opens Samsung's QR screen instead of paying.
+ * A disabled "Proceed to Pay" is named "Proceed to Pay button is disabled", so the anchored name skips it too.
+ */
+const SUBMIT_BUTTON = /^(proceed to pay|verify and pay|pay now|pay ₹ ?[\d,.]+|verify|continue)$/i
+const OTP_SUBMIT_BUTTON = /^(submit|verify|confirm|continue|submit otp|verify otp)$/i
+
+function submitButton(scope: Page | Frame, name: RegExp = SUBMIT_BUTTON) {
+  return scope.getByRole('button', { name }).and(scope.locator(':enabled'))
+}
+
+async function fillIfEmpty(locator: ReturnType<Page['locator']>, value: string) {
+  const field = locator.first()
+  if (!(await field.isVisible().catch(() => false))) return
+  if ((await field.inputValue().catch(() => '')).trim() === '') await field.fill(value).catch(() => {})
+}
+
+/**
  * Drives whichever Cashfree sandbox screen is showing until `done()` reports the server confirmed the payment:
  * choose UPI (or card), enter the sandbox details, approve the sandbox simulator's success step.
+ * Each screen's submit is pressed at most once every 15 seconds, so a slow sandbox is not sent the same form twice.
  */
 async function completeSandboxPayment(page: Page, done: () => Promise<boolean>, label: string) {
   const deadline = Date.now() + 6 * 60_000
+  const lastSubmit = new Map<string, number>()
+  const submitOnce = async (scope: Page | Frame, key: string, button: ReturnType<Page['locator']>) => {
+    if (Date.now() - (lastSubmit.get(key) ?? 0) < 15_000) return
+    if (!(await visibleIn(scope, button))) return
+    lastSubmit.set(key, Date.now())
+    console.log(`SANDBOX_STEP item=${label} screen=${key}`)
+    await button.first().click().catch(() => {})
+  }
   let step = 0
   while (Date.now() < deadline) {
     if (await done()) return
@@ -62,28 +89,28 @@ async function completeSandboxPayment(page: Page, done: () => Promise<boolean>, 
     for (const scope of scopes) {
       const upiId = scope.locator('input[placeholder*="UPI" i], input[name*="vpa" i], input[placeholder*="@"]')
       if (await visibleIn(scope, upiId)) {
-        await upiId.first().fill(SANDBOX_UPI)
-        await scope.getByRole('button', { name: /verify|pay|proceed|continue/i }).first().click().catch(() => {})
+        await fillIfEmpty(upiId, SANDBOX_UPI)
+        await submitOnce(scope, 'upi', submitButton(scope))
         continue
       }
-      const cardNumber = scope.locator('input[name*="card" i][name*="number" i], input[placeholder*="card number" i], input[autocomplete="cc-number"]')
+      const cardNumber = scope.locator('input#cardNumber, input[autocomplete="cc-number"], input[placeholder*="card number" i]')
       if (await visibleIn(scope, cardNumber)) {
-        await cardNumber.first().fill(SANDBOX_CARD.number)
-        await scope.locator('input[autocomplete="cc-exp"], input[placeholder*="MM" i]').first().fill(SANDBOX_CARD.expiry).catch(() => {})
-        await scope.locator('input[autocomplete="cc-csc"], input[placeholder*="CVV" i]').first().fill(SANDBOX_CARD.cvv).catch(() => {})
-        await scope.locator('input[autocomplete="cc-name"], input[placeholder*="name" i]').first().fill(SANDBOX_CARD.name).catch(() => {})
-        await scope.getByRole('button', { name: /pay|proceed|continue/i }).first().click().catch(() => {})
+        await fillIfEmpty(cardNumber, SANDBOX_CARD.number)
+        await fillIfEmpty(scope.locator('input#validThrough, input[autocomplete="cc-exp"]'), SANDBOX_CARD.expiry)
+        await fillIfEmpty(scope.locator('input#cvv, input[autocomplete="cc-csc"]'), SANDBOX_CARD.cvv)
+        await fillIfEmpty(scope.locator('input#cardHolderName, input[autocomplete="cc-name"]'), SANDBOX_CARD.name)
+        await submitOnce(scope, 'card', submitButton(scope))
         continue
       }
-      const otp = scope.locator('input[name*="otp" i], input[placeholder*="OTP" i]')
+      const otp = scope.locator('input[name*="otp" i], input[placeholder*="OTP" i], input[autocomplete="one-time-code"]')
       if (await visibleIn(scope, otp)) {
-        await otp.first().fill(SANDBOX_OTP)
-        await scope.getByRole('button', { name: /submit|verify|pay|continue/i }).first().click().catch(() => {})
+        await fillIfEmpty(otp, SANDBOX_OTP)
+        await submitOnce(scope, 'otp', submitButton(scope, OTP_SUBMIT_BUTTON))
         continue
       }
       // Sandbox simulators show an explicit success choice.
       const success = scope.getByRole('button', { name: /^(success|authori[sz]e|approve|simulate success)$/i })
-      if (await visibleIn(scope, success)) { await success.first().click().catch(() => {}); continue }
+      if (await visibleIn(scope, success)) { await submitOnce(scope, 'simulator', success); continue }
       const upiTab = scope.getByText(/^UPI( ID)?$/i)
       if (await visibleIn(scope, upiTab)) { await upiTab.first().click().catch(() => {}); continue }
       const cardTab = scope.getByText(/^(Cards?|Debit\/Credit Card)$/i)

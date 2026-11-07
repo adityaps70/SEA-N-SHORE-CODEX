@@ -75,6 +75,18 @@ test('success is the server confirming with Cashfree, read from the database, fo
   assert.match(spec, /const runPro = process\.env\.RUN_PRO_PLAN === 'true'/)
 })
 
+test("Cashfree's submit button is matched by its whole name, never a wallet tile or a disabled button", () => {
+  const literal = spec.match(/const SUBMIT_BUTTON = \/(.+)\/i\n/)
+  assert.ok(literal, 'SUBMIT_BUTTON is a case-insensitive regex literal')
+  const submit = new RegExp(literal[1], 'i')
+  for (const name of ['Proceed to Pay', 'Pay ₹1,003.00', 'Pay now', 'Verify and Pay']) assert.ok(submit.test(name), name)
+  // The sandbox card screen of 7 Nov: the Samsung Pay tile sits above the card form and opened Samsung's QR screen.
+  for (const name of ['Samsung Pay', 'Google Pay', 'Pay with cards saved on', 'Proceed to Pay button is disabled', 'Use', 'Know More'])
+    assert.ok(!submit.test(name), name)
+  assert.doesNotMatch(spec, /name: \/[a-z|]*pay\|[a-z|]*\/i/, 'no loose pay|… button pattern is left')
+  assert.match(spec, /if \(Date\.now\(\) - \(lastSubmit\.get\(key\) \?\? 0\) < 15_000\) return/)
+})
+
 test('the Cognito stand-in answers only sign-in, page-load and sign-out calls', async () => {
   Object.assign(process.env, { E2E_MEMBER_EMAIL: 'buyer@example.com', E2E_MEMBER_PASSWORD: 'pw-1', E2E_MEMBER_SUB: 'sub-1', AWS_COGNITO_CLIENT_ID: 'client-1' })
   const { handle } = await import('../e2e/cashfree-sandbox/fake-cognito.mjs')
