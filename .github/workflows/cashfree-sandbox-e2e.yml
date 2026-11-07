@@ -6,7 +6,8 @@ name: Cashfree Sandbox Checkout E2E
 # Nothing live is touched: no AWS credentials, a throwaway Postgres service with every migration and fixtures only,
 # and a stand-in for the Cognito API (cognito-idp is pointed at 127.0.0.1 here) instead of the live user pool.
 # Payments use only the repository secrets CASHFREE_TEST_CLIENT_ID / CASHFREE_TEST_CLIENT_SECRET, refused unless
-# they are Cashfree TEST keys, and Cashfree's production API and payment hosts are unreachable from this runner.
+# Cashfree's sandbox accepts them (one read-only call), and Cashfree's production API and payment hosts are
+# unreachable from this runner.
 #
 # A push of these files runs the self-test: migrations, fixtures, the CSP-enforced build and a sign-in through the
 # Cognito stand-in, with no Cashfree keys. A manual start (workflow_dispatch) adds the three sandbox checkouts.
@@ -88,22 +89,6 @@ jobs:
       - name: Verify the sandbox E2E contract
         run: node --test scripts/aws/cashfree-sandbox-e2e.test.mjs
 
-      # Only TEST keys: Cashfree sandbox App IDs start with TEST and sandbox secret keys carry _test_. Anything else
-      # stops the run before the app is built.
-      - name: Refuse anything but Cashfree TEST keys
-        if: env.RUN_CHECKOUTS == 'true'
-        env:
-          CASHFREE_TEST_CLIENT_ID: ${{ secrets.CASHFREE_TEST_CLIENT_ID }}
-          CASHFREE_TEST_CLIENT_SECRET: ${{ secrets.CASHFREE_TEST_CLIENT_SECRET }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ -n "$CASHFREE_TEST_CLIENT_ID" && -n "$CASHFREE_TEST_CLIENT_SECRET" ]] || { echo "CASHFREE_TEST_CLIENT_ID / CASHFREE_TEST_CLIENT_SECRET are not set." >&2; exit 1; }
-          [[ "$CASHFREE_TEST_CLIENT_ID" == TEST* ]] || { echo "CASHFREE_TEST_CLIENT_ID is not a Cashfree TEST App ID; refusing." >&2; exit 1; }
-          [[ "$CASHFREE_TEST_CLIENT_SECRET" == *_test_* ]] || { echo "CASHFREE_TEST_CLIENT_SECRET is not a Cashfree TEST secret key; refusing." >&2; exit 1; }
-          [[ "$CASHFREE_ENVIRONMENT" == sandbox ]]
-          echo "CASHFREE_TEST_KEYS_VERIFIED=true"
-
       - name: Make Cashfree production unreachable and point Cognito at the stand-in
         shell: bash
         run: |
@@ -117,6 +102,32 @@ jobs:
             -keyout /tmp/fake-cognito/key.pem -out /tmp/fake-cognito/cert.pem 2>/dev/null
           ! curl -s --max-time 5 -o /dev/null https://api.cashfree.com/ || { echo "Cashfree production is still reachable." >&2; exit 1; }
           echo "CASHFREE_PRODUCTION_UNREACHABLE=true"
+
+      # The keys must be accepted by Cashfree's SANDBOX: one authenticated, read-only call that creates nothing
+      # (fetch an order id that cannot exist). Sandbox answers 404 for an unknown order once the key is accepted, and
+      # 401/403 for a key it does not know (a production key, a typo). Anything but 404 stops the run. Production is
+      # already unreachable from this runner, and no key value is ever printed.
+      - name: Check the keys against Cashfree sandbox (read-only)
+        if: env.RUN_CHECKOUTS == 'true'
+        env:
+          CASHFREE_TEST_CLIENT_ID: ${{ secrets.CASHFREE_TEST_CLIENT_ID }}
+          CASHFREE_TEST_CLIENT_SECRET: ${{ secrets.CASHFREE_TEST_CLIENT_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$CASHFREE_TEST_CLIENT_ID" && -n "$CASHFREE_TEST_CLIENT_SECRET" ]] || { echo "CASHFREE_TEST_CLIENT_ID / CASHFREE_TEST_CLIENT_SECRET are not set." >&2; exit 1; }
+          [[ "$CASHFREE_ENVIRONMENT" == sandbox ]]
+          umask 077
+          HEADERS="$(mktemp)"
+          trap 'rm -f "$HEADERS"' EXIT
+          printf 'x-client-id: %s\nx-client-secret: %s\nx-api-version: 2026-01-01\n' "$CASHFREE_TEST_CLIENT_ID" "$CASHFREE_TEST_CLIENT_SECRET" > "$HEADERS"
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H @"$HEADERS" \
+            "https://sandbox.cashfree.com/pg/orders/sns_credential_check_${GITHUB_RUN_ID}_does_not_exist")
+          case "$STATUS" in
+            404) echo "CASHFREE_SANDBOX_KEYS_ACCEPTED=true" ;;
+            401|403) echo "Cashfree sandbox refused these keys (HTTP $STATUS): they are not Test-mode keys for this account; stopping." >&2; exit 1 ;;
+            *) echo "Unexpected answer from Cashfree sandbox (HTTP $STATUS); stopping." >&2; exit 1 ;;
+          esac
 
       - name: Start the Cognito stand-in
         shell: bash

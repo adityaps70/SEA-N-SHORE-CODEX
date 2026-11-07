@@ -120,7 +120,6 @@ test('sign-in through the Cognito stand-in, with the CSP enforced', async ({ pag
 test('sandbox checkouts with the CSP enforced: course, organization Pro plan, event ticket', async ({ page }) => {
   test.skip(process.env.RUN_CHECKOUTS !== 'true', 'manual start only')
   expect(process.env.CASHFREE_ENVIRONMENT).toBe('sandbox')
-  expect(process.env.CASHFREE_CLIENT_ID ?? '').toMatch(/^TEST/)
   await signIn(page)
 
   await test.step('course', async () => {
