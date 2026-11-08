@@ -5,7 +5,8 @@ name: Load Test Nightly Start
 # within seconds unless the guard reads "run-once <sha>" or "run-signed-in-once <sha>" and this arm has not been
 # started yet. When it is armed, it starts AWS Load Test (.github/workflows/aws-load-test.yml) on the feature
 # branch; that run re-checks the owner-merged arm PR, the 01:00-01:45 IST start, the unmoved branch head and the
-# once-per-arm rule before any traffic, and keeps every stop rule. A copy lives on the feature branch so its contract test covers this file.
+# once-per-arm rule before any traffic, and keeps every stop rule. A copy lives on the feature branch so its
+# contract test covers this file.
 
 on:
   schedule:
