@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * Round ARCH (Phase 5): the realtime connection Lambda answers the browser's heartbeat with no database work, and
- * refuses a sixth live connection per member at $connect (expired rows are removed and not counted).
+ * allows at most 5 live connections per member (MAX_CONNECTIONS_PER_MEMBER): with 5 live, a further one is refused
+ * at $connect with 429 (expired rows are removed and not counted).
  */
 type Item = { connection_id: { S: string }; expires_at: { N: string } }
 const state = vi.hoisted(() => ({
