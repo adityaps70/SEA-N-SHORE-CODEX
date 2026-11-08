@@ -1,7 +1,7 @@
 name: AWS Google Link Identity Cleanup
 
 # Deletes the dead identity rows the 21 Oct 2026 Google/native link repair left (scripts/aws/google-link-identity-cleanup.sh).
-# plan: counts only. delete-once <sha>: an arm PR merged by adityaps70, then the staging-apply approval.
+# plan: counts only. delete-once <sha>: runs when adityaps70 merges an arm PR naming that SHA; that merge is the approval.
 
 on:
   push:
