@@ -284,12 +284,6 @@ resource "aws_iam_role_policy" "realtime_fanout" {
         ]
       },
       {
-        Sid      = "BroadcastFeedInvalidations"
-        Effect   = "Allow"
-        Action   = ["dynamodb:Scan"]
-        Resource = aws_dynamodb_table.realtime_connections.arn
-      },
-      {
         Sid    = "ConsumeRealtimeQueue"
         Effect = "Allow"
         Action = [

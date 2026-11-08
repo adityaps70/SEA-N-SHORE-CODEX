@@ -2,7 +2,6 @@ import {
   DeleteItemCommand,
   DynamoDBClient,
   QueryCommand,
-  ScanCommand,
 } from '@aws-sdk/client-dynamodb'
 import {
   ApiGatewayManagementApiClient,
@@ -17,6 +16,13 @@ const websocket = managementEndpoint
   ? new ApiGatewayManagementApiClient({ endpoint: managementEndpoint })
   : null
 
+// Round ARCH (broadcast fix): no event goes to every connection any more. Feed events carry their audience
+// (payload.audienceProfileIds, added by the outbox publisher: the author's network for a new post, the post's author
+// for a like or comment, never a load-test account), at most FEED_AUDIENCE_CAP members.
+const FEED_AUDIENCE_CAP = 500
+// Lookups and pushes run in parallel batches of this size instead of one after another.
+const PARALLEL_BATCH = 25
+
 const FEED_INVALIDATION_EVENT_TYPES = new Set([
   'feed.post_created',
   'feed.post_reaction_changed',
@@ -25,6 +31,11 @@ const FEED_INVALIDATION_EVENT_TYPES = new Set([
 ])
 
 function getAudience(event) {
+  if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType)) {
+    const audience = Array.isArray(event.payload?.audienceProfileIds) ? event.payload.audienceProfileIds : []
+    return [...new Set(audience.filter((id) => typeof id === 'string' && id.length > 0))].slice(0, FEED_AUDIENCE_CAP)
+  }
+
   if (event?.eventType === 'message.created') {
     const senderId = event.payload?.senderId
     const recipients = Array.isArray(event.payload?.recipientProfileIds)
@@ -129,38 +140,27 @@ async function pushSignal(connectionId, data) {
   }
 }
 
+async function inParallelBatches(items, work) {
+  const results = []
+  for (let start = 0; start < items.length; start += PARALLEL_BATCH) {
+    results.push(...await Promise.all(items.slice(start, start + PARALLEL_BATCH).map(work)))
+  }
+  return results
+}
+
 async function pushConnectionItems(items, data, nowSeconds) {
-  for (const item of items) {
+  await inParallelBatches(items, async (item) => {
     const connectionId = item.connection_id?.S
     const expiresAt = Number(item.expires_at?.N)
-    if (!connectionId) continue
+    if (!connectionId) return
 
     if (!Number.isFinite(expiresAt) || expiresAt <= nowSeconds) {
       await deleteConnection(connectionId)
-      continue
+      return
     }
 
     await pushSignal(connectionId, data)
-  }
-}
-
-async function broadcastSignal(data, nowSeconds) {
-  let ExclusiveStartKey
-
-  do {
-    const response = await dynamodb.send(new ScanCommand({
-      TableName: tableName,
-      ExpressionAttributeNames: {
-        '#connectionId': 'connection_id',
-        '#expiresAt': 'expires_at',
-      },
-      ProjectionExpression: '#connectionId, #expiresAt',
-      ExclusiveStartKey,
-    }))
-
-    await pushConnectionItems(response.Items ?? [], data, nowSeconds)
-    ExclusiveStartKey = response.LastEvaluatedKey
-  } while (ExclusiveStartKey)
+  })
 }
 
 async function fanout(event) {
@@ -170,18 +170,11 @@ async function fanout(event) {
   const data = Buffer.from(JSON.stringify(toRealtimeSignal(event)))
   const nowSeconds = Math.floor(Date.now() / 1000)
 
-  if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType)) {
-    await broadcastSignal(data, nowSeconds)
-    return
-  }
-
   const audience = getAudience(event)
   if (audience.length === 0) return
 
-  for (const profileId of audience) {
-    const connections = await listConnections(profileId)
-    await pushConnectionItems(connections, data, nowSeconds)
-  }
+  const connections = (await inParallelBatches(audience, listConnections)).flat()
+  await pushConnectionItems(connections, data, nowSeconds)
 }
 
 export async function handler(event) {

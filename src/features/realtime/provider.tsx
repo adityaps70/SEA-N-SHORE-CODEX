@@ -345,7 +345,9 @@ export function MessagingRealtimeProvider({
         return
       }
 
-      // Feed/network invalidations still need canonical server-component refreshes.
+      // Round ARCH (broadcast fix): a feed hint never re-renders the page. Listeners (the home feed's "N new
+      // posts" count) re-ask the server themselves. Only a new connection still refreshes, for the viewer's network.
+      if ('scope' in signal && signal.scope === 'feed') return
       scheduleRefresh()
     }
     const onConnected = () => {
@@ -429,6 +431,11 @@ export function MessagingRealtimeProvider({
       ) : null}
     </MessagingRealtimeContext.Provider>
   )
+}
+
+/** For components that may render outside the provider (signed out): null there, the realtime context inside. */
+export function useOptionalMessagingRealtime() {
+  return useContext(MessagingRealtimeContext)
 }
 
 export function useMessagingRealtime() {

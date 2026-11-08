@@ -5,6 +5,7 @@ import { CheckCircle2, Compass, Loader2 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import { useSuggestionDeck } from '@/features/network/components/suggestion-deck'
+import { useOptionalMessagingRealtime } from '@/features/realtime/provider'
 import { countNewTopPosts, loadRecentFeedPage, loadTopFeedPage, setFeedMode } from '../actions'
 import { usePostImpressions } from '../impressions/use-post-impressions'
 import { postLoadingPriority } from '../post-loading-priority'
@@ -16,6 +17,8 @@ import { cn } from '@/lib/cn'
 
 /** "N new posts" asks the server for a count this often, only while the tab is visible. */
 export const NEW_POSTS_POLL_MS = 60_000
+/** Round ARCH (broadcast fix): a realtime "new post" hint re-asks the count at most once per this window. */
+export const NEW_POSTS_HINT_DEBOUNCE_MS = 2_000
 
 function contentId(post: FeedPost) {
   return post.repostOf?.id ?? post.id
@@ -238,11 +241,14 @@ export function HomeFeed({
     return () => observer.disconnect()
   }, [hasMore, mode, posts.length])
 
-  // "N new posts": a cheap count every 60 s while the tab is visible; never a page refetch.
+  // "N new posts": a cheap count every 60 s while the tab is visible; never a page refetch. Round ARCH (broadcast
+  // fix): a realtime hint that someone in the member's network posted asks for the count straight away instead.
   const since = mode === 'top' ? top?.snapshotAt ?? null : posts[0]?.createdAt ?? null
+  const subscribeRealtime = useOptionalMessagingRealtime()?.subscribe
   useEffect(() => {
     if (!since) return
     let active = true
+    let hintTimer: number | null = null
     const check = async () => {
       if (document.visibilityState !== 'visible') return
       const result = await countNewTopPosts({ since })
@@ -251,12 +257,19 @@ export function HomeFeed({
     const interval = window.setInterval(() => { void check() }, NEW_POSTS_POLL_MS)
     const onVisible = () => { if (document.visibilityState === 'visible') void check() }
     document.addEventListener('visibilitychange', onVisible)
+    const unsubscribe = subscribeRealtime?.((signal) => {
+      if (signal.eventType !== 'feed.post_created' && signal.eventType !== 'feed.post_reposted') return
+      if (hintTimer !== null) return
+      hintTimer = window.setTimeout(() => { hintTimer = null; void check() }, NEW_POSTS_HINT_DEBOUNCE_MS)
+    })
     return () => {
       active = false
       window.clearInterval(interval)
+      if (hintTimer !== null) window.clearTimeout(hintTimer)
+      unsubscribe?.()
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [since])
+  }, [since, subscribeRealtime])
 
   function showNewPosts() {
     setNewCount(0)

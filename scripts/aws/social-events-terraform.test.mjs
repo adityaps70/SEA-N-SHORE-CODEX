@@ -45,10 +45,12 @@ test('realtime routing carries social invalidations without canonical feed conte
     assert.ok(realtimeTerraform.includes(`"${eventType}"`), `missing realtime EventBridge detail type ${eventType}`)
   }
 
-  assert.match(realtimeTerraform, /"dynamodb:Scan"/)
-  assert.match(realtimeFanout, /\bScanCommand\b/)
-  assert.match(realtimeFanout, /\bExclusiveStartKey\b/)
-  assert.match(realtimeFanout, /\bLastEvaluatedKey\b/)
+  // Round ARCH (broadcast fix): no table scan and no broadcast; feed events go only to their carried audience.
+  assert.doesNotMatch(realtimeTerraform, /"dynamodb:Scan"/)
+  assert.doesNotMatch(realtimeFanout, /\bScanCommand\b|\bExclusiveStartKey\b|broadcastSignal/)
+  assert.match(realtimeFanout, /const FEED_AUDIENCE_CAP = 500\n/)
+  assert.match(realtimeFanout, /const PARALLEL_BATCH = 25\n/)
+  assert.match(realtimeFanout, /event\.payload\?\.audienceProfileIds/)
   assert.match(realtimeFanout, /toInvalidationSignal\(event, 'feed'\)/)
   assert.match(realtimeFanout, /toInvalidationSignal\(event, 'network'\)/)
   assert.match(

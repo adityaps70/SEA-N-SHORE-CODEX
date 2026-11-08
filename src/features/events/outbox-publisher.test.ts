@@ -53,6 +53,21 @@ describe('outbox publisher', () => {
     expect(transaction.query.mock.calls.some(([sql]) => sql.includes('set published_at = now()'))).toBe(true)
   })
 
+  it('publishes each event as prepared (Round ARCH broadcast fix: feed events gain their push audience)', async () => {
+    const transaction = transactionWith()
+    const eventPublisher = { publish: vi.fn(async () => ({ successfulIds: [EVENT_ID], failures: [] })) }
+    const prepare = vi.fn(async (events: Array<{ payload: object }>) => events.map((event) => ({ ...event, payload: { ...event.payload, audienceProfileIds: ['p1'] } })))
+    const publisher = createOutboxPublisher({
+      publisher: eventPublisher as EventBridgePublisher,
+      withTransaction: transaction.withTransaction,
+      prepare: prepare as never,
+    })
+
+    await expect(publisher.publishBatch()).resolves.toEqual({ claimed: 1, published: 1, failed: 0 })
+    expect(prepare).toHaveBeenCalledTimes(1)
+    expect(eventPublisher.publish).toHaveBeenCalledWith([expect.objectContaining({ id: EVENT_ID, payload: expect.objectContaining({ audienceProfileIds: ['p1'] }) })])
+  })
+
   it('leaves rejected events unpublished and increments attempts', async () => {
     const transaction = transactionWith()
     const eventPublisher = {
