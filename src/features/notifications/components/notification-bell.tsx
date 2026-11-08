@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { loadNotificationChrome, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead, markNotificationsRead } from '../actions'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
-import { NOTIFICATION_POLL_MS, startVisibleInterval } from '@/lib/browser/visible-interval'
+import { NOTIFICATION_POLL_MS } from '@/lib/browser/visible-interval'
+import { useOptionalMessagingRealtime } from '@/features/realtime/provider'
+import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import type { NetworkNotification } from '../types'
 import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
 
@@ -76,37 +78,42 @@ export function NotificationBell({
     }
   }, [])
 
-  // Every minute while the page is visible (Round P3: was every 30 s, hidden tabs included): the open
-  // panel reloads its list; a closed bell only refreshes the badge count (the list reloads on open).
-  useEffect(() => {
-    let active = true
-    let checking = false
-
-    const refreshSnapshot = async () => {
-      if (checking) return
-      checking = true
-      try {
-        if (openRef.current) {
-          await loadList()
-          return
-        }
-        const result = await loadUnreadNotificationCount()
-        if (!active || !result.ok) return
-        setLocalUnreadCount(result.unreadCount)
-        setListStale(true)
-      } catch {
-        // The badge keeps its last known count; the next tick tries again.
-      } finally {
-        checking = false
+  // Every minute while the page is visible (Round P3: was every 30 s, hidden tabs included): the open panel reloads
+  // its list; a closed bell only refreshes the badge count (the list reloads on open). Round ARCH (Phase 5): only while
+  // the realtime socket is down; while it is connected each new notification pushes the unread count (below).
+  const checkingRef = useRef(false)
+  const refreshSnapshot = useCallback(async () => {
+    if (checkingRef.current) return
+    checkingRef.current = true
+    try {
+      if (openRef.current) {
+        await loadList()
+        return
       }
-    }
-
-    const stop = startVisibleInterval(() => { void refreshSnapshot() }, NOTIFICATION_POLL_MS)
-    return () => {
-      active = false
-      stop()
+      const result = await loadUnreadNotificationCount()
+      if (!result.ok) return
+      setLocalUnreadCount(result.unreadCount)
+      setListStale(true)
+    } catch {
+      // The badge keeps its last known count; the next check tries again.
+    } finally {
+      checkingRef.current = false
     }
   }, [loadList])
+  const runRefreshSnapshot = useCallback(() => { void refreshSnapshot() }, [refreshSnapshot])
+  useRealtimeAwarePoll(runRefreshSnapshot, { intervalMs: NOTIFICATION_POLL_MS, hintEventTypes: [], pauseWhileConnected: true })
+
+  const subscribeRealtime = useOptionalMessagingRealtime()?.subscribe
+  useEffect(() => {
+    if (!subscribeRealtime) return
+    return subscribeRealtime((signal) => {
+      if (signal.eventType !== 'notification.created') return
+      if (typeof signal.unreadNotificationCount === 'number') setLocalUnreadCount(signal.unreadNotificationCount)
+      setListStale(true)
+      if (openRef.current) void loadList()
+      else if (typeof signal.unreadNotificationCount !== 'number') void refreshSnapshot()
+    })
+  }, [subscribeRealtime, loadList, refreshSnapshot])
 
   /** Opening the panel loads the list when it has not been loaded yet or may be out of date. */
   function togglePanel() {

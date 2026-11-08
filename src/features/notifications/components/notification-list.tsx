@@ -3,9 +3,10 @@
 import Link from 'next/link'
 import { AtSign, Bell, BriefcaseBusiness, CheckCheck, ChevronRight, Ellipsis, GraduationCap, MessageSquareText, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useCallback, useRef, useState, useTransition } from 'react'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
-import { NOTIFICATION_POLL_MS, startVisibleInterval } from '@/lib/browser/visible-interval'
+import { NOTIFICATION_POLL_MS } from '@/lib/browser/visible-interval'
+import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { deleteNotification, deleteNotifications, loadNotifications, markAllNotificationsRead, markNotificationRead, markNotificationsRead } from '../actions'
 import {
@@ -34,28 +35,17 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
   const unreadCount = items.filter((notification) => !notification.readAt).length
   const visibleCount = items.filter((notification) => notificationMatchesFilter(notification, filter)).length
 
-  useEffect(() => {
-    let active = true
-    let checking = false
-
-    const refreshSnapshot = async () => {
-      if (checking) return
-      checking = true
-      try {
-        const result = await loadNotifications()
-        if (!active || !result.ok) return
-        setItems(result.notifications)
-      } finally {
-        checking = false
-      }
-    }
-
-    const stop = startVisibleInterval(() => { void refreshSnapshot() }, NOTIFICATION_POLL_MS)
-    return () => {
-      active = false
-      stop()
-    }
+  // Round ARCH (Phase 5): reloaded when a new notification is pushed (within 2 s); the 60-second check runs only while
+  // the realtime socket is down.
+  const checkingRef = useRef(false)
+  const refreshSnapshot = useCallback(() => {
+    if (checkingRef.current) return
+    checkingRef.current = true
+    void loadNotifications()
+      .then((result) => { if (result.ok) setItems(result.notifications) })
+      .finally(() => { checkingRef.current = false })
   }, [])
+  useRealtimeAwarePoll(refreshSnapshot, { intervalMs: NOTIFICATION_POLL_MS, hintEventTypes: ['notification.created'], pauseWhileConnected: true })
 
   function openNotification(notification: NetworkNotification) {
     if (pending) return

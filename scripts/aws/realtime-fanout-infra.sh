@@ -4,6 +4,8 @@
 #     5-connection cap) updated in place with new code only (source_code_hash and what AWS derives from it), and
 #   - aws_iam_role_policy.realtime_fanout updated in place, its only difference the removal of the
 #     "BroadcastFeedInvalidations" statement (dynamodb:Scan): no statement added, no other statement changed.
+#   - aws_cloudwatch_event_rule.realtime_events updated in place, its pattern's detail-type list gaining exactly
+#     "notification.created" (Phase 5: a new notification's unread count pushed to its recipient), nothing removed.
 # The archives of the two Lambda files are read to compute the code hashes. Anything else refuses.
 set -euo pipefail
 umask 077
@@ -25,6 +27,10 @@ CONNECTION_FUNCTION_NAME="sea-n-shore-staging-realtime-connection"
 ROLE_NAME="sea-n-shore-staging-realtime-fanout"
 POLICY_NAME="sea-n-shore-staging-realtime-fanout"
 REMOVED_SID="BroadcastFeedInvalidations"
+RULE_ADDRESS="aws_cloudwatch_event_rule.realtime_events"
+RULE_ADDED_TYPES='["notification.created"]'
+RULE_NAME="sea-n-shore-staging-realtime-events"
+EVENT_BUS="sea-n-shore-staging-social-events"
 [[ "${REALTIME_FANOUT_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "REALTIME_FANOUT_INFRA_EXPECTED_SHA must be an exact commit SHA." >&2
   exit 1
@@ -68,13 +74,13 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
 plan() {
   # Bounded like every host plan: interrupted and retried once if it hangs (scripts/aws/bootstrap-terraform-lock.sh).
   terraform_plan_bounded "$WORK_DIR/$1.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-    -target="$LAMBDA_ADDRESS" -target="$CONNECTION_LAMBDA_ADDRESS" -target="$POLICY_ADDRESS" \
+    -target="$LAMBDA_ADDRESS" -target="$CONNECTION_LAMBDA_ADDRESS" -target="$POLICY_ADDRESS" -target="$RULE_ADDRESS" \
     -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/$1.tfplan"
   terraform -chdir="$APP_DIR" show -json "$WORK_DIR/$1.tfplan" > "$WORK_DIR/$1.json"
 }
 # Prints the classification; exits non-zero for anything but "no change" or the exact allowed update.
 classify() {
-  python3 scripts/aws/check-realtime-fanout-plan.py "$1" "$LAMBDA_ADDRESS,$CONNECTION_LAMBDA_ADDRESS" "$POLICY_ADDRESS" "$ARCHIVE_ADDRESSES" "$REMOVED_SID"
+  python3 scripts/aws/check-realtime-fanout-plan.py "$1" "$LAMBDA_ADDRESS,$CONNECTION_LAMBDA_ADDRESS" "$POLICY_ADDRESS" "$ARCHIVE_ADDRESSES" "$REMOVED_SID" "$RULE_ADDRESS" "$RULE_ADDED_TYPES"
 }
 
 live_state() {
@@ -83,7 +89,10 @@ live_state() {
   connection_code="$(aws lambda get-function-configuration --region "$AWS_REGION" --function-name "$CONNECTION_FUNCTION_NAME" --query CodeSha256 --output text)"
   scan="$(aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --query PolicyDocument --output json \
     | jq '[.Statement[] | .Action | if type == "array" then .[] else . end | select(. == "dynamodb:Scan")] | length')"
-  echo "code_sha256=$code connection_code_sha256=$connection_code scan_statements=$scan"
+  local rule_types
+  rule_types="$(aws events describe-rule --region "$AWS_REGION" --name "$RULE_NAME" --event-bus-name "$EVENT_BUS" --query EventPattern --output text \
+    | jq -c '."detail-type" | sort')"
+  echo "code_sha256=$code connection_code_sha256=$connection_code scan_statements=$scan rule_types=$rule_types"
 }
 
 echo "REALTIME_FANOUT_LIVE_BEFORE $(live_state)"
@@ -110,6 +119,7 @@ terraform -chdir="$APP_DIR" apply -input=false -no-color -lock-timeout=60s "$WOR
 plan after
 classify "$WORK_DIR/after.json" | grep -qx 'REALTIME_FANOUT_PLAN=NO_CHANGES' || { echo "The fan-out still differs after the apply." >&2; exit 1; }
 LIVE_AFTER="$(live_state)"
-grep -q ' scan_statements=0$' <<<"$LIVE_AFTER" || { echo "The live fan-out policy still allows dynamodb:Scan." >&2; exit 1; }
+grep -q ' scan_statements=0 ' <<<"$LIVE_AFTER" || { echo "The live fan-out policy still allows dynamodb:Scan." >&2; exit 1; }
+grep -q 'rule_types=.*"notification.created"' <<<"$LIVE_AFTER" || { echo "The live realtime rule does not carry notification.created." >&2; exit 1; }
 echo "REALTIME_FANOUT_LIVE_AFTER $LIVE_AFTER"
 echo "REALTIME_FANOUT_APPLY_COMPLETE"

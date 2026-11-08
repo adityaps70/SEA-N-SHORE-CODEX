@@ -17,6 +17,7 @@ export type SocialDomainEventType =
   | 'message.created'
   | 'message.updated'
   | 'conversation.read_cursor_advanced'
+  | 'notification.created'
 
 export type SocialDomainEventPayload =
   | { eventType: 'user.followed'; actorId: string; targetId: string }
@@ -34,6 +35,9 @@ export type SocialDomainEventPayload =
   | { eventType: 'feed.post_reaction_changed'; actorId: string; postId: string; audienceProfileIds?: string[] }
   | { eventType: 'feed.post_comments_changed'; actorId: string; postId: string; audienceProfileIds?: string[] }
   | { eventType: 'feed.post_reposted'; actorId: string; postId: string; audienceProfileIds?: string[] }
+  // Round ARCH (Phase 5): queued by a trigger on public.notifications (migration 0098). The outbox publisher adds the
+  // recipient as the audience and their unread count; the fan-out pushes the count to the recipient only.
+  | { eventType: 'notification.created'; recipientId: string; notificationId: string; audienceProfileIds?: string[]; unreadNotificationCount?: number }
   | {
       eventType: 'message.created'
       conversationId: string
@@ -59,7 +63,7 @@ export type SocialDomainEventPayload =
 
 export type DomainEvent = {
   id: string
-  aggregateType: 'profile' | 'connection' | 'post' | 'comment' | 'message' | 'conversation'
+  aggregateType: 'profile' | 'connection' | 'post' | 'comment' | 'message' | 'conversation' | 'notification'
   aggregateId: string
   eventType: SocialDomainEventType
   schemaVersion: 1

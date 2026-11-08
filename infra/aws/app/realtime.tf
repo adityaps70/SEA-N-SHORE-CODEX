@@ -121,7 +121,8 @@ resource "aws_cloudwatch_event_rule" "realtime_events" {
       "feed.post_reaction_changed",
       "feed.post_comments_changed",
       "feed.post_reposted",
-      "connection.accepted"
+      "connection.accepted",
+      "notification.created"
     ]
   })
 

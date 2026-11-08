@@ -55,8 +55,35 @@ export const POST_AUTHOR_AUDIENCE_SQL = `select p.author_id as id
     and author.is_load_test = false
     and not exists (select 1 from public.profiles actor where actor.id = $2 and actor.is_load_test)`
 
+// Round ARCH (Phase 5): the recipient (never a load-test account) and their unread notification count, as the badge
+// shows it (src/features/notifications/repository.ts countUnread). $1 recipient id.
+export const NOTIFICATION_RECIPIENT_SQL = `select p.id,
+    (select count(*) from public.notifications n where n.recipient_id = p.id and n.read_at is null)::int as unread_count
+  from public.profiles p
+  where p.id = $1 and p.is_load_test = false`
+
+type RecipientRow = QueryResultRow & { id: string; unread_count: number }
+
 function isFeedEvent(event: DomainEvent) {
   return NEW_POST_EVENTS.has(event.eventType) || COUNT_EVENTS.has(event.eventType)
+}
+
+async function withNotificationAudience(event: DomainEvent, query: Query): Promise<DomainEvent> {
+  const payload = event.payload as { recipientId?: unknown }
+  let audienceProfileIds: string[] = []
+  let unreadNotificationCount: number | undefined
+  try {
+    if (typeof payload.recipientId === 'string') {
+      const [row] = await query<RecipientRow>(NOTIFICATION_RECIPIENT_SQL, [payload.recipientId])
+      if (row) {
+        audienceProfileIds = [row.id]
+        unreadNotificationCount = Number(row.unread_count)
+      }
+    }
+  } catch (error) {
+    console.error('realtime_notification_audience_unavailable', { name: error instanceof Error ? error.name : null })
+  }
+  return { ...event, payload: { ...event.payload, audienceProfileIds, ...(unreadNotificationCount === undefined ? {} : { unreadNotificationCount }) } } as DomainEvent
 }
 
 async function audienceFor(query: Query, event: DomainEvent): Promise<string[]> {
@@ -70,11 +97,13 @@ async function audienceFor(query: Query, event: DomainEvent): Promise<string[]> 
 }
 
 /**
- * Adds audienceProfileIds to each feed event (other events pass through unchanged). Fails safe: when an audience
- * cannot be read, that event goes out with an empty audience (no push; the browser's count check still runs).
+ * Adds audienceProfileIds to each feed event, and to notification.created the recipient and their unread count (other
+ * events pass through unchanged). Fails safe: when an audience cannot be read, that event goes out with an empty
+ * audience (no push; the browser's checks still run).
  */
 export async function withFeedPushAudience(events: DomainEvent[], query: Query): Promise<DomainEvent[]> {
   return Promise.all(events.map(async (event) => {
+    if (event.eventType === 'notification.created') return withNotificationAudience(event, query)
     if (!isFeedEvent(event)) return event
     let audienceProfileIds: string[] = []
     try {
