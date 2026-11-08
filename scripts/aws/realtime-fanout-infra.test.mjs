@@ -90,6 +90,21 @@ test('accepts the code update and the Scan statement removal, and reports no cha
   assert.equal(done.stdout.trim(), 'REALTIME_FANOUT_PLAN=NO_CHANGES')
 })
 
+test('nested blocks with nothing unknown are not changes (Terraform writes [{}] or [false] for them)', () => {
+  // First plan run 42457216357 refused the real code update over exactly these placeholders.
+  const placeholders = { last_modified: true, version: true, qualified_arn: true, architectures: [false], environment: [{}], ephemeral_storage: [{}], logging_config: [{}], tracing_config: [{}] }
+  const accepted = classify([archiveRead, lambda({}, ['update'], placeholders), policy(OLD_POLICY, NEW_POLICY)])
+  assert.equal(accepted.status, 0, accepted.stderr)
+  assert.match(accepted.stdout, /^REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE$/m)
+  // A real unknown inside a block still refuses.
+  const refused = classify([lambda({}, ['update'], { ...placeholders, environment: [{ variables: true }] })])
+  assert.notEqual(refused.status, 0)
+  assert.match(refused.stderr, /changes more than its code: \['environment'\]/)
+  const refusedPolicy = classify([{ ...policy(OLD_POLICY, NEW_POLICY), change: { ...policy(OLD_POLICY, NEW_POLICY).change, after_unknown: { policy: true } } }])
+  assert.notEqual(refusedPolicy.status, 0)
+  assert.match(refusedPolicy.stderr, /unknown values/)
+})
+
 test('refuses any other Lambda change', () => {
   for (const [changes, reason] of [
     [[lambda({ memory_size: 512 })], /changes more than its code/],

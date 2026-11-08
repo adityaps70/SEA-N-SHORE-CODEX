@@ -20,6 +20,18 @@ def refuse(message):
     raise SystemExit(f'Refusing: {message}')
 
 
+def has_unknown(value):
+    """True only when a leaf is true. Terraform describes nested blocks in after_unknown with placeholders such as
+    [{}] or [false] even when nothing in them is unknown (first plan run 42457216357), so truthiness is not enough."""
+    if value is True:
+        return True
+    if isinstance(value, dict):
+        return any(has_unknown(v) for v in value.values())
+    if isinstance(value, list):
+        return any(has_unknown(v) for v in value)
+    return False
+
+
 def statements(policy_text):
     document = json.loads(policy_text)
     items = document.get('Statement', [])
@@ -30,7 +42,7 @@ def check_lambda(change):
     if change['actions'] != ['update']:
         refuse(f"the Lambda {change['actions']} is not an in-place update")
     before, after = change.get('before') or {}, change.get('after') or {}
-    unknown = {k for k, v in (change.get('after_unknown') or {}).items() if v}
+    unknown = {k for k, v in (change.get('after_unknown') or {}).items() if has_unknown(v)}
     changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)} | unknown
     if 'source_code_hash' not in changed:
         refuse('the Lambda update does not change its code')
@@ -43,7 +55,7 @@ def check_policy(change, removed_sid):
     if change['actions'] != ['update']:
         refuse(f"the role policy {change['actions']} is not an in-place update")
     before, after = change.get('before') or {}, change.get('after') or {}
-    if any(v for v in (change.get('after_unknown') or {}).values()):
+    if any(has_unknown(v) for v in (change.get('after_unknown') or {}).values()):
         refuse('the role policy update has unknown values')
     changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
     if changed != ['policy']:
