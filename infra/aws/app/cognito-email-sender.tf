@@ -130,6 +130,9 @@ resource "aws_lambda_function" "cognito_resend_email_sender" {
   timeout          = 20
   memory_size      = 256
 
+  # Round ARCH (Phase 5): reserved so neither realtime nor sign-up can starve the other (25 also caps it).
+  reserved_concurrent_executions = 25
+
   environment {
     variables = {
       COGNITO_EMAIL_KMS_KEY_ARN = aws_kms_key.cognito_email_sender.arn

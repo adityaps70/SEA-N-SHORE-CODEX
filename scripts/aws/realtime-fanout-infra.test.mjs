@@ -21,12 +21,29 @@ const CONNECTION_ARCHIVE = 'data.archive_file.realtime_connection'
 const SID = 'BroadcastFeedInvalidations'
 const RULE = 'aws_cloudwatch_event_rule.realtime_events'
 const ADDED = ['notification.created']
+const AUTHORIZER = 'aws_lambda_function.realtime_authorizer'
+const SIGN_UP = 'aws_lambda_function.cognito_pre_sign_up_link'
+const EMAIL = 'aws_lambda_function.cognito_resend_email_sender'
+const RESERVED = { [AUTHORIZER]: 100, [CONNECTION]: 100, [LAMBDA]: 50, [SIGN_UP]: 25, [EMAIL]: 25 }
+const LAMBDAS = [LAMBDA, CONNECTION, AUTHORIZER, SIGN_UP, EMAIL]
+const ARCHIVES = [ARCHIVE, CONNECTION_ARCHIVE, 'data.archive_file.realtime_authorizer', 'data.archive_file.cognito_pre_sign_up_link', 'data.archive_file.cognito_resend_email_sender']
 
 test('guarded, exact-head, plan by default, four targets, applies only the classified plan', () => {
   assert.ok(['plan', 'apply-once'].includes(guardAction(read('./realtime-fanout-infra-action.txt'))))
   assert.match(script, /REALTIME_FANOUT_INFRA_EXPECTED_SHA/)
   assert.match(script, /case "\$ACTION" in plan\|apply-once\) ;;/)
-  assert.deepEqual(script.match(/-target="\$[A-Z_]+"/g), ['-target="$LAMBDA_ADDRESS"', '-target="$CONNECTION_LAMBDA_ADDRESS"', '-target="$POLICY_ADDRESS"', '-target="$RULE_ADDRESS"'])
+  assert.deepEqual(script.match(/-target="\$[A-Z_]+"/g), [
+    '-target="$LAMBDA_ADDRESS"', '-target="$CONNECTION_LAMBDA_ADDRESS"', '-target="$AUTHORIZER_LAMBDA_ADDRESS"',
+    '-target="$SIGN_UP_LAMBDA_ADDRESS"', '-target="$EMAIL_LAMBDA_ADDRESS"', '-target="$POLICY_ADDRESS"', '-target="$RULE_ADDRESS"',
+  ])
+  assert.equal(/^ARCHIVE_ADDRESSES="(.+)"$/m.exec(script)[1], ARCHIVES.join(','))
+  // Phase 5: the reservations, and the account check that runs before any apply.
+  assert.deepEqual(JSON.parse(/^RESERVED='(.+)'$/m.exec(script)[1]), RESERVED)
+  assert.equal(Object.values(RESERVED).reduce((a, b) => a + b, 0), Number(/^RESERVED_TOTAL=(\d+)$/m.exec(script)[1]))
+  assert.match(script, /^MIN_ACCOUNT_LIMIT=1000$/m)
+  assert.match(script, /^MIN_UNRESERVED_AFTER=100$/m)
+  assert.ok(script.indexOf('(( ACCOUNT_LIMIT >= MIN_ACCOUNT_LIMIT ))') < script.indexOf('if [[ "$ACTION" == "plan" ]]; then'))
+  assert.match(script, /grep -q ' reserved=\\\[100 100 50 25 25\\\]\$' <<<"\$LIVE_AFTER"/)
   assert.match(script, /RULE_ADDRESS="aws_cloudwatch_event_rule\.realtime_events"/)
   assert.match(script, /RULE_ADDED_TYPES='\["notification\.created"\]'/)
   assert.match(script, /grep -q 'rule_types=\.\*"notification\.created"' <<<"\$LIVE_AFTER"/)
@@ -56,7 +73,8 @@ function classify(changes) {
   const dir = mkdtempSync(join(tmpdir(), 'fanout-'))
   try {
     writeFileSync(join(dir, 'plan.json'), JSON.stringify({ resource_changes: changes }))
-    return spawnSync('python3', ['-I', classifier, join(dir, 'plan.json'), `${LAMBDA},${CONNECTION}`, POLICY, `${ARCHIVE},${CONNECTION_ARCHIVE}`, SID, RULE, JSON.stringify(ADDED)], { encoding: 'utf8' })
+    // The same five Lambdas and archives the runner passes (asserted against the script below).
+    return spawnSync('python3', ['-I', classifier, join(dir, 'plan.json'), LAMBDAS.join(','), POLICY, ARCHIVES.join(','), SID, RULE, JSON.stringify(ADDED), JSON.stringify(RESERVED)], { encoding: 'utf8' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -122,9 +140,9 @@ test("Phase 5: accepts the connection Lambda's code update too, and refuses anyt
   const refused = classify([lambda({ memory_size: 512 }, ['update'], undefined, CONNECTION)])
   assert.notEqual(refused.status, 0)
   assert.match(refused.stderr, /changes more than its code/)
-  const authorizer = classify([lambda({}, ['update'], undefined, 'aws_lambda_function.realtime_authorizer')])
-  assert.notEqual(authorizer.status, 0)
-  assert.match(authorizer.stderr, /Refusing: the plan changes/)
+  const outOfScope = classify([lambda({}, ['update'], undefined, 'aws_lambda_function.aurora_app_secret_rotation')])
+  assert.notEqual(outOfScope.status, 0)
+  assert.match(outOfScope.stderr, /Refusing: the plan changes/)
 })
 
 const pattern = (types, source = ['sea-n-shore.social']) => JSON.stringify({ source, 'detail-type': types })
@@ -144,6 +162,32 @@ test('Phase 5: accepts the realtime rule gaining exactly notification.created, n
     [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created'], ['other.source']))], /more than its detail-type list/],
     [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created']), ['update'], { name: 'other' })], /other than the rule pattern/],
     [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created']), ['delete', 'create'])], /not an in-place update/],
+  ]) {
+    const result = classify(changes)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, reason)
+  }
+})
+
+test('Phase 5: accepts each reservation at exactly its expected value, and nothing else', () => {
+  const reserve = (address, value, extra = {}) => ({
+    address,
+    change: {
+      actions: ['update'],
+      before: { function_name: 'f', memory_size: 128, source_code_hash: 'same', reserved_concurrent_executions: -1 },
+      after: { function_name: 'f', memory_size: 128, source_code_hash: 'same', reserved_concurrent_executions: value, ...extra },
+      after_unknown: {},
+    },
+  })
+  const all = classify(Object.entries(RESERVED).map(([address, value]) => reserve(address, value)))
+  assert.equal(all.status, 0, all.stderr)
+  assert.match(all.stdout, /^REALTIME_FANOUT_CODE_CHANGES=none$/m)
+  assert.deepEqual(JSON.parse(/^REALTIME_FANOUT_RESERVED=(.+)$/m.exec(all.stdout)[1]), RESERVED)
+  for (const [changes, reason] of [
+    [[reserve(AUTHORIZER, 1000)], /reserved concurrency becomes 1000, expected 100/],
+    [[reserve(SIGN_UP, 50)], /reserved concurrency becomes 50, expected 25/],
+    [[reserve(EMAIL, 25, { memory_size: 512 })], /changes more than its code/],
+    [[reserve('aws_lambda_function.aurora_app_secret_rotation', 10)], /Refusing: the plan changes/],
   ]) {
     const result = classify(changes)
     assert.notEqual(result.status, 0)

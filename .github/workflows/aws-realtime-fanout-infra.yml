@@ -6,6 +6,8 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/app/realtime.tf
+      - infra/aws/app/auth.tf
+      - infra/aws/app/cognito-email-sender.tf
       - infra/aws/app/lambda/realtime-fanout.mjs
       - infra/aws/app/lambda/realtime-connection.mjs
       - scripts/aws/check-realtime-fanout-plan.py
@@ -73,7 +75,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/realtime-fanout-infra-action.txt
-          RUNNER_FILES: "infra/aws/app/realtime.tf infra/aws/app/lambda/realtime-fanout.mjs infra/aws/app/lambda/realtime-connection.mjs scripts/aws/check-realtime-fanout-plan.py scripts/aws/realtime-fanout-infra.sh"
+          RUNNER_FILES: "infra/aws/app/realtime.tf infra/aws/app/auth.tf infra/aws/app/cognito-email-sender.tf infra/aws/app/lambda/realtime-fanout.mjs infra/aws/app/lambda/realtime-connection.mjs scripts/aws/check-realtime-fanout-plan.py scripts/aws/realtime-fanout-infra.sh"
         shell: bash
         run: |
           set -euo pipefail

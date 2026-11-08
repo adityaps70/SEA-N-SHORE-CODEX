@@ -3,14 +3,16 @@
 
 Accepts only:
   - no change at all (REALTIME_FANOUT_PLAN=NO_CHANGES), or
-  - any of the listed Lambdas updated in place with new code only, and/or the fan-out role policy updated in place
+  - any of the listed Lambdas updated in place with new code and/or (Phase 5) its reserved concurrency set to exactly
+    the expected value, and nothing else, and/or the fan-out role policy updated in place
     whose only difference is the removal of one named statement, and/or (Phase 5) the realtime EventBridge rule
     updated in place whose only difference is its detail-type list gaining exactly the expected types
     (REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE).
 The listed archive data sources may be read. Anything else exits non-zero with the reason.
 
 Usage: check-realtime-fanout-plan.py PLAN_JSON LAMBDA_ADDRESSES POLICY_ADDRESS ARCHIVE_ADDRESSES REMOVED_SID \
-         [RULE_ADDRESS ADDED_TYPES_JSON]
+         [RULE_ADDRESS ADDED_TYPES_JSON [RESERVED_JSON]]
+  (RESERVED_JSON maps a Lambda address to its expected reserved concurrency)
   (LAMBDA_ADDRESSES and ARCHIVE_ADDRESSES are comma-separated)
 """
 import json
@@ -42,17 +44,23 @@ def statements(policy_text):
     return [items] if isinstance(items, dict) else items
 
 
-def check_lambda(change):
+def check_lambda(change, expected_reserved=None):
     if change['actions'] != ['update']:
         refuse(f"the Lambda {change['actions']} is not an in-place update")
     before, after = change.get('before') or {}, change.get('after') or {}
     unknown = {k for k, v in (change.get('after_unknown') or {}).items() if has_unknown(v)}
     changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)} | unknown
-    if 'source_code_hash' not in changed:
+    allowed = set(LAMBDA_CODE_ATTRIBUTES)
+    if 'reserved_concurrent_executions' in changed:
+        if expected_reserved is None or 'reserved_concurrent_executions' in unknown or after.get('reserved_concurrent_executions') != expected_reserved:
+            refuse(f"the Lambda's reserved concurrency becomes {after.get('reserved_concurrent_executions')}, expected {expected_reserved}")
+        allowed.add('reserved_concurrent_executions')
+    if not changed & {'source_code_hash', 'reserved_concurrent_executions'}:
         refuse('the Lambda update does not change its code')
-    extra = sorted(changed - LAMBDA_CODE_ATTRIBUTES)
+    extra = sorted(changed - allowed)
     if extra:
         refuse(f'the Lambda update changes more than its code: {extra}')
+    return after.get('reserved_concurrent_executions') if 'reserved_concurrent_executions' in changed else None
 
 
 def check_policy(change, removed_sid):
@@ -97,7 +105,8 @@ def check_rule(change, expected_added):
 
 def main(argv):
     plan_path, lambda_list, policy_address, archive_list, removed_sid, *rule_args = argv[1:]
-    rule_address, expected_added = (rule_args[0], json.loads(rule_args[1])) if len(rule_args) == 2 else (None, [])
+    rule_address, expected_added = (rule_args[0], json.loads(rule_args[1])) if len(rule_args) >= 2 else (None, [])
+    expected_reserved = json.loads(rule_args[2]) if len(rule_args) >= 3 else {}
     lambda_addresses = [a for a in lambda_list.split(',') if a]
     archive_addresses = {a for a in archive_list.split(',') if a}
     with open(plan_path) as f:
@@ -119,15 +128,20 @@ def main(argv):
         if resource['address'] not in allowed or resource['address'] in by_address:
             refuse('the plan changes ' + ', '.join(f"{c['address']} {c['change']['actions']}" for c in changes))
         by_address[resource['address']] = resource['change']
+    reserved = {}
     for address in lambda_addresses:
         if address in by_address:
-            check_lambda(by_address[address])
+            value = check_lambda(by_address[address], expected_reserved.get(address))
+            if value is not None:
+                reserved[address] = value
     if policy_address in by_address:
         check_policy(by_address[policy_address], removed_sid)
     added = check_rule(by_address[rule_address], expected_added) if rule_address in by_address else []
     print('REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE')
     print('REALTIME_FANOUT_RULE_ADDS=' + (json.dumps(added) if added else 'none'))
-    print('REALTIME_FANOUT_CODE_CHANGES=' + (','.join(a for a in lambda_addresses if a in by_address) or 'none'))
+    code_changes = [a for a in lambda_addresses if a in by_address and (by_address[a].get('before') or {}).get('source_code_hash') != (by_address[a].get('after') or {}).get('source_code_hash')]
+    print('REALTIME_FANOUT_CODE_CHANGES=' + (','.join(code_changes) or 'none'))
+    print('REALTIME_FANOUT_RESERVED=' + (json.dumps(reserved, sort_keys=True) if reserved else 'none'))
     print('REALTIME_FANOUT_POLICY_REMOVES=' + (removed_sid if policy_address in by_address else 'none'))
     return 0
 
