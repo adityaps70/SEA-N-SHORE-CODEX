@@ -6,12 +6,16 @@ name: AWS Load Test
 # Stop rules (scripts/load-test/stop-watch.mjs): any step's p95 over 2 s, server errors over 1% or WAF blocks
 # over 1% stops every shard at once.
 #
-# It sends traffic only when scripts/aws/load-test-action.txt reads "run-once <sha>" from an owner-merged arm PR
-# (the merge is the approval; GitHub Pro does not enforce staging-apply reviewers on a private repository).
-# Merging the arm sends nothing: the push run only checks the arm. The nightly start
+# It sends traffic only when scripts/aws/load-test-action.txt reads "run-once <sha>" (signed-out mix) or
+# "run-signed-in-once <sha>" (Round ARCH: the 50 hidden load-test accounts, src/features/load-test) from an
+# owner-merged arm PR (the merge is the approval; GitHub Pro does not enforce staging-apply reviewers on a private
+# repository). Merging the arm sends nothing: the push run only checks the arm. The nightly start
 # (.github/workflows/load-test-nightly.yml, a schedule on the default branch at 01:05 IST) starts this workflow
 # on the feature branch, and the window job then requires: started by that schedule, between 01:00 and 01:45
 # IST, the branch head still the armed merge commit, and no earlier nightly start on that commit.
+# Signed in, a sessions job gets each account a fresh session sealed end to end (scripts/load-test/sessions.mjs,
+# GitHub secret LOAD_TEST_HANDOFF_KEY), a monitor job stops the run if Aurora stays at its maximum ACU for 5
+# minutes, and every session is signed out afterwards.
 # "plan" sends no traffic to the site: it runs the contract test and the whole pipeline against a local
 # server on the runner.
 
@@ -154,6 +158,19 @@ jobs:
           node scripts/load-test/report.mjs /tmp/shards "$LOAD_TEST_TOTAL_RPM" "$LOAD_TEST_STEP_SECONDS" /tmp/stop.txt | tee /tmp/report.txt
           grep -q '^LOAD_TEST_RESULT highest_step_within_limits=2 ' /tmp/report.txt
           [[ ! -f /tmp/stop.txt ]]
+          # The signed-in mix, with fake sessions and action ids the local server accepts.
+          node -e "require('fs').writeFileSync('/tmp/sessions.json', JSON.stringify(Array.from({length: 7}, (_, i) => ({index: i + 1, accessToken: 'smoke-access-' + (i + 1), refreshToken: null}))))"
+          rm -rf /tmp/shards-in && mkdir -p /tmp/shards-in
+          LOAD_TEST_MIX=signed-in LOAD_TEST_SESSIONS_FILE=/tmp/sessions.json LOAD_TEST_ACTIONS="{\"loadTopFeedPage\":\"$(printf 'a%.0s' {1..42})\",\"loadUnreadNotificationCount\":\"$(printf 'b%.0s' {1..42})\"}" \
+            k6 run --quiet --out csv=/tmp/k6-in.csv scripts/load-test/p3-load-test.js &
+          K6=$!
+          node scripts/load-test/stop-watch.mjs watch /tmp/k6-in.csv "$K6" /tmp/stop-in.txt &
+          wait "$K6"
+          node scripts/load-test/stop-watch.mjs summarize /tmp/k6-in.csv /tmp/shards-in/shard-0.json
+          node scripts/load-test/report.mjs /tmp/shards-in "$LOAD_TEST_TOTAL_RPM" "$LOAD_TEST_STEP_SECONDS" /tmp/stop-in.txt | tee /tmp/report-in.txt
+          grep -q '^LOAD_TEST_RESULT highest_step_within_limits=2 ' /tmp/report-in.txt
+          grep -q 'auth_refused_pct=0.00 other_4xx_pct=0.00' /tmp/report-in.txt
+          [[ ! -f /tmp/stop-in.txt ]]
           echo "LOAD_TEST_PLAN_ONLY_NO_TRAFFIC"
 
   apply-approval:
@@ -179,6 +196,7 @@ jobs:
       job_path: ${{ steps.pages.outputs.job_path }}
       course_path: ${{ steps.pages.outputs.course_path }}
       started_at: ${{ steps.pages.outputs.started_at }}
+      mix: ${{ steps.mix.outputs.mix }}
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -188,7 +206,17 @@ jobs:
         run: |
           set -euo pipefail
           node --test scripts/aws/load-test.test.mjs
-          [[ "$(cut -d' ' -f1 < scripts/aws/load-test-action.txt)" == run-once ]] || { echo "Not armed for run-once." >&2; exit 1; }
+
+      - name: Resolve the mix from the armed action
+        id: mix
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(cut -d' ' -f1 < scripts/aws/load-test-action.txt)" in
+            run-once) echo "mix=signed-out" >> "$GITHUB_OUTPUT" ;;
+            run-signed-in-once) echo "mix=signed-in" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Not armed for a run." >&2; exit 1 ;;
+          esac
 
       - name: Require the nightly start inside 01:00-01:45 IST, once per arm
         env:
@@ -230,11 +258,124 @@ jobs:
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:00Z)" >> "$GITHUB_OUTPUT"
           echo "LOAD_TEST_WINDOW_OPEN"
 
+  # Signed-in mix only: each test account gets a fresh session, sealed to a key pair made here; the private key never
+  # leaves this job. The shards get their own accounts' sessions re-sealed with LOAD_TEST_HANDOFF_KEY.
+  sessions:
+    needs:
+      - apply-gate
+      - apply-approval
+      - window
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' && needs.window.outputs.mix == 'signed-in' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      AWS_REGION: ap-south-1
+    outputs:
+      sealed: ${{ steps.handoff.outputs.sealed }}
+      actions: ${{ steps.handoff.outputs.actions }}
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Get every test account a sealed session
+        id: handoff
+        env:
+          LOAD_TEST_HANDOFF_KEY: ${{ secrets.LOAD_TEST_HANDOFF_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+          WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          # The 50 accounts are created for this run and deleted after it (report job), with counts reported.
+          CREATED="$(bash scripts/aws/load-test-host-command.sh create-once "$GITHUB_SHA" "$GITHUB_RUN_ID")"
+          grep -E '^LOAD_TEST_ACCOUNTS_(CREATED|CREATE_ONCE_VERIFIED)' <<<"$CREATED"
+          grep -q '^LOAD_TEST_ACCOUNTS_CREATE_ONCE_VERIFIED=true$' <<<"$CREATED" || { echo "The test accounts were not created." >&2; exit 1; }
+          PUBLIC_KEY="$(node scripts/load-test/sessions.mjs keypair "$WORK")"
+          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY")"
+          grep -q '^LOAD_TEST_SESSIONS_READY=true$' <<<"$OUTPUT" || { echo "The host did not prepare the sessions." >&2; exit 1; }
+          URL="$(sed -n 's/^LOAD_TEST_SESSIONS_URL //p' <<<"$OUTPUT" | head -1)"
+          ACTIONS="$(sed -n 's/^LOAD_TEST_ACTIONS //p' <<<"$OUTPUT" | head -1)"
+          curl -fsS --max-time 60 -o "$WORK/sealed" "$URL"
+          aws s3 rm --only-show-errors "s3://sea-n-shore-staging-310356785722-migration/ci-checkouts/load-test-sessions/${GITHUB_RUN_ID}.sealed"
+          node scripts/load-test/sessions.mjs open "$WORK/private.pem" "$WORK/sealed" > "$WORK/sessions.json"
+          SEALED="$(node scripts/load-test/sessions.mjs seal-shards "$WORK/sessions.json" "$LOAD_TEST_SHARDS")"
+          jq -e 'type == "object" and length == ('"$LOAD_TEST_SHARDS"')' <<<"$SEALED" >/dev/null
+          jq -e '.loadTopFeedPage and .loadUnreadNotificationCount' <<<"$ACTIONS" >/dev/null
+          echo "sealed=$SEALED" >> "$GITHUB_OUTPUT"
+          echo "actions=$ACTIONS" >> "$GITHUB_OUTPUT"
+          echo "LOAD_TEST_SESSIONS_HANDED_OFF shards=$LOAD_TEST_SHARDS"
+
+      - name: Delete the host checkout bundle
+        if: always()
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup
+
+  # Stop rule 3: Aurora at its maximum ACU for 5 minutes in a row cancels the run (read-only CloudWatch).
+  monitor:
+    needs:
+      - apply-gate
+      - apply-approval
+      - window
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 50
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
+    env:
+      AWS_REGION: ap-south-1
+      LOAD_TEST_AURORA_MAX_ACU: "2"
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            scripts/load-test
+          sparse-checkout-cone-mode: false
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Watch Aurora capacity until the shards finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          for minute in $(seq 1 45); do
+            sleep 60
+            VALUES="$(aws cloudwatch get-metric-statistics --region "$AWS_REGION" --namespace AWS/RDS --metric-name ServerlessDatabaseCapacity \
+              --dimensions Name=DBClusterIdentifier,Value=sea-n-shore-staging-aurora --statistics Maximum --period 60 \
+              --start-time "$(date -u -d '-6 minutes' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" --output json | jq -c '[.Datapoints | sort_by(.Timestamp) | .[-5:][] | .Maximum]')"
+            echo "LOAD_TEST_AURORA_ACU minute=$minute last5=$VALUES"
+            if node scripts/load-test/aurora-stop.mjs "$VALUES" "$LOAD_TEST_AURORA_MAX_ACU"; then
+              echo "LOAD_TEST_STOP Aurora at its maximum of ${LOAD_TEST_AURORA_MAX_ACU} ACU for 5 minutes" | tee -a "$GITHUB_STEP_SUMMARY"
+              curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API/cancel" >/dev/null
+              exit 0
+            fi
+            LEFT="$(curl -fsS -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API/jobs?per_page=100" | jq '[.jobs[] | select(.name | startswith("load")) | select(.status != "completed")] | length')"
+            [[ "$LEFT" == 0 && $minute -gt 2 ]] && { echo "Every shard has finished."; exit 0; }
+          done
+
   load:
     needs:
       - apply-gate
       - window
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.window.result == 'success' }}
+      - sessions
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.window.result == 'success' && (needs.sessions.result == 'success' || (needs.sessions.result == 'skipped' && needs.window.outputs.mix == 'signed-out')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -248,6 +389,9 @@ jobs:
       LOAD_TEST_SHARD: ${{ matrix.shard }}
       LOAD_TEST_JOB_PATH: ${{ needs.window.outputs.job_path }}
       LOAD_TEST_COURSE_PATH: ${{ needs.window.outputs.course_path }}
+      LOAD_TEST_MIX: ${{ needs.window.outputs.mix }}
+      LOAD_TEST_ACTIONS: ${{ needs.sessions.outputs.actions }}
+      LOAD_TEST_SESSIONS_FILE: ${{ github.workspace }}/../load-test-sessions.json
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -264,6 +408,14 @@ jobs:
           echo "$K6_DEB_SHA256  /tmp/k6.deb" | sha256sum -c -
           sudo dpkg -i /tmp/k6.deb
 
+      - name: Open this shard's sessions (signed-in mix)
+        if: env.LOAD_TEST_MIX == 'signed-in'
+        env:
+          LOAD_TEST_HANDOFF_KEY: ${{ secrets.LOAD_TEST_HANDOFF_KEY }}
+          LOAD_TEST_SHARD_SEALED: ${{ fromJSON(needs.sessions.outputs.sealed || '{}')[format('{0}', matrix.shard)] }}
+        shell: bash
+        run: node scripts/load-test/sessions.mjs open-shard "$LOAD_TEST_SESSIONS_FILE"
+
       - name: Run this shard with the stop rules
         shell: bash
         run: |
@@ -272,6 +424,7 @@ jobs:
           K6=$!
           node scripts/load-test/stop-watch.mjs watch /tmp/k6.csv "$K6" /tmp/stop.txt &
           wait "$K6" || echo "k6 exited with $?"
+          rm -f "$LOAD_TEST_SESSIONS_FILE"
 
       - name: Summarize this shard
         if: always()
@@ -311,6 +464,7 @@ jobs:
       - apply-gate
       - apply-approval
       - window
+      - sessions
       - load
     if: ${{ always() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' }}
     runs-on: ubuntu-latest
@@ -371,3 +525,21 @@ jobs:
           sleep 300
           export REPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
           node scripts/aws/capacity-media-report.cjs
+
+      # Signed-in mix: every test account's sessions end now (Cognito global sign-out), whatever happened above.
+      - name: Sign out and delete every test account (signed-in mix)
+        if: always() && needs.window.outputs.mix == 'signed-in'
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sign-out "$GITHUB_SHA" "$GITHUB_RUN_ID")"
+          grep -q '^LOAD_TEST_SIGNED_OUT=true$' <<<"$OUTPUT"
+          echo "LOAD_TEST_SIGNED_OUT=true"
+          DELETED="$(bash scripts/aws/load-test-host-command.sh delete-once "$GITHUB_SHA" "$GITHUB_RUN_ID")"
+          grep -E '^LOAD_TEST_ACCOUNTS_(DELETED|AFTER_DELETE|DELETE_ONCE_VERIFIED)' <<<"$DELETED" | tee -a "$GITHUB_STEP_SUMMARY"
+          grep -q '^LOAD_TEST_ACCOUNTS_DELETE_ONCE_VERIFIED=true$' <<<"$DELETED"
+
+      - name: Delete the host checkout bundle
+        if: always() && needs.window.outputs.mix == 'signed-in'
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup

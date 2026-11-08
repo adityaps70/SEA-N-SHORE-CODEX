@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-const entrypoints = ['scripts/workers/publish-outbox.ts', 'scripts/workers/consume-notifications.ts', 'scripts/workers/learning-round-e-content.ts', 'scripts/workers/media-cdn-backfill.ts']
+const entrypoints = ['scripts/workers/publish-outbox.ts', 'scripts/workers/consume-notifications.ts', 'scripts/workers/learning-round-e-content.ts', 'scripts/workers/media-cdn-backfill.ts', 'scripts/workers/load-test-accounts.ts']
 const workerEnvironment = {
   PATH: process.env.PATH,
   HOME: process.env.HOME,

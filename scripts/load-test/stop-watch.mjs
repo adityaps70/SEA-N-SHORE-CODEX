@@ -5,7 +5,8 @@
 //
 // Stop rules, per step of the ramp, once that step has at least MIN_SAMPLES requests on this shard:
 //   p95 over 2 s; server errors (5xx or no response) over 1%; WAF blocks (403/429) over 1%, which would make
-//   the run measure the WAF instead of the site. On a stop it writes the reason to <stop-file> and sends k6 SIGINT
+//   the run measure the WAF instead of the site; signed-in requests sent back to sign-in over 1% (the sessions
+//   stopped working, so the run would measure the sign-in page). On a stop it writes the reason to <stop-file> and sends k6 SIGINT
 //   (k6 stops gracefully); the workflow then cancels the other shards.
 import { appendFileSync, existsSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
@@ -44,7 +45,7 @@ export function createStats() {
   let header = null
   const steps = new Map()
   const step = (n) => {
-    if (!steps.has(n)) steps.set(n, { durations: [], ok: 0, server: 0, blocked: 0, other: 0, hits: 0, hitSamples: 0 })
+    if (!steps.has(n)) steps.set(n, { durations: [], ok: 0, server: 0, blocked: 0, auth: 0, other: 0, hits: 0, hitSamples: 0 })
     return steps.get(n)
   }
   return {
@@ -65,6 +66,7 @@ export function createStats() {
       if (tags.cls === 'ok') s.ok += 1
       else if (tags.cls === '5xx' || tags.cls === 'neterr') s.server += 1
       else if (tags.cls === 'blocked') s.blocked += 1
+      else if (tags.cls === 'auth') s.auth += 1
       else s.other += 1
     },
   }
@@ -85,13 +87,14 @@ export function stopReason(steps) {
     if (p95 > P95_LIMIT_MS) return `step ${n}: p95 ${p95} ms over ${P95_LIMIT_MS} ms (${count} requests)`
     if (s.server / count > ERROR_LIMIT) return `step ${n}: server errors ${s.server}/${count} over 1%`
     if (s.blocked / count > ERROR_LIMIT) return `step ${n}: WAF blocks ${s.blocked}/${count} over 1%`
+    if (s.auth / count > ERROR_LIMIT) return `step ${n}: signed-in sessions refused ${s.auth}/${count} over 1%`
   }
   return null
 }
 
 export function summary(steps) {
   return [...steps.entries()].sort((a, b) => a[0] - b[0]).map(([n, s]) => ({
-    step: n, requests: s.durations.length, ok: s.ok, server_errors: s.server, blocked: s.blocked, other: s.other,
+    step: n, requests: s.durations.length, ok: s.ok, server_errors: s.server, blocked: s.blocked, auth_refused: s.auth, other: s.other,
     cache_hits: s.hits, cache_samples: s.hitSamples, durations_ms: s.durations,
   }))
 }

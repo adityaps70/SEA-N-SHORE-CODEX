@@ -200,15 +200,15 @@ visible as materialized (
   select c.* from capped c
   where (c.owner_id is null or c.owner_id not in (select id from blocked))
     and case c.kind
-      when 'person' then exists (select 1 from public.profiles person where person.id = c.entity_id and person.account_status = 'active' and person.onboarding_completed_at is not null)
+      when 'person' then exists (select 1 from public.profiles person where person.id = c.entity_id and person.account_status = 'active' and person.onboarding_completed_at is not null and not person.is_load_test)
       when 'org' then exists (select 1 from public.companies org where org.id = c.entity_id and ${listableOrganizationSql('org')})
-      when 'community' then exists (select 1 from public.community_groups g where g.id = c.entity_id and g.archived_at is null)
+      when 'community' then exists (select 1 from public.community_groups g where g.id = c.entity_id and g.archived_at is null and not g.is_load_test)
       when 'job' then exists (select 1 from public.jobs j where j.id = c.entity_id and ${JOB_OPEN})
       when 'course' then exists (select 1 from public.learning_courses course where course.id = c.entity_id and ${COURSE_OPEN})
       when 'event' then exists (select 1 from public.events e where e.id = c.entity_id and ${EVENT_OPEN})
       when 'post' then exists (
         select 1 from public.posts p join public.profiles author on author.id = p.author_id
-        where p.id = c.entity_id and ${POST_VISIBLE})
+        where p.id = c.entity_id and not author.is_load_test and ${POST_VISIBLE})
       else false
     end
 ),

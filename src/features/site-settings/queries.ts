@@ -50,7 +50,7 @@ export async function getMemberNumbers(choice: MemberNumbersChoice, query: Query
   try {
     const rows = await query(
       `select
-         case when $1::boolean then (select count(*) from public.profiles p where p.account_status = 'active' and p.onboarding_completed_at is not null) else 0 end as members,
+         case when $1::boolean then (select count(*) from public.profiles p where p.account_status = 'active' and p.onboarding_completed_at is not null and not p.is_load_test) else 0 end as members,
          case when $2::boolean then (select count(*) from public.companies c where c.is_verified = true) else 0 end as organizations,
          case when $3::boolean then (select count(*) from public.learning_courses lc where lc.status = 'published' and lc.removed_at is null and lc.revision_of_course_id is null) else 0 end as courses`,
       [choice.members, choice.organizations, choice.courses],

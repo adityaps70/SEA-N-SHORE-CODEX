@@ -195,6 +195,7 @@ function peopleSuggestionSql(roundG = false) {
           and e.target_profile_id = cp.id
           and e.created_at > now() - $9::interval
       )
+      and not cp.is_load_test
       and not ${syntheticTextSql("concat_ws(' ', cp.slug, cp.full_name, cp.headline, cp.summary, cmp.rank, cmp.current_company)", '$10')}
       ${roundG ? ROUND_G_PEOPLE_EXCLUSIONS_SQL : ''}
     order by score desc, cp.updated_at desc, cp.id asc
@@ -543,6 +544,7 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
        where p.id <> $1
          and p.account_status = 'active'
          and p.onboarding_completed_at is not null
+         and not p.is_load_test
          ${blockVisibilitySql(1)}
          ${searchSql}
        order by p.updated_at desc, p.id asc

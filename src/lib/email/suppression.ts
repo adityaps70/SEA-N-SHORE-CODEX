@@ -54,14 +54,31 @@ export function recipientSuppressedError() {
   return new ResendApiError('recipient_do_not_email', 422, 'The recipient is on the do-not-email list')
 }
 
+// RFC 2606 / 6761 reserved names can never receive mail, and sending there only bounces and hurts the sender's
+// reputation. The load-test accounts (Round ARCH) and the staging E2E users use them; Cognito's sender Lambda has the
+// same rule (infra/aws/app/lambda/cognito-resend-email-sender.mjs).
+const RESERVED_DOMAINS = ['example.com', 'example.net', 'example.org']
+const RESERVED_TLDS = new Set(['test', 'example', 'invalid', 'localhost'])
+
+/** True for an address on a reserved domain (example.com, *.invalid, ...), which can never receive mail. */
+export function isReservedRecipient(email: string) {
+  const domain = (normalizeEmail(email) ?? '').split('@').pop() ?? ''
+  if (!domain) return false
+  if (RESERVED_TLDS.has(domain.split('.').at(-1) ?? '')) return true
+  return RESERVED_DOMAINS.some((reserved) => domain === reserved || domain.endsWith(`.${reserved}`))
+}
+
 type SendsTo = { sendEmail(input: { to: string }): Promise<unknown> }
 
-/** Wraps a Resend sender so a do-not-email recipient is refused before anything reaches Resend. */
+/**
+ * Wraps a Resend sender so a do-not-email recipient, or a reserved address that can never receive mail, is refused
+ * before anything reaches Resend.
+ */
 export function withEmailSuppression<C extends SendsTo>(client: C, isSuppressed: (email: string) => Promise<boolean> = (email) => emailSuppressions.isSuppressed(email)): C {
   return {
     ...client,
     async sendEmail(input: { to: string }) {
-      if (await isSuppressed(input.to)) throw recipientSuppressedError()
+      if (isReservedRecipient(input.to) || await isSuppressed(input.to)) throw recipientSuppressedError()
       return client.sendEmail(input)
     },
   } as C

@@ -1,5 +1,6 @@
 import { query as databaseQuery } from '@/lib/db/client'
 import { FEED_WEIGHTS } from './feed-weights'
+import { loadTestAuthorVisibleSql } from '@/features/load-test/load-test-sql'
 
 /**
  * Round G (G1): the candidate posts for "Top for you", with every feature the scorer reads, in one
@@ -135,6 +136,7 @@ export function candidateVisibilitySql() {
     p.deleted_at is null
     and (p.author_id = $1 or (
       author.account_status = 'active' and author.onboarding_completed_at is not null
+      and ${loadTestAuthorVisibleSql('author', '$1')}
       and not exists (
         select 1 from public.user_blocks b
         where (b.blocker_id = $1 and b.blocked_id = p.author_id) or (b.blocker_id = p.author_id and b.blocked_id = $1)

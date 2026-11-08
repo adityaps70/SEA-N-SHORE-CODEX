@@ -6,6 +6,7 @@ import { createPeopleSuggestions } from './people-suggestions'
 import { createPeopleSweep } from './people-sweep'
 import { createSignalsRepository } from '@/features/signals/repository'
 import { createPrivacyPreferences } from '@/features/profiles/privacy-preferences'
+import { DECLINED_REQUEST_SUGGESTION_WINDOW, RECOMMENDATION_WEIGHTS } from '@/features/network/recommendations'
 
 /**
  * Round G (G2) against the real schema (PGlite, every migration): People you may know precomputes
@@ -62,6 +63,29 @@ beforeEach(async () => {
 })
 
 describe('People you may know, precomputed (round G)', () => {
+  it('never suggests a load-test account, never computes suggestions for one, and the live list skips them too (Round ARCH)', async () => {
+    const friend = await member()
+    const testAccount = await member()
+    const realStranger = await member()
+    await db.query(`update public.profiles set is_load_test = true where id = $1`, [testAccount])
+    await connect(viewer, friend)
+    await connect(friend, testAccount)
+    await connect(friend, realStranger)
+    const { people, candidates } = service()
+    await people.refreshForViewer(viewer)
+    const ids = (await people.list(viewer, { limit: 10 })).map((entry) => entry.candidateId)
+    expect(ids).toContain(realStranger)
+    expect(ids).not.toContain(testAccount)
+    const live = await createProfileRepository({ query: query as never }).getPeopleSuggestions({
+      viewerProfileId: viewer, limit: 20, weights: RECOMMENDATION_WEIGHTS, declinedRequestWindow: DECLINED_REQUEST_SUGGESTION_WINDOW, roundG: true,
+    })
+    expect(live.map((entry) => entry.id)).not.toContain(testAccount)
+    // The nightly run never spends work on a load-test account.
+    const covered = await candidates.listViewersToRefresh(null, 100)
+    expect(covered).toContain(viewer)
+    expect(covered).not.toContain(testAccount)
+  })
+
   it('suggests friends of friends with the mutual count as the reason', async () => {
     const friend1 = await member()
     const friend2 = await member()

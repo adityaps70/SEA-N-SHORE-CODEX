@@ -50,6 +50,16 @@ beforeEach(async () => {
 })
 
 describe('search (round G)', () => {
+  it('never finds a load-test account or its posts for a real member (Round ARCH)', async () => {
+    const viewer = await member('Placeholder Viewer')
+    await member('Sachin Placeholder')
+    const testAccount = await member('Sachin Loadtest')
+    await db.query(`update public.profiles set is_load_test = true where id = $1`, [testAccount])
+    await post(testAccount, 'Bunkering checklist from the load test')
+    expect(people(await repository.search({ viewerId: viewer, query: 'Sachin', limits: { person: 5 } }))).toEqual(['Sachin Placeholder'])
+    expect(await repository.search({ viewerId: viewer, query: 'bunkering', limits: { post: 5 } })).toEqual([])
+  })
+
   it('a typo finds the person ("Sachn" finds Sachin)', async () => {
     const viewer = await member('Placeholder Viewer')
     await member('Sachin Placeholder')

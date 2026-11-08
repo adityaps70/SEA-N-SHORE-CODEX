@@ -293,7 +293,7 @@ export function createFeedQueries(input: {
         },
       }
     })
-    if (request.position === undefined) void incrementRankingMetric('feed.top_pages')
+    if (request.position === undefined) void incrementRankingMetric('feed.top_pages', 1, user.id)
     return {
       posts,
       nextCursor: null,
@@ -341,7 +341,7 @@ export function createFeedQueries(input: {
         const index = posts.findIndex((post) => new Date(post.createdAt).getTime() <= previousVisit.getTime())
         dividerBeforePostId = index > 0 ? posts[index]!.id : null
       }
-      void incrementRankingMetric('feed.recent_pages')
+      void incrementRankingMetric('feed.recent_pages', 1, user.id)
     }
     return { posts, nextCursor, recent: { dividerBeforePostId } }
   }

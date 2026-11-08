@@ -10,8 +10,8 @@ export function mergeShards(shards) {
   const steps = new Map()
   for (const shard of shards) {
     for (const s of shard) {
-      const m = steps.get(s.step) ?? { requests: 0, ok: 0, server_errors: 0, blocked: 0, other: 0, cache_hits: 0, cache_samples: 0, durations: [] }
-      for (const key of ['requests', 'ok', 'server_errors', 'blocked', 'other', 'cache_hits', 'cache_samples']) m[key] += s[key]
+      const m = steps.get(s.step) ?? { requests: 0, ok: 0, server_errors: 0, blocked: 0, auth_refused: 0, other: 0, cache_hits: 0, cache_samples: 0, durations: [] }
+      for (const key of ['requests', 'ok', 'server_errors', 'blocked', 'auth_refused', 'other', 'cache_hits', 'cache_samples']) m[key] += s[key] ?? 0
       m.durations.push(...s.durations_ms)
       steps.set(s.step, m)
     }
@@ -26,13 +26,13 @@ export function reportLines(steps, totalRpm, stepSeconds, stops = []) {
   let failedAt = null
   for (const [n, m] of [...steps.entries()].sort((a, b) => a[0] - b[0])) {
     const p95 = percentile(m.durations, 95)
-    const ok = m.requests >= MIN_SAMPLES && p95 <= P95_LIMIT_MS && m.server_errors / m.requests <= ERROR_LIMIT && m.blocked / m.requests <= ERROR_LIMIT
+    const ok = m.requests >= MIN_SAMPLES && p95 <= P95_LIMIT_MS && m.server_errors / m.requests <= ERROR_LIMIT && m.blocked / m.requests <= ERROR_LIMIT && m.auth_refused / m.requests <= ERROR_LIMIT
     lines.push([
       `LOAD_TEST_STEP step=${n}`, `target_rpm=${totalRpm[n - 1] ?? '?'}`,
       `achieved_rpm=${Math.round(m.requests / (stepSeconds / 60))}`, `requests=${m.requests}`,
       `p50_ms=${percentile(m.durations, 50)}`, `p95_ms=${p95}`, `p99_ms=${percentile(m.durations, 99)}`,
       `server_error_pct=${pct(m.server_errors, m.requests)}`, `waf_block_pct=${pct(m.blocked, m.requests)}`,
-      `other_4xx_pct=${pct(m.other, m.requests)}`, `edge_cache_hit_pct=${pct(m.cache_hits, m.cache_samples)}`,
+      `auth_refused_pct=${pct(m.auth_refused, m.requests)}`, `other_4xx_pct=${pct(m.other, m.requests)}`, `edge_cache_hit_pct=${pct(m.cache_hits, m.cache_samples)}`,
       `within_limits=${ok}`,
     ].join(' '))
     if (ok && failedAt === null) passed = n

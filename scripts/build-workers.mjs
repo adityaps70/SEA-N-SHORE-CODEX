@@ -6,7 +6,7 @@ import { build } from 'esbuild'
 await build({
   // Round E: the one-off learning content task (plan / apply-once) is run from the image by its guarded runner.
   // Round P3 (B7): so is the one-off media backfill.
-  entryPoints: ['scripts/workers/publish-outbox.ts', 'scripts/workers/consume-notifications.ts', 'scripts/workers/learning-round-e-content.ts', 'scripts/workers/media-cdn-backfill.ts'],
+  entryPoints: ['scripts/workers/publish-outbox.ts', 'scripts/workers/consume-notifications.ts', 'scripts/workers/learning-round-e-content.ts', 'scripts/workers/media-cdn-backfill.ts', 'scripts/workers/load-test-accounts.ts'],
   outdir: 'dist/workers',
   outExtension: { '.js': '.mjs' },
   bundle: true,

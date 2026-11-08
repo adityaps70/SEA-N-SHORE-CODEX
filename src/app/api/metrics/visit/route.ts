@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireAwsUser()
     if (!allow(user.id)) return new Response(null, { status: 429, headers: NO_STORE })
-    await incrementRankingMetric(`visits.${source}`)
+    await incrementRankingMetric(`visits.${source}`, 1, user.id)
     return new Response(null, { status: 204, headers: NO_STORE })
   } catch (error) {
     if (error instanceof AwsAuthenticationRequiredError) return new Response(null, { status: 401, headers: NO_STORE })
