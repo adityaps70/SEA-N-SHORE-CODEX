@@ -35,7 +35,7 @@ jobs:
           HEAD="$(gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" --jq .commit.sha)"
           [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo "Could not read the head of $BRANCH." >&2; exit 1; }
           GUARD="$(gh api "repos/$GITHUB_REPOSITORY/contents/$GUARD_FILE?ref=$HEAD" --jq .content | base64 -d)"
-          if [[ ! "$GUARD" =~ ^run-once\ [0-9a-f]{40}$ ]]; then
+          if [[ ! "$GUARD" =~ ^(run-once|run-signed-in-once)\ [0-9a-f]{40}$ ]]; then
             echo "Load test not armed (guard reads '${GUARD%% *}'); nothing to start."
             exit 0
           fi
