@@ -89,3 +89,64 @@ test('repair links only safe pairs and reports why the others are unsafe (codes 
   assert.equal(run.status, 0, run.stderr)
   assert.deepEqual(JSON.parse(run.stdout), cases.map((c) => c[2]))
 })
+
+// The repair deletes the separate Google Cognito user, so in the same guarded run it deletes that user's identity
+// row too: left behind, the row's subject is issued by no Cognito user and the parity audit fails on it (21 Oct
+// repair-once left five such rows).
+test('repair deletes the deleted Google user\'s identity row in the same run, and only that row', async () => {
+  const { spawnSync } = await import('node:child_process')
+  const script = await readFile(new URL('./cognito-google-native-link-repair.sh', import.meta.url), 'utf8')
+
+  // Order: plan exits first; then per pair delete the Google user, link, verify the link, and only then the row.
+  const planAt = script.indexOf("if action == 'plan':")
+  const loop = script.slice(script.indexOf('for candidate in db_verified:\n    run_json'))
+  assert.ok(planAt < script.indexOf('google_identities_removed += delete_google_identity(candidate)'))
+  const order = ["run_json('delete_external_user'", "run_json('link_provider_user'", "run_json('verify_link'",
+    "raise SystemExit('linked_identity_verification_failed')", 'google_identities_removed += delete_google_identity(candidate)',
+    'COGNITO_GOOGLE_NATIVE_REPAIR_GOOGLE_IDENTITIES_REMOVED=', 'COGNITO_GOOGLE_NATIVE_REPAIR_APPLY_VERIFIED=true']
+  const at = order.map((needle) => loop.indexOf(needle))
+  assert.ok(at.every((i) => i >= 0), JSON.stringify(at))
+  assert.deepEqual([...at].sort((a, b) => a - b), at)
+  assert.match(script, /candidate\['google_identity_profile'\] = google_rows\[0\]\.get\('profile_id'\) if google_rows else None/)
+  assert.ok(script.indexOf('COGNITO_GOOGLE_NATIVE_REPAIR_GOOGLE_IDENTITIES_TO_REMOVE=') < planAt)
+
+  // Behaviour of delete_google_identity with a stub run_json: what it sends, and when it refuses.
+  const source = script.slice(script.indexOf('# delete-google-identity:begin\n'), script.indexOf('# delete-google-identity:end'))
+  const program = `import json, sys
+region, cluster_arn, secret_arn, database = 'ap-south-1', 'arn:cluster', 'arn:secret', 'sea_n_shore'
+case = json.loads(sys.argv[1])
+calls = []
+def run_json(label, args):
+    calls.append({'label': label, 'sql': args[args.index('--sql') + 1], 'parameters': json.loads(args[args.index('--parameters') + 1])})
+    return {'formattedRecords': json.dumps(case['returned'])}
+${source}
+try:
+    result = delete_google_identity(case['candidate'])
+except SystemExit as error:
+    result = str(error)
+print(json.dumps({'result': result, 'calls': calls}))
+`
+  const run = (candidate, returned) => {
+    const r = spawnSync('python3', ['-c', program, JSON.stringify({ candidate, returned })], { encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr)
+    return JSON.parse(r.stdout)
+  }
+  const candidate = { google_sub: 'gsub-1', google_identity_profile: '11111111-1111-1111-1111-111111111111' }
+
+  const removed = run(candidate, [{ profile_id: candidate.google_identity_profile }])
+  assert.equal(removed.result, 1)
+  assert.equal(removed.calls.length, 1)
+  assert.match(removed.calls[0].sql, /^delete from public\.identity_accounts\s+where provider = 'cognito'\s+and provider_subject = :google_sub\s+and profile_id = cast\(:profile as uuid\)/)
+  assert.deepEqual(removed.calls[0].parameters, [
+    { name: 'google_sub', value: { stringValue: 'gsub-1' } },
+    { name: 'profile', value: { stringValue: candidate.google_identity_profile } },
+  ])
+
+  // A pair whose Google user never had an identity row sends nothing.
+  assert.deepEqual(run({ google_sub: 'gsub-2', google_identity_profile: null }, []), { result: 0, calls: [] })
+  // The row must be there exactly once, on the expected profile; anything else stops the run.
+  assert.equal(run(candidate, []).result, 'google_identity_delete_count_mismatch')
+  assert.equal(run(candidate, [{ profile_id: 'other' }]).result, 'google_identity_delete_count_mismatch')
+  assert.equal(run(candidate, [{ profile_id: candidate.google_identity_profile }, { profile_id: candidate.google_identity_profile }]).result,
+    'google_identity_delete_count_mismatch')
+})

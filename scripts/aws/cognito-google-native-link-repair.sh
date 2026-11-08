@@ -394,6 +394,9 @@ for candidate in strict_candidates:
         # Linking moves Google sign-in to the native profile: an administrator role held only by the Google profile would be lost.
         reason = 'admin_role_only_on_google_profile'
     if reason is None:
+        # The Google user's own identity row (none, or exactly one): the repair deletes that Cognito user, so the
+        # same run deletes this row too, or it is left with a subject no Cognito user issues (a dead login record).
+        candidate['google_identity_profile'] = google_rows[0].get('profile_id') if google_rows else None
         db_verified.append(candidate)
     else:
         unsafe_reasons[reason] += 1
@@ -404,6 +407,10 @@ def admin_pair(candidate):
 safe_admin = sum(1 for candidate in db_verified if admin_pair(candidate))
 unsafe_admin = sum(1 for candidate in strict_candidates if candidate not in db_verified and admin_pair(candidate))
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_DB_VERIFIED_CANDIDATES={len(db_verified)}')
+print(
+    'COGNITO_GOOGLE_NATIVE_REPAIR_GOOGLE_IDENTITIES_TO_REMOVE='
+    f"{sum(1 for candidate in db_verified if candidate.get('google_identity_profile') is not None)}"
+)
 print(
     'COGNITO_GOOGLE_NATIVE_REPAIR_UNSAFE_CANDIDATES='
     f'{len(strict_candidates) - len(db_verified)}'
@@ -446,6 +453,41 @@ if not db_verified:
     raise SystemExit('no_safe_candidates')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_LEFT_UNLINKED={len(strict_candidates) - len(db_verified)}')
 
+# delete-google-identity:begin
+def delete_google_identity(candidate):
+    """Delete the deleted Google user's identity row: that subject and that profile only. Returns rows deleted."""
+    profile = candidate.get('google_identity_profile')
+    if profile is None:
+        return 0
+    response = run_json('delete_google_identity', [
+        'aws', 'rds-data', 'execute-statement',
+        '--region', region,
+        '--resource-arn', cluster_arn,
+        '--secret-arn', secret_arn,
+        '--database', database,
+        '--sql',
+        """delete from public.identity_accounts
+            where provider = 'cognito'
+              and provider_subject = :google_sub
+              and profile_id = cast(:profile as uuid)
+        returning profile_id::text as profile_id""",
+        '--parameters', json.dumps([
+            {'name': 'google_sub', 'value': {'stringValue': candidate['google_sub']}},
+            {'name': 'profile', 'value': {'stringValue': profile}},
+        ]),
+        '--format-records-as', 'JSON',
+        '--output', 'json',
+    ])
+    try:
+        deleted = json.loads(response.get('formattedRecords') or '[]')
+    except json.JSONDecodeError:
+        raise SystemExit('delete_google_identity_invalid_json')
+    if len(deleted) != 1 or deleted[0].get('profile_id') != profile:
+        raise SystemExit('google_identity_delete_count_mismatch')
+    return 1
+# delete-google-identity:end
+
+google_identities_removed = 0
 for candidate in db_verified:
     run_json('delete_external_user', [
         'aws', 'cognito-idp', 'admin-delete-user',
@@ -491,6 +533,10 @@ for candidate in db_verified:
     ):
         raise SystemExit('linked_identity_verification_failed')
 
+    # Only once Google is verified on the native user: its old Cognito user is gone, so its row can never sign in.
+    google_identities_removed += delete_google_identity(candidate)
+
+print(f'COGNITO_GOOGLE_NATIVE_REPAIR_GOOGLE_IDENTITIES_REMOVED={google_identities_removed}')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_APPLIED={len(db_verified)}')
 print('COGNITO_GOOGLE_NATIVE_REPAIR_APPLY_VERIFIED=true')
 PY

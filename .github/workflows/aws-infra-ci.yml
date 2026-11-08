@@ -135,6 +135,8 @@ jobs:
         run: node --test scripts/aws/admin-identity-audit.test.mjs
       - name: Verify identity cleanup contract
         run: node --test scripts/aws/identity-cleanup.test.mjs
+      - name: Verify Google link identity cleanup contract
+        run: node --test scripts/aws/google-link-identity-cleanup.test.mjs
       - name: Verify Actions minutes contract
         run: node --test scripts/aws/actions-minutes.test.mjs
       - name: Verify staging-apply approval gate contract

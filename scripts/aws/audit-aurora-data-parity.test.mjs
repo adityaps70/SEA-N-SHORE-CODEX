@@ -90,30 +90,16 @@ test('identity parity accepts multi-login and unfinished sign-ups, and still ref
   refuse('duplicate Cognito subject', [...base, user('s1', 'q@x.test')], rows, /Duplicate Cognito subject token/);
 });
 
-test('a Google sign-in linked into the native user leaves a dead identity row that is counted, not failed', () => {
-  // cognito-google-native-link-repair deletes the separate Google user and links Google into the native one;
-  // the Google user's identity row on the same profile is left with a subject no Cognito user issues.
+test('a dead identity row left by a Google-to-native link still fails the audit (strict by design)', () => {
+  // cognito-google-native-link-repair now deletes the Google user's identity row in the same run, and
+  // identity-google-link-leftover-cleanup removes the rows an earlier repair left; the audit accepts none.
   const users = [user('n1', 'a@x.test', { google: true }), user('s3', 'b@x.test')];
   const rows = [row('p1', 'n1', 'a@x.test'), row('p1', 'g1', 'a@x.test'), row('p2', 's3', 'b@x.test')];
-  const linked = identity(users, rows);
-  assert.ok(linked.ok, linked.out);
-  assert.match(linked.out, /AURORA_IDENTITIES_WITHOUT_COGNITO_USER=\{"active": 1\}/);
-  assert.match(linked.out, /AURORA_IDENTITIES_LEFT_BY_GOOGLE_LINK=\{"active": 1\}/);
-  assert.match(linked.out, /AURORA_IDENTITIES_WITHOUT_COGNITO_USER_UNEXPLAINED=\{\}/);
-  assert.match(linked.out, /AWS_IDENTITY_MAPPING_MATCH=true/);
-
-  const refuse = (label, u, r) => {
-    const result = identity(u, r);
-    assert.equal(result.ok, false, label);
-    assert.match(result.err, /AURORA_IDENTITIES_WITHOUT_COGNITO_USER_UNEXPLAINED=\{"active": 1\}/, label);
-    assert.match(result.err, /Aurora identity has no Cognito user \(profile not deleted\)/, label);
-  };
-  // The proof needs all of: same profile, same email, and a live native user that lists a linked Google sign-in.
-  refuse('native user has no linked Google sign-in', [user('n1', 'a@x.test'), user('s3', 'b@x.test')], rows);
-  refuse('dead row on another profile', users, [row('p1', 'n1', 'a@x.test'), row('p2', 's3', 'b@x.test'), row('p2', 'g2', 'b@x.test')]);
-  refuse('dead row with another email', users, [row('p1', 'n1', 'a@x.test'), row('p1', 'g1', 'old@x.test'), row('p2', 's3', 'b@x.test')]);
-  // An external (Google-only) Cognito user is not a native user that Google was linked into.
-  refuse('linked user is external', [user('n1', 'a@x.test', { google: true, status: 'EXTERNAL_PROVIDER' }), user('s3', 'b@x.test')], rows);
+  const r = identity(users, rows);
+  assert.equal(r.ok, false);
+  assert.match(r.err, /AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=\{"active:has_other_sign_in": 1\}/);
+  assert.match(r.err, /Aurora identity has no Cognito user \(profile not deleted\)/);
+  assert.doesNotMatch(readFileSync(new URL('./audit-aurora-data-parity.sh', import.meta.url), 'utf8'), /LEFT_BY_GOOGLE_LINK|UNEXPLAINED/);
 });
 
 // End to end with stub `aws` and `git` on PATH: the whole script's output is a fixed set of lines whatever the row
@@ -192,7 +178,7 @@ test('the whole audit prints one line per table and stays far under the SSM outp
   assert.equal((r.stdout.match(/^AURORA_KEY_SET_/gm) || []).length, 17);
   assert.match(r.stdout, /AWS_IDENTITY_MAPPING_MATCH=true\nAWS_IDENTITY_INVENTORY_COMPLETE=true\nAURORA_TARGET_INVENTORY_COMPLETE=true\n$/);
 
-  // The verdict is still meaningful: an identity with no Cognito user (and no deletion or Google link) fails the run.
+  // The verdict is still meaningful: an identity with no Cognito user on a profile not being deleted fails the run.
   const broken = runAudit({ rows: tableRows, users, accounts: [...accounts, row('p0', 'gone', 'person0@x.test')] });
   assert.notEqual(broken.status, 0);
   assert.match(broken.stderr, /Aurora identity has no Cognito user \(profile not deleted\)/);

@@ -103,22 +103,13 @@ def token(value):
 with open(sys.argv[1]) as f: cognito=json.load(f)
 with open(sys.argv[2]) as f: accounts=json.load(f)
 
-def links_google(user, attrs):
-    # A native (email and password) user that a Google sign-in was linked into lists it in `identities`.
-    if user.get('UserStatus') == 'EXTERNAL_PROVIDER': return False
-    try: linked=json.loads(attrs.get('identities') or '[]')
-    except json.JSONDecodeError: return False
-    return isinstance(linked, list) and any(isinstance(item, dict) and item.get('providerName') == 'Google' for item in linked)
-
 cognito_rows=[]
-google_linked_subjects=set()
 for user in cognito.get('Users', []):
     attrs={item.get('Name'): item.get('Value','') for item in user.get('Attributes', [])}
     subject=attrs.get('sub') or user.get('Username','')
     email=attrs.get('email','')
     if not subject or not email: raise SystemExit('Cognito user missing subject or email')
     cognito_rows.append((token(email), token(subject)))
-    if links_google(user, attrs): google_linked_subjects.add(token(subject))
 
 account_rows=[]
 account_status={}
@@ -140,27 +131,14 @@ if len({x[2] for x in account_rows}) != len(account_rows): raise SystemExit('Dup
 
 cognito_email_by_subject={subject_token: email_token for email_token, subject_token in cognito_rows}
 profile_by_subject={subject_token: profile_token for _, profile_token, subject_token in account_rows}
-# An identity whose Cognito user is gone is expected in two cases, and fails in any other:
-#  - the profile's deletion was requested (the account deletion removes the sign-in);
-#  - its Google sign-in was linked into the same person's native user (cognito-google-native-link-repair deletes
-#    the separate Google user, then links Google into the native one). Proof: the same profile has a live
-#    identity, with the same email, whose Cognito user lists a linked Google sign-in. Such a row can never
-#    sign in again (no Cognito user issues its subject), so it is dead, not a lost account.
-# Counts are by profile status only.
+# An identity whose Cognito user is gone is expected only for a profile whose deletion was requested (the account
+# deletion removes the sign-in); on any other profile it fails. Counts are by profile status only.
 orphans=collections.Counter(account_status[subject_token] for _, _, subject_token in account_rows if subject_token not in cognito_email_by_subject)
-google_linked_profile_emails={(p, e) for e, p, subject in account_rows if subject in cognito_email_by_subject and subject in google_linked_subjects}
-left_by_google_link=collections.Counter(account_status[subject] for e, p, subject in account_rows
-                                        if subject not in cognito_email_by_subject and (p, e) in google_linked_profile_emails)
-unexplained_orphans=collections.Counter(account_status[subject] for e, p, subject in account_rows
-                                        if subject not in cognito_email_by_subject and account_status[subject] != 'deletion_requested'
-                                        and (p, e) not in google_linked_profile_emails)
 live_by_profile=collections.Counter(p for _, p, subject in account_rows if subject in cognito_email_by_subject)
 orphan_profiles={(p, account_status[subject]) for _, p, subject in account_rows if subject not in cognito_email_by_subject}
 orphan_kinds=collections.Counter(f"{status}:{'has_other_sign_in' if live_by_profile[p] else 'no_sign_in_left'}" for p, status in orphan_profiles)
 summary=['AURORA_IDENTITIES_WITHOUT_COGNITO_USER=' + json.dumps(dict(sorted(orphans.items()))),
-         'AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=' + json.dumps(dict(sorted(orphan_kinds.items()))),
-         'AURORA_IDENTITIES_LEFT_BY_GOOGLE_LINK=' + json.dumps(dict(sorted(left_by_google_link.items()))),
-         'AURORA_IDENTITIES_WITHOUT_COGNITO_USER_UNEXPLAINED=' + json.dumps(dict(sorted(unexplained_orphans.items())))]
+         'AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=' + json.dumps(dict(sorted(orphan_kinds.items())))]
 for line in summary:
     print(line)
     # Also on stderr, which SSM returns separately from stdout, so the verdict's reasons survive any stdout cut.
@@ -191,7 +169,7 @@ for line in ['COGNITO_DUPLICATE_EMAIL_GROUPS=' + json.dumps(groups, sort_keys=Tr
     print(line)
     print(line, file=sys.stderr)
 # Refuse only after every summary line is out, so a failing run still answers what it found.
-if unexplained_orphans:
+if any(status != 'deletion_requested' for status in orphans):
     raise SystemExit('Aurora identity has no Cognito user (profile not deleted)')
 
 print(f'COGNITO_USER_COUNT={len(cognito_rows)}')
