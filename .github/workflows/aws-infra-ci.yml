@@ -95,6 +95,8 @@ jobs:
         run: node --test scripts/aws/legacy-domain-redirect.test.mjs scripts/aws/seaandshore-domain.test.mjs
       - name: Verify edge state audit contract
         run: node --test scripts/aws/audit-edge-state.test.mjs
+      - name: Cashfree sandbox checkout E2E contract
+        run: node --test scripts/aws/cashfree-sandbox-e2e.test.mjs
       - name: Verify guarded Terraform state unlock contract
         run: node --test scripts/aws/terraform-state-unlock.test.mjs
       - name: Verify remote execution security contract
@@ -269,7 +271,8 @@ jobs:
     needs: scope
     if: needs.scope.outputs.application == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # The full unit suite (7,000+ tests) takes 15-22 minutes on a hosted runner; 25 cut a passing run.
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

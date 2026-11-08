@@ -46,6 +46,11 @@ test('signed-out: only GETs of public pages; signed-in: reads, plus only the two
   assert.match(script, /const PATHS = \['\/', '\/jobs', JOB_PATH, COURSE_PATH, '\/privacy'\]/)
   assert.match(script, /userAgent: 'SeaNShore-LoadTest\/1'/)
   assert.equal((script.match(/'X-SNS-Load-Test': 'P3'/g) ?? []).length, 2, 'both mixes mark every request')
+  // Requests look like browser page loads, so public pages can be served from the edge cache as for real visitors.
+  assert.match(script, /const BROWSER_PAGE_LOAD = \{ Accept: 'text\/html,application\/xhtml\+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' \}/)
+  assert.match(script, /headers: \{ 'X-SNS-Load-Test': 'P3', \.\.\.BROWSER_PAGE_LOAD \}/)
+  // Signed in too: page loads are browser page loads; only the realtime state (a fetch) is not.
+  assert.match(script, /headers: path\.startsWith\('\/api\/'\) \? base : \{ \.\.\.base, \.\.\.BROWSER_PAGE_LOAD \}/)
   assert.match(script, /redirects: 0/)
   assert.match(script, /discardResponseBodies: true/)
   assert.match(script, /maxVUs: 100/)
@@ -102,14 +107,20 @@ test('the report merges shards and names the highest step within limits, with ag
   assert.doesNotMatch(lines.join('\n'), /https?:|\/jobs\/|@/)
 })
 
-test('owner-armed, approved, inside 01:00-03:00 IST, and the traffic never holds AWS credentials', () => {
+test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, once per arm, no AWS credentials in the traffic', () => {
   assert.match(jobOf('apply-gate'), /GUARD_FILE: scripts\/aws\/load-test-action\.txt\n\s+shell: bash\n\s+run: bash scripts\/aws\/arm-commit-guard\.sh/)
   assert.match(jobOf('apply-approval'), /environment: staging-apply/)
   const window = jobOf('window')
   assert.match(window, /needs\.apply-approval\.result == 'success'/)
+  // Merging the arm (a push) sends no traffic: only a start from the nightly schedule reaches the window.
+  assert.match(window, /github\.event_name == 'workflow_dispatch' \}\}/)
+  assert.match(window, /\[\[ "\$TRIGGERING_ACTOR" == "github-actions\[bot\]" \]\]/)
   assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
-  assert.match(window, /NOW > START \+ 900/)
-  assert.match(window, /WAIT > 330 \* 60/)
+  assert.match(window, /NOW < START \|\| NOW > START \+ 2700/)
+  assert.doesNotMatch(window, /sleep/)
+  assert.match(window, /event=workflow_dispatch&head_sha=\$GITHUB_SHA/)
+  assert.match(window, /select\(\.id != \$GITHUB_RUN_ID\)\] \| length/)
+  assert.match(window, /\[\[ "\$EARLIER" == 0 \]\]/)
   assert.match(window, /run-once\) echo "mix=signed-out"/)
   assert.match(window, /run-signed-in-once\) echo "mix=signed-in"/)
   assert.match(window, /\*\) echo "Not armed for a run." >&2; exit 1 ;;/)
@@ -141,6 +152,34 @@ test('owner-armed, approved, inside 01:00-03:00 IST, and the traffic never holds
   // The plan run never touches the site: it runs the pipeline against a local server.
   assert.match(jobOf('plan'), /LOAD_TEST_BASE_URL: http:\/\/127\.0\.0\.1:8099/)
   assert.match(jobOf('plan'), /LOAD_TEST_PLAN_ONLY_NO_TRAFFIC/)
+})
+
+test('the nightly start fires at 01:05 IST from the default branch and starts only an unused run-once arm', () => {
+  const nightly = read('../../.github/workflows/load-test-nightly.yml')
+  assert.match(nightly, /\non:\n  schedule:\n    - cron: "35 19 \* \* \*"\n\n/)
+  assert.doesNotMatch(nightly, /push:|pull_request|workflow_dispatch:/)
+  assert.match(nightly, /permissions:\n  contents: read\n  actions: write\n\n/)
+  assert.match(nightly, /timeout-minutes: 5\n/)
+  assert.doesNotMatch(nightly, /configure-aws-credentials|AWS_ROLE_TO_ASSUME|secrets\./)
+  assert.match(nightly, /BRANCH: feat\/aws-native-phase-0-1\n/)
+  assert.match(nightly, /contents\/\$GUARD_FILE\?ref=\$HEAD/)
+  assert.match(nightly, /if \[\[ ! "\$GUARD" =~ \^run-once\\ \[0-9a-f\]\{40\}\$ \]\]; then\n.*\n\s+exit 0\n/)
+  assert.match(nightly, /event=workflow_dispatch&head_sha=\$HEAD/)
+  // It starts exactly one thing: AWS Load Test on the feature branch, after both checks.
+  assert.deepEqual(nightly.match(/gh workflow run [^\n]+/g), ['gh workflow run aws-load-test.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"'])
+  assert.ok(nightly.indexOf('gh workflow run') > nightly.indexOf('already started once'))
+})
+
+test('the page picker finds a job and a course link with or without a query string', () => {
+  const window = jobOf('window')
+  const job = new RegExp(/grep -oE '(href="\/jobs\/[^']+)' <<<"\$JOBS_HTML"/.exec(window)[1])
+  const course = new RegExp(/grep -oE '(href="\/learn\/courses\/[^']+)' <<<"\$LEARN_HTML"/.exec(window)[1])
+  const strip = (m) => m.replace(/^href="/, '').replace(/["?]$/, '')
+  const id = '8fed15f6-552d-4896-9717-656718a77b58'
+  for (const html of [`<a href="/jobs/${id}?src=jobs">`, `<a href="/jobs/${id}">`]) assert.equal(strip(job.exec(html)[0]), `/jobs/${id}`)
+  for (const html of ['<a href="/learn/courses/oil-record-book?x=1">', '<a href="/learn/courses/oil-record-book">']) assert.equal(strip(course.exec(html)[0]), '/learn/courses/oil-record-book')
+  assert.equal(job.exec('<a href="/jobs/new">'), null)
+  assert.match(window, /s\/\^href="\/\/; s\/\["\?\]\$\/\/' \|\| true\)/)
 })
 
 test('k6 is a pinned package checked against its SHA-256 before it runs', () => {

@@ -18,13 +18,13 @@ beforeEach(() => {
 })
 
 describe('proxy Content Security Policy (Round 14, 2.4)', () => {
-  it('sends a Report-Only policy on page loads and hands the same policy to rendering', async () => {
+  it('sends the enforced policy on page loads and hands the same policy to rendering', async () => {
     const response = await proxy(new NextRequest('https://seanshore.in/home', { headers: { 'sec-fetch-dest': 'document', cookie: 'a=b' } }))
-    const policy = response.headers.get('content-security-policy-report-only')
+    const policy = response.headers.get('content-security-policy')
     expect(policy).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/]{22}==' 'strict-dynamic'/)
-    expect(response.headers.get('content-security-policy')).toBeNull()
+    expect(response.headers.get('content-security-policy-report-only')).toBeNull()
     const forwarded = mocks.updateCognitoRouteSession.mock.calls[0]?.[0] as NextRequest
-    expect(forwarded.headers.get('content-security-policy-report-only')).toBe(policy)
+    expect(forwarded.headers.get('content-security-policy')).toBe(policy)
     expect(forwarded.headers.get('cookie')).toBe('a=b')
     expect(forwarded.nextUrl.pathname).toBe('/home')
   })
@@ -35,6 +35,7 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
       new NextRequest('https://seanshore.in/home', { headers: { rsc: '1' } }),
     ]) {
       const response = await proxy(request)
+      expect(response.headers.get('content-security-policy')).toBeNull()
       expect(response.headers.get('content-security-policy-report-only')).toBeNull()
       expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
     }
@@ -45,7 +46,7 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
       new NextRequest('https://seanshore.in/api/health/home', { headers: { 'x-health-check-token': 'token-value' } }),
     ]) {
       const response = await proxy(request)
-      expect(response.headers.get('content-security-policy-report-only')).toBe(API_CONTENT_SECURITY_POLICY)
+      expect(response.headers.get('content-security-policy')).toBe(API_CONTENT_SECURITY_POLICY)
       expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
     }
   })
@@ -59,16 +60,16 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
 })
 
 describe('proxy Content Security Policy for API responses (Round H, H4)', () => {
-  it('sends the fixed report-only policy on API responses of every method, without a nonce', async () => {
+  it('sends the fixed enforced policy on API responses of every method, without a nonce', async () => {
     for (const request of [
       new NextRequest('https://seanshore.in/api/feed-media/posts/clip.mp4', { headers: { 'sec-fetch-dest': 'video' } }),
       new NextRequest('https://seanshore.in/api/realtime/ticket', { method: 'POST', body: '{}' }),
     ]) {
       const response = await proxy(request)
-      const policy = response.headers.get('content-security-policy-report-only')
+      const policy = response.headers.get('content-security-policy')
       expect(policy).toBe("default-src 'none'; frame-ancestors 'none'; report-uri /api/security/csp-report")
       expect(policy).not.toContain('nonce-')
-      expect(response.headers.get('content-security-policy')).toBeNull()
+      expect(response.headers.get('content-security-policy-report-only')).toBeNull()
       expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(request)
     }
   })
@@ -83,7 +84,8 @@ describe('proxy Content Security Policy for API responses (Round H, H4)', () => 
 
   it('tightens the page policy to named hosts instead of blanket https:', async () => {
     const response = await proxy(new NextRequest('https://seanshore.in/home', { headers: { 'sec-fetch-dest': 'document' } }))
-    const policy = response.headers.get('content-security-policy-report-only') ?? ''
+    const policy = response.headers.get('content-security-policy') ?? ''
+    expect(policy).toContain("form-action 'self'")
     expect(policy).not.toMatch(/(?:^|\s)https:(?:\s|;|$)/)
     expect(policy).toContain("font-src 'self' data:;")
     expect(policy).not.toMatch(/fonts\.(googleapis|gstatic)\.com/)

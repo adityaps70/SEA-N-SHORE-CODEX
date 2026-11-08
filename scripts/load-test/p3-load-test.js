@@ -98,6 +98,10 @@ function record(res, step) {
   hitRate.add(/^(Hit|RefreshHit)/i.test(cache), { step: String(step) })
 }
 
+// A browser's page load: without these the site treats the fetch as a non-page request, so it is never
+// cacheable and the run measures only the uncached path (the 7 Nov morning run did exactly that).
+const BROWSER_PAGE_LOAD = { Accept: 'text/html,application/xhtml+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' }
+
 // Per-VU state for the signed-in mix: which account, and where this "visit" is in the Top-for-you feed.
 let feed = { sessionId: null, position: null, pages: 0 }
 
@@ -105,7 +109,10 @@ function signedInRequest(name) {
   const session = SESSIONS[(__VU - 1) % SESSIONS.length]
   const cookie = `sns_cognito_access=${session.accessToken}${session.refreshToken ? `; sns_cognito_refresh=${session.refreshToken}` : ''}`
   const base = { 'X-SNS-Load-Test': 'P3', Cookie: cookie }
-  const page = (path, tag) => http.get(BASE_URL + path, { headers: base, redirects: 0, timeout: '20s', tags: { name: tag || path } })
+  // Page loads look like a browser's (as in the signed-out mix); the realtime state is a fetch, not a page.
+  const page = (path, tag) => http.get(BASE_URL + path, {
+    headers: path.startsWith('/api/') ? base : { ...base, ...BROWSER_PAGE_LOAD }, redirects: 0, timeout: '20s', tags: { name: tag || path },
+  })
   const action = (id, args, tag) => http.post(`${BASE_URL}/home`, JSON.stringify(args), {
     headers: { ...base, 'Next-Action': id, 'Content-Type': 'text/plain;charset=UTF-8', Accept: 'text/x-component', Origin: BASE_URL },
     redirects: 0, timeout: '20s', tags: { name: tag },
@@ -157,7 +164,7 @@ export default function loadTestIteration(data) {
   }
   const path = PATHS[Math.floor(Math.random() * PATHS.length)]
   const res = http.get(BASE_URL + path, {
-    headers: { 'X-SNS-Load-Test': 'P3' },
+    headers: { 'X-SNS-Load-Test': 'P3', ...BROWSER_PAGE_LOAD },
     redirects: 0,
     timeout: '20s',
     tags: { name: path === JOB_PATH ? '/jobs/:id' : path === COURSE_PATH ? '/learn/courses/:slug' : path },

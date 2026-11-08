@@ -62,9 +62,9 @@ describe('report-only Content Security Policy (Round 14, 2.4)', () => {
 })
 
 describe('tightened Content Security Policy (Round H, H4)', () => {
-  it('stays report-only until the single enforce switch is flipped', () => {
-    expect(ENFORCE_CONTENT_SECURITY_POLICY).toBe(false)
-    expect(CONTENT_SECURITY_POLICY_HEADER).toBe('Content-Security-Policy-Report-Only')
+  it('is enforced by the single switch', () => {
+    expect(ENFORCE_CONTENT_SECURITY_POLICY).toBe(true)
+    expect(CONTENT_SECURITY_POLICY_HEADER).toBe('Content-Security-Policy')
   })
 
   it('names the exact media bucket, realtime endpoint and Cognito domain from the runtime environment', () => {
@@ -95,8 +95,46 @@ describe('tightened Content Security Policy (Round H, H4)', () => {
     // Fonts are self-hosted: no Google Fonts hosts.
     expect(policy.get('style-src')).toEqual(["'self'", "'unsafe-inline'"])
     expect(policy.get('font-src')).toEqual(["'self'", 'data:'])
-    expect(policy.get('form-action')).toEqual(["'self'", 'https://auth.seanshore.in'])
+    expect(policy.get('form-action')).toEqual(["'self'", 'https://auth.seanshore.in', 'https://*.cashfree.com'])
     expect(policy.get('frame-ancestors')).toEqual(["'none'"])
+  })
+
+  // CSP host-source matching (scheme, host with an optional leading *. wildcard, default port) for the sources used here.
+  function allowedBy(sources: string[], url: string, self = 'https://seanshore.in') {
+    const target = new URL(url)
+    return sources.some((source) => {
+      if (source === "'self'") return target.origin === new URL(self).origin
+      const match = /^(https):\/\/(\*\.)?([a-z0-9.-]+)$/.exec(source)
+      if (!match || target.protocol !== `${match[1]}:` || target.port !== '') return false
+      return match[2] ? target.hostname.endsWith(`.${match[3]}`) : target.hostname === match[3]
+    })
+  }
+
+  it("form-action lets Cashfree's checkout forms through and still refuses any other outside host", () => {
+    const formAction = directives(pageContentSecurityPolicy('n0nce==', contentSecurityPolicySources(productionEnvironment))).get('form-action')!
+    // Every fixed form target in Cashfree's JS SDK v3: the checkout (pop-up and redirect) and Pro auto-pay.
+    for (const target of [
+      'https://api.cashfree.com/pg/view/sessions/checkout',
+      'https://api.cashfree.com/pg/view/sessions/checkout/subs',
+      'https://sandbox.cashfree.com/pg/view/sessions/checkout',
+      'https://sandbox.cashfree.com/pg/view/sessions/checkout/subs',
+      'https://payments.cashfree.com/pg/redirect',
+    ]) expect(allowedBy(formAction, target), target).toBe(true)
+    // Our own forms and the Cognito sign-out still work.
+    expect(allowedBy(formAction, 'https://seanshore.in/auth/sign-out')).toBe(true)
+    expect(allowedBy(formAction, 'https://auth.seanshore.in/logout')).toBe(true)
+    // Nothing else: other sites, look-alikes, Cashfree over plain http, another port, and Razorpay (not in this scope).
+    for (const target of [
+      'https://evil.example.com/collect',
+      'https://cashfree.com.evil.example/checkout',
+      'https://notcashfree.com/checkout',
+      'https://cashfree.com/checkout',
+      'http://api.cashfree.com/pg/view/sessions/checkout',
+      'https://api.cashfree.com:8443/pg/view/sessions/checkout',
+      'https://api.razorpay.com/v1/checkout/embedded',
+      'https://accounts.google.com/o/oauth2/auth',
+    ]) expect(allowedBy(formAction, target), target).toBe(false)
+    expect(formAction).toEqual(["'self'", 'https://auth.seanshore.in', 'https://*.cashfree.com'])
   })
 
   it('never allows a blanket scheme for network sources', () => {
@@ -114,7 +152,7 @@ describe('tightened Content Security Policy (Round H, H4)', () => {
       signInOrigins: [],
       development: false,
     })
-    expect(directives(pageContentSecurityPolicy('n0nce==', sources)).get('form-action')).toEqual(["'self'"])
+    expect(directives(pageContentSecurityPolicy('n0nce==', sources)).get('form-action')).toEqual(["'self'", 'https://*.cashfree.com'])
   })
 
   it('lets next dev evaluate code and reach its HMR socket', () => {

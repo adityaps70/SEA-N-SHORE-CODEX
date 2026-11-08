@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 
 /** Community images (round 9C): the banner (`cover_path`) and the rounded-square community photo (`icon_path`). */
 export const COMMUNITY_MEDIA_KINDS = ['cover', 'icon'] as const
@@ -37,5 +36,5 @@ export function validateCommunityImage(file: { type: string; size: number }): { 
 export function buildCommunityMediaKey(groupId: string, kind: CommunityMediaKind, mimeType: string): string {
   const extension = extensionByType[mimeType]
   if (!extension) throw new Error('community_media_type_unsupported')
-  return `communities/${groupId}/${kind}-${randomUUID()}.${extension}`
+  return `communities/${groupId}/${kind}-${crypto.randomUUID()}.${extension}`
 }

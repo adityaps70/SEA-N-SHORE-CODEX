@@ -10,10 +10,12 @@ export const CSP_REPORT_PATH = '/api/security/csp-report'
 
 /**
  * Round H (H4): the one switch for enforcing. While false, every policy goes out as
- * Content-Security-Policy-Report-Only; flipping it (after a clean week of reports) enforces the
- * same policies as Content-Security-Policy.
+ * Content-Security-Policy-Report-Only; true enforces the same policies as Content-Security-Policy.
+ * Enforced 7 Nov 2026 after the report window and a Cashfree sandbox checkout (course and event
+ * ticket, run 42404197330) passed on an enforced build with no violation. Rollback: set it back
+ * to false and deploy.
  */
-export const ENFORCE_CONTENT_SECURITY_POLICY = false
+export const ENFORCE_CONTENT_SECURITY_POLICY = true
 
 export const CONTENT_SECURITY_POLICY_HEADER = ENFORCE_CONTENT_SECURITY_POLICY
   ? 'Content-Security-Policy'
@@ -127,7 +129,10 @@ export function pageContentSecurityPolicy(nonce: string, sources?: ContentSecuri
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
-    directive('form-action', "'self'", signInOrigins),
+    // Cashfree's SDK opens every checkout by submitting a form from this page: the course and ticket pop-up posts
+    // into its frame, redirect checkouts and the Pro auto-pay (subscriptionsCheckout) post to api./sandbox.cashfree.com.
+    // Same Cashfree-only scope as frame-src and connect-src; any other outside host stays refused.
+    directive('form-action', "'self'", signInOrigins, CASHFREE_HOSTS),
     "frame-ancestors 'none'",
     // Round P3: no report-uri on pages. The page's own reporter (csp-reporter-script.ts, inlined
     // with this nonce) sends each unique violation once per page load instead of one request each.

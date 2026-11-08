@@ -6,11 +6,16 @@ name: AWS Load Test
 # Stop rules (scripts/load-test/stop-watch.mjs): any step's p95 over 2 s, server errors over 1% or WAF blocks
 # over 1% stops every shard at once.
 #
-# It runs only when scripts/aws/load-test-action.txt reads "run-once <sha>" (signed-out mix) or "run-signed-in-once
-# <sha>" (Round ARCH: the 50 hidden load-test accounts, src/features/load-test) from an owner-merged arm PR, after
-# approval in staging-apply. Signed in, a sessions job gets each account a fresh session sealed end to end
-# (scripts/load-test/sessions.mjs, GitHub secret LOAD_TEST_HANDOFF_KEY), a monitor job stops the run if Aurora stays at
-# its maximum ACU for 5 minutes, and every session is signed out afterwards. Approve between 20:00 and 01:15 IST: one small job then waits for 01:00 IST.
+# It sends traffic only when scripts/aws/load-test-action.txt reads "run-once <sha>" (signed-out mix) or
+# "run-signed-in-once <sha>" (Round ARCH: the 50 hidden load-test accounts, src/features/load-test) from an
+# owner-merged arm PR (the merge is the approval; GitHub Pro does not enforce staging-apply reviewers on a private
+# repository). Merging the arm sends nothing: the push run only checks the arm. The nightly start
+# (.github/workflows/load-test-nightly.yml, a schedule on the default branch at 01:05 IST) starts this workflow
+# on the feature branch, and the window job then requires: started by that schedule, between 01:00 and 01:45
+# IST, the branch head still the armed merge commit, and no earlier nightly start on that commit.
+# Signed in, a sessions job gets each account a fresh session sealed end to end (scripts/load-test/sessions.mjs,
+# GitHub secret LOAD_TEST_HANDOFF_KEY), a monitor job stops the run if Aurora stays at its maximum ACU for 5
+# minutes, and every session is signed out afterwards.
 # "plan" sends no traffic to the site: it runs the contract test and the whole pipeline against a local
 # server on the runner.
 
@@ -23,6 +28,7 @@ on:
       - scripts/aws/load-test.test.mjs
       - scripts/load-test/**
       - .github/workflows/aws-load-test.yml
+      - .github/workflows/load-test-nightly.yml
   workflow_dispatch:
 
 permissions:
@@ -86,7 +92,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/load-test-action.txt
-          RUNNER_FILES: "scripts/aws/load-test.test.mjs scripts/load-test/**"
+          RUNNER_FILES: "scripts/aws/load-test.test.mjs scripts/load-test/** .github/workflows/load-test-nightly.yml"
         shell: bash
         run: |
           set -euo pipefail
@@ -175,17 +181,17 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Approved for the load test
-        run: echo "Approved in staging-apply."
+        run: echo "Armed by an owner-merged arm PR. Only the nightly start at 01:05 IST sends traffic; a push run sends none."
 
-  # Waits for 01:00 IST (19:30 UTC). Refuses an approval earlier than 19:30 IST (the wait would pass this job's
-  # time limit) or later than 01:15 IST (the run would no longer fit the 01:00-03:00 window).
+  # Started only by the nightly schedule (01:05 IST). Refuses a start outside 01:00-01:45 IST (the ramp then ends
+  # by about 02:20, inside the 01:00-03:00 window), and a second start on the same armed commit.
   window:
     needs:
       - apply-gate
       - apply-approval
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && github.event_name == 'push' }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 345
+    timeout-minutes: 15
     outputs:
       job_path: ${{ steps.pages.outputs.job_path }}
       course_path: ${{ steps.pages.outputs.course_path }}
@@ -212,16 +218,20 @@ jobs:
             *) echo "Not armed for a run." >&2; exit 1 ;;
           esac
 
-      - name: Wait for 01:00 IST
+      - name: Require the nightly start inside 01:00-01:45 IST, once per arm
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$TRIGGERING_ACTOR" == "github-actions[bot]" ]] || { echo "Only the nightly start may begin the load test (started by $TRIGGERING_ACTOR)." >&2; exit 1; }
           NOW=$(date -u +%s)
           START=$(date -u -d "$(date -u +%F) 19:30:00" +%s)
-          if (( NOW > START + 900 )); then echo "Approved after 01:15 IST; refusing so the run stays inside 01:00-03:00 IST." >&2; exit 1; fi
-          WAIT=$(( START - NOW ))
-          if (( WAIT > 330 * 60 )); then echo "Approved before 19:30 IST; approve between 20:00 and 01:15 IST." >&2; exit 1; fi
-          if (( WAIT > 0 )); then echo "Waiting $(( WAIT / 60 )) minutes for 01:00 IST."; sleep "$WAIT"; fi
+          if (( NOW < START || NOW > START + 2700 )); then echo "Started outside 01:00-01:45 IST; refusing so the run stays inside 01:00-03:00 IST." >&2; exit 1; fi
+          EARLIER=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/aws-load-test.yml/runs?event=workflow_dispatch&head_sha=$GITHUB_SHA&per_page=100" \
+            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)] | length")
+          [[ "$EARLIER" == 0 ]] || { echo "This arm was already started once; re-arm for another run." >&2; exit 1; }
 
       - name: Guard against a moved branch
         shell: bash
@@ -236,8 +246,11 @@ jobs:
         run: |
           set -euo pipefail
           UA='SeaNShore-LoadTest/1'
-          JOB=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/jobs" | grep -oE 'href="/jobs/[0-9a-f-]{36}"' | head -1 | sed -E 's/^href="|"$//g')
-          COURSE=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/learn" | grep -oE 'href="/learn/courses/[a-z0-9-]+"' | head -1 | sed -E 's/^href="|"$//g')
+          JOBS_HTML=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/jobs")
+          LEARN_HTML=$(curl -fsS --max-time 20 -A "$UA" -H 'X-SNS-Load-Test: P3' "$LOAD_TEST_BASE_URL/learn")
+          # Links may carry a query string (e.g. /jobs/<id>?src=jobs); keep only the path.
+          JOB=$(grep -oE 'href="/jobs/[0-9a-f-]{36}["?]' <<<"$JOBS_HTML" | head -1 | sed -E 's/^href="//; s/["?]$//' || true)
+          COURSE=$(grep -oE 'href="/learn/courses/[a-z0-9-]+["?]' <<<"$LEARN_HTML" | head -1 | sed -E 's/^href="//; s/["?]$//' || true)
           [[ "$JOB" =~ ^/jobs/[0-9a-f-]{36}$ ]] || { echo "No public job page found." >&2; exit 1; }
           [[ "$COURSE" =~ ^/learn/courses/[a-z0-9-]+$ ]] || { echo "No public course page found." >&2; exit 1; }
           echo "job_path=$JOB" >> "$GITHUB_OUTPUT"
