@@ -28,10 +28,12 @@ export type SocialDomainEventPayload =
   | { eventType: 'comment.reacted'; actorId: string; targetId: string; postId: string; commentId: string; reactionType: PostReactionType }
   | { eventType: 'post.mentioned'; actorId: string; targetId: string; postId: string }
   | { eventType: 'comment.mentioned'; actorId: string; targetId: string; postId: string; commentId: string }
-  | { eventType: 'feed.post_created'; actorId: string; postId: string }
-  | { eventType: 'feed.post_reaction_changed'; actorId: string; postId: string }
-  | { eventType: 'feed.post_comments_changed'; actorId: string; postId: string }
-  | { eventType: 'feed.post_reposted'; actorId: string; postId: string }
+  // Round ARCH (broadcast fix): audienceProfileIds is added by the outbox publisher just before publishing (never
+  // stored in the outbox row): the members whose open connections get the hint. The fan-out pushes to no one else.
+  | { eventType: 'feed.post_created'; actorId: string; postId: string; audienceProfileIds?: string[] }
+  | { eventType: 'feed.post_reaction_changed'; actorId: string; postId: string; audienceProfileIds?: string[] }
+  | { eventType: 'feed.post_comments_changed'; actorId: string; postId: string; audienceProfileIds?: string[] }
+  | { eventType: 'feed.post_reposted'; actorId: string; postId: string; audienceProfileIds?: string[] }
   | {
       eventType: 'message.created'
       conversationId: string

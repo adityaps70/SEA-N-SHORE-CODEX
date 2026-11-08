@@ -183,7 +183,36 @@ describe('MessagingRealtimeProvider', () => {
     expect(router.refresh).not.toHaveBeenCalled()
   })
 
-  it('still refreshes canonical server state for social invalidation signals', async () => {
+  it('never re-renders the page for a feed hint, but hands it to listeners (Round ARCH broadcast fix)', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider, useMessagingRealtime } = await import(providerPath) as typeof import('./provider')
+    const heard: string[] = []
+    function Listener() {
+      const { subscribe } = useMessagingRealtime()
+      useEffect(() => subscribe((signal) => { heard.push(signal.eventType) }), [subscribe])
+      return null
+    }
+
+    render(
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
+        <Listener />
+      </MessagingRealtimeProvider>,
+    )
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+    for (const eventType of ['feed.post_created', 'feed.post_reaction_changed', 'feed.post_comments_changed', 'feed.post_reposted']) {
+      act(() => FakeWebSocket.instances[0]?.message(JSON.stringify({
+        eventId: `event-${eventType}`, eventType, schemaVersion: 1, occurredAt: '2026-09-13T10:00:01.000Z', scope: 'feed',
+      })))
+    }
+
+    expect(heard).toEqual(['feed.post_created', 'feed.post_reaction_changed', 'feed.post_comments_changed', 'feed.post_reposted'])
+    await new Promise((resolve) => setTimeout(resolve, 2_500))
+    expect(router.refresh).not.toHaveBeenCalled()
+  })
+
+  it('still refreshes canonical server state when a connection is accepted', async () => {
     const providerPath = './provider'
     const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
 
@@ -196,11 +225,11 @@ describe('MessagingRealtimeProvider', () => {
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
     act(() => FakeWebSocket.instances[0]?.open())
     act(() => FakeWebSocket.instances[0]?.message(JSON.stringify({
-      eventId: 'event-social-1',
-      eventType: 'feed.post_created',
+      eventId: 'event-network-1',
+      eventType: 'connection.accepted',
       schemaVersion: 1,
       occurredAt: '2026-09-13T10:00:01.000Z',
-      scope: 'feed',
+      scope: 'network',
     })))
 
     // Round 14 (3.2): refreshes are coalesced into one per 2-second window.

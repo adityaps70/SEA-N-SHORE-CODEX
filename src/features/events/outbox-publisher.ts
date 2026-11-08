@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
-import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { withFeedPushAudience } from '@/features/realtime/feed-push-audience'
 import type { EventBridgePublisher } from '@/lib/aws/eventbridge'
 import type { DomainEvent, SocialDomainEventPayload, SocialDomainEventType } from './types'
 
@@ -112,9 +113,12 @@ export function createOutboxPublisher(input: {
   publisher: EventBridgePublisher
   withTransaction?: OutboxTransaction
   now?: () => number
+  /** Round ARCH (broadcast fix): adds each feed event's push audience just before publishing; fails safe. */
+  prepare?: (events: DomainEvent[]) => Promise<DomainEvent[]>
 }) {
   const withTransaction = input.withTransaction ?? databaseTransaction
   const now = input.now ?? Date.now
+  const prepare = input.prepare ?? ((events: DomainEvent[]) => withFeedPushAudience(events, databaseQuery))
   let leaseUnavailableUntil = 0
 
   // Before migration 0068: the original path, which holds the row locks and the transaction open
@@ -136,7 +140,7 @@ export function createOutboxPublisher(input: {
 
       let outcome: PublishOutcome
       try {
-        outcome = await input.publisher.publish(events)
+        outcome = await input.publisher.publish(await prepare(events))
       } catch (error) {
         await client.query(
           `update public.event_outbox
@@ -213,7 +217,7 @@ export function createOutboxPublisher(input: {
     // No transaction and no pooled connection is held here.
     let outcome: PublishOutcome
     try {
-      outcome = await input.publisher.publish(events)
+      outcome = await input.publisher.publish(await prepare(events))
     } catch (error) {
       const message = errorMessage(error)
       await markResults([], events.map((event) => ({ id: event.id, error: message })))
