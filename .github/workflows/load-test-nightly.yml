@@ -10,6 +10,10 @@ name: Load Test Nightly Start
 on:
   schedule:
     - cron: "35 19 * * *"
+  # Also started by hand at 01:05 IST: the schedule has fired 3-5 hours late, after the 01:00-01:45 IST start
+  # window. A manual start passes the same checks here and in AWS Load Test; the schedule stays as a backup and
+  # exits once this arm has been started.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -35,7 +39,7 @@ jobs:
           HEAD="$(gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" --jq .commit.sha)"
           [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo "Could not read the head of $BRANCH." >&2; exit 1; }
           GUARD="$(gh api "repos/$GITHUB_REPOSITORY/contents/$GUARD_FILE?ref=$HEAD" --jq .content | base64 -d)"
-          if [[ ! "$GUARD" =~ ^run-once\ [0-9a-f]{40}$ ]]; then
+          if [[ ! "$GUARD" =~ ^(run-once|run-signed-in-once)\ [0-9a-f]{40}$ ]]; then
             echo "Load test not armed (guard reads '${GUARD%% *}'); nothing to start."
             exit 0
           fi
