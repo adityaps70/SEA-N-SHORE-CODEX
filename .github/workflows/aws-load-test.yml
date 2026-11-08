@@ -303,11 +303,12 @@ jobs:
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
           WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
           # The 50 accounts are created for this run and deleted after it (report job), with counts reported.
-          CREATED="$(bash scripts/aws/load-test-host-command.sh create-once "$GITHUB_SHA" "$GITHUB_RUN_ID")"
+          # On failure, show the task's own count and failure lines (never a key, name or address), then stop.
+          CREATED="$(bash scripts/aws/load-test-host-command.sh create-once "$GITHUB_SHA" "$GITHUB_RUN_ID")" || { grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${CREATED:-}" >&2 || true; exit 1; }
           grep -E '^LOAD_TEST_ACCOUNTS_(CREATED|CREATE_ONCE_VERIFIED)' <<<"$CREATED"
           grep -q '^LOAD_TEST_ACCOUNTS_CREATE_ONCE_VERIFIED=true$' <<<"$CREATED" || { echo "The test accounts were not created." >&2; exit 1; }
           PUBLIC_KEY="$(node scripts/load-test/sessions.mjs keypair "$WORK")"
-          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY")"
+          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY")" || { grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${OUTPUT:-}" >&2 || true; exit 1; }
           grep -q '^LOAD_TEST_SESSIONS_READY=true$' <<<"$OUTPUT" || { echo "The host did not prepare the sessions." >&2; exit 1; }
           URL="$(sed -n 's/^LOAD_TEST_SESSIONS_URL //p' <<<"$OUTPUT" | head -1)"
           ACTIONS="$(sed -n 's/^LOAD_TEST_ACTIONS //p' <<<"$OUTPUT" | head -1)"
@@ -498,13 +499,17 @@ jobs:
           mapfile -t STOPS < <(find /tmp/shards -name 'stop-*.txt' 2>/dev/null)
           node scripts/load-test/report.mjs /tmp/shards "$LOAD_TEST_TOTAL_RPM" "$LOAD_TEST_STEP_SECONDS" "${STOPS[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # Whatever happened above (no shards when the run stopped before any traffic), so the sign-out and deletion
+      # below always have credentials.
       - name: Configure AWS credentials with GitHub OIDC
+        if: always()
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
 
       - name: Verify staging AWS account
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
