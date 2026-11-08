@@ -4,12 +4,11 @@
 import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
-  AdminGetUserCommand,
   AdminSetUserPasswordCommand,
   AdminUserGlobalSignOutCommand,
   CognitoIdentityProviderClient,
   InitiateAuthCommand,
-  UserNotFoundException,
+  ListUsersCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction } from '../../src/lib/db/client'
@@ -32,14 +31,14 @@ const accounts = createLoadTestAccounts({
   query: async (text, values) => (await databaseQuery<QueryResultRow>(text, values)) as Array<Record<string, unknown>>,
   transaction: (work) => withTransaction((client) => work(async (text, values) => (await client.query(text, values)).rows as Array<Record<string, unknown>>)),
   cognito: {
+    // ListUsers, not AdminGetUser: the web task role may list users but not get one (the role's Cognito actions are
+    // pinned by scripts/aws/account-security-infra.test.mjs). The addresses are reserved .invalid ones, so an exact
+    // email filter can only match the test account itself.
     async findUserSub(email) {
-      try {
-        const user = await cognito.send(new AdminGetUserCommand({ UserPoolId: poolId, Username: email }))
-        return user.UserAttributes?.find((attribute) => attribute.Name === 'sub')?.Value ?? null
-      } catch (error) {
-        if (error instanceof UserNotFoundException) return null
-        throw error
-      }
+      const listed = await cognito.send(new ListUsersCommand({ UserPoolId: poolId, Filter: `email = "${email}"`, Limit: 2 }))
+      const users = listed.Users ?? []
+      if (users.length > 1) throw new Error('load_test_user_not_unique')
+      return users[0]?.Attributes?.find((attribute) => attribute.Name === 'sub')?.Value ?? null
     },
     async createUser(email, name) {
       const created = await cognito.send(new AdminCreateUserCommand({
