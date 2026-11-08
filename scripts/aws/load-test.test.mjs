@@ -15,8 +15,8 @@ const script = read('../load-test/p3-load-test.js')
 const jobOf = (id) => workflow.slice(workflow.indexOf(`\n  ${id}:\n`) + 1).split(/^(?=  [A-Za-z0-9_-]+:\n)/m)[0]
 const envValue = (name) => new RegExp(`\\n  ${name}: "?([^"\\n]+)"?\\n`).exec(workflow)?.[1]
 
-test('the guard reads plan or run-once', () => {
-  assert.ok(['plan', 'run-once'].includes(guardAction(read('./load-test-action.txt'))))
+test('the guard reads plan, run-once or run-signed-in-once', () => {
+  assert.ok(['plan', 'run-once', 'run-signed-in-once'].includes(guardAction(read('./load-test-action.txt'))))
 })
 
 test('the approved ramp, steps and target', () => {
@@ -154,7 +154,7 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   assert.match(jobOf('plan'), /LOAD_TEST_PLAN_ONLY_NO_TRAFFIC/)
 })
 
-test('the nightly start fires at 01:05 IST from the default branch and starts only an unused run-once arm', () => {
+test('the nightly start fires at 01:05 IST from the default branch and starts only an unused run-once or run-signed-in-once arm', () => {
   const nightly = read('../../.github/workflows/load-test-nightly.yml')
   assert.match(nightly, /\non:\n  schedule:\n    - cron: "35 19 \* \* \*"\n\n/)
   assert.doesNotMatch(nightly, /push:|pull_request|workflow_dispatch:/)
@@ -163,7 +163,7 @@ test('the nightly start fires at 01:05 IST from the default branch and starts on
   assert.doesNotMatch(nightly, /configure-aws-credentials|AWS_ROLE_TO_ASSUME|secrets\./)
   assert.match(nightly, /BRANCH: feat\/aws-native-phase-0-1\n/)
   assert.match(nightly, /contents\/\$GUARD_FILE\?ref=\$HEAD/)
-  assert.match(nightly, /if \[\[ ! "\$GUARD" =~ \^run-once\\ \[0-9a-f\]\{40\}\$ \]\]; then\n.*\n\s+exit 0\n/)
+  assert.match(nightly, /if \[\[ ! "\$GUARD" =~ \^\(run-once\|run-signed-in-once\)\\ \[0-9a-f\]\{40\}\$ \]\]; then\n.*\n\s+exit 0\n/)
   assert.match(nightly, /event=workflow_dispatch&head_sha=\$HEAD/)
   // It starts exactly one thing: AWS Load Test on the feature branch, after both checks.
   assert.deepEqual(nightly.match(/gh workflow run [^\n]+/g), ['gh workflow run aws-load-test.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"'])

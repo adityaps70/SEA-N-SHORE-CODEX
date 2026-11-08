@@ -2,10 +2,11 @@ name: Load Test Nightly Start
 
 # Runs from the default branch, because GitHub schedules only fire there. Every night at 01:05 IST (19:35 UTC,
 # off the hour so the schedule is not delayed) it reads the load test guard on the feature branch head and exits
-# within seconds unless the guard reads "run-once <sha>" and this arm has not been started yet. When it is armed,
-# it starts AWS Load Test (.github/workflows/aws-load-test.yml) on the feature branch; that run re-checks the
-# owner-merged arm PR, the 01:00-01:45 IST start, the unmoved branch head and the once-per-arm rule before any
-# traffic, and keeps every stop rule. A copy lives on the feature branch so its contract test covers this file.
+# within seconds unless the guard reads "run-once <sha>" or "run-signed-in-once <sha>" and this arm has not been
+# started yet. When it is armed, it starts AWS Load Test (.github/workflows/aws-load-test.yml) on the feature
+# branch; that run re-checks the owner-merged arm PR, the 01:00-01:45 IST start, the unmoved branch head and the
+# once-per-arm rule before any traffic, and keeps every stop rule. A copy lives on the feature branch so its
+# contract test covers this file.
 
 on:
   schedule:
@@ -35,7 +36,7 @@ jobs:
           HEAD="$(gh api "repos/$GITHUB_REPOSITORY/branches/$BRANCH" --jq .commit.sha)"
           [[ "$HEAD" =~ ^[0-9a-f]{40}$ ]] || { echo "Could not read the head of $BRANCH." >&2; exit 1; }
           GUARD="$(gh api "repos/$GITHUB_REPOSITORY/contents/$GUARD_FILE?ref=$HEAD" --jq .content | base64 -d)"
-          if [[ ! "$GUARD" =~ ^run-once\ [0-9a-f]{40}$ ]]; then
+          if [[ ! "$GUARD" =~ ^(run-once|run-signed-in-once)\ [0-9a-f]{40}$ ]]; then
             echo "Load test not armed (guard reads '${GUARD%% *}'); nothing to start."
             exit 0
           fi
