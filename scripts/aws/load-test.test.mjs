@@ -160,6 +160,9 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   // Stop rule 3: the monitor cancels the run when Aurora sits at its maximum ACU for 5 minutes.
   assert.match(jobOf('monitor'), /node scripts\/load-test\/aurora-stop\.mjs "\$VALUES" "\$LOAD_TEST_AURORA_MAX_ACU"/)
   assert.match(jobOf('monitor'), /LOAD_TEST_AURORA_MAX_ACU: "2"/)
+  // Run 42486602879: the monitor must keep watching while the signed-in sessions job runs, before any shard exists.
+  assert.match(jobOf('monitor'), /select\(\.name == "sessions" or \(\.name \| startswith\("load"\)\)\) \| select\(\.status != "completed"\)/)
+  assert.match(jobOf('monitor'), /\[\[ "\$LEFT" == 0 && "\$SHARDS" -gt 0 && \$minute -gt 2 \]\]/)
   assert.match(read('../../infra/aws/app/aws-native-variables.tf'), /variable "aurora_max_acu" \{[^}]*default\s+= 2/)
   assert.match(jobOf('load'), /needs\.window\.result == 'success'/)
   assert.match(jobOf('report'), /needs\.apply-gate\.result == 'success'/)

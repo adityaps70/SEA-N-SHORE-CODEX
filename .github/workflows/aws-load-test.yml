@@ -376,8 +376,12 @@ jobs:
               curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API/cancel" >/dev/null
               exit 0
             fi
-            LEFT="$(curl -fsS -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API/jobs?per_page=100" | jq '[.jobs[] | select(.name | startswith("load")) | select(.status != "completed")] | length')"
-            [[ "$LEFT" == 0 && $minute -gt 2 ]] && { echo "Every shard has finished."; exit 0; }
+            # Run 42486602879: before the shards exist (the signed-in sessions job still running) no load job is listed,
+            # so count the sessions job too and stop only once the load jobs exist and all have finished.
+            JOBS="$(curl -fsS -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API/jobs?per_page=100")"
+            LEFT="$(jq '[.jobs[] | select(.name == "sessions" or (.name | startswith("load"))) | select(.status != "completed")] | length' <<<"$JOBS")"
+            SHARDS="$(jq '[.jobs[] | select(.name | startswith("load"))] | length' <<<"$JOBS")"
+            [[ "$LEFT" == 0 && "$SHARDS" -gt 0 && $minute -gt 2 ]] && { echo "Every shard has finished."; exit 0; }
           done
 
   load:
