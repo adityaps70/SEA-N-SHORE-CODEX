@@ -121,6 +121,8 @@ jobs:
         run: node --test scripts/aws/bootstrap-base-image.test.mjs
       - name: Verify phase 3 reliability release contract
         run: node --test scripts/aws/phase3-reliability-infra.test.mjs
+      - name: Verify realtime fan-out infra contract (Round ARCH broadcast fix)
+        run: node --test scripts/aws/realtime-fanout-infra.test.mjs
       - name: Verify bootstrap host concurrency contract
         run: node --test scripts/aws/bootstrap-host-concurrency.test.mjs
       - name: Verify private migration relocate release contract
