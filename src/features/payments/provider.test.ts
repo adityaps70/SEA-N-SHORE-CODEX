@@ -12,7 +12,7 @@ vi.mock('./cashfree-config', async () => {
 vi.mock('./config', () => ({ loadRazorpayConfig: async () => mocks.razorpay }))
 
 import type { PaymentProviderName } from './types'
-import { arePaymentsConfigured, chooseGateway, getGatewayByName, getPaymentCapabilities, getPaymentGateway } from './provider'
+import { arePaymentsConfigured, chooseGateway, getGatewayByName, getPaymentCapabilities, getPaymentGateway, RAZORPAY_CHECKOUTS_ENABLED } from './provider'
 
 const cashfreePg = { clientId: 'TEST1', clientSecret: 's', environment: 'sandbox', international: false }
 const razorpayConfig = { keyId: 'rzp_test_A1', keySecret: 's', webhookSecret: 'w' }
@@ -33,16 +33,27 @@ describe('payment gateway selection', () => {
   const cashfree: { name: PaymentProviderName } = { name: 'cashfree' }
   const razorpay: { name: PaymentProviderName } = { name: 'razorpay' }
 
-  it('defaults to Cashfree, then Razorpay, then none', () => {
-    expect(chooseGateway({ cashfree, razorpay, preferred: null })).toBe(cashfree)
-    expect(chooseGateway({ cashfree: null, razorpay, preferred: null })).toBe(razorpay)
-    expect(chooseGateway({ cashfree: null, razorpay: null, preferred: null })).toBeNull()
+  it('keeps Razorpay checkouts switched off in code (Cashfree is the live gateway)', () => {
+    expect(RAZORPAY_CHECKOUTS_ENABLED).toBe(false)
   })
 
-  it('honours the owner’s choice only when that gateway is set up', () => {
-    expect(chooseGateway({ cashfree, razorpay, preferred: 'razorpay' })).toBe(razorpay)
-    expect(chooseGateway({ cashfree, razorpay: null, preferred: 'razorpay' })).toBe(cashfree)
-    expect(chooseGateway({ cashfree: null, razorpay, preferred: 'cashfree' })).toBe(razorpay)
+  it('uses Cashfree, and never falls back to Razorpay when Cashfree is unavailable', () => {
+    expect(chooseGateway({ cashfree, razorpay, preferred: null })).toBe(cashfree)
+    // Cashfree missing or its secret unreadable: payments are off, not moved to Razorpay.
+    expect(chooseGateway({ cashfree: null, razorpay, preferred: null })).toBeNull()
+    expect(chooseGateway({ cashfree: null, razorpay, preferred: 'cashfree' })).toBeNull()
+    expect(chooseGateway({ cashfree: null, razorpay: null, preferred: null })).toBeNull()
+    // Even with the code switch on, Razorpay is never an automatic fallback.
+    expect(chooseGateway({ cashfree: null, razorpay, preferred: null, razorpayEnabled: true })).toBeNull()
+    expect(chooseGateway({ cashfree: null, razorpay, preferred: 'cashfree', razorpayEnabled: true })).toBeNull()
+  })
+
+  it('switches to Razorpay only by hand: the code switch on, Razorpay chosen, and Razorpay set up', () => {
+    // A preference alone does nothing while the code switch is off.
+    expect(chooseGateway({ cashfree, razorpay, preferred: 'razorpay' })).toBe(cashfree)
+    expect(chooseGateway({ cashfree: null, razorpay, preferred: 'razorpay' })).toBeNull()
+    expect(chooseGateway({ cashfree, razorpay, preferred: 'razorpay', razorpayEnabled: true })).toBe(razorpay)
+    expect(chooseGateway({ cashfree, razorpay: null, preferred: 'razorpay', razorpayEnabled: true })).toBe(cashfree)
   })
 
   it('stays safely off when nothing is configured', async () => {
@@ -51,19 +62,26 @@ describe('payment gateway selection', () => {
     await expect(getPaymentCapabilities()).resolves.toEqual({ configured: false, provider: null, currencies: [] })
   })
 
-  it('uses Cashfree (INR only) when both are set up, and Razorpay when PAYMENTS_PROVIDER says so', async () => {
+  it('uses Cashfree (INR only) when both are set up, even when PAYMENTS_PROVIDER says razorpay (code switch off)', async () => {
     mocks.cashfree = { pg: cashfreePg, payouts: null, preferredProvider: null }
     mocks.razorpay = razorpayConfig
     await expect(getPaymentCapabilities()).resolves.toEqual({ configured: true, provider: 'cashfree', currencies: ['INR'] })
 
     process.env.PAYMENTS_PROVIDER = 'razorpay'
-    await expect(getPaymentCapabilities()).resolves.toEqual({ configured: true, provider: 'razorpay', currencies: ['INR', 'USD'] })
+    await expect(getPaymentCapabilities()).resolves.toEqual({ configured: true, provider: 'cashfree', currencies: ['INR'] })
   })
 
-  it('reads the preference from the Cashfree secret and allows USD only with the international flag', async () => {
+  it('turns payments off, not over to Razorpay, when Cashfree is unavailable', async () => {
+    mocks.cashfree = { pg: null, payouts: null, preferredProvider: null }
+    mocks.razorpay = razorpayConfig
+    await expect(getPaymentGateway()).resolves.toBeNull()
+    await expect(getPaymentCapabilities()).resolves.toEqual({ configured: false, provider: null, currencies: [] })
+  })
+
+  it('ignores a razorpay preference in the Cashfree secret, and allows USD only with the international flag', async () => {
     mocks.cashfree = { pg: { ...cashfreePg, international: true }, payouts: null, preferredProvider: 'razorpay' }
     mocks.razorpay = razorpayConfig
-    await expect(getPaymentGateway()).resolves.toMatchObject({ name: 'razorpay' })
+    await expect(getPaymentGateway()).resolves.toMatchObject({ name: 'cashfree' })
     mocks.razorpay = null
     await expect(getPaymentCapabilities()).resolves.toEqual({ configured: true, provider: 'cashfree', currencies: ['INR', 'USD'] })
   })
