@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createMessagingRealtimeConnection, TYPING_MIN_INTERVAL_MS } from './connection'
+import { createMessagingRealtimeConnection, REALTIME_HEARTBEAT_MS, SERVER_CLOSE_RECONNECT_SPREAD_MS, TYPING_MIN_INTERVAL_MS } from './connection'
 
 const SIGNAL = JSON.stringify({
   eventId: 'event-1',
@@ -182,6 +182,61 @@ describe('messaging realtime connection lifecycle', () => {
     connection.sendTyping({ conversationId, targetProfileId: '44444444-4444-4444-8444-444444444444', isTyping: true })
     await vi.advanceTimersByTimeAsync(TYPING_MIN_INTERVAL_MS)
     expect(socket.send).toHaveBeenCalledTimes(2)
+    connection.stop()
+  })
+})
+
+describe('heartbeat and reconnect spread (Round ARCH Phase 5)', () => {
+  const ticket = async () => ({ ticket: 't', webSocketUrl: 'wss://abc.execute-api.ap-south-1.amazonaws.com/staging' })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    FakeSocket.instances = []
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('pings every 5 minutes while open, and stops pinging once closed', async () => {
+    const connection = createMessagingRealtimeConnection({ requestTicket: ticket, createSocket: (url) => new FakeSocket(url), random: () => 0 })
+    await connection.start()
+    const socket = FakeSocket.instances[0]!
+    socket.open()
+    expect(REALTIME_HEARTBEAT_MS).toBe(300_000)
+    await vi.advanceTimersByTimeAsync(REALTIME_HEARTBEAT_MS - 1)
+    expect(socket.send).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(socket.send).toHaveBeenCalledWith('{"action":"ping"}')
+    await vi.advanceTimersByTimeAsync(REALTIME_HEARTBEAT_MS)
+    expect(socket.send).toHaveBeenCalledTimes(2)
+    connection.stop()
+    await vi.advanceTimersByTimeAsync(REALTIME_HEARTBEAT_MS * 3)
+    expect(socket.send).toHaveBeenCalledTimes(2)
+  })
+
+  it('spreads the reconnect after a server close of a working connection over up to 30 s, but not after a failed connect', async () => {
+    const connection = createMessagingRealtimeConnection({ requestTicket: ticket, createSocket: (url) => new FakeSocket(url), random: () => 0.5 })
+    await connection.start()
+    const first = FakeSocket.instances[0]!
+    first.open()
+    // The server closes a working connection (a deploy): first backoff 1,000 ms + up to 250 ms, plus half of 30 s.
+    first.readyState = 3
+    first.onclose?.(new CloseEvent('close'))
+    await vi.advanceTimersByTimeAsync(1_125 + SERVER_CLOSE_RECONNECT_SPREAD_MS / 2 - 1)
+    expect(FakeSocket.instances).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(FakeSocket.instances).toHaveLength(2)
+
+    // A connect that never opened (for example refused at the 5-connection cap) uses the plain backoff: the second
+    // attempt waits 2,000 ms + 250 ms, with no spread.
+    const second = FakeSocket.instances[1]!
+    second.readyState = 3
+    second.onclose?.(new CloseEvent('close'))
+    await vi.advanceTimersByTimeAsync(2_249)
+    expect(FakeSocket.instances).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(FakeSocket.instances).toHaveLength(3)
     connection.stop()
   })
 })

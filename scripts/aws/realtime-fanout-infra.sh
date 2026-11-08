@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Realtime fan-out (Round ARCH broadcast fix): the ONLY changes this runner may make are
-#   - aws_lambda_function.realtime_fanout updated in place with new code only (source_code_hash and what AWS derives
-#     from it), and
+# Realtime Lambdas (Round ARCH broadcast fix, Phase 5): the ONLY changes this runner may make are
+#   - aws_lambda_function.realtime_fanout and aws_lambda_function.realtime_connection (Phase 5: heartbeat ping and the
+#     5-connection cap) updated in place with new code only (source_code_hash and what AWS derives from it), and
 #   - aws_iam_role_policy.realtime_fanout updated in place, its only difference the removal of the
 #     "BroadcastFeedInvalidations" statement (dynamodb:Scan): no statement added, no other statement changed.
-# The archive of infra/aws/app/lambda/realtime-fanout.mjs is read to compute the code hash. Anything else refuses.
+# The archives of the two Lambda files are read to compute the code hashes. Anything else refuses.
 set -euo pipefail
 umask 077
 export PATH="$HOME/bin:$PATH"
@@ -17,9 +17,11 @@ APP_DIR="$PWD/infra/aws/app"
 ACTION_FILE="scripts/aws/realtime-fanout-infra-action.txt"
 IMAGE_TAG_FILE="scripts/aws/social-events-image-tag.txt"
 LAMBDA_ADDRESS="aws_lambda_function.realtime_fanout"
+CONNECTION_LAMBDA_ADDRESS="aws_lambda_function.realtime_connection"
 POLICY_ADDRESS="aws_iam_role_policy.realtime_fanout"
-ARCHIVE_ADDRESS="data.archive_file.realtime_fanout"
+ARCHIVE_ADDRESSES="data.archive_file.realtime_fanout,data.archive_file.realtime_connection"
 FUNCTION_NAME="sea-n-shore-staging-realtime-fanout"
+CONNECTION_FUNCTION_NAME="sea-n-shore-staging-realtime-connection"
 ROLE_NAME="sea-n-shore-staging-realtime-fanout"
 POLICY_NAME="sea-n-shore-staging-realtime-fanout"
 REMOVED_SID="BroadcastFeedInvalidations"
@@ -66,21 +68,22 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
 plan() {
   # Bounded like every host plan: interrupted and retried once if it hangs (scripts/aws/bootstrap-terraform-lock.sh).
   terraform_plan_bounded "$WORK_DIR/$1.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-    -target="$LAMBDA_ADDRESS" -target="$POLICY_ADDRESS" \
+    -target="$LAMBDA_ADDRESS" -target="$CONNECTION_LAMBDA_ADDRESS" -target="$POLICY_ADDRESS" \
     -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/$1.tfplan"
   terraform -chdir="$APP_DIR" show -json "$WORK_DIR/$1.tfplan" > "$WORK_DIR/$1.json"
 }
 # Prints the classification; exits non-zero for anything but "no change" or the exact allowed update.
 classify() {
-  python3 scripts/aws/check-realtime-fanout-plan.py "$1" "$LAMBDA_ADDRESS" "$POLICY_ADDRESS" "$ARCHIVE_ADDRESS" "$REMOVED_SID"
+  python3 scripts/aws/check-realtime-fanout-plan.py "$1" "$LAMBDA_ADDRESS,$CONNECTION_LAMBDA_ADDRESS" "$POLICY_ADDRESS" "$ARCHIVE_ADDRESSES" "$REMOVED_SID"
 }
 
 live_state() {
-  local code scan
+  local code connection_code scan
   code="$(aws lambda get-function-configuration --region "$AWS_REGION" --function-name "$FUNCTION_NAME" --query CodeSha256 --output text)"
+  connection_code="$(aws lambda get-function-configuration --region "$AWS_REGION" --function-name "$CONNECTION_FUNCTION_NAME" --query CodeSha256 --output text)"
   scan="$(aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --query PolicyDocument --output json \
     | jq '[.Statement[] | .Action | if type == "array" then .[] else . end | select(. == "dynamodb:Scan")] | length')"
-  echo "code_sha256=$code scan_statements=$scan"
+  echo "code_sha256=$code connection_code_sha256=$connection_code scan_statements=$scan"
 }
 
 echo "REALTIME_FANOUT_LIVE_BEFORE $(live_state)"

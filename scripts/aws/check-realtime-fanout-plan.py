@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Classifies a targeted Terraform plan for the realtime fan-out (Round ARCH broadcast fix).
+"""Classifies a targeted Terraform plan for the realtime Lambdas (Round ARCH broadcast fix, Phase 5).
 
 Accepts only:
   - no change at all (REALTIME_FANOUT_PLAN=NO_CHANGES), or
-  - the Lambda updated in place with new code only, and/or the role policy updated in place whose only difference is
-    the removal of one named statement (REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE).
-The archive data source may be read. Anything else exits non-zero with the reason.
+  - any of the listed Lambdas updated in place with new code only, and/or the fan-out role policy updated in place
+    whose only difference is the removal of one named statement (REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE).
+The listed archive data sources may be read. Anything else exits non-zero with the reason.
 
-Usage: check-realtime-fanout-plan.py PLAN_JSON LAMBDA_ADDRESS POLICY_ADDRESS ARCHIVE_ADDRESS REMOVED_SID
+Usage: check-realtime-fanout-plan.py PLAN_JSON LAMBDA_ADDRESSES POLICY_ADDRESS ARCHIVE_ADDRESSES REMOVED_SID
+  (LAMBDA_ADDRESSES and ARCHIVE_ADDRESSES are comma-separated)
 """
 import json
 import sys
@@ -72,7 +73,9 @@ def check_policy(change, removed_sid):
 
 
 def main(argv):
-    plan_path, lambda_address, policy_address, archive_address, removed_sid = argv[1:]
+    plan_path, lambda_list, policy_address, archive_list, removed_sid = argv[1:]
+    lambda_addresses = [a for a in lambda_list.split(',') if a]
+    archive_addresses = {a for a in archive_list.split(',') if a}
     with open(plan_path) as f:
         plan = json.load(f)
     changes = []
@@ -80,7 +83,7 @@ def main(argv):
         actions = resource.get('change', {}).get('actions')
         if actions == ['no-op']:
             continue
-        if resource['address'] == archive_address and actions == ['read']:
+        if resource['address'] in archive_addresses and actions == ['read']:
             continue
         changes.append(resource)
     if not changes:
@@ -88,15 +91,16 @@ def main(argv):
         return 0
     by_address = {}
     for resource in changes:
-        if resource['address'] not in (lambda_address, policy_address) or resource['address'] in by_address:
+        if resource['address'] not in (*lambda_addresses, policy_address) or resource['address'] in by_address:
             refuse('the plan changes ' + ', '.join(f"{c['address']} {c['change']['actions']}" for c in changes))
         by_address[resource['address']] = resource['change']
-    if lambda_address in by_address:
-        check_lambda(by_address[lambda_address])
+    for address in lambda_addresses:
+        if address in by_address:
+            check_lambda(by_address[address])
     if policy_address in by_address:
         check_policy(by_address[policy_address], removed_sid)
     print('REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE')
-    print('REALTIME_FANOUT_CODE_CHANGES=' + ('true' if lambda_address in by_address else 'false'))
+    print('REALTIME_FANOUT_CODE_CHANGES=' + (','.join(a for a in lambda_addresses if a in by_address) or 'none'))
     print('REALTIME_FANOUT_POLICY_REMOVES=' + (removed_sid if policy_address in by_address else 'none'))
     return 0
 

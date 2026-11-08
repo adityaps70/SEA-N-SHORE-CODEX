@@ -5,7 +5,7 @@ import { CheckCircle2, Compass, Loader2 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import { useSuggestionDeck } from '@/features/network/components/suggestion-deck'
-import { useOptionalMessagingRealtime } from '@/features/realtime/provider'
+import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import { countNewTopPosts, loadRecentFeedPage, loadTopFeedPage, setFeedMode } from '../actions'
 import { usePostImpressions } from '../impressions/use-post-impressions'
 import { postLoadingPriority } from '../post-loading-priority'
@@ -18,7 +18,9 @@ import { cn } from '@/lib/cn'
 /** "N new posts" asks the server for a count this often, only while the tab is visible. */
 export const NEW_POSTS_POLL_MS = 60_000
 /** Round ARCH (broadcast fix): a realtime "new post" hint re-asks the count at most once per this window. */
-export const NEW_POSTS_HINT_DEBOUNCE_MS = 2_000
+export { REALTIME_HINT_DEBOUNCE_MS as NEW_POSTS_HINT_DEBOUNCE_MS } from '@/features/realtime/use-realtime-aware-poll'
+/** Who posting can reach this member's "N new posts": their network, which is exactly a new-post hint's audience. */
+const NEW_POST_HINTS = ['feed.post_created', 'feed.post_reposted'] as const
 
 function contentId(post: FeedPost) {
   return post.repostOf?.id ?? post.id
@@ -241,35 +243,20 @@ export function HomeFeed({
     return () => observer.disconnect()
   }, [hasMore, mode, posts.length])
 
-  // "N new posts": a cheap count every 60 s while the tab is visible; never a page refetch. Round ARCH (broadcast
-  // fix): a realtime hint that someone in the member's network posted asks for the count straight away instead.
+  // "N new posts": a cheap count, never a page refetch. Round ARCH: asked on a realtime hint that someone in the
+  // member's network posted (broadcast fix); the 60-second check runs only while the realtime socket is down
+  // (Phase 5), with one catch-up check when it drops and when it comes back.
   const since = mode === 'top' ? top?.snapshotAt ?? null : posts[0]?.createdAt ?? null
-  const subscribeRealtime = useOptionalMessagingRealtime()?.subscribe
-  useEffect(() => {
-    if (!since) return
-    let active = true
-    let hintTimer: number | null = null
-    const check = async () => {
-      if (document.visibilityState !== 'visible') return
-      const result = await countNewTopPosts({ since })
-      if (active && result.ok) setNewCount(result.count)
-    }
-    const interval = window.setInterval(() => { void check() }, NEW_POSTS_POLL_MS)
-    const onVisible = () => { if (document.visibilityState === 'visible') void check() }
-    document.addEventListener('visibilitychange', onVisible)
-    const unsubscribe = subscribeRealtime?.((signal) => {
-      if (signal.eventType !== 'feed.post_created' && signal.eventType !== 'feed.post_reposted') return
-      if (hintTimer !== null) return
-      hintTimer = window.setTimeout(() => { hintTimer = null; void check() }, NEW_POSTS_HINT_DEBOUNCE_MS)
+  const sinceRef = useRef(since)
+  useEffect(() => { sinceRef.current = since }, [since])
+  const checkNewPosts = useCallback(() => {
+    const current = sinceRef.current
+    if (!current || document.visibilityState !== 'visible') return
+    void countNewTopPosts({ since: current }).then((result) => {
+      if (result.ok && sinceRef.current === current) setNewCount(result.count)
     })
-    return () => {
-      active = false
-      window.clearInterval(interval)
-      if (hintTimer !== null) window.clearTimeout(hintTimer)
-      unsubscribe?.()
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [since, subscribeRealtime])
+  }, [])
+  useRealtimeAwarePoll(checkNewPosts, { intervalMs: NEW_POSTS_POLL_MS, hintEventTypes: NEW_POST_HINTS, pauseWhileConnected: true, enabled: Boolean(since) })
 
   function showNewPosts() {
     setNewCount(0)
