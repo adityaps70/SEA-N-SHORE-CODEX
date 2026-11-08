@@ -10,6 +10,10 @@ name: Load Test Nightly Start
 on:
   schedule:
     - cron: "35 19 * * *"
+  # Also started by hand at 01:05 IST: the schedule has fired 3-5 hours late, after the 01:00-01:45 IST start
+  # window. A manual start passes the same checks here and in AWS Load Test; the schedule stays as a backup and
+  # exits once this arm has been started.
+  workflow_dispatch:
 
 permissions:
   contents: read
