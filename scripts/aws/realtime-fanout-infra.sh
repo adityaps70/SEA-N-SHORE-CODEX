@@ -21,6 +21,10 @@ STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 APP_DIR="$PWD/infra/aws/app"
 ACTION_FILE="scripts/aws/realtime-fanout-infra-action.txt"
 IMAGE_TAG_FILE="scripts/aws/social-events-image-tag.txt"
+# The canonical public origin, the same file the staging deploy and the Cognito runners read. Not the copy in the
+# Terraform state's web task (plan run 42627857003: that older value would have changed the Cognito email sender's
+# SITE_URL, which the account security runner set from this file).
+SITE_URL_FILE="scripts/aws/public-site-url.txt"
 LAMBDA_ADDRESS="aws_lambda_function.realtime_fanout"
 CONNECTION_LAMBDA_ADDRESS="aws_lambda_function.realtime_connection"
 AUTHORIZER_LAMBDA_ADDRESS="aws_lambda_function.realtime_authorizer"
@@ -48,12 +52,15 @@ EVENT_BUS="sea-n-shore-staging-social-events"
 }
 [[ "$(git rev-parse HEAD)" == "$REALTIME_FANOUT_INFRA_EXPECTED_SHA" ]]
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
-git diff --quiet HEAD -- infra/aws/app scripts/aws/realtime-fanout-infra.sh scripts/aws/check-realtime-fanout-plan.py "$ACTION_FILE" "$IMAGE_TAG_FILE"
+git diff --quiet HEAD -- infra/aws/app scripts/aws/realtime-fanout-infra.sh scripts/aws/check-realtime-fanout-plan.py "$ACTION_FILE" "$IMAGE_TAG_FILE" "$SITE_URL_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 source scripts/aws/bootstrap-terraform-lock.sh
 ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported realtime fan-out action." >&2; exit 1 ;; esac
 IMAGE_TAG="$(tr -d '[:space:]' < "$IMAGE_TAG_FILE")"
+PUBLIC_SITE_URL="$(tr -d '[:space:]' < "$SITE_URL_FILE")"
+[[ "$PUBLIC_SITE_URL" =~ ^https://[a-z0-9.-]+$ ]] || { echo "$SITE_URL_FILE must hold one https origin." >&2; exit 1; }
+export PUBLIC_SITE_URL
 [[ "$IMAGE_TAG" =~ ^social-[0-9a-f]{40}$ ]] || { echo "Pinned social worker image tag must be social-<40 hex SHA>." >&2; exit 1; }
 WORK_DIR="$(mktemp -d "$PWD/.realtime-fanout-infra.XXXXXXXX")"
 trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
@@ -61,7 +68,7 @@ aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
 # The configuration needs its variables even for these targets; same values as the Social Events rule runner.
 python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" "$IMAGE_TAG" <<'PY'
-import json, sys
+import json, os, sys
 state_path, output_path, image_tag = sys.argv[1:]
 with open(state_path) as f:
     resources=json.load(f)['resources']
@@ -69,10 +76,9 @@ def attrs(kind, name):
     matches=[r for r in resources if r['type']==kind and r['mode']=='managed' and r['name']==name]
     assert len(matches)==1, f'Expected exactly one {kind}.{name}'
     return matches[0]['instances'][0]['attributes']
-web=next(c for c in json.loads(attrs('aws_ecs_task_definition','web')['container_definitions']) if c['name']=='web')
 values={
   'image_tag': image_tag,
-  'site_url': next(e['value'] for e in web['environment'] if e['name']=='NEXT_PUBLIC_SITE_URL'),
+  'site_url': os.environ['PUBLIC_SITE_URL'],
   'aurora_engine_version': attrs('aws_rds_cluster','aurora')['engine_version'],
   'social_worker_desired_count': 1,
 }
