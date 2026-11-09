@@ -152,3 +152,20 @@ describe('realtime browser client primitives', () => {
     expect(reconnectDelayMs(20, () => 1)).toBe(30000)
   })
 })
+
+describe('notification.created signal (Round ARCH Phase 5)', () => {
+  const base = { eventId: 'e1', eventType: 'notification.created', schemaVersion: 1, occurredAt: '2026-11-08T05:00:00.000Z', scope: 'notifications' }
+
+  it('accepts the count-only signal, with or without a count', () => {
+    expect(parseRealtimeSignal(JSON.stringify({ ...base, unreadNotificationCount: 3 }))).toEqual({ ...base, unreadNotificationCount: 3 })
+    expect(parseRealtimeSignal(JSON.stringify(base))).toEqual(base)
+  })
+
+  it('refuses a wrong scope, a bad count, or any ids or content', () => {
+    expect(parseRealtimeSignal(JSON.stringify({ ...base, scope: 'feed' }))).toBeNull()
+    expect(parseRealtimeSignal(JSON.stringify({ ...base, unreadNotificationCount: -1 }))).toBeNull()
+    expect(parseRealtimeSignal(JSON.stringify({ ...base, unreadNotificationCount: '3' }))).toBeNull()
+    expect(parseRealtimeSignal(JSON.stringify({ ...base, payload: { notificationId: 'n1' } }))).toBeNull()
+    expect(parseRealtimeSignal(JSON.stringify({ ...base, aggregateId: 'n1' }))).toBeNull()
+  })
+})

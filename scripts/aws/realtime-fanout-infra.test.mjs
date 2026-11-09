@@ -14,15 +14,40 @@ const script = read('./realtime-fanout-infra.sh')
 const workflow = read('../../.github/workflows/aws-realtime-fanout-infra.yml')
 const classifier = new URL('./check-realtime-fanout-plan.py', import.meta.url).pathname
 const LAMBDA = 'aws_lambda_function.realtime_fanout'
+const CONNECTION = 'aws_lambda_function.realtime_connection'
 const POLICY = 'aws_iam_role_policy.realtime_fanout'
 const ARCHIVE = 'data.archive_file.realtime_fanout'
+const CONNECTION_ARCHIVE = 'data.archive_file.realtime_connection'
 const SID = 'BroadcastFeedInvalidations'
+const RULE = 'aws_cloudwatch_event_rule.realtime_events'
+const ADDED = ['notification.created']
+const AUTHORIZER = 'aws_lambda_function.realtime_authorizer'
+const SIGN_UP = 'aws_lambda_function.cognito_pre_sign_up_link'
+const EMAIL = 'aws_lambda_function.cognito_resend_email_sender'
+const RESERVED = { [AUTHORIZER]: 100, [CONNECTION]: 100, [LAMBDA]: 50, [SIGN_UP]: 25, [EMAIL]: 25 }
+const LAMBDAS = [LAMBDA, CONNECTION, AUTHORIZER, SIGN_UP, EMAIL]
+const ARCHIVES = [ARCHIVE, CONNECTION_ARCHIVE, 'data.archive_file.realtime_authorizer', 'data.archive_file.cognito_pre_sign_up_link', 'data.archive_file.cognito_resend_email_sender']
 
-test('guarded, exact-head, plan by default, two targets, applies only the classified plan', () => {
+test('guarded, exact-head, plan by default, four targets, applies only the classified plan', () => {
   assert.ok(['plan', 'apply-once'].includes(guardAction(read('./realtime-fanout-infra-action.txt'))))
   assert.match(script, /REALTIME_FANOUT_INFRA_EXPECTED_SHA/)
   assert.match(script, /case "\$ACTION" in plan\|apply-once\) ;;/)
-  assert.deepEqual(script.match(/-target="\$[A-Z_]+"/g), ['-target="$LAMBDA_ADDRESS"', '-target="$POLICY_ADDRESS"'])
+  assert.deepEqual(script.match(/-target="\$[A-Z_]+"/g), [
+    '-target="$LAMBDA_ADDRESS"', '-target="$CONNECTION_LAMBDA_ADDRESS"', '-target="$AUTHORIZER_LAMBDA_ADDRESS"',
+    '-target="$SIGN_UP_LAMBDA_ADDRESS"', '-target="$EMAIL_LAMBDA_ADDRESS"', '-target="$POLICY_ADDRESS"', '-target="$RULE_ADDRESS"',
+  ])
+  assert.equal(/^ARCHIVE_ADDRESSES="(.+)"$/m.exec(script)[1], ARCHIVES.join(','))
+  // Phase 5: the reservations, and the account check that runs before any apply.
+  assert.deepEqual(JSON.parse(/^RESERVED='(.+)'$/m.exec(script)[1]), RESERVED)
+  assert.equal(Object.values(RESERVED).reduce((a, b) => a + b, 0), Number(/^RESERVED_TOTAL=(\d+)$/m.exec(script)[1]))
+  assert.match(script, /^MIN_ACCOUNT_LIMIT=1000$/m)
+  assert.match(script, /^MIN_UNRESERVED_AFTER=100$/m)
+  assert.ok(script.indexOf('(( ACCOUNT_LIMIT >= MIN_ACCOUNT_LIMIT ))') < script.indexOf('if [[ "$ACTION" == "plan" ]]; then'))
+  assert.match(script, /grep -q ' reserved=\\\[100 100 50 25 25\\\]\$' <<<"\$LIVE_AFTER"/)
+  assert.match(script, /RULE_ADDRESS="aws_cloudwatch_event_rule\.realtime_events"/)
+  assert.match(script, /RULE_ADDED_TYPES='\["notification\.created"\]'/)
+  assert.match(script, /grep -q 'rule_types=\.\*"notification\.created"' <<<"\$LIVE_AFTER"/)
+  assert.match(script, /CONNECTION_LAMBDA_ADDRESS="aws_lambda_function\.realtime_connection"/)
   assert.match(script, /LAMBDA_ADDRESS="aws_lambda_function\.realtime_fanout"/)
   assert.match(script, /POLICY_ADDRESS="aws_iam_role_policy\.realtime_fanout"/)
   assert.match(script, /REMOVED_SID="BroadcastFeedInvalidations"/)
@@ -34,7 +59,7 @@ test('guarded, exact-head, plan by default, two targets, applies only the classi
   assert.ok(script.indexOf('if [[ "$ACTION" == "plan" ]]; then') < moved)
   assert.equal((script.match(/terraform -chdir="\$APP_DIR" apply/g) || []).length, 1)
   // After the apply: no difference left and the live policy has no Scan.
-  assert.match(script, /grep -q ' scan_statements=0\$' <<<"\$LIVE_AFTER"/)
+  assert.match(script, /grep -q ' scan_statements=0 ' <<<"\$LIVE_AFTER"/)
   assert.match(script, /REALTIME_FANOUT_APPLY_COMPLETE/)
   assert.match(workflow, /environment: staging-apply/)
   assert.match(workflow, /run: bash scripts\/aws\/arm-commit-guard\.sh/)
@@ -48,7 +73,8 @@ function classify(changes) {
   const dir = mkdtempSync(join(tmpdir(), 'fanout-'))
   try {
     writeFileSync(join(dir, 'plan.json'), JSON.stringify({ resource_changes: changes }))
-    return spawnSync('python3', ['-I', classifier, join(dir, 'plan.json'), LAMBDA, POLICY, ARCHIVE, SID], { encoding: 'utf8' })
+    // The same five Lambdas and archives the runner passes (asserted against the script below).
+    return spawnSync('python3', ['-I', classifier, join(dir, 'plan.json'), LAMBDAS.join(','), POLICY, ARCHIVES.join(','), SID, RULE, JSON.stringify(ADDED), JSON.stringify(RESERVED)], { encoding: 'utf8' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -63,8 +89,8 @@ const policy = (before, after, actions = ['update'], extra = {}) => ({
   address: POLICY,
   change: { actions, before: { name: 'p', role: 'r', policy: before }, after: { name: 'p', role: 'r', policy: after, ...extra }, after_unknown: {} },
 })
-const lambda = (afterChanges, actions = ['update'], afterUnknown = { last_modified: true, version: true, qualified_arn: true }) => ({
-  address: LAMBDA,
+const lambda = (afterChanges, actions = ['update'], afterUnknown = { last_modified: true, version: true, qualified_arn: true }, address = LAMBDA) => ({
+  address,
   change: {
     actions,
     before: { function_name: 'f', memory_size: 256, timeout: 20, source_code_hash: 'old', last_modified: 'x', version: '$LATEST' },
@@ -79,7 +105,7 @@ test('accepts the code update and the Scan statement removal, and reports no cha
   const both = classify([archiveRead, lambda({}), policy(OLD_POLICY, NEW_POLICY)])
   assert.equal(both.status, 0, both.stderr)
   assert.match(both.stdout, /^REALTIME_FANOUT_PLAN=CODE_AND_POLICY_UPDATE$/m)
-  assert.match(both.stdout, /^REALTIME_FANOUT_CODE_CHANGES=true$/m)
+  assert.match(both.stdout, /^REALTIME_FANOUT_CODE_CHANGES=aws_lambda_function\.realtime_fanout$/m)
   assert.match(both.stdout, /^REALTIME_FANOUT_POLICY_REMOVES=BroadcastFeedInvalidations$/m)
 
   assert.equal(classify([lambda({})]).status, 0)
@@ -103,6 +129,70 @@ test('nested blocks with nothing unknown are not changes (Terraform writes [{}] 
   const refusedPolicy = classify([{ ...policy(OLD_POLICY, NEW_POLICY), change: { ...policy(OLD_POLICY, NEW_POLICY).change, after_unknown: { policy: true } } }])
   assert.notEqual(refusedPolicy.status, 0)
   assert.match(refusedPolicy.stderr, /unknown values/)
+})
+
+test("Phase 5: accepts the connection Lambda's code update too, and refuses anything else on it", () => {
+  const connectionRead = { address: CONNECTION_ARCHIVE, change: { actions: ['read'], before: null, after: {} } }
+  const accepted = classify([archiveRead, connectionRead, lambda({}, ['update'], undefined, CONNECTION)])
+  assert.equal(accepted.status, 0, accepted.stderr)
+  assert.match(accepted.stdout, /^REALTIME_FANOUT_CODE_CHANGES=aws_lambda_function\.realtime_connection$/m)
+  assert.match(accepted.stdout, /^REALTIME_FANOUT_POLICY_REMOVES=none$/m)
+  const refused = classify([lambda({ memory_size: 512 }, ['update'], undefined, CONNECTION)])
+  assert.notEqual(refused.status, 0)
+  assert.match(refused.stderr, /changes more than its code/)
+  const outOfScope = classify([lambda({}, ['update'], undefined, 'aws_lambda_function.aurora_app_secret_rotation')])
+  assert.notEqual(outOfScope.status, 0)
+  assert.match(outOfScope.stderr, /Refusing: the plan changes/)
+})
+
+const pattern = (types, source = ['sea-n-shore.social']) => JSON.stringify({ source, 'detail-type': types })
+const OLD_TYPES = ['message.created', 'feed.post_created', 'connection.accepted']
+const rule = (before, after, actions = ['update'], extra = {}) => ({
+  address: RULE,
+  change: { actions, before: { name: 'r', tags: {}, event_pattern: before }, after: { name: 'r', tags: {}, event_pattern: after, ...extra }, after_unknown: {} },
+})
+
+test('Phase 5: accepts the realtime rule gaining exactly notification.created, nothing else', () => {
+  const accepted = classify([rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created']))])
+  assert.equal(accepted.status, 0, accepted.stderr)
+  assert.match(accepted.stdout, /^REALTIME_FANOUT_RULE_ADDS=\["notification\.created"\]$/m)
+  for (const [changes, reason] of [
+    [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created', 'user.followed']))], /adds \['notification\.created', 'user\.followed'\]/],
+    [[rule(pattern(OLD_TYPES), pattern(['message.created', 'notification.created']))], /would drop/],
+    [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created'], ['other.source']))], /more than its detail-type list/],
+    [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created']), ['update'], { name: 'other' })], /other than the rule pattern/],
+    [[rule(pattern(OLD_TYPES), pattern([...OLD_TYPES, 'notification.created']), ['delete', 'create'])], /not an in-place update/],
+  ]) {
+    const result = classify(changes)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, reason)
+  }
+})
+
+test('Phase 5: accepts each reservation at exactly its expected value, and nothing else', () => {
+  const reserve = (address, value, extra = {}) => ({
+    address,
+    change: {
+      actions: ['update'],
+      before: { function_name: 'f', memory_size: 128, source_code_hash: 'same', reserved_concurrent_executions: -1 },
+      after: { function_name: 'f', memory_size: 128, source_code_hash: 'same', reserved_concurrent_executions: value, ...extra },
+      after_unknown: {},
+    },
+  })
+  const all = classify(Object.entries(RESERVED).map(([address, value]) => reserve(address, value)))
+  assert.equal(all.status, 0, all.stderr)
+  assert.match(all.stdout, /^REALTIME_FANOUT_CODE_CHANGES=none$/m)
+  assert.deepEqual(JSON.parse(/^REALTIME_FANOUT_RESERVED=(.+)$/m.exec(all.stdout)[1]), RESERVED)
+  for (const [changes, reason] of [
+    [[reserve(AUTHORIZER, 1000)], /reserved concurrency becomes 1000, expected 100/],
+    [[reserve(SIGN_UP, 50)], /reserved concurrency becomes 50, expected 25/],
+    [[reserve(EMAIL, 25, { memory_size: 512 })], /changes more than its code/],
+    [[reserve('aws_lambda_function.aurora_app_secret_rotation', 10)], /Refusing: the plan changes/],
+  ]) {
+    const result = classify(changes)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, reason)
+  }
 })
 
 test('refuses any other Lambda change', () => {

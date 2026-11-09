@@ -49,10 +49,21 @@ type ConnectionOptions = {
   onStatusChange?: (status: MessagingRealtimeConnectionStatus) => void
   random?: () => number
   renewalMs?: number
+  heartbeatMs?: number
   requestTypingToken?: (conversationId: string) => Promise<TypingTokenGrant | null>
 }
 
 const DEFAULT_RENEWAL_MS = 55 * 60 * 1000
+/**
+ * Round ARCH (Phase 5): API Gateway drops a WebSocket that is idle for 10 minutes, so an open socket sends a ping
+ * every 5 (answered by the realtime Lambda with no database work).
+ */
+export const REALTIME_HEARTBEAT_MS = 5 * 60 * 1000
+/**
+ * Round ARCH (Phase 5): after the server closes a working connection (a deploy, the idle limit), the first reconnect
+ * waits up to this much longer at random, so every open tab does not reconnect in the same second.
+ */
+export const SERVER_CLOSE_RECONNECT_SPREAD_MS = 30_000
 /** The realtime Lambda relays at most one typing signal per 2 s per connection; the margin absorbs jitter. */
 export const TYPING_MIN_INTERVAL_MS = 2_200
 const TYPING_TOKEN_REFRESH_MARGIN_MS = 60_000
@@ -63,6 +74,7 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
   const acceptEvent = createRealtimeEventDedupe()
   const random = options.random ?? Math.random
   const renewalMs = options.renewalMs ?? DEFAULT_RENEWAL_MS
+  const heartbeatMs = options.heartbeatMs ?? REALTIME_HEARTBEAT_MS
 
   let active = false
   let connecting = false
@@ -71,6 +83,9 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
   let status: MessagingRealtimeConnectionStatus = 'disconnected'
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let renewalTimer: ReturnType<typeof setTimeout> | null = null
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  /** Set when the next reconnect follows a close the server made on a working connection. */
+  let spreadNextReconnect = false
   let typingTimer: ReturnType<typeof setTimeout> | null = null
   let lastTypingSentAt = 0
   const pendingTyping = new Map<string, TypingInput>()
@@ -94,10 +109,18 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     renewalTimer = null
   }
 
+  function clearHeartbeat() {
+    if (!heartbeatTimer) return
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = null
+  }
+
   function scheduleReconnect() {
     if (!active || reconnectTimer) return
     setStatus('backoff')
-    const delay = reconnectDelayMs(reconnectAttempt, random)
+    const spread = spreadNextReconnect ? Math.floor(Math.min(1, Math.max(0, random())) * SERVER_CLOSE_RECONNECT_SPREAD_MS) : 0
+    spreadNextReconnect = false
+    const delay = reconnectDelayMs(reconnectAttempt, random) + spread
     reconnectAttempt += 1
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
@@ -123,16 +146,27 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
       }
 
       socket = nextSocket
+      let opened = false
+      let closedByClient = false
+      const closeFromClient = (code?: number, reason?: string) => {
+        closedByClient = true
+        nextSocket.close(code, reason)
+      }
       nextSocket.onopen = () => {
         if (!active || socket !== nextSocket) return
+        opened = true
         reconnectAttempt = 0
         setStatus('connected')
         clearRenewalTimer()
         renewalTimer = setTimeout(() => {
           if (active && socket === nextSocket) {
-            nextSocket.close(4000, 'renew')
+            closeFromClient(4000, 'renew')
           }
         }, renewalMs)
+        clearHeartbeat()
+        heartbeatTimer = setInterval(() => {
+          if (active && socket === nextSocket && nextSocket.readyState === 1) nextSocket.send('{"action":"ping"}')
+        }, heartbeatMs)
         options.onConnected?.()
       }
       nextSocket.onmessage = (event) => {
@@ -143,12 +177,15 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
       }
       nextSocket.onerror = () => {
         if (!active || socket !== nextSocket) return
-        nextSocket.close()
+        closeFromClient()
       }
       nextSocket.onclose = () => {
         if (socket !== nextSocket) return
         socket = null
         clearRenewalTimer()
+        clearHeartbeat()
+        // A working connection the server closed: spread this tab's reconnect over up to 30 s.
+        if (opened && !closedByClient) spreadNextReconnect = true
         if (active) scheduleReconnect()
       }
     } catch {
@@ -171,6 +208,7 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     active = false
     clearReconnectTimer()
     clearRenewalTimer()
+    clearHeartbeat()
     clearTypingQueue()
     const current = socket
     socket = null

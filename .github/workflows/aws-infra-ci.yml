@@ -255,6 +255,8 @@ jobs:
         run: node --test scripts/aws/cwl-iam-scan.test.mjs
       - name: Verify load test accounts migration runner contract
         run: node --test scripts/aws/load-test-accounts-migration.test.mjs
+      - name: Verify notification created migration runner contract
+        run: node --test scripts/aws/notification-created-migration.test.mjs
       - name: Verify load test accounts runner contract
         run: node --test scripts/aws/load-test-accounts.test.mjs
       - name: Verify Resend delivery webhook runner contract

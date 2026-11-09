@@ -121,7 +121,8 @@ resource "aws_cloudwatch_event_rule" "realtime_events" {
       "feed.post_reaction_changed",
       "feed.post_comments_changed",
       "feed.post_reposted",
-      "connection.accepted"
+      "connection.accepted",
+      "notification.created"
     ]
   })
 
@@ -332,6 +333,9 @@ resource "aws_lambda_function" "realtime_authorizer" {
   timeout          = 10
   memory_size      = 256
 
+  # Round ARCH (Phase 5): reserved so neither realtime nor sign-up can starve the other (100 also caps it).
+  reserved_concurrent_executions = 100
+
   environment {
     variables = {
       REALTIME_TICKET_AUDIENCE   = local.realtime_ticket_audience
@@ -360,6 +364,9 @@ resource "aws_lambda_function" "realtime_connection" {
   source_code_hash = data.archive_file.realtime_connection.output_base64sha256
   timeout          = 10
   memory_size      = 256
+
+  # Round ARCH (Phase 5): reserved so neither realtime nor sign-up can starve the other (100 also caps it).
+  reserved_concurrent_executions = 100
 
   environment {
     variables = {
@@ -509,6 +516,9 @@ resource "aws_lambda_function" "realtime_fanout" {
   source_code_hash = data.archive_file.realtime_fanout.output_base64sha256
   timeout          = 20
   memory_size      = 256
+
+  # Round ARCH (Phase 5): reserved so neither realtime nor sign-up can starve the other (50 also caps it).
+  reserved_concurrent_executions = 50
 
   environment {
     variables = {

@@ -233,6 +233,9 @@ resource "aws_lambda_function" "cognito_pre_sign_up_link" {
   timeout          = 10
   memory_size      = 128
 
+  # Round ARCH (Phase 5): reserved so neither realtime nor sign-up can starve the other (25 also caps it).
+  reserved_concurrent_executions = 25
+
   depends_on = [
     aws_cloudwatch_log_group.cognito_pre_sign_up_link,
     aws_iam_role_policy_attachment.cognito_pre_sign_up_link_logs,

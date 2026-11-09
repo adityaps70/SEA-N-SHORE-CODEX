@@ -103,4 +103,26 @@ describe('realtime fan-out (Round ARCH broadcast fix)', () => {
     })] })
     expect(state.pushes.map((push) => push.connectionId).sort()).toEqual(['c-recipient', 'c-sender'])
   })
+
+  it("pushes a new notification's unread count to its recipient only, with no ids or content (Phase 5)", async () => {
+    state.connectionsByProfile.set('recipient', [item('c-recipient-a'), item('c-recipient-b')])
+    state.connectionsByProfile.set('someone-else', [item('c-other')])
+    await handler({ Records: [record({
+      id: 'e3', eventType: 'notification.created', schemaVersion: 1, occurredAt: '2026-11-08T05:00:00.000Z', aggregateId: 'n1',
+      payload: { eventType: 'notification.created', recipientId: 'recipient', notificationId: 'n1', audienceProfileIds: ['recipient'], unreadNotificationCount: 4 },
+    })] })
+    expect(state.pushes.map((push) => push.connectionId).sort()).toEqual(['c-recipient-a', 'c-recipient-b'])
+    expect(JSON.parse(state.pushes[0]!.data)).toEqual({
+      eventId: 'e3', eventType: 'notification.created', schemaVersion: 1, occurredAt: '2026-11-08T05:00:00.000Z', scope: 'notifications', unreadNotificationCount: 4,
+    })
+  })
+
+  it('sends a notification event without an audience to no one', async () => {
+    state.connectionsByProfile.set('recipient', [item('c-recipient')])
+    await handler({ Records: [record({
+      id: 'e4', eventType: 'notification.created', schemaVersion: 1, occurredAt: '2026-11-08T05:00:00.000Z', aggregateId: 'n2',
+      payload: { eventType: 'notification.created', recipientId: 'recipient', notificationId: 'n2' },
+    })] })
+    expect(state.pushes).toEqual([])
+  })
 })

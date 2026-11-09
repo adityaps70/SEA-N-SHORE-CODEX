@@ -30,8 +30,11 @@ const FEED_INVALIDATION_EVENT_TYPES = new Set([
   'feed.post_reposted',
 ])
 
+// Round ARCH (Phase 5): a new notification's recipient (added by the outbox publisher) gets their unread count.
+const NOTIFICATION_EVENT_TYPE = 'notification.created'
+
 function getAudience(event) {
-  if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType)) {
+  if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType) || event?.eventType === NOTIFICATION_EVENT_TYPE) {
     const audience = Array.isArray(event.payload?.audienceProfileIds) ? event.payload.audienceProfileIds : []
     return [...new Set(audience.filter((id) => typeof id === 'string' && id.length > 0))].slice(0, FEED_AUDIENCE_CAP)
   }
@@ -77,7 +80,23 @@ function toInvalidationSignal(event, scope) {
   }
 }
 
+function toNotificationSignal(event) {
+  const count = Number(event.payload?.unreadNotificationCount)
+  return {
+    eventId: event.id,
+    eventType: event.eventType,
+    schemaVersion: event.schemaVersion,
+    occurredAt: event.occurredAt,
+    scope: 'notifications',
+    ...(Number.isInteger(count) && count >= 0 ? { unreadNotificationCount: count } : {}),
+  }
+}
+
 function toRealtimeSignal(event) {
+  if (event?.eventType === NOTIFICATION_EVENT_TYPE) {
+    return toNotificationSignal(event)
+  }
+
   if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType)) {
     return toInvalidationSignal(event, 'feed')
   }

@@ -348,6 +348,8 @@ export function MessagingRealtimeProvider({
       // Round ARCH (broadcast fix): a feed hint never re-renders the page. Listeners (the home feed's "N new
       // posts" count) re-ask the server themselves. Only a new connection still refreshes, for the viewer's network.
       if ('scope' in signal && signal.scope === 'feed') return
+      // Phase 5: the bell takes the pushed count itself (useNotificationCountPush); never a page refresh.
+      if (signal.eventType === 'notification.created') return
       scheduleRefresh()
     }
     const onConnected = () => {

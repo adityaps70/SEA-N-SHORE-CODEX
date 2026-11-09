@@ -130,4 +130,49 @@ describe('feed push audience', () => {
     const [enriched] = await withFeedPushAudience([event('feed.post_created', 'a', 'b')], failing as never)
     expect((enriched!.payload as { audienceProfileIds: string[] }).audienceProfileIds).toEqual([])
   })
+
+  it('queues notification.created for every new notification, and gives it the recipient and their unread count', async () => {
+    const recipient = await member()
+    const actor = await member()
+    const notify = async (dedupe: string) => db.query(
+      `insert into public.notifications (recipient_id, actor_id, notification_type, dedupe_key)
+       values ($1, $2, 'new_follower', $3) on conflict (recipient_id, dedupe_key) where dedupe_key is not null do nothing returning id`,
+      [recipient, actor, dedupe],
+    )
+    const first = await notify(`audience-test-${recipient}-1`)
+    await notify(`audience-test-${recipient}-2`)
+    await notify(`audience-test-${recipient}-1`) // a repeat inserts nothing and queues nothing
+
+    const queued = await db.query(
+      `select aggregate_type, aggregate_id, payload from public.event_outbox
+       where event_type = 'notification.created' and payload->>'recipientId' = $1 order by occurred_at, aggregate_id`,
+      [recipient],
+    )
+    expect(queued).toHaveLength(2)
+    expect(queued.map((row) => row.aggregate_type)).toEqual(['notification', 'notification'])
+    expect(queued.map((row) => row.aggregate_id)).toContain(first[0]!.id)
+    expect(Object.keys(queued[0]!.payload as object).sort()).toEqual(['eventType', 'notificationId', 'recipientId'])
+
+    const event = {
+      id: crypto.randomUUID(), aggregateType: 'notification', aggregateId: first[0]!.id, eventType: 'notification.created', schemaVersion: 1,
+      occurredAt: new Date().toISOString(), payload: queued[0]!.payload,
+    } as unknown as DomainEvent
+    const [enriched] = await withFeedPushAudience([event], query)
+    expect(enriched!.payload).toMatchObject({ audienceProfileIds: [recipient], unreadNotificationCount: 2 })
+
+    await db.query(`update public.notifications set read_at = now() where recipient_id = $1`, [recipient])
+    const [afterRead] = await withFeedPushAudience([event], query)
+    expect(afterRead!.payload).toMatchObject({ audienceProfileIds: [recipient], unreadNotificationCount: 0 })
+  })
+
+  it('never pushes a notification count to a load-test account', async () => {
+    const loadTestRecipient = await member(true)
+    const event = {
+      id: crypto.randomUUID(), aggregateType: 'notification', aggregateId: crypto.randomUUID(), eventType: 'notification.created', schemaVersion: 1,
+      occurredAt: new Date().toISOString(), payload: { eventType: 'notification.created', recipientId: loadTestRecipient, notificationId: crypto.randomUUID() },
+    } as unknown as DomainEvent
+    const [enriched] = await withFeedPushAudience([event], query)
+    expect((enriched!.payload as { audienceProfileIds: string[] }).audienceProfileIds).toEqual([])
+    expect(enriched!.payload).not.toHaveProperty('unreadNotificationCount')
+  })
 })

@@ -72,7 +72,18 @@ export type SocialInvalidationRealtimeSignal = {
   scope: 'feed' | 'network'
 }
 
+/** Round ARCH (Phase 5): a new notification for this member, with their unread count (no ids, no content). */
+export type NotificationCreatedRealtimeSignal = {
+  eventId: string
+  eventType: 'notification.created'
+  schemaVersion: number
+  occurredAt: string
+  scope: 'notifications'
+  unreadNotificationCount?: number
+}
+
 export type MessagingRealtimeSignal =
+  | NotificationCreatedRealtimeSignal
   | MessageCreatedRealtimeSignal
   | MessageUpdatedRealtimeSignal
   | ConversationTypingRealtimeSignal
@@ -179,6 +190,13 @@ function parseConversationRead(value: JsonRecord): ConversationReadRealtimeSigna
   return value as unknown as ConversationReadRealtimeSignal
 }
 
+function parseNotificationCreated(value: JsonRecord): NotificationCreatedRealtimeSignal | null {
+  if (value.eventType !== 'notification.created' || !hasMetadataOnlyEnvelope(value) || value.scope !== 'notifications') return null
+  const count = value.unreadNotificationCount
+  if (count !== undefined && !(typeof count === 'number' && Number.isInteger(count) && count >= 0)) return null
+  return value as unknown as NotificationCreatedRealtimeSignal
+}
+
 function parseSocialInvalidation(value: JsonRecord): SocialInvalidationRealtimeSignal | null {
   if (!hasMetadataOnlyEnvelope(value) || !isNonEmptyString(value.eventType)) return null
 
@@ -222,6 +240,7 @@ export function parseRealtimeSignal(raw: unknown): MessagingRealtimeSignal | nul
     ?? parseMessageUpdated(parsed)
     ?? parseConversationTyping(parsed)
     ?? parseConversationRead(parsed)
+    ?? parseNotificationCreated(parsed)
     ?? parseSocialInvalidation(parsed)
 }
 

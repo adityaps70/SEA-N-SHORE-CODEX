@@ -12,7 +12,8 @@ import { usePostImpressions } from '../impressions/use-post-impressions'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
 import { buttonClass } from '@/components/ui/interactive-styles'
-import { FEED_FRESH_POSTS_POLL_MS, startVisibleInterval } from '@/lib/browser/visible-interval'
+import { FEED_FRESH_POSTS_POLL_MS } from '@/lib/browser/visible-interval'
+import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import { cn } from '@/lib/cn'
 
 const NO_SUGGESTIONS: NetworkProfile[] = []
@@ -124,33 +125,33 @@ export function FeedList({
     return () => observer.disconnect()
   }, [cursor])
 
-  useEffect(() => {
-    let active = true
-    let checking = false
-
-    const checkForFreshPosts = async () => {
-      if (checking) return
-      checking = true
-      try {
-        const result = await loadFeedPage({ category, ...(groupId ? { groupId } : {}), ...(hashtag ? { hashtag } : {}), limit: 12 })
-        if (!active || !result.ok) return
+  // Newer posts above the first one. Round ARCH (Phase 5): asked on a realtime new-post hint. A group feed's hints
+  // reach every active member, so its 90-second check runs only while the realtime socket is down; hashtag and
+  // category feeds also show posts from outside the member's network, which no hint reaches, so they keep it.
+  const freshQueryRef = useRef({ category, groupId, hashtag })
+  useEffect(() => { freshQueryRef.current = { category, groupId, hashtag } }, [category, groupId, hashtag])
+  const checkingFreshRef = useRef(false)
+  const checkForFreshPosts = useCallback(() => {
+    if (checkingFreshRef.current) return
+    checkingFreshRef.current = true
+    const query = freshQueryRef.current
+    void loadFeedPage({ category: query.category, ...(query.groupId ? { groupId: query.groupId } : {}), ...(query.hashtag ? { hashtag: query.hashtag } : {}), limit: 12 })
+      .then((result) => {
+        if (!result.ok || freshQueryRef.current !== query) return
         setPosts((current) => {
           const seen = new Set(current.map((post) => post.id))
           const unseen = result.page.posts.filter((post) => !seen.has(post.id))
           setFreshPosts(unseen)
           return current
         })
-      } finally {
-        checking = false
-      }
-    }
-
-    const stop = startVisibleInterval(() => { void checkForFreshPosts() }, FEED_FRESH_POSTS_POLL_MS)
-    return () => {
-      active = false
-      stop()
-    }
-  }, [category, groupId, hashtag])
+      })
+      .finally(() => { checkingFreshRef.current = false })
+  }, [])
+  useRealtimeAwarePoll(checkForFreshPosts, {
+    intervalMs: FEED_FRESH_POSTS_POLL_MS,
+    hintEventTypes: ['feed.post_created', 'feed.post_reposted'],
+    pauseWhileConnected: Boolean(groupId),
+  })
 
   function showFreshPosts() {
     setPosts((current) => {

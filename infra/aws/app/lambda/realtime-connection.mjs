@@ -26,6 +26,9 @@ export const TYPING_TOKEN_TTL_SECONDS = 12 * 60 * 60
 // At most one typing signal per connection per 2 s.
 export const TYPING_MIN_INTERVAL_MS = 2_000
 const TYPING_TOKEN_PATTERN = /^(\d{10})\.([A-Za-z0-9_-]{43})$/
+// Round ARCH (Phase 5): at most this many live connections per member; a further one is refused at $connect (that
+// tab keeps working on its 60-second checks). Expired rows found on the way are removed and not counted.
+export const MAX_CONNECTIONS_PER_MEMBER = 5
 let cachedTypingKey
 function managementClient(event) {
   const domainName = event.requestContext?.domainName
@@ -147,10 +150,23 @@ async function claimTypingSlot(connectionId, nowMs = Date.now()) {
   }
 }
 
-async function handleTyping(connectionId, event) {
-  const websocket = managementClient(event)
-  if (!websocket) throw new Error('REALTIME_MANAGEMENT_ENDPOINT is unavailable')
+/** Live connections of a member, removing expired rows on the way. */
+async function liveConnectionCount(profileId, nowSeconds) {
+  let live = 0
+  for (const item of await targetConnections(profileId)) {
+    const connectionId = item.connection_id?.S
+    const expiresAt = Number(item.expires_at?.N)
+    if (!connectionId) continue
+    if (!Number.isFinite(expiresAt) || expiresAt <= nowSeconds) {
+      await deleteConnection(connectionId)
+      continue
+    }
+    live += 1
+  }
+  return live
+}
 
+async function handleClientMessage(connectionId, event) {
   let body
   try {
     body = JSON.parse(event.body ?? '{}')
@@ -158,9 +174,19 @@ async function handleTyping(connectionId, event) {
     return response(400, { error: 'invalid_json' })
   }
 
+  // Round ARCH (Phase 5): the browser's 5-minute heartbeat keeps the socket inside API Gateway's 10-minute idle
+  // limit. Answered at once: no table, no secret, no push.
+  if (body?.action === 'ping') return response(200, { pong: true })
+
   if (body?.action !== 'typing') {
     return response(400, { error: 'client_messages_not_supported' })
   }
+  return handleTyping(connectionId, event, body)
+}
+
+async function handleTyping(connectionId, event, body) {
+  const websocket = managementClient(event)
+  if (!websocket) throw new Error('REALTIME_MANAGEMENT_ENDPOINT is unavailable')
 
   const conversationId = typeof body.conversationId === 'string' ? body.conversationId : ''
   const targetProfileId = typeof body.targetProfileId === 'string' ? body.targetProfileId : ''
@@ -227,6 +253,9 @@ export async function handler(event) {
     }
 
     const nowSeconds = Math.floor(Date.now() / 1000)
+    if (await liveConnectionCount(String(profileId), nowSeconds) >= MAX_CONNECTIONS_PER_MEMBER) {
+      return response(429, { error: 'too_many_connections' })
+    }
     await dynamodb.send(new PutItemCommand({
       TableName: tableName,
       Item: {
@@ -246,7 +275,7 @@ export async function handler(event) {
   }
 
   if (routeKey === '$default') {
-    return handleTyping(connectionId, event)
+    return handleClientMessage(connectionId, event)
   }
 
   return response(400, { error: 'client_messages_not_supported' })
