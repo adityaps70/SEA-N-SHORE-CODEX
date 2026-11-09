@@ -137,3 +137,19 @@ for (const check of [
 ]) assert.match(revert, check)
 assert.ok(revert.indexOf('branch-head.sh') < revert.indexOf('begin_transaction)'), 'the unmoved-branch check comes before any write')
 assert.equal([...revert.matchAll(/^echo "(LEGACY_FINAL_REMINDER_MIGRATION_[A-Z_]+=true)"$/gm)].at(-1)?.[1], 'LEGACY_FINAL_REMINDER_MIGRATION_REVERT_VERIFIED=true')
+
+// The owner's P4 report counts: read-only aggregates and dates, printed on every run, never an address or a name.
+{
+  const block = script.slice(script.indexOf('# Read-only legacy email counts'), script.indexOf('PENDING=()'))
+  assert.ok(block.length > 0, 'the counts block is present')
+  assert.ok(script.indexOf('# Read-only legacy email counts') < script.indexOf('if [[ "${#PENDING[@]}" -eq 0 ]]; then'), 'counts print before the nothing-pending exit')
+  const sql = [...block.matchAll(/read_(?:count|text) "([^"]+)"/g)].map((m) => m[1])
+  assert.equal(sql.length, 6)
+  for (const statement of sql) {
+    assert.match(statement, /^SELECT /, statement.slice(0, 40))
+    assert.doesNotMatch(statement, /\b(insert|update|delete|drop|alter|create|truncate)\b/i)
+    assert.match(statement, /count\(/)
+  }
+  assert.doesNotMatch(block, /begin_transaction|commit-transaction/)
+  assert.match(block, /^echo "LEGACY_COUNTS first_sent=\$LEGACY_FIRST_SENT reminder_sent=\$LEGACY_REMINDER_SENT claimed=\$LEGACY_CLAIMED /m)
+}

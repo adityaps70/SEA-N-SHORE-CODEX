@@ -127,6 +127,17 @@ LEDGER_EXISTS="$(read_count "SELECT count(*)::bigint FROM information_schema.tab
 already_applied() { [[ "$(read_count "SELECT count(*)::bigint FROM public.sea_n_shore_applied_migrations WHERE name='$1'")" == "1" ]]; }
 already_applied 0098_notification_created_event || { echo "Migration 0098_notification_created_event is not applied yet; refusing migration." >&2; exit 1; }
 
+# Read-only legacy email counts for the owner's P4 report, on every run (plan included): aggregates and dates only,
+# never an address or a name. SELECTs only, outside any transaction.
+read_text() { data_api --sql "$1" --output json | jq -r '.records[0][0].stringValue // "none"'; }
+LEGACY_FIRST_SENT="$(read_count "SELECT count(*)::bigint FROM public.legacy_profile_invites WHERE status = 'sent'")"
+LEGACY_REMINDER_SENT="$(read_count "SELECT count(*)::bigint FROM public.legacy_profile_invite_reminders WHERE status = 'sent'")"
+LEGACY_CLAIMED="$(read_count "SELECT count(*)::bigint FROM public.legacy_profile_claims WHERE claimed_at IS NOT NULL")"
+LEGACY_SUPPRESSED="$(read_count "SELECT count(DISTINCT lower(invite.email))::bigint FROM public.legacy_profile_invites invite JOIN public.email_suppressions suppression ON suppression.email = lower(invite.email) WHERE suppression.reason <> 'unsubscribed'")"
+LEGACY_UNSUBSCRIBED="$(read_count "SELECT count(DISTINCT lower(invite.email))::bigint FROM public.legacy_profile_invites invite JOIN public.email_suppressions suppression ON suppression.email = lower(invite.email) WHERE suppression.reason = 'unsubscribed'")"
+echo "LEGACY_COUNTS first_sent=$LEGACY_FIRST_SENT reminder_sent=$LEGACY_REMINDER_SENT claimed=$LEGACY_CLAIMED bounced_complained_or_suppressed=$LEGACY_SUPPRESSED unsubscribed=$LEGACY_UNSUBSCRIBED"
+echo "LEGACY_REMINDER_SENT_BY_DAY $(read_text "SELECT coalesce(string_agg(day || '=' || sent, ',' ORDER BY day), 'none') FROM (SELECT to_char(sent_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*) AS sent FROM public.legacy_profile_invite_reminders WHERE status = 'sent' AND sent_at IS NOT NULL GROUP BY 1) days")"
+
 PENDING=()
 for migration in "${MIGRATIONS[@]}"; do
   name="$(basename "$migration" .sql)"
