@@ -260,3 +260,13 @@ test('a refused environment change names the Lambda and the variable names, neve
   const unknown = classify([lambda({}, ['update'], { last_modified: true, environment: [{ variables: { TOKEN_ARN: true } }] })])
   assert.match(unknown.stderr, /environment variable names: \['TOKEN_ARN'\]/)
 })
+
+test('the site URL comes from the canonical public-site-url.txt, not the state copy of the web task', () => {
+  // Plan run 42627857003: the state copy would have changed the Cognito email sender's SITE_URL.
+  assert.match(script, /SITE_URL_FILE="scripts\/aws\/public-site-url\.txt"/)
+  assert.match(script, /PUBLIC_SITE_URL="\$\(tr -d '\[:space:\]' < "\$SITE_URL_FILE"\)"/)
+  assert.match(script, /\[\[ "\$PUBLIC_SITE_URL" =~ \^https:\/\/\[a-z0-9\.-\]\+\$ \]\]/)
+  assert.match(script, /'site_url': os\.environ\['PUBLIC_SITE_URL'\],/)
+  assert.doesNotMatch(script, /NEXT_PUBLIC_SITE_URL/)
+  assert.match(script, /git diff --quiet HEAD -- [^\n]*"\$SITE_URL_FILE"/)
+})
