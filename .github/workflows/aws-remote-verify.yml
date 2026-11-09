@@ -4,6 +4,11 @@ on:
   # Actions minutes: started once per deploy by aws-staging-deploy.yml (after the ECS rollout is
   # verified), or by hand; not on every push.
   workflow_dispatch:
+    inputs:
+      types_since:
+        description: "Report only: also list error types since this UTC time (YYYY-MM-DDTHH:MM:SSZ), e.g. to see a previous deployment's errors. Pass/fail still reviews only the current deployment."
+        required: false
+        default: ""
 
 permissions:
   id-token: write
@@ -384,6 +389,8 @@ jobs:
           echo "COGNITO_USER_CREATION_THROTTLES_60M=$USER_CREATION_THROTTLES"
 
       - name: Review current deployment CloudWatch strong runtime errors
+        env:
+          TYPES_SINCE: ${{ inputs.types_since }}
         run: |
           set -euo pipefail
           LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
@@ -407,6 +414,14 @@ jobs:
           TOTAL=$(jq '.events | length' /tmp/remote-verify-cloudwatch.json)
           MALFORMED_SERVER_REFERENCE_PATTERN='^Error: The Server Reference ID did not match the expected format\. Received "[^"]*"\.$'
           STALE_SERVER_ACTION_PATTERN='^Error: Failed to find Server Action "[^"]+"\. This request might be from an older or newer deployment\.$'
+          # Round ARCH (Phase 5 follow-up): Next.js also logs the same stale-tab error without the action ID (run
+          # 42645107588). Both forms are counted and excluded from the strong matches, but stale-tab errors fail the
+          # run when they stay high after the first 30 minutes of the deployment (tabs from the old build should have
+          # moved on by then; see src/features/app-update/stale-deployment.ts).
+          STALE_SERVER_ACTION_NO_ID_PATTERN='^⨯ Error: Failed to find Server Action\. This request might be from an older or newer deployment\.$'
+          STALE_TAB_GRACE_SECONDS=1800
+          STALE_TAB_MAX_PER_HOUR=60
+          ERROR_LINE_REGEX='(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|password authentication failed|database[^[:cntrl:]]*(failed|error)|auth[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)'
           EXPECTED_AUTH_REQUIRED_PATTERN='^⨯ Error \[AwsAuthenticationRequiredError\]: Authentication required\.$'
           EXPECTED_ADMIN_FORBIDDEN_PATTERN='^⨯ Error: admin_forbidden$'
           EXPECTED_PROFILE_DISCOVERY_MESSAGE='Complete your professional profile to discover the network'
@@ -423,6 +438,18 @@ jobs:
           IGNORED_STALE_SERVER_ACTION_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$STALE_SERVER_ACTION_PATTERN" \
             || true)
+          STALE_SERVER_ACTION_NO_ID_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Ec "$STALE_SERVER_ACTION_NO_ID_PATTERN" \
+            || true)
+          STALE_TAB_GRACE_END_MS=$(( (PRIMARY_DEPLOYMENT_START_SECONDS + STALE_TAB_GRACE_SECONDS) * 1000 ))
+          STALE_TAB_AFTER_GRACE=$(jq -r --argjson after "$STALE_TAB_GRACE_END_MS" '.events[] | select(.timestamp >= $after) | .message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Ec "$STALE_SERVER_ACTION_PATTERN|$STALE_SERVER_ACTION_NO_ID_PATTERN" \
+            || true)
+          STALE_TAB_MEASURED_SECONDS=$(( $(date +%s) - PRIMARY_DEPLOYMENT_START_SECONDS - STALE_TAB_GRACE_SECONDS ))
+          if [ "$STALE_TAB_MEASURED_SECONDS" -lt 0 ]; then STALE_TAB_MEASURED_SECONDS=0; fi
+          # Per hour over at least one hour, so a short window just after the grace period cannot inflate the rate.
+          STALE_TAB_RATE_SECONDS=$(( STALE_TAB_MEASURED_SECONDS > 3600 ? STALE_TAB_MEASURED_SECONDS : 3600 ))
+          STALE_TAB_PER_HOUR=$(( STALE_TAB_AFTER_GRACE * 3600 / STALE_TAB_RATE_SECONDS ))
           IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$EXPECTED_AUTH_REQUIRED_PATTERN" \
             || true)
@@ -452,6 +479,7 @@ jobs:
           MATCHES=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ev "$MALFORMED_SERVER_REFERENCE_PATTERN" \
             | grep -Ev "$STALE_SERVER_ACTION_PATTERN" \
+            | grep -Ev "$STALE_SERVER_ACTION_NO_ID_PATTERN" \
             | grep -Ev "$EXPECTED_AUTH_REQUIRED_PATTERN" \
             | grep -Ev "$EXPECTED_ADMIN_FORBIDDEN_PATTERN" \
             | grep -Fv "$EXPECTED_PROFILE_DISCOVERY_MESSAGE" \
@@ -470,6 +498,8 @@ jobs:
           echo "CLOUDWATCH_EVENTS_REVIEWED=$TOTAL"
           echo "IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS=$IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS"
           echo "IGNORED_STALE_SERVER_ACTION_REQUESTS=$IGNORED_STALE_SERVER_ACTION_REQUESTS"
+          echo "STALE_SERVER_ACTION_NO_ID_REQUESTS=$STALE_SERVER_ACTION_NO_ID_REQUESTS"
+          echo "STALE_TAB_AFTER_FIRST_30_MIN=$STALE_TAB_AFTER_GRACE over $(( STALE_TAB_MEASURED_SECONDS / 60 )) min, per_hour=$STALE_TAB_PER_HOUR max_per_hour=$STALE_TAB_MAX_PER_HOUR"
           echo "IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS=$IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS"
           echo "IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS=$IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS"
           echo "EXPECTED_COGNITO_THROTTLE_COUNT=$EXPECTED_COGNITO_THROTTLE_COUNT"
@@ -482,6 +512,44 @@ jobs:
           fi
           echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
 
+          # Every error type in the review window with its count, ignored types included. Signatures only: addresses,
+          # ids, quoted values, links and numbers are replaced, so no member data is printed.
+          error_types() {
+            jq -r '.events[].message' "$1" \
+              | grep -Eai "$ERROR_LINE_REGEX" \
+              | python3 -c '
+          import re, sys
+          from collections import Counter
+          counts = Counter()
+          for line in sys.stdin:
+              s = line.strip()
+              s = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "[email]", s)
+              s = re.sub(r"https?://\S+", "[link]", s)
+              s = re.sub(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "[uuid]", s)
+              s = re.sub(r"\"[^\"]*\"", "\"…\"", s)
+              s = re.sub(r"\x27[^\x27]*\x27", "\x27…\x27", s)
+              s = re.sub(r"\b[0-9a-fA-F]{12,}\b", "[hex]", s)
+              s = re.sub(r"\d{2,}", "[n]", s)
+              counts[s[:200]] += 1
+          for signature, count in counts.most_common():
+              print(f"  {count:6d}  {signature}")
+          print(f"ERROR_TYPES={len(counts)} ERROR_LINES={sum(counts.values())}")
+          ' || true
+          }
+          echo "=== ERROR TYPES IN THE CURRENT PRIMARY DEPLOYMENT (count, signature) ==="
+          error_types /tmp/remote-verify-cloudwatch.json
+          if [ -n "${TYPES_SINCE:-}" ]; then
+            [[ "$TYPES_SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { echo "types_since must be YYYY-MM-DDTHH:MM:SSZ." >&2; exit 1; }
+            aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" \
+              --start-time "$(( $(date -d "$TYPES_SINCE" +%s) * 1000 ))" --output json > /tmp/remote-verify-types-since.json
+            echo "=== ERROR TYPES SINCE $TYPES_SINCE (report only, count, signature) ==="
+            error_types /tmp/remote-verify-types-since.json
+          fi
+
+          if [ "$STALE_TAB_PER_HOUR" -gt "$STALE_TAB_MAX_PER_HOUR" ]; then
+            echo "Stale-tab Server Action errors stay high: $STALE_TAB_PER_HOUR per hour after the first 30 minutes (limit $STALE_TAB_MAX_PER_HOUR)." >&2
+            exit 1
+          fi
           if [ "$MATCH_COUNT" -gt 1 ]; then
             echo "Repeating runtime error signatures detected in the current PRIMARY deployment." >&2
             printf '%s\n' "$MATCHES" \

@@ -15,6 +15,7 @@ import { buttonClass } from '@/components/ui/interactive-styles'
 import { FEED_FRESH_POSTS_POLL_MS } from '@/lib/browser/visible-interval'
 import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import { cn } from '@/lib/cn'
+import { handleStaleDeployment } from '@/features/app-update/stale-deployment'
 
 const NO_SUGGESTIONS: NetworkProfile[] = []
 
@@ -98,7 +99,8 @@ export function FeedList({
       const next = result.page.nextCursor
       const moved = next && (next.id !== cursor.id || next.createdAt !== cursor.createdAt)
       setCursor(moved && added > 0 ? next : null)
-    } catch {
+    } catch (error) {
+      handleStaleDeployment(error)
       failedRef.current = true
       setError('We could not load more posts.')
     } finally {

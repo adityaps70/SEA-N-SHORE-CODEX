@@ -4,6 +4,7 @@ import { headers } from 'next/headers'
 import { connection } from 'next/server'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import { DisplayModeMarker } from '@/components/pwa/display-mode-marker'
+import { AppUpdateBar } from '@/features/app-update/app-update-bar'
 import { CONTENT_SECURITY_POLICY_HEADER } from '@/lib/security/content-security-policy'
 import { CSP_REPORTER_SCRIPT, nonceFromContentSecurityPolicy } from '@/lib/security/csp-reporter-script'
 import './globals.css'
@@ -114,6 +115,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         {children}
         <DisplayModeMarker />
+        <AppUpdateBar />
       </body>
     </html>
   )

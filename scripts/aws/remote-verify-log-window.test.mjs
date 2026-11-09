@@ -96,3 +96,30 @@ test('staging deployment verification polls until ECS reports rolloutState COMPL
   assert.match(stagingDeployWorkflow, /sleep 5/)
   assert.match(stagingDeployWorkflow, /Timed out waiting for exact ECS deployment completion/)
 })
+
+test('the no-ID stale-tab error is counted, excluded from strong matches, and fails the run when it stays high', () => {
+  // Run 42645107588: Next.js logs the stale-tab error without the action ID too.
+  assert.ok(workflow.includes("STALE_SERVER_ACTION_NO_ID_PATTERN='^⨯ Error: Failed to find Server Action\\. This request might be from an older or newer deployment\\.$'"))
+  assert.match(workflow, /grep -Ev "\$STALE_SERVER_ACTION_NO_ID_PATTERN"/)
+  assert.match(workflow, /STALE_SERVER_ACTION_NO_ID_REQUESTS=\$STALE_SERVER_ACTION_NO_ID_REQUESTS/)
+  // Both forms, after the first 30 minutes, per hour over at least an hour, against a fixed limit.
+  assert.match(workflow, /STALE_TAB_GRACE_SECONDS=1800\n/)
+  assert.match(workflow, /STALE_TAB_MAX_PER_HOUR=60\n/)
+  assert.match(workflow, /select\(\.timestamp >= \$after\)/)
+  assert.match(workflow, /grep -Ec "\$STALE_SERVER_ACTION_PATTERN\|\$STALE_SERVER_ACTION_NO_ID_PATTERN"/)
+  assert.match(workflow, /STALE_TAB_MEASURED_SECONDS > 3600 \? STALE_TAB_MEASURED_SECONDS : 3600/)
+  assert.match(workflow, /if \[ "\$STALE_TAB_PER_HOUR" -gt "\$STALE_TAB_MAX_PER_HOUR" \]; then\n[^\n]*\n\s+exit 1\n/)
+})
+
+test('every error type is printed with its count, with addresses, ids, quoted values, links and numbers removed', () => {
+  assert.match(workflow, /=== ERROR TYPES IN THE CURRENT PRIMARY DEPLOYMENT \(count, signature\) ===/)
+  assert.match(workflow, /error_types \/tmp\/remote-verify-cloudwatch\.json/)
+  for (const replaced of ['[email]', '[link]', '[uuid]', '[hex]', '[n]']) assert.ok(workflow.includes(`"${replaced}"`), replaced)
+  assert.match(workflow, /grep -Eai "\$ERROR_LINE_REGEX"/)
+  // The listing for an earlier window is report only: validated, and it never changes the pass/fail.
+  assert.match(workflow, /types_since:\n\s+description: "Report only:/)
+  assert.match(workflow, /\[\[ "\$TYPES_SINCE" =~ \^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}T\[0-9\]\{2\}:\[0-9\]\{2\}:\[0-9\]\{2\}Z\$ \]\]/)
+  const since = workflow.slice(workflow.indexOf('if [ -n "${TYPES_SINCE:-}" ]; then'), workflow.indexOf('if [ "$STALE_TAB_PER_HOUR"'))
+  assert.ok(since.length > 0)
+  assert.doesNotMatch(since, /MATCH_COUNT|STALE_TAB_PER_HOUR/)
+})

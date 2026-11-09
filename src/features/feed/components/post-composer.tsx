@@ -36,6 +36,7 @@ import { uploadPostMediaFile } from './upload-post-media'
 import { uploadVideoPoster } from '../video-poster'
 import { buttonClass } from '@/components/ui/interactive-styles'
 import { cn } from '@/lib/cn'
+import { useUnsavedInput } from '@/hooks/use-unsaved-changes-warning'
 
 const initialState: PostComposerState = {}
 const POST_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm'
@@ -310,6 +311,8 @@ export function PostComposer({
   const [draftHydrated, setDraftHydrated] = useState(false)
   /** Photo / Document button to point at when the file picker could not open by itself. */
   const [pickerHint, setPickerHint] = useState<'photo' | 'document' | null>(null)
+  // Round ARCH (Phase 5 follow-up): a half-written post keeps a tab on an old build from reloading by itself.
+  useUnsavedInput(body.trim() !== '' || media.length > 0 || topicTags.trim() !== '')
   const handledComposeRef = useRef<ComposeRequest | null>(null)
   const autoPickRef = useRef<'photo' | 'document' | null>(null)
 

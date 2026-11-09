@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
+import { setUnsavedInput } from '@/features/app-update/stale-deployment'
 
 export const UNSAVED_CHANGES_MESSAGE = 'You have unsaved changes. Leave this page anyway?'
 
@@ -30,6 +31,7 @@ export function internalDestination(anchor: HTMLAnchorElement) {
  * link to another page in the app asks first (client-side navigation never fires beforeunload).
  */
 export function useUnsavedChangesWarning(active: boolean, message = UNSAVED_CHANGES_MESSAGE) {
+  useUnsavedInput(active)
   useEffect(() => {
     if (!active) return
     function onBeforeUnload(event: BeforeUnloadEvent) {
@@ -52,4 +54,13 @@ export function useUnsavedChangesWarning(active: boolean, message = UNSAVED_CHAN
       document.removeEventListener('click', onClickCapture, true)
     }
   }, [active, message])
+}
+
+/** Round ARCH (Phase 5 follow-up): while `dirty`, a tab on an old build never reloads by itself (stale-deployment.ts). */
+export function useUnsavedInput(dirty: boolean) {
+  const key = useId()
+  useEffect(() => {
+    setUnsavedInput(key, dirty)
+    return () => setUnsavedInput(key, false)
+  }, [key, dirty])
 }
