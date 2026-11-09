@@ -44,7 +44,19 @@ def statements(policy_text):
     return [items] if isinstance(items, dict) else items
 
 
-def check_lambda(change, expected_reserved=None):
+def environment_names(change):
+    """Names (never values) of the environment variables that differ or are unknown, for a refusal message."""
+    def variables(side):
+        blocks = (change.get(side) or {}).get('environment') or [{}]
+        return (blocks[0] or {}).get('variables') or {} if isinstance(blocks, list) and blocks else {}
+    before, after = variables('before'), variables('after')
+    unknown_blocks = (change.get('after_unknown') or {}).get('environment') or [{}]
+    unknown = (unknown_blocks[0] or {}).get('variables') if isinstance(unknown_blocks, list) and unknown_blocks else None
+    unknown_names = set(unknown) if isinstance(unknown, dict) else ({'(all)'} if unknown is True else set())
+    return sorted({k for k in set(before) | set(after) if before.get(k) != after.get(k)} | {k for k in unknown_names if k == '(all)' or has_unknown(unknown.get(k))})
+
+
+def check_lambda(change, expected_reserved=None, address='the Lambda'):
     if change['actions'] != ['update']:
         refuse(f"the Lambda {change['actions']} is not an in-place update")
     before, after = change.get('before') or {}, change.get('after') or {}
@@ -59,7 +71,8 @@ def check_lambda(change, expected_reserved=None):
         refuse('the Lambda update does not change its code')
     extra = sorted(changed - allowed)
     if extra:
-        refuse(f'the Lambda update changes more than its code: {extra}')
+        detail = f" (environment variable names: {environment_names(change)})" if 'environment' in extra else ''
+        refuse(f'the Lambda update changes more than its code: {extra} on {address}{detail}')
     return after.get('reserved_concurrent_executions') if 'reserved_concurrent_executions' in changed else None
 
 
@@ -131,7 +144,7 @@ def main(argv):
     reserved = {}
     for address in lambda_addresses:
         if address in by_address:
-            value = check_lambda(by_address[address], expected_reserved.get(address))
+            value = check_lambda(by_address[address], expected_reserved.get(address), address)
             if value is not None:
                 reserved[address] = value
     if policy_address in by_address:

@@ -248,3 +248,15 @@ test('the Terraform the runner applies matches what the classifier allows', () =
   assert.match(terraform, /resource "aws_iam_role_policy" "realtime_fanout"/)
   assert.match(terraform, /data "archive_file" "realtime_fanout"/)
 })
+
+test('a refused environment change names the Lambda and the variable names, never their values', () => {
+  // Run 42618358529 refused an environment change without saying on which Lambda.
+  const changed = lambda({ environment: [{ variables: { SITE_URL: 'https://secret-value.example', KEEP: 'same' } }] })
+  changed.change.before.environment = [{ variables: { SITE_URL: 'https://old-value.example', KEEP: 'same' } }]
+  const refused = classify([changed])
+  assert.notEqual(refused.status, 0)
+  assert.match(refused.stderr, new RegExp(`changes more than its code: \\['environment'\\] on ${LAMBDA.replace('.', '\\.')} \\(environment variable names: \\['SITE_URL'\\]\\)`))
+  assert.doesNotMatch(refused.stderr, /secret-value|old-value|KEEP/)
+  const unknown = classify([lambda({}, ['update'], { last_modified: true, environment: [{ variables: { TOKEN_ARN: true } }] })])
+  assert.match(unknown.stderr, /environment variable names: \['TOKEN_ARN'\]/)
+})
