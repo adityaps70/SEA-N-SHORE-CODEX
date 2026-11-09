@@ -57,27 +57,33 @@ declare -A KEY_EXPRESSIONS=(
   [connections]='id::text' [user_blocks]='blocker_id::text,blocked_id::text' [notifications]='id::text'
 )
 SOURCE_COMPATIBLE_TABLES=(profiles companies company_members maritime_profiles profile_skills posts post_reactions post_comments saved_posts post_media post_polls post_poll_options post_poll_votes follows connections user_blocks notifications)
+
+# One line per table, never one per row: SSM keeps only the first 24,000 characters of stdout, and a line per
+# row (4,900+ profiles alone) filled it, so later evidence was cut off. Each key set is printed as its row count
+# and a digest computed in Aurora: md5 of every row's key hash, sorted bytewise (COLLATE "C") and joined with
+# a newline (md5 of the empty string for an empty table). The same SQL on any copy of the data gives the same
+# digest, so two sides still compare exactly. Keys are ids only; nothing here is personal data.
+key_set() {
+  local label="$1" sql="$2" response rows digest
+  response="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$sql" --output json)"
+  rows="$(jq -er '.records[0][0].longValue' <<<"$response")"
+  digest="$(jq -er '.records[0][1].stringValue' <<<"$response")"
+  [[ "$rows" =~ ^[0-9]+$ ]] || { echo "Unexpected row count for $label" >&2; exit 1; }
+  [[ "$digest" =~ ^[0-9a-f]{32}$ ]] || { echo "Unexpected key set digest format for $label" >&2; exit 1; }
+  echo "${label}=rows:${rows}|md5:${digest}"
+}
+set_sql() {
+  printf "SELECT count(*)::bigint AS row_count, md5(coalesce(string_agg(row_hash, chr(10) ORDER BY row_hash COLLATE \"C\"), '')) AS set_digest FROM (SELECT md5(array_to_string(array[%s], chr(31))) AS row_hash FROM public.%s) hashed" "$1" "$2"
+}
 for table in "${SOURCE_COMPATIBLE_TABLES[@]}"; do
-  expression="${KEY_EXPRESSIONS[$table]}"
-  SQL="SELECT md5(array_to_string(array[${expression}], chr(31))) AS key_hash FROM public.${table} ORDER BY key_hash"
-  RESPONSE="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$SQL" --output json)"
-  while IFS= read -r key_hash; do
-    [[ -z "$key_hash" ]] && continue
-    [[ "$key_hash" =~ ^[0-9a-f]{32}$ ]] || { echo "Unexpected key hash format for $table" >&2; exit 1; }
-    echo "AURORA_KEY_HASH_${table^^}=$key_hash"
-  done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
+  key_set "AURORA_KEY_SET_${table^^}" "$(set_sql "${KEY_EXPRESSIONS[$table]}" "$table")"
 done
 echo "AURORA_TARGET_KEY_INVENTORY_COMPLETE=true"
 
 # Generated IDs/timestamps may be recreated during migration. These fingerprints
 # use stable business fields only so semantic preservation can be proved without PII.
-CONNECTION_BUSINESS_SQL="SELECT md5(array_to_string(array[user_low_id::text,user_high_id::text,requested_by::text,status::text], chr(31))) AS business_hash FROM public.connections ORDER BY business_hash"
-RESPONSE="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$CONNECTION_BUSINESS_SQL" --output json)"
-while IFS= read -r h; do [[ -z "$h" ]] || { [[ "$h" =~ ^[0-9a-f]{32}$ ]] || exit 1; echo "AURORA_CONNECTION_BUSINESS_HASH=$h"; }; done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
-
-NOTIFICATION_BUSINESS_SQL="SELECT md5(array_to_string(array[recipient_id::text,coalesce(actor_id::text,''),notification_type::text], chr(31))) AS business_hash FROM public.notifications ORDER BY business_hash"
-RESPONSE="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$NOTIFICATION_BUSINESS_SQL" --output json)"
-while IFS= read -r h; do [[ -z "$h" ]] || { [[ "$h" =~ ^[0-9a-f]{32}$ ]] || exit 1; echo "AURORA_NOTIFICATION_BUSINESS_HASH=$h"; }; done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
+key_set AURORA_CONNECTION_BUSINESS_SET "$(set_sql "user_low_id::text,user_high_id::text,requested_by::text,status::text" connections)"
+key_set AURORA_NOTIFICATION_BUSINESS_SET "$(set_sql "recipient_id::text,coalesce(actor_id::text,''),notification_type::text" notifications)"
 echo "AURORA_BUSINESS_PARITY_INVENTORY_COMPLETE=true"
 
 # PII-safe identity evidence. Raw values exist only in restrictive temporary files
@@ -135,7 +141,7 @@ summary=['AURORA_IDENTITIES_WITHOUT_COGNITO_USER=' + json.dumps(dict(sorted(orph
          'AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=' + json.dumps(dict(sorted(orphan_kinds.items())))]
 for line in summary:
     print(line)
-    # Also on stderr: SSM keeps only the first 24,000 characters of stdout, which the table hashes fill.
+    # Also on stderr, which SSM returns separately from stdout, so the verdict's reasons survive any stdout cut.
     print(line, file=sys.stderr)
 for email_token, profile_token, subject_token in account_rows:
     if subject_token in cognito_email_by_subject and cognito_email_by_subject[subject_token] != email_token:
@@ -172,15 +178,21 @@ cognito_pairs={(email_token, subject_token) for email_token, subject_token in co
 provider_pairs={(email_token, subject_token) for email_token, _, subject_token in account_rows if subject_token in cognito_email_by_subject}
 if not provider_pairs <= cognito_pairs:
     raise SystemExit('Cognito and Aurora provider identity mappings differ')
-for email_token, subject_token in sorted(cognito_rows):
+for email_token, subject_token in cognito_rows:
     if not re.fullmatch(r'[0-9a-f]{16}', email_token + '') or not re.fullmatch(r'[0-9a-f]{16}', subject_token + ''):
         raise SystemExit('Bad Cognito token')
-    print(f'COGNITO_IDENTITY_TOKEN={email_token}|{subject_token}')
-for email_token, profile_token, subject_token in sorted(account_rows):
+for email_token, profile_token, subject_token in account_rows:
     if not all(re.fullmatch(r'[0-9a-f]{16}', value) for value in (email_token, profile_token, subject_token)):
         raise SystemExit('Bad Aurora identity token')
-    print(f'AURORA_PROVIDER_IDENTITY_TOKEN={email_token}|{subject_token}')
-    print(f'AURORA_PROFILE_IDENTITY_TOKEN={profile_token}|{email_token}')
+
+def token_set(lines):
+    # One line per set, not per identity (stdout stays small, and no per-person email hash is printed):
+    # row count and md5 of the sorted lines joined with a newline.
+    return f"rows:{len(lines)}|md5:{hashlib.md5(chr(10).join(sorted(lines)).encode()).hexdigest()}"
+
+print('COGNITO_IDENTITY_TOKEN_SET=' + token_set([f'{e}|{s}' for e, s in cognito_rows]))
+print('AURORA_PROVIDER_IDENTITY_TOKEN_SET=' + token_set([f'{e}|{s}' for e, _, s in account_rows]))
+print('AURORA_PROFILE_IDENTITY_TOKEN_SET=' + token_set([f'{p}|{e}' for e, p, _ in account_rows]))
 print('AWS_IDENTITY_MAPPING_MATCH=true')
 PY
 
