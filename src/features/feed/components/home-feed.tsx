@@ -14,6 +14,7 @@ import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
 import { buttonClass } from '@/components/ui/interactive-styles'
 import { cn } from '@/lib/cn'
+import { handleStaleDeployment } from '@/features/app-update/stale-deployment'
 
 /** "N new posts" asks the server for a count this often, only while the tab is visible. */
 export const NEW_POSTS_POLL_MS = 60_000
@@ -181,7 +182,8 @@ export function HomeFeed({
       }
       if (replace) setStageStarts({})
       applyTopPage(result.page, replace)
-    } catch {
+    } catch (error) {
+      handleStaleDeployment(error)
       failedRef.current = true
       setError('We could not load more posts.')
     } finally {
@@ -209,7 +211,8 @@ export function HomeFeed({
       setPosts((current) => replace ? appendUnique([], result.page.posts) : appendUnique(current, result.page.posts))
       setRecentCursor(result.page.nextCursor)
       if (replace) setDividerBefore(result.page.recent?.dividerBeforePostId ?? null)
-    } catch {
+    } catch (error) {
+      handleStaleDeployment(error)
       failedRef.current = true
       setError('We could not load more posts.')
     } finally {

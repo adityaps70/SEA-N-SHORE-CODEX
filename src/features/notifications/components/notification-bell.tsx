@@ -11,6 +11,7 @@ import { useOptionalMessagingRealtime } from '@/features/realtime/provider'
 import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import type { NetworkNotification } from '../types'
 import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
+import { handleStaleDeployment } from '@/features/app-update/stale-deployment'
 
 function notificationDate(timestamp: string) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -71,7 +72,8 @@ export function NotificationBell({
       setNotifications(result.chrome.recent)
       setLocalUnreadCount(result.chrome.unreadCount)
       setListStale(false)
-    } catch {
+    } catch (error) {
+      handleStaleDeployment(error)
       if (request === listRequestRef.current) setError('We could not load your notifications. Please try again.')
     } finally {
       if (request === listRequestRef.current) setLoadingList(false)
@@ -94,7 +96,8 @@ export function NotificationBell({
       if (!result.ok) return
       setLocalUnreadCount(result.unreadCount)
       setListStale(true)
-    } catch {
+    } catch (error) {
+      handleStaleDeployment(error)
       // The badge keeps its last known count; the next check tries again.
     } finally {
       checkingRef.current = false

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import type { NextConfig } from 'next'
 import { getServerActionAllowedOrigins } from './src/lib/auth/server-action-origins'
 
@@ -16,7 +17,12 @@ const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
 ]
 
+// Round ARCH (Phase 5 follow-up): one identifier per build, inlined into the client bundle. A tab still running an
+// old build keys its one automatic reload on it (src/features/app-update/stale-deployment.ts).
+const APP_BUILD_ID = process.env.NEXT_PUBLIC_APP_BUILD_ID || `build-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_APP_BUILD_ID: APP_BUILD_ID },
   reactStrictMode: true,
   // Round H (H4): do not advertise the framework (`x-powered-by: Next.js`).
   poweredByHeader: false,

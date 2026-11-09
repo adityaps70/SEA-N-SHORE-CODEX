@@ -29,6 +29,7 @@ import { validateMessageAttachmentMetadata } from '../media-policy'
 import type { MessagingMessageDto } from '../queries'
 import { MessageEmojiPicker } from './message-emoji-picker'
 import { uploadMessageAttachmentFile } from './upload-message-attachment'
+import { useUnsavedInput } from '@/hooks/use-unsaved-changes-warning'
 
 export type OptimisticMessagingMessage = MessagingMessageDto & {
   deliveryState: 'sending' | 'failed'
@@ -135,6 +136,8 @@ export function MessageComposer({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dock = variant === 'dock'
+  // Round ARCH (Phase 5 follow-up): a typed message keeps a tab on an old build from reloading by itself.
+  useUnsavedInput(body.trim() !== '' || attachment !== null)
 
   useEffect(() => {
     // Auto-grow fallback for the dock textarea; also shrinks it back after a send or emoji insert.
