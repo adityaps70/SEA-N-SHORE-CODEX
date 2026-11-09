@@ -7,6 +7,7 @@ on:
     paths:
       - infra/aws/database/migrations/0098_notification_created_event.sql
       - scripts/aws/notification-created-migration.sh
+      - scripts/aws/notification-created-revert.sh
       - scripts/aws/notification-created-migration-action.txt
       - scripts/aws/notification-created-migration.test.mjs
       - .github/workflows/aws-notification-created-migration.yml
@@ -88,7 +89,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/notification-created-migration-action.txt
-          RUNNER_FILES: "infra/aws/database/migrations/0098_notification_created_event.sql scripts/aws/notification-created-migration.sh scripts/aws/notification-created-migration.test.mjs"
+          RUNNER_FILES: "infra/aws/database/migrations/0098_notification_created_event.sql scripts/aws/notification-created-migration.sh scripts/aws/notification-created-revert.sh scripts/aws/notification-created-migration.test.mjs"
         shell: bash
         run: |
           set -euo pipefail
@@ -158,7 +159,8 @@ jobs:
             fi
           else
             ACTION="$(cut -d' ' -f1 < scripts/aws/notification-created-migration-action.txt | tr -d '[:space:]')"
-            case "$ACTION" in plan|migrate-once) ;; *) echo "Unsupported notification created migration action: $ACTION" >&2; exit 1 ;; esac
+            # revert-once only from an owner-merged guard, never from a manual dispatch.
+            case "$ACTION" in plan|migrate-once|revert-once) ;; *) echo "Unsupported notification created migration action: $ACTION" >&2; exit 1 ;; esac
           fi
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
 
@@ -227,7 +229,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
-          case "$ACTION" in plan|migrate-once) ;; *) exit 1 ;; esac
+          case "$ACTION" in plan|migrate-once|revert-once) ;; *) exit 1 ;; esac
           bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA"
           python3 - "$TRIGGER_SHA" "$ACTION" > /tmp/ssm-parameters.json <<'PYTHON'
           import json, shlex, sys
@@ -275,6 +277,8 @@ jobs:
           # turned successful apply runs red).
           if [[ "$ACTION" == "plan" ]]; then
             EVIDENCE='^NOTIFICATION_CREATED_MIGRATION_PLAN_ONLY_NO_APPLY$\|^NOTIFICATION_CREATED_MIGRATION_ALREADY_APPLIED=true$'
+          elif [[ "$ACTION" == "revert-once" ]]; then
+            EVIDENCE='^NOTIFICATION_CREATED_MIGRATION_REVERT_VERIFIED=true$'
           else
             EVIDENCE='^NOTIFICATION_CREATED_MIGRATION_APPLY_VERIFIED=true$\|^NOTIFICATION_CREATED_MIGRATION_ALREADY_APPLIED=true$'
           fi

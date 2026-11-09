@@ -19,7 +19,7 @@ const statementsOf = (sql) => sql.split('-- statement-breakpoint')
 const APPROVED = [
 ]
 
-assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.ok(['plan', 'migrate-once', 'revert-once'].includes(guard))
 const seenApproved = new Set()
 for (const name of migrations) {
   const path = `infra/aws/database/migrations/${name}.sql`
@@ -93,3 +93,39 @@ assert.match(workflow, /bash scripts\/aws\/notification-created-migration\.sh/)
 assert.match(workflow, /trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM/)
 
 console.log('NOTIFICATION_CREATED_MIGRATION_CONTRACT_VERIFIED=true')
+
+// Reversible (owner request for Phase 5): an owner-merged "revert-once <sha>" guard hands over to the revert script,
+// which drops exactly the trigger and the function and clears the 0098 ledger row, in one transaction, and checks
+// each is gone. A manual dispatch can never ask for it.
+const revert = fs.readFileSync('scripts/aws/notification-created-revert.sh', 'utf8')
+assert.match(script, /plan\|migrate-once\|revert-once\) ;;/)
+assert.match(script, /if \[\[ "\$ACTION" == "revert-once" \]\]; then\n  exec bash scripts\/aws\/notification-created-revert\.sh\nfi/)
+assert.ok(script.indexOf('exec bash scripts/aws/notification-created-revert.sh') < script.indexOf('CLUSTER_JSON='), 'the hand-over happens before any database work')
+assert.ok(workflow.includes('scripts/aws/notification-created-revert.sh'), 'workflow watches the revert script')
+const dispatchCase = workflow.slice(workflow.indexOf('if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then'), workflow.indexOf('          else\n            ACTION="$(cut'))
+assert.match(dispatchCase, /case "\$ACTION" in plan\|migrate-once\) ;;/, 'a manual dispatch accepts plan or migrate-once only')
+assert.match(workflow, /EVIDENCE='\^NOTIFICATION_CREATED_MIGRATION_REVERT_VERIFIED=true\$'/)
+const sqlOf = (text) => [...text.matchAll(/--sql "([^"]+)"/g)].map((m) => m[1])
+// read_count passes its argument through as "$1"; every query it is given is a SELECT.
+assert.ok([...revert.matchAll(/^[A-Z_]+_SQL="([^"]+)"$/gm)].every((m) => /^SELECT /.test(m[1])), 'the count queries only read')
+const writes = sqlOf(revert).filter((sql) => sql !== '$1' && !/^SELECT /.test(sql))
+assert.deepEqual(writes, [
+  'DROP TRIGGER IF EXISTS notifications_enqueue_created ON public.notifications',
+  'DROP FUNCTION IF EXISTS public.enqueue_notification_created()',
+  "DELETE FROM public.sea_n_shore_applied_migrations WHERE name='$MIGRATION_NAME'",
+], 'the revert changes exactly these three things')
+assert.match(revert, /MIGRATION_NAME="0098_notification_created_event"/)
+assert.match(revert, /pg_advisory_xact_lock\(hashtext\('sea-n-shore-notification-created-\$MIGRATION_NAME'\)/, 'same lock as the apply')
+assert.ok(revert.indexOf('begin_transaction)') < revert.indexOf('DROP TRIGGER') && revert.indexOf('DELETE FROM') < revert.indexOf('commit-transaction'), 'all three in one transaction')
+for (const check of [
+  /"\$\{NOTIFICATION_CREATED_MIGRATION_EXPECTED_SHA:-\}" =~ \^\[0-9a-f\]\{40\}\$/,
+  /git rev-parse HEAD\)" == "\$NOTIFICATION_CREATED_MIGRATION_EXPECTED_SHA"/,
+  /git diff --quiet HEAD -- "\$0" "\$RUNNER" "\$ACTION_FILE"/,
+  /== "\$EXPECTED_ACCOUNT"/,
+  /cut -d' ' -f1 < "\$ACTION_FILE" \| tr -d '\[:space:\]'\)" == "revert-once"/,
+  /NOTIFICATION_CREATED_MIGRATION_ACTION:-\}"\)" == "revert-once"/,
+  /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/,
+  /cluster:sea-n-shore-staging-aurora"/,
+]) assert.match(revert, check)
+assert.ok(revert.indexOf('branch-head.sh') < revert.indexOf('begin_transaction)'), 'the unmoved-branch check comes before any write')
+assert.equal([...revert.matchAll(/^echo "(NOTIFICATION_CREATED_MIGRATION_[A-Z_]+=true)"$/gm)].at(-1)?.[1], 'NOTIFICATION_CREATED_MIGRATION_REVERT_VERIFIED=true')

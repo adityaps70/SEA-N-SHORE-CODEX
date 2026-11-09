@@ -9,6 +9,7 @@
 #   nothing pending  -> NOTIFICATION_CREATED_MIGRATION_ALREADY_APPLIED=true
 #   plan             -> NOTIFICATION_CREATED_MIGRATION_PLAN_VERIFIED=true, then NOTIFICATION_CREATED_MIGRATION_PLAN_ONLY_NO_APPLY
 #   migrate-once     -> NOTIFICATION_CREATED_MIGRATION_APPLY_VERIFIED=true
+#   revert-once      -> NOTIFICATION_CREATED_MIGRATION_REVERT_VERIFIED=true (notification-created-revert.sh)
 set -euo pipefail
 umask 077
 export AWS_PAGER=""
@@ -43,9 +44,14 @@ if [[ -n "${NOTIFICATION_CREATED_MIGRATION_ACTION:-}" ]]; then
   ACTION="$(tr -d '[:space:]' <<<"$NOTIFICATION_CREATED_MIGRATION_ACTION")"
 fi
 case "$ACTION" in
-  plan|migrate-once) ;;
+  plan|migrate-once|revert-once) ;;
   *) echo "Unsupported notification created migration action: $ACTION" >&2; exit 1 ;;
 esac
+# Reversible: an owner-merged "revert-once <sha>" guard drops the trigger and function and clears the ledger row,
+# in scripts/aws/notification-created-revert.sh (it repeats every check above for itself).
+if [[ "$ACTION" == "revert-once" ]]; then
+  exec bash scripts/aws/notification-created-revert.sh
+fi
 
 validate_sql() {
   python3 - "$1" <<'PY'
