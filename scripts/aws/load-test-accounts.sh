@@ -75,11 +75,26 @@ EXIT_CODE="$(jq -r '.tasks[0].containers[] | select(.name=="web") | .exitCode //
 echo "LOAD_TEST_ACCOUNTS_EXIT_CODE=$EXIT_CODE"
 
 LOG_STREAM="web/web/$TASK_ID"
+# Every page of the task's log, oldest first. One page can hold only part of the stream (or none of it) while more is
+# available through its token, so follow nextForwardToken until it stops changing.
+read_task_log() {
+  local token="" page next
+  page="$(aws logs get-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --log-stream-name "$LOG_STREAM" --start-from-head --output json)"
+  while :; do
+    jq -r '.events[].message' <<<"$page"
+    next="$(jq -r '.nextForwardToken // empty' <<<"$page")"
+    [[ -n "$next" && "$next" != "$token" ]] || break
+    token="$next"
+    page="$(aws logs get-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --log-stream-name "$LOG_STREAM" --start-from-head --next-token "$token" --output json)"
+  done
+}
+# Run 42486602879: the first non-empty read was only the start of a long sessions log. Wait until the task's own last
+# line (a _VERIFIED=true marker, or its failure line) has arrived, for up to three minutes.
 LOGS=""
-for attempt in $(seq 1 30); do
-  LOGS="$(aws logs get-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --log-stream-name "$LOG_STREAM" --start-from-head --query 'events[].message' --output text 2>/dev/null || true)"
-  [[ -n "$LOGS" ]] && break
-  sleep 2
+for attempt in $(seq 1 60); do
+  LOGS="$(read_task_log 2>/dev/null || true)"
+  grep -qE 'LOAD_TEST_[A-Z_]+_VERIFIED=true|LOAD_TEST_ACCOUNTS_FAILED' <<<"$LOGS" && break
+  sleep 3
 done
 # Only the task's own count lines (the task never prints a key, name or file content).
 tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_ACCOUNTS_[A-Z_]+([= ].*)?' || true

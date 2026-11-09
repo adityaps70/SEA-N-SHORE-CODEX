@@ -1,7 +1,10 @@
 // Round ARCH (Phase 1): the load-test accounts runner contract. It runs the accounts worker from the deployed web
 // image, behind an owner-merged arm for anything but plan, and prints counts and statuses only.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { guardAction } from './guard-value.mjs'
 
@@ -67,4 +70,33 @@ test('Cognito sends no email or SMS for the test accounts, and the clean-up empt
   assert.match(worker, /new AdminDeleteUserCommand\(\{ UserPoolId: poolId, Username: email \}\)/)
   assert.match(service, /LOAD_TEST_ACCOUNTS_DELETED profiles=\$\{deleted\} cognito_users=\$\{cognitoDeleted\} cognito_users_left=\$\{cognitoLeft\}/)
   assert.match(service, /cognitoLeft !== 0\) throw new Error\('load_test_delete_incomplete'\)/)
+})
+
+// Run 42486602879: the sessions log spans several pages, and the first read was only its start.
+test('the task log is read across every page, and the runner waits for the task\'s last line', () => {
+  const fn = /\nread_task_log\(\) \{\n[\s\S]*?\n\}\n/.exec(script)?.[0]
+  assert.ok(fn, 'read_task_log is defined')
+  assert.match(script, /grep -qE 'LOAD_TEST_\[A-Z_\]\+_VERIFIED=true\|LOAD_TEST_ACCOUNTS_FAILED' <<<"\$LOGS" && break/)
+  assert.doesNotMatch(script, /\[\[ -n "\$LOGS" \]\] && break/)
+  const dir = mkdtempSync(join(tmpdir(), 'task-log-'))
+  try {
+    // A fake aws CLI: three pages, the last returning its own token again (the end of the stream).
+    const pages = {
+      '': { events: [{ message: 'LOAD_TEST_SESSIONS_SEALED_PART 1/2 aaa' }], nextForwardToken: 'f/1' },
+      'f/1': { events: [{ message: 'LOAD_TEST_SESSIONS_SEALED_PART 2/2 bbb' }], nextForwardToken: 'f/2' },
+      'f/2': { events: [{ message: 'LOAD_TEST_SESSIONS_VERIFIED=true' }], nextForwardToken: 'f/3' },
+      'f/3': { events: [], nextForwardToken: 'f/3' },
+    }
+    writeFileSync(join(dir, 'pages.json'), JSON.stringify(pages))
+    writeFileSync(join(dir, 'aws'), `#!/usr/bin/env bash
+token=""; while [[ $# -gt 0 ]]; do [[ "$1" == --next-token ]] && token="$2"; shift; done
+jq -c --arg t "$token" '.[$t]' "${dir}/pages.json"
+`)
+    chmodSync(join(dir, 'aws'), 0o755)
+    const run = spawnSync('bash', ['-c', `set -euo pipefail\nAWS_REGION=x LOG_GROUP=g LOG_STREAM=s\n${fn}read_task_log`], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } })
+    assert.equal(run.status, 0, run.stderr)
+    assert.deepEqual(run.stdout.trim().split('\n'), ['LOAD_TEST_SESSIONS_SEALED_PART 1/2 aaa', 'LOAD_TEST_SESSIONS_SEALED_PART 2/2 bbb', 'LOAD_TEST_SESSIONS_VERIFIED=true'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
