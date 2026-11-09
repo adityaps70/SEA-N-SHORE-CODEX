@@ -22,6 +22,30 @@ export const LEGACY_REMINDER_TEST_AUDIT = {
   refused: 'legacy_reminder.test_refused',
 } as const
 
+type TestEmail = { subject: string; text: string; html: string; headers: Array<{ Name: string; Value: string }> }
+
+/**
+ * Which email a test is of. The default is the second reminder; the final reminder has its own audit actions,
+ * Resend tag, hourly count and lock, and builds its email with live counts.
+ */
+export type LegacyTestVariant = {
+  audit: { requested: string; sent: string; failed: string; refused: string }
+  category: string
+  targetType: string
+  keyPrefix: string
+  lockPrefix: string
+  render: (siteUrl?: string) => TestEmail | Promise<TestEmail>
+}
+
+export const LEGACY_REMINDER_TEST_VARIANT: LegacyTestVariant = {
+  audit: LEGACY_REMINDER_TEST_AUDIT,
+  category: LEGACY_REMINDER_TEST_CATEGORY,
+  targetType: 'legacy_reminder_test',
+  keyPrefix: 'legacy-profile-reminder-test',
+  lockPrefix: 'legacy-reminder-test',
+  render: (siteUrl) => legacyReminderTestEmail({ siteUrl }),
+}
+
 export type LegacyReminderTestResult =
   | { status: 'sent'; to: string }
   | { status: 'no_verified_email' | 'rate_limited' | 'unavailable' }
@@ -52,7 +76,9 @@ export function createLegacyReminderTestSender(input: {
   resend?: Sender | null
   loadApiKey?: () => Promise<string | null>
   siteUrl?: string
+  variant?: LegacyTestVariant
 } = {}) {
+  const variant = input.variant ?? LEGACY_REMINDER_TEST_VARIANT
   const query: Query = input.query ?? ((text, values) => databaseQuery(text, values))
   const transaction = input.transaction ?? defaultTransaction()
   let client: Sender | null | undefined = input.resend
@@ -80,8 +106,8 @@ export function createLegacyReminderTestSender(input: {
   async function audit(run: Query, adminId: string, action: string, testId: string, metadata: Record<string, unknown>) {
     await run(
       `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-       values ($1::uuid, $2, 'legacy_reminder_test', $3, $4::jsonb)`,
-      [adminId, action, testId, JSON.stringify(metadata)],
+       values ($1::uuid, $2, $5, $3, $4::jsonb)`,
+      [adminId, action, testId, JSON.stringify(metadata), variant.targetType],
     )
   }
 
@@ -90,7 +116,7 @@ export function createLegacyReminderTestSender(input: {
       const testId = randomUUID()
       // A refusal is audited too; only requests that went ahead count toward the hourly limit.
       const refuse = async (status: 'no_verified_email' | 'rate_limited' | 'unavailable') => {
-        await audit(query, admin.id, LEGACY_REMINDER_TEST_AUDIT.refused, testId, { reason: status })
+        await audit(query, admin.id, variant.audit.refused, testId, { reason: status })
         return { status }
       }
       const to = await verifiedEmail(admin.id, admin.email)
@@ -100,20 +126,20 @@ export function createLegacyReminderTestSender(input: {
 
       // The lock serialises one admin's requests, so two clicks at once cannot both pass the count.
       const allowed = await transaction(async (run) => {
-        await run(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [`legacy-reminder-test:${admin.id}`])
+        await run(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [`${variant.lockPrefix}:${admin.id}`])
         const rows = await run(
           `select count(*)::int as count from public.audit_events
             where actor_id = $1::uuid and action = $2 and created_at > now() - interval '1 hour'`,
-          [admin.id, LEGACY_REMINDER_TEST_AUDIT.requested],
+          [admin.id, variant.audit.requested],
         )
         if (Number(rows[0]?.count ?? 0) >= LEGACY_REMINDER_TESTS_PER_HOUR) return false
-        await audit(run, admin.id, LEGACY_REMINDER_TEST_AUDIT.requested, testId, { to })
+        await audit(run, admin.id, variant.audit.requested, testId, { to })
         return true
       })
       if (!allowed) return refuse('rate_limited')
 
-      const email = legacyReminderTestEmail({ siteUrl: input.siteUrl })
       try {
+        const email = await variant.render(input.siteUrl)
         const result = await sender.sendEmail({
           from: LEGACY_INVITE_FROM,
           to,
@@ -121,13 +147,13 @@ export function createLegacyReminderTestSender(input: {
           text: email.text,
           html: email.html,
           headers: email.headers,
-          idempotencyKey: `legacy-profile-reminder-test/${testId}`,
-          tags: [{ name: 'category', value: LEGACY_REMINDER_TEST_CATEGORY }],
+          idempotencyKey: `${variant.keyPrefix}/${testId}`,
+          tags: [{ name: 'category', value: variant.category }],
         })
-        await audit(query, admin.id, LEGACY_REMINDER_TEST_AUDIT.sent, testId, { to, resendEmailId: result.messageId })
+        await audit(query, admin.id, variant.audit.sent, testId, { to, resendEmailId: result.messageId })
         return { status: 'sent', to }
       } catch (error) {
-        await audit(query, admin.id, LEGACY_REMINDER_TEST_AUDIT.failed, testId, { to, error: errorText(error) })
+        await audit(query, admin.id, variant.audit.failed, testId, { to, error: errorText(error) })
         return { status: 'failed', to }
       }
     },

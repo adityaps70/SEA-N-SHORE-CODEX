@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { DELIVERED_EVENT_TYPES } from '@/features/email-delivery/events'
 import type { LegacyInviteStatus } from './repository'
+import { hasFinalReminderSql } from './final-reminder-repository'
 
 /**
  * The legacy second reminder. One per person, ever: one row per first invitation and per email (unique indexes),
@@ -70,12 +71,14 @@ function status(value: unknown): LegacyInviteStatus {
 
 /**
  * The rule a first invitation (alias `invite`) fails first, or 'eligible'. Emails compare case-insensitively.
- * `includeReminder` is false when checking a reminder that already exists (at send time).
+ * `includeReminder` is false when checking a reminder that already exists (at send time). An address with a final
+ * reminder counts as already reminded, at prepare time and at send time: after it, no more legacy emails.
  */
 export function reminderExclusionSql(includeReminder: boolean) {
   return `
     case
       when invite.status <> 'sent' or invite.sent_at is null then 'first_not_sent'
+      when ${hasFinalReminderSql('invite.email')} then 'already_reminded'
       ${includeReminder ? `when exists (
         select 1 from public.legacy_profile_invite_reminders reminder
         where reminder.invite_id = invite.id
@@ -309,22 +312,32 @@ export function createLegacyReminderRepository(input: { query?: Query } = {}) {
       `, [id, error, retryable])
     },
 
+    /** A second reminder's or a final reminder's unsubscribe token (both use the same page and one-click route). */
     async isUnsubscribeToken(token: string) {
       if (!UUID.test(token)) return false
-      const rows = await queryRows(`select 1 as found from public.legacy_profile_invite_reminders where unsubscribe_token = $1::uuid`, [token])
+      const rows = await queryRows(`
+        select 1 as found from public.legacy_profile_invite_reminders where unsubscribe_token = $1::uuid
+        union all
+        select 1 as found from public.legacy_profile_invite_final_reminders where unsubscribe_token = $1::uuid
+      `, [token])
       return rows.length > 0
     },
 
-    /** Puts the reminder's address on the do-not-email list. True when the token was real (also if already on it). */
+    /**
+     * Puts the address of the second or final reminder with this token on the do-not-email list. True when the token
+     * was real (also if already on it).
+     */
     async unsubscribeWithToken(token: string) {
       if (!UUID.test(token)) return false
       const rows = await queryRows<{ email: string }>(`
         with reminder as (
           select email from public.legacy_profile_invite_reminders where unsubscribe_token = $1::uuid
+          union
+          select email from public.legacy_profile_invite_final_reminders where unsubscribe_token = $1::uuid
         ),
         added as (
           insert into public.email_suppressions (email, reason, source)
-          select lower(email), 'unsubscribed', 'legacy_reminder_unsubscribe' from reminder
+          select distinct lower(email), 'unsubscribed', 'legacy_reminder_unsubscribe' from reminder
           on conflict (email) do nothing
           returning email
         )

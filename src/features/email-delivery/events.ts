@@ -120,7 +120,7 @@ export function backfillEvent(input: { resendEmailId: string; lastEvent: string 
 }
 
 /** Resend categories of admin test sends. Their events are logged but never put anyone on the do-not-email list. */
-export const TEST_SEND_CATEGORIES: readonly string[] = ['legacy_profile_reminder_test']
+export const TEST_SEND_CATEGORIES: readonly string[] = ['legacy_profile_reminder_test', 'legacy_profile_final_reminder_test']
 
 /**
  * Whether the event puts its recipients on the do-not-email list. A bounce counts as hard unless Resend says it was

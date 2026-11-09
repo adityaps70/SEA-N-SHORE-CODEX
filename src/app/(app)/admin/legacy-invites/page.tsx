@@ -7,6 +7,14 @@ import { LEGACY_INVITE_FROM, legacyInviteEmail } from '@/features/legacy-invites
 import { legacyReminderEmail } from '@/features/legacy-invites/reminder-email'
 import { legacyReminderRepository, REMINDER_EXCLUSIONS } from '@/features/legacy-invites/reminder-repository'
 import { legacyInviteRepository } from '@/features/legacy-invites/repository'
+import { LegacyFinalReminderControls, LegacyFinalReminderTestButton } from '@/features/legacy-invites/final-reminder-controls'
+import { legacyFinalReminderEmail } from '@/features/legacy-invites/final-reminder-email'
+import {
+  FINAL_REMINDER_EXCLUSIONS,
+  FINAL_REMINDER_FIRST_BATCH,
+  legacyFinalReminderRepository,
+} from '@/features/legacy-invites/final-reminder-repository'
+import { legacyLiveCounts } from '@/features/legacy-invites/live-counts'
 
 export const metadata: Metadata = { title: 'Legacy invites · Admin' }
 export const dynamic = 'force-dynamic'
@@ -32,7 +40,27 @@ function when(value: string | null) {
   return value ? new Date(value).toLocaleString('en-IN') : '—'
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+const FINAL_SAMPLE = {
+  fullName: SAMPLE.fullName,
+  email: SAMPLE.email,
+  clickToken: '33333333-3333-4333-8333-333333333333',
+  unsubscribeToken: SAMPLE.unsubscribeToken,
+}
+
+function percent(rate: number) {
+  return `${(Math.round(rate * 10000) / 100).toFixed(2)}%`
+}
+
+/** "5 h 20 min" until `iso`, or null once it has passed. */
+function waitUntil(iso: string | null) {
+  if (!iso) return null
+  const minutes = Math.ceil((new Date(iso).getTime() - Date.now()) / 60_000)
+  if (minutes <= 0) return null
+  const hours = Math.floor(minutes / 60)
+  return hours > 0 ? `${hours} h ${minutes % 60} min` : `${minutes} min`
+}
+
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-2xl border border-mist-100 bg-white p-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
@@ -149,11 +177,15 @@ function RecentTable(props: {
 export default async function LegacyInvitesAdminPage({ searchParams }: { searchParams?: Promise<{ mode?: string | string[] }> }) {
   await requirePlatformAdministratorUser()
   const params = (await searchParams) ?? {}
-  const mode = params.mode === 'reminder' ? 'reminder' : 'invite'
+  const mode = params.mode === 'reminder' ? 'reminder' : params.mode === 'final' ? 'final' : 'invite'
 
   const tabs = (
     <nav aria-label="Legacy invitation mode" className="flex flex-wrap gap-2">
-      {([['invite', 'First invitation', '/admin/legacy-invites'], ['reminder', 'Second reminder', '/admin/legacy-invites?mode=reminder']] as const).map(([key, label, href]) => (
+      {([
+        ['invite', 'First invitation', '/admin/legacy-invites'],
+        ['reminder', 'Second reminder', '/admin/legacy-invites?mode=reminder'],
+        ['final', 'Final reminder', '/admin/legacy-invites?mode=final'],
+      ] as const).map(([key, label, href]) => (
         <Link
           key={key}
           href={href}
@@ -178,6 +210,149 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
       </p>
     </header>
   )
+
+  if (mode === 'final') {
+    const [breakdown, metrics, controls, rates, batch, claims, counts] = await Promise.all([
+      legacyFinalReminderRepository.breakdown(),
+      legacyFinalReminderRepository.metrics(),
+      legacyFinalReminderRepository.controls(),
+      legacyFinalReminderRepository.rates(),
+      legacyFinalReminderRepository.firstBatch(),
+      legacyFinalReminderRepository.claimsFromClicks(),
+      legacyLiveCounts.read(),
+    ])
+    // The same render function the worker sends with, with the sample person and the live counts right now.
+    const preview = legacyFinalReminderEmail({ ...FINAL_SAMPLE, counts })
+    const wait = waitUntil(batch.opensAt)
+
+    return (
+      <div className="space-y-5">
+        {header}
+        {tabs}
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">Who gets the final reminder</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            Only people whose first invitation and second reminder were both sent and delivered, whose second reminder was sent at least 14 days ago,
+            with no bounce, complaint, suppression or opt-out on any earlier email and not on the do-not-email list, whose profile is not claimed,
+            who have no Sea N Shore account with that email (any letter case), and whose email belongs to only one legacy profile.
+            One final reminder per person, ever, and it is the last legacy email: after it, the first invitation and the second reminder exclude that address too.
+            Every rule is checked again just before each email is sent.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Eligible now" value={breakdown.eligible} />
+            <Metric label="First invitations" value={breakdown.total} />
+          </div>
+          <h3 className="mt-5 text-sm font-bold text-navy-950">Excluded, by reason</h3>
+          <p className="mt-1 text-xs leading-5 text-muted">Each first invitation is counted once, under the first rule it fails in this order, so the rows add up.</p>
+          <table className="mt-3 w-full max-w-xl text-left text-sm">
+            <tbody className="divide-y divide-mist-100">
+              {FINAL_REMINDER_EXCLUSIONS.map(([key, label]) => (
+                <tr key={key}>
+                  <td className="py-2 pr-4 text-navy-950">{label}</td>
+                  <td className="py-2 text-right font-bold tabular-nums text-navy-950">{breakdown.excluded[key]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Prepared" value={metrics.prepared} />
+          <Metric label="Queued" value={metrics.queued} />
+          <Metric label="Sending" value={metrics.sending} />
+          <Metric label="Sent" value={metrics.sent} />
+          <Metric label="Failed" value={metrics.failed} />
+          <Metric label="Skipped" value={metrics.skipped} />
+          <Metric label="Cancelled" value={metrics.cancelled} />
+        </section>
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">Auto-pause</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            Sending pauses by itself when more than 0.1% of the final reminders sent got a complaint or more than 3% bounced.
+            While paused, nothing is sent, prepared or started. Resume needs a platform administrator whose current sign-in made the admin step-up.
+          </p>
+          <p className="mt-3 text-sm font-semibold text-navy-950">
+            {controls.paused ? `Paused${controls.pausedAt ? ` since ${when(controls.pausedAt)}` : ''}. ${controls.pausedReason ?? ''}` : 'Not paused.'}
+          </p>
+          {controls.resumedAt ? (
+            <p className="mt-1 text-xs text-muted">Last resumed {when(controls.resumedAt)}{controls.resumedByName ? ` by ${controls.resumedByName}` : ''}.</p>
+          ) : null}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <Metric label="Final reminders sent" value={rates.sent} />
+            <Metric label="Bounced" value={rates.bounced} />
+            <Metric label="Complaints" value={rates.complained} />
+            <Metric label="Bounce rate" value={percent(rates.bounceRate)} />
+            <Metric label="Complaint rate" value={percent(rates.complaintRate)} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">First batch</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            The first {FINAL_REMINDER_FIRST_BATCH} final reminders are the first batch. More can be prepared only after all of them have finished
+            (sent, failed or skipped) and 24 hours have passed since the last of them was sent.
+          </p>
+          <p className="mt-3 text-sm font-semibold text-navy-950">
+            {batch.open
+              ? 'The first batch has finished and 24 hours have passed: more can be prepared.'
+              : batch.size < FINAL_REMINDER_FIRST_BATCH
+                ? `${batch.size} of ${FINAL_REMINDER_FIRST_BATCH} prepared so far; only the rest of the first batch can be prepared.`
+                : batch.finished < batch.size
+                  ? `${batch.finished} of ${batch.size} finished. More can be prepared 24 hours after the last one is sent.`
+                  : `Finished. More can be prepared in ${wait ?? 'a moment'}${batch.opensAt ? ` (from ${when(batch.opensAt)})` : ''}.`}
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Batch delivered" value={batch.delivered} />
+            <Metric label="Batch bounced" value={batch.bounced} />
+            <Metric label="Batch complaints" value={batch.complained} />
+            <Metric label="Batch clicked" value={batch.clicked} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">Clicks and claims</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            The button goes through our own redirect, which records the click and opens the same claim link. There is no open-tracking pixel.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Claims from this email" value={claims} />
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted">Profiles claimed within 30 days after that person first clicked the final reminder&apos;s button.</p>
+        </section>
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">Send controls</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            Preparing recipients is safe and does not send anything. Review the exact email below, then explicitly start sending.
+            The worker handles at most 5 final reminders per sweep so the remaining queue can be stopped. There is no mode after this one.
+          </p>
+          <div className="mt-5">
+            <LegacyFinalReminderControls prepared={metrics.prepared} queued={metrics.queued} sending={metrics.sending} paused={controls.paused} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-mist-100 bg-white p-5">
+          <h2 className="text-lg font-bold text-navy-950">Send yourself a test</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            A test is not a final reminder: it does not change eligibility, the queue or the rates. Its links open a page that says it is a test, and its unsubscribe link changes nothing.
+          </p>
+          <div className="mt-3"><LegacyFinalReminderTestButton /></div>
+        </section>
+
+        <Preview
+          title="Final reminder email preview"
+          subject={preview.subject}
+          preheader={preview.preheader}
+          html={preview.html}
+          text={preview.text}
+          extra={preview.headers.map((header) => [header.Name, header.Value])}
+          tall
+        />
+      </div>
+    )
+  }
 
   if (mode === 'reminder') {
     const [breakdown, metrics, recent] = await Promise.all([

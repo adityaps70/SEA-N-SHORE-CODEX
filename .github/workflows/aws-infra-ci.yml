@@ -257,6 +257,8 @@ jobs:
         run: node --test scripts/aws/load-test-accounts-migration.test.mjs
       - name: Verify notification created migration runner contract
         run: node --test scripts/aws/notification-created-migration.test.mjs
+      - name: Verify legacy final reminder migration runner contract (0099)
+        run: node --test scripts/aws/legacy-final-reminder-migration.test.mjs
       - name: Verify load test accounts runner contract
         run: node --test scripts/aws/load-test-accounts.test.mjs
       - name: Verify Resend delivery webhook runner contract
