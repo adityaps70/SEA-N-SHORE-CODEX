@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { createCognitoProxyHandler, isCognitoProtectedRoute, isRealtimeTicketRoute, isSoftAuthRoute, rememberReturnPath, renewsSessionOnPublicRoute } from './cognito-proxy'
 import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
+import { CognitoApiError } from './cognito-api'
+import { createCognitoSessionManager } from './cognito-session'
 import { RETURN_PATH_COOKIE } from './return-path'
 
 function request(path: string) {
@@ -313,5 +315,33 @@ describe('Cognito protected route proxy', () => {
     const failingRenewal = vi.fn(async () => { throw new Error('cognito down') })
     const tolerated = await createCognitoProxyHandler({ getVerifiedPrincipal: failing, refreshSession: failingRenewal })(ticket())
     expect(tolerated.status).toBe(200)
+  })
+
+  it('a reused refresh token signs the visitor out cleanly: sign-in on a protected page, the route answers on the ticket route (Round ARCH)', async () => {
+    function sessionFor() {
+      const values = new Map<string, string>([[COGNITO_COOKIE_NAMES.access, 'expired'], [COGNITO_COOKIE_NAMES.refresh, 'reused']])
+      const cookieStore = {
+        get: (name: string) => (values.has(name) ? { name, value: values.get(name)! } : undefined),
+        set: (name: string, value: string) => { values.set(name, value) },
+        delete: (name: string) => { values.delete(name) },
+      }
+      const api = {
+        getUser: vi.fn(async () => { throw new CognitoApiError('NotAuthorizedException') }),
+        refresh: vi.fn(async () => { throw new CognitoApiError('RefreshTokenReuseException') }),
+      }
+      return { values, session: createCognitoSessionManager({ cookieStore, api, siteUrl: 'https://staging.seaandshore.in' }) }
+    }
+
+    const page = sessionFor()
+    const protectedPage = await createCognitoProxyHandler(page.session)(request('/network'))
+    expect(protectedPage.status).toBe(307)
+    expect(protectedPage.headers.get('location')).toContain('/auth/sign-in')
+    expect(page.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+
+    const ticket = sessionFor()
+    const ticketResponse = await createCognitoProxyHandler(ticket.session)(new NextRequest('https://staging.seaandshore.in/api/realtime/ticket', { method: 'POST' }))
+    expect(ticketResponse.status).toBe(200)
+    expect(ticketResponse.headers.get('location')).toBeNull()
+    expect(ticket.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
   })
 })

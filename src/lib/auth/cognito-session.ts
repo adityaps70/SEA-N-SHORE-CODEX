@@ -30,7 +30,12 @@ type CognitoSessionApi = {
 export type RefreshTokenLedger = {
   check(refreshToken: string): Promise<'ok' | 'reused'>
   record(input: { previousRefreshToken: string; authentication: CognitoAuthenticationResult }): Promise<void>
+  /** Round ARCH: Cognito refused this refresh token as reused; end the sign-in it belongs to in our database too. */
+  endSession?(refreshToken: string): Promise<void>
 }
+
+/** Where a refresh token reuse was caught: by our ledger before calling Cognito, or by Cognito itself. */
+export type RefreshReuseSource = 'ledger' | 'cognito'
 
 export class CognitoUnauthenticatedError extends Error {
   constructor() {
@@ -43,12 +48,30 @@ function isAuthorizationFailure(error: unknown) {
   return error instanceof CognitoApiError && error.code === 'NotAuthorizedException'
 }
 
+/**
+ * Round ARCH: Cognito refuses a refresh token that was already exchanged and comes back after the rotation grace
+ * period (refresh token rotation, 60 s). Like a refused token, the sign-in is over: it is handled the same way.
+ */
+function isRefreshTokenReuse(error: unknown) {
+  return error instanceof CognitoApiError && error.code === 'RefreshTokenReuseException'
+}
+
 export function createCognitoSessionManager(input: {
   cookieStore: CookieStore
   api: CognitoSessionApi
   siteUrl: string
   ledger?: RefreshTokenLedger
+  /** Round ARCH: counted (a metric, no member data) each time a reused refresh token is caught. */
+  onRefreshReuse?: (source: RefreshReuseSource) => void
 }) {
+  function reportReuse(source: RefreshReuseSource) {
+    try {
+      input.onRefreshReuse?.(source)
+    } catch {
+      // Counting must never break a request.
+    }
+  }
+
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl)
 
   return {
@@ -77,6 +100,7 @@ export function createCognitoSessionManager(input: {
 
       if (input.ledger && (await input.ledger.check(refreshToken)) === 'reused') {
         cookies.clearCognitoCookies()
+        reportReuse('ledger')
         return false
       }
 
@@ -91,6 +115,13 @@ export function createCognitoSessionManager(input: {
       } catch (error) {
         if (isAuthorizationFailure(error)) {
           cookies.clearCognitoCookies()
+          return false
+        }
+        if (isRefreshTokenReuse(error)) {
+          cookies.clearCognitoCookies()
+          reportReuse('cognito')
+          // Our record of the sign-in ends too, so the session check agrees with Cognito. Never fails the request.
+          await input.ledger?.endSession?.(refreshToken).catch(() => undefined)
           return false
         }
         throw error
