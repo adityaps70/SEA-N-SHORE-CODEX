@@ -686,7 +686,8 @@ def section_compare():
 
     # ALB access logs, both windows in one pass.
     bot = re.compile(BOT_PATTERN, re.I)
-    stats = {label: {"kinds": Counter(), "action_routes": Counter(), "api_routes": Counter(), "hourly": defaultdict(Counter)} for label, _s, _e in windows}
+    stats = {label: {"kinds": Counter(), "action_routes": Counter(), "api_routes": Counter(), "hourly": defaultdict(Counter),
+                     "api_status": Counter(), "ticket_hourly": defaultdict(Counter)} for label, _s, _e in windows}
     bounds = [(label, iso(start)[:19], iso(end)[:19], start) for label, start, end in windows]
     totals, budget = Counter(), {"bytes": 0}
     day = windows[0][1].date()
@@ -723,6 +724,11 @@ def section_compare():
                 st[kind + "_routes"][route_shape(path)] += 1
             idx = hour_index(dt.datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc), start)
             st["hourly"][idx][kind] += 1
+            if kind == "api":
+                # The ELB status (what the browser got) and, when the target answered, the app's own status.
+                st["api_status"]["%s elb=%s target=%s" % (route_shape(path), m.group(9), m.group(10))] += 1
+                if route_shape(path) == "/api/realtime/ticket":
+                    st["ticket_hourly"][idx][m.group(9)] += 1
         day += dt.timedelta(days=1)
     out("COMPARE_ALB_LOGS", "scannedMB=%s" % mb(budget["bytes"]), json.dumps(dict(totals)))
 
@@ -773,6 +779,10 @@ def section_compare():
         out("COMPARE_ALB", label, json.dumps(dict(st["kinds"]), sort_keys=True))
         out("COMPARE_ACTION_ROUTES", label, " ".join("%s=%d" % kv for kv in st["action_routes"].most_common(12)) or "none")
         out("COMPARE_API_ROUTES", label, " ".join("%s=%d" % kv for kv in st["api_routes"].most_common(12)) or "none")
+        out("COMPARE_API_STATUS", label, " ".join("%s=%d" % kv for kv in st["api_status"].most_common(20)) or "none")
+        ticket = st["ticket_hourly"]
+        out("COMPARE_TICKET_STATUS_BY_HOUR", label, " ".join(
+            "h%d[%s]" % (h, ",".join("%s=%d" % kv for kv in sorted(ticket[h].items()))) for h in range(hours) if ticket[h]) or "none")
     for h in range(hours):
         parts = []
         for label, start, _e in windows:
