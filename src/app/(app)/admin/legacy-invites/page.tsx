@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { emailDeliveryRepository } from '@/features/email-delivery/repository'
 import { LegacyInviteControls, LegacyReminderTestButton } from '@/features/legacy-invites/controls'
@@ -179,6 +178,9 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
   const params = (await searchParams) ?? {}
   const mode = params.mode === 'reminder' ? 'reminder' : params.mode === 'final' ? 'final' : 'invite'
 
+  // The mode tabs are full page loads, not client navigations: a client navigation to ?mode=final kept showing the
+  // First invitation content in production while the address changed. A full load always renders the chosen mode
+  // with fresh counts (this page is force-dynamic and reads everything per request).
   const tabs = (
     <nav aria-label="Legacy invitation mode" className="flex flex-wrap gap-2">
       {([
@@ -186,7 +188,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
         ['reminder', 'Second reminder', '/admin/legacy-invites?mode=reminder'],
         ['final', 'Final reminder', '/admin/legacy-invites?mode=final'],
       ] as const).map(([key, label, href]) => (
-        <Link
+        <a
           key={key}
           href={href}
           aria-current={mode === key ? 'page' : undefined}
@@ -195,7 +197,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
             : 'inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 hover:bg-mist-50'}
         >
           {label}
-        </Link>
+        </a>
       ))}
     </nav>
   )
@@ -226,7 +228,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
     const wait = waitUntil(batch.opensAt)
 
     return (
-      <div className="space-y-5">
+      <div key={mode} data-legacy-mode={mode} className="space-y-5">
         {header}
         {tabs}
 
@@ -363,7 +365,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
     const preview = legacyReminderEmail({ ...SAMPLE })
 
     return (
-      <div className="space-y-5">
+      <div key={mode} data-legacy-mode={mode} className="space-y-5">
         {header}
         {tabs}
 
@@ -444,7 +446,7 @@ export default async function LegacyInvitesAdminPage({ searchParams }: { searchP
   const preview = legacyInviteEmail({ fullName: SAMPLE.fullName, claimToken: SAMPLE.claimToken })
 
   return (
-    <div className="space-y-5">
+    <div key={mode} data-legacy-mode={mode} className="space-y-5">
       {header}
       {tabs}
 

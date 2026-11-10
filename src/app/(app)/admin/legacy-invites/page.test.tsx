@@ -40,6 +40,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/features/admin/access', () => ({ requirePlatformAdministratorUser: mocks.requireAdmin }))
+// Any next/link on this page renders with a marker, so the test can tell a client navigation from a full page load.
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => <a href={href} data-client-navigation="true" {...props}>{children}</a>,
+}))
 vi.mock('@/features/legacy-invites/admin-actions', () => ({
   prepareLegacyInviteBatch: vi.fn(), startPreparedLegacyInvites: vi.fn(), cancelPreparedLegacyInvites: vi.fn(), stopUnsentLegacyInvites: vi.fn(),
   prepareLegacyReminderBatch: vi.fn(), startPreparedLegacyReminders: vi.fn(), cancelPreparedLegacyReminders: vi.fn(), stopUnsentLegacyReminders: vi.fn(),
@@ -73,6 +77,7 @@ import { legacyFinalReminderEmail } from '@/features/legacy-invites/final-remind
 afterEach(cleanup)
 
 describe('Admin → Legacy invites', () => {
+
   it('fills the Last event column from Resend and shows backfill progress on the first invitation tab', async () => {
     render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({}) }))
     expect(screen.getByRole('link', { name: 'First invitation' })).toHaveAttribute('aria-current', 'page')
@@ -186,5 +191,29 @@ describe('Admin → Legacy invites', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
     expect(await screen.findByText(/Not resumed: confirm your password and authenticator code first/)).toBeInTheDocument()
     expect(mocks.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('switches mode with full page loads, so each tab always shows its own mode (Second and Final reminder too)', async () => {
+    const expected = {
+      invite: { tab: 'First invitation', href: '/admin/legacy-invites', heading: /backfill|checked/ },
+      reminder: { tab: 'Second reminder', href: '/admin/legacy-invites?mode=reminder', heading: /Eligible now/ },
+      final: { tab: 'Final reminder', href: '/admin/legacy-invites?mode=final', heading: /Eligible now/ },
+    } as const
+    for (const mode of ['invite', 'reminder', 'final', 'invite'] as const) {
+      const { container, unmount } = render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve(mode === 'invite' ? {} : { mode }) }))
+      // The content is keyed on the mode it was rendered for.
+      expect(container.querySelector('[data-legacy-mode]')).toHaveAttribute('data-legacy-mode', mode)
+      const nav = screen.getByRole('navigation', { name: 'Legacy invitation mode' })
+      for (const [key, tab] of Object.entries(expected)) {
+        const link = within(nav).getByRole('link', { name: tab.tab })
+        expect(link).toHaveAttribute('href', tab.href)
+        // A plain link: the browser loads the page, the client router never reuses the previous mode's content.
+        expect(link).not.toHaveAttribute('data-client-navigation')
+        if (key === mode) expect(link).toHaveAttribute('aria-current', 'page')
+        else expect(link).not.toHaveAttribute('aria-current')
+      }
+      expect(screen.getAllByText(expected[mode].heading).length).toBeGreaterThan(0)
+      unmount()
+    }
   })
 })
