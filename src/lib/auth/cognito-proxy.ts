@@ -104,6 +104,17 @@ export function renewsSessionOnPublicRoute(request: Pick<NextRequest, 'nextUrl' 
   return !request.cookies.has(COGNITO_COOKIE_NAMES.access) && request.cookies.has(COGNITO_COOKIE_NAMES.refresh)
 }
 
+/**
+ * Round ARCH (realtime ticket fix): the realtime ticket route. Phase 5 paused the timed polls while the socket is up,
+ * and those polls (through protected pages) used to renew a session whose access token Cognito no longer accepts. So
+ * this route renews it itself, once, from the refresh cookie, like a protected page, but never redirects: when the
+ * session cannot be renewed the route answers 401 and the client stops asking (src/features/realtime/connection.ts).
+ */
+export const REALTIME_TICKET_PATH = '/api/realtime/ticket'
+export function isRealtimeTicketRoute(pathname: string) {
+  return pathname === REALTIME_TICKET_PATH
+}
+
 export function isCognitoProtectedRoute(pathname: string) {
   if (isPublicLearnRoute(pathname) || isSoftAuthRoute(pathname)) return false
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
@@ -117,6 +128,11 @@ type RouteSession = {
 export function createCognitoProxyHandler(session: RouteSession, options: { allowSignedOutView?: (key: string) => boolean } = {}) {
   const allowSignedOutView = options.allowSignedOutView ?? allowPublicPostView
   return async function handle(request: NextRequest) {
+    if (isRealtimeTicketRoute(request.nextUrl.pathname)) {
+      const principal = await session.getVerifiedPrincipal().catch(() => null)
+      if (!principal?.sub) await session.refreshSession().catch(() => false)
+      return NextResponse.next({ request })
+    }
     const soft = isSoftAuthRoute(request.nextUrl.pathname)
     if (!soft && !isCognitoProtectedRoute(request.nextUrl.pathname)) {
       // A failed renewal never blocks a public page: it renders signed out, as before.
@@ -171,6 +187,7 @@ export function setRefreshTokenLedger(ledger: RefreshTokenLedger) {
 
 export async function updateCognitoRouteSession(request: NextRequest) {
   const routed = isCognitoProtectedRoute(request.nextUrl.pathname) || isSoftAuthRoute(request.nextUrl.pathname)
+    || isRealtimeTicketRoute(request.nextUrl.pathname)
   if (!routed && !renewsSessionOnPublicRoute(request)) {
     return AUTH_ENTRY_PATHS.has(request.nextUrl.pathname) ? rememberReturnPath(request) : NextResponse.next({ request })
   }

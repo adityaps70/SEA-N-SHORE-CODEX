@@ -264,6 +264,40 @@ describe('MessagingRealtimeProvider', () => {
     expect(FakeWebSocket.instances[0]?.close).not.toHaveBeenCalled()
   })
 
+  it('a refused ticket (401) is not retried on the fast backoff, and the tab asks again when it is shown (Round ARCH)', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider, useMessagingRealtime } = await import(providerPath) as typeof import('./provider')
+    let refuse = true
+    const base = vi.mocked(fetch).getMockImplementation()
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/realtime/ticket' && refuse) return new Response(JSON.stringify({ error: 'Authentication required.' }), { status: 401 })
+      return base!(input, init)
+    })
+    const tickets = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/realtime/ticket').length
+
+    function Probe() {
+      const realtime = useMessagingRealtime()
+      return <span data-testid="status">{realtime.status}</span>
+    }
+    render(
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
+        <Probe />
+      </MessagingRealtimeProvider>,
+    )
+    await waitFor(() => expect(tickets()).toBe(1))
+    // The refused ticket opens no socket, and nothing asks again on the 1-30 s backoff.
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(tickets()).toBe(1)
+    expect(FakeWebSocket.instances).toHaveLength(0)
+
+    // Shown again: it asks at once, and this time the session was renewed.
+    refuse = false
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() => expect(tickets()).toBe(2))
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+  })
+
   it('keeps one socket, one ticket and one state fetch when navigation moves to another layout (Round H, H1)', async () => {
     const { MessagingRealtimeProvider, resetSharedRealtimeForTests } = await import('./provider')
     resetSharedRealtimeForTests(30_000)

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-import { createCognitoProxyHandler, isCognitoProtectedRoute, isSoftAuthRoute, rememberReturnPath, renewsSessionOnPublicRoute } from './cognito-proxy'
+import { createCognitoProxyHandler, isCognitoProtectedRoute, isRealtimeTicketRoute, isSoftAuthRoute, rememberReturnPath, renewsSessionOnPublicRoute } from './cognito-proxy'
 import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
 import { RETURN_PATH_COOKIE } from './return-path'
 
@@ -280,5 +280,38 @@ describe('Cognito protected route proxy', () => {
 
     expect(response.headers.get('location')).toBeNull()
     expect(getVerifiedPrincipal).not.toHaveBeenCalled()
+  })
+
+  it('renews a rejected-but-present session on the realtime ticket route, once, and never redirects (Round ARCH)', async () => {
+    const ticket = () => new NextRequest('https://staging.seaandshore.in/api/realtime/ticket', { method: 'POST' })
+    expect(isRealtimeTicketRoute('/api/realtime/ticket')).toBe(true)
+    expect(isRealtimeTicketRoute('/api/realtime/typing-token')).toBe(false)
+
+    // Cognito rejects the access token: one renewal from the refresh cookie, then the route answers (no redirect).
+    const rejected = vi.fn(async () => null)
+    const renewed = vi.fn(async () => true)
+    const afterRenewal = await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: renewed })(ticket())
+    expect(afterRenewal.status).toBe(200)
+    expect(afterRenewal.headers.get('location')).toBeNull()
+    expect(renewed).toHaveBeenCalledTimes(1)
+
+    // The session cannot be renewed: still no redirect; the route itself answers 401.
+    const notRenewed = vi.fn(async () => false)
+    const signedOut = await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: notRenewed })(ticket())
+    expect(signedOut.status).toBe(200)
+    expect(signedOut.headers.get('location')).toBeNull()
+    expect(notRenewed).toHaveBeenCalledTimes(1)
+
+    // A session Cognito accepts is never renewed.
+    const accepted = vi.fn(async () => ({ sub: 'member-1' }))
+    const untouched = vi.fn(async () => true)
+    await createCognitoProxyHandler({ getVerifiedPrincipal: accepted, refreshSession: untouched })(ticket())
+    expect(untouched).not.toHaveBeenCalled()
+
+    // A failing check never throws out of the proxy.
+    const failing = vi.fn(async () => { throw new Error('cognito down') })
+    const failingRenewal = vi.fn(async () => { throw new Error('cognito down') })
+    const tolerated = await createCognitoProxyHandler({ getVerifiedPrincipal: failing, refreshSession: failingRenewal })(ticket())
+    expect(tolerated.status).toBe(200)
   })
 })
