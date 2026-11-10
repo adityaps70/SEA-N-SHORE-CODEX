@@ -11,12 +11,25 @@ const cache = readFileSync('src/lib/http/public-page-cache.ts', 'utf8')
 test('every AWS call is read-only, and the SQL runs in a read-only transaction that is rolled back', () => {
   const calls = [...script.matchAll(/\baws ([a-z0-9-]+) ([a-z-]+)/g)].map((m) => `${m[1]} ${m[2]}`)
   assert.deepEqual([...new Set(calls)].sort(), [
+    'ec2 describe-instances',
     'rds describe-db-clusters',
     'rds-data begin-transaction',
     'rds-data execute-statement',
     'rds-data rollback-transaction',
+    'ssm get-command-invocation',
+    'ssm send-command',
     'sts get-caller-identity',
   ])
+  // The database lookup runs on the bootstrap host through SSM (this runner's role has no database access), as
+  // ssm-user, inside a quoted heredoc so nothing in it expands here.
+  const remote = script.slice(script.indexOf("$(cat <<'REMOTE'"), script.indexOf('\nREMOTE\n'))
+  assert.match(remote, /aws rds-data begin-transaction/)
+  assert.match(remote, /SET TRANSACTION READ ONLY/)
+  assert.match(remote, /trap 'aws rds-data rollback-transaction/)
+  assert.doesNotMatch(script.replace(remote, ''), /aws rds-data|aws rds describe/, 'no database call runs on the GitHub runner')
+  assert.match(script, /runuser -u ssm-user -- bash -lc/)
+  assert.match(script, /Name=tag:Name,Values=sea-n-shore-bootstrap/)
+  assert.match(script, /\[\[ "\$\(jq -r '\.Status' "\$RESULT_FILE"\)" == Success \]\]/)
   assert.doesNotMatch(script, /commit-transaction/)
   assert.match(script, /SET TRANSACTION READ ONLY/)
   assert.match(script, /trap 'aws rds-data rollback-transaction/)
