@@ -816,6 +816,51 @@ def section_compare():
         headline("hours_after_split", lambda h: h >= split_hours)
 
 
+# ---------------------------------------------------------------- section: checks
+
+# Round ARCH (Phase 2): read-only pre-check before the deploy arm (window file "checks"), counts and yes/no only.
+# Sea N Shore's own organization page is the live edge check's probe (scripts/aws/org-page-edge-check.sh picks the
+# organization whose website is the public site, else the one named exactly "Sea N Shore"); the check passes only if
+# exactly one such organization is public by the app's exact rule (organizationPubliclyVisibleSql: claimed, and
+# listable as in listableOrganizationSql).
+CLAIM_STATUS_SQL = "coalesce(to_jsonb(company) ->> 'claim_status', 'claimed')"
+LISTABLE_SQL = (
+    "((" + CLAIM_STATUS_SQL + " = 'unclaimed' and not exists (select 1 from public.organization_applications a "
+    "where a.company_id = company.id and a.status = 'suspended')) or ((coalesce(company.is_verified, false) or not exists "
+    "(select 1 from public.organization_applications a where a.company_id = company.id)) and not exists "
+    "(select 1 from public.organization_applications a where a.company_id = company.id and a.status <> 'approved')))"
+)
+SITE_HOST_SQL = ("lower(regexp_replace(regexp_replace(coalesce(company.website, ''), '^https?://(www\\.)?', ''), "
+                 "'[/:?#].*$', ''))")
+
+
+def section_checks():
+    out("=== CHECKS (read-only, counts only) ===")
+    host = os.environ.get("REPORT_SITE_HOST", "")
+    assert re.match(r"^[a-z0-9.-]+$", host), "REPORT_SITE_HOST must be a bare host"
+    rows = sql_rows([
+        "with candidates as (select " + SITE_HOST_SQL + " = '" + host + "' as by_website, "
+        "lower(btrim(company.name)) = 'sea n shore' as by_name, " + CLAIM_STATUS_SQL + " = 'claimed' as claimed, "
+        "coalesce(company.is_verified, false) as verified, " + LISTABLE_SQL + " as listable, "
+        "(select count(*) from public.organization_applications a where a.company_id = company.id and a.status <> 'approved')::int "
+        "as open_applications from public.companies company) "
+        "select by_website, by_name, claimed, verified, listable, open_applications from candidates "
+        "where by_website or by_name",
+    ])
+    candidates = rows[0]
+    if candidates is None:
+        out("CHECK_SNS_ORG", "UNAVAILABLE")
+        return
+    by_website = [r for r in candidates if r.get("by_website")]
+    probe = by_website if by_website else [r for r in candidates if r.get("by_name")]
+    for r in probe:
+        out("CHECK_SNS_ORG_CANDIDATE", "by_website=%s" % r.get("by_website"), "by_name=%s" % r.get("by_name"),
+            "claimed=%s" % r.get("claimed"), "verified=%s" % r.get("verified"), "listable=%s" % r.get("listable"),
+            "open_applications=%s" % r.get("open_applications"))
+    public = len(probe) == 1 and bool(probe[0].get("claimed")) and bool(probe[0].get("listable"))
+    out("CHECK_SNS_ORG", "candidates=%d" % len(probe), "public_by_app_rule=%s" % public)
+
+
 # ---------------------------------------------------------------- section: media
 
 # Fixed words that may appear in object keys (folders and file-name prefixes the app writes). Anything else,
@@ -881,7 +926,7 @@ def section_media():
 
 def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
-    {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare}[SECTION]()
+    {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

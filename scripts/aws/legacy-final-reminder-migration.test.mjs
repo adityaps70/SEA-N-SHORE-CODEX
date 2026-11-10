@@ -144,7 +144,7 @@ assert.equal([...revert.matchAll(/^echo "(LEGACY_FINAL_REMINDER_MIGRATION_[A-Z_]
   assert.ok(block.length > 0, 'the counts block is present')
   assert.ok(script.indexOf('# Read-only legacy email counts') < script.indexOf('if [[ "${#PENDING[@]}" -eq 0 ]]; then'), 'counts print before the nothing-pending exit')
   const sql = [...block.matchAll(/read_(?:count|text) "([^"]+)"/g)].map((m) => m[1])
-  assert.equal(sql.length, 6)
+  assert.equal(sql.length, 8)
   for (const statement of sql) {
     assert.match(statement, /^SELECT /, statement.slice(0, 40))
     assert.doesNotMatch(statement, /\b(insert|update|delete|drop|alter|create|truncate)\b/i)

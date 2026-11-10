@@ -137,6 +137,10 @@ LEGACY_SUPPRESSED="$(read_count "SELECT count(DISTINCT lower(invite.email))::big
 LEGACY_UNSUBSCRIBED="$(read_count "SELECT count(DISTINCT lower(invite.email))::bigint FROM public.legacy_profile_invites invite JOIN public.email_suppressions suppression ON suppression.email = lower(invite.email) WHERE suppression.reason = 'unsubscribed'")"
 echo "LEGACY_COUNTS first_sent=$LEGACY_FIRST_SENT reminder_sent=$LEGACY_REMINDER_SENT claimed=$LEGACY_CLAIMED bounced_complained_or_suppressed=$LEGACY_SUPPRESSED unsubscribed=$LEGACY_UNSUBSCRIBED"
 echo "LEGACY_REMINDER_SENT_BY_DAY $(read_text "SELECT coalesce(string_agg(day || '=' || sent, ',' ORDER BY day), 'none') FROM (SELECT to_char(sent_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*) AS sent FROM public.legacy_profile_invite_reminders WHERE status = 'sent' AND sent_at IS NOT NULL GROUP BY 1) days")"
+# The final reminder's "Has a Sea N Shore account with this email" row: sent first invitations whose email matches an
+# account email at all, and how many of those already count as claimed (that rule runs first). Counts only.
+echo "LEGACY_ACCOUNT_MATCH $(read_text "SELECT 'with_account_email=' || count(*) FILTER (WHERE account) || ' with_account_email_and_claimed=' || count(*) FILTER (WHERE account AND claimed) || ' with_account_email_not_claimed=' || count(*) FILTER (WHERE account AND NOT claimed) FROM (SELECT EXISTS (SELECT 1 FROM public.identity_accounts identity WHERE lower(identity.email) = lower(invite.email)) AS account, (EXISTS (SELECT 1 FROM public.legacy_profile_claims claim WHERE claim.profile_id = invite.profile_id AND claim.claimed_at IS NOT NULL) OR EXISTS (SELECT 1 FROM public.legacy_profile_claims claim WHERE lower(claim.email) = lower(invite.email) AND claim.claimed_at IS NOT NULL)) AS claimed FROM public.legacy_profile_invites invite WHERE invite.status = 'sent') invites")"
+echo "LEGACY_IDENTITY_ACCOUNTS $(read_text "SELECT 'identity_accounts=' || count(*) || ' without_email=' || count(*) FILTER (WHERE email IS NULL OR btrim(email) = '') FROM public.identity_accounts")"
 
 PENDING=()
 for migration in "${MIGRATIONS[@]}"; do

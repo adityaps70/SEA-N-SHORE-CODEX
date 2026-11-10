@@ -25,6 +25,8 @@ const isoMinute = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 function compareWindow() {
   const line = readFileSync('scripts/aws/capacity-media-report-window.txt', 'utf8').trim()
   if (line === 'none') return null
+  // Round ARCH: read-only pre-checks before a rollout step (section_checks in the remote script).
+  if (line === 'checks') return { checks: true }
   const m = line.match(/^compare (\S+) (\S+)(?: split (\S+))?$/)
   assert.ok(m && MINUTE.test(m[1]) && (m[2] === 'now' || MINUTE.test(m[2])) && (!m[3] || MINUTE.test(m[3])),
     'the window file must read "none" or "compare <start> <end|now> [split <time>]" in whole UTC minutes')
@@ -38,8 +40,11 @@ function compareWindow() {
 
 // The load test (aws-load-test.yml) asks for the usage section over its own window only; it never runs the compare.
 const COMPARE = process.env.REPORT_SECTIONS ? null : compareWindow()
-const SECTIONS = COMPARE ? ['compare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
-assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE && s === 'compare')), 'unknown report section')
+// The public site's host, for the checks section (the live edge check probes the organization whose website is this).
+const SITE_HOST = (readFileSync('scripts/aws/public-site-url.txt', 'utf8').trim().match(/^https:\/\/([a-z0-9.-]+)$/) || [])[1] || ''
+
+const SECTIONS = COMPARE?.checks ? ['checks'] : COMPARE ? ['compare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE && s === (COMPARE.checks ? 'checks' : 'compare'))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
@@ -63,9 +68,10 @@ export AWS_REGION=${quote(region)}
 export REPORT_SECTION=${quote(section)}
 export REPORT_START=${quote(WINDOW.start)}
 export REPORT_END=${quote(WINDOW.end)}
-export COMPARE_START=${quote(COMPARE ? COMPARE.start : '')}
-export COMPARE_END=${quote(COMPARE ? COMPARE.end : '')}
-export COMPARE_SPLIT=${quote(COMPARE ? COMPARE.split : '')}
+export COMPARE_START=${quote(COMPARE?.start ?? '')}
+export COMPARE_END=${quote(COMPARE?.end ?? '')}
+export COMPARE_SPLIT=${quote(COMPARE?.split ?? '')}
+export REPORT_SITE_HOST=${quote(SITE_HOST)}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
