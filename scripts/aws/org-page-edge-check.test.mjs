@@ -25,13 +25,16 @@ test('every AWS call is read-only, and the SQL runs in a read-only transaction t
   assert.match(script, /310356785722/)
 })
 
-test('the probed page comes from the database, by the public site host or the brand name, exactly one', () => {
-  assert.match(script, /scripts\/aws\/public-site-url\.txt/)
-  assert.match(script, /stringValue\\":\\"\$SITE_HOST/)
-  assert.match(script, /lower\(btrim\(name\)\) = 'sea n shore'/)
-  assert.match(script, /claim_status', 'claimed'\) = 'claimed'/)
-  assert.match(script, /coalesce\(is_verified, false\)/)
-  assert.match(script, /\$\{#SLUGS\[@\]\}" -eq 1/)
+test('the probed page comes from the database, by the exact name in org-page-probe-name.txt, exactly one, claimed and verified', () => {
+  assert.equal(readFileSync('scripts/aws/org-page-probe-name.txt', 'utf8').trim(), 'BEAUFORT MARINE SERVICES LLP')
+  assert.match(script, /scripts\/aws\/org-page-probe-name\.txt/)
+  assert.match(script, /stringValue\\":\\"\$PROBE_NAME/)
+  assert.match(script, /WHERE btrim\(name\) = :probe_name/)
+  assert.match(script, /claim_status', 'claimed'\) = 'claimed' AS claimed/)
+  assert.match(script, /coalesce\(is_verified, false\) AS verified/)
+  assert.match(script, /\[\[ "\$MATCHES" -eq 1 \]\]/)
+  assert.match(script, /records\[0\]\[1\]\.booleanValue/)
+  assert.match(script, /records\[0\]\[2\]\.booleanValue/)
   assert.match(script, /\[\[ "\$SLUG" =~ \^\[a-z0-9\]\[a-z0-9-\]\*\$ \]\]/)
   assert.doesNotMatch(script, /organizations\/[a-z0-9-]+-[a-z0-9]/, 'no typed slug')
 })
