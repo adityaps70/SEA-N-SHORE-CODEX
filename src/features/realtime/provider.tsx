@@ -20,6 +20,7 @@ import type { MessagingInboxItem } from '@/features/messaging/queries'
 import type { MessagingRealtimeSignal } from './client'
 import {
   createMessagingRealtimeConnection,
+  RealtimeTicketRefusedError,
   type MessagingRealtimeConnection,
   type MessagingRealtimeConnectionStatus,
   type TypingTokenGrant,
@@ -53,6 +54,8 @@ async function requestRealtimeTicket() {
     method: 'POST',
     cache: 'no-store',
   })
+  // Round ARCH: a refusal (the session ended) is not retried on the fast backoff (connection.ts).
+  if (response.status === 401 || response.status === 403) throw new RealtimeTicketRefusedError(response.status)
   if (!response.ok) throw new Error('realtime_ticket_request_failed')
 
   const payload = await response.json() as unknown
@@ -180,8 +183,14 @@ function acquireSharedRealtime(viewerProfileId: string) {
       for (const listener of state.signalListeners) listener(signal)
     })
     const reconnectWhenOnline = () => state.connection.reconnectNow()
+    // Round ARCH: a tab shown again also tries at once (after a refused ticket, this is when it asks again).
+    const reconnectWhenShown = () => { if (document.visibilityState === 'visible') state.connection.reconnectNow() }
     window.addEventListener('online', reconnectWhenOnline)
-    state.removeOnlineListener = () => window.removeEventListener('online', reconnectWhenOnline)
+    document.addEventListener('visibilitychange', reconnectWhenShown)
+    state.removeOnlineListener = () => {
+      window.removeEventListener('online', reconnectWhenOnline)
+      document.removeEventListener('visibilitychange', reconnectWhenShown)
+    }
     shared = state
     void state.connection.start()
   }

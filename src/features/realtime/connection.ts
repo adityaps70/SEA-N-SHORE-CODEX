@@ -66,6 +66,33 @@ export const REALTIME_HEARTBEAT_MS = 5 * 60 * 1000
 export const SERVER_CLOSE_RECONNECT_SPREAD_MS = 30_000
 /** The realtime Lambda relays at most one typing signal per 2 s per connection; the margin absorbs jitter. */
 export const TYPING_MIN_INTERVAL_MS = 2_200
+/**
+ * Round ARCH (realtime ticket fix): a ticket request the server refuses (401/403: the session ended or cannot be
+ * renewed) is not retried on the fast backoff. The tab waits this long, or until it is shown again or comes back
+ * online, and stops asking after MAX_TICKET_REFUSALS refusals in a row until it is shown or goes online again.
+ * Meanwhile the socket is down, so the timed polls run (through pages that renew the session or ask to sign in).
+ */
+export const TICKET_REFUSED_RETRY_MS = 5 * 60 * 1000
+export const MAX_TICKET_REFUSALS = 3
+/** After this many failures in a row (network errors, server errors, sockets that never open), retry every 5 minutes. */
+export const SLOW_RETRY_AFTER_FAILURES = 10
+export const SLOW_RETRY_MS = 5 * 60 * 1000
+
+/** Thrown by a requestTicket that got a refusal (401 or 403) from the ticket route. */
+export class RealtimeTicketRefusedError extends Error {
+  readonly status: number
+  constructor(status: number) {
+    super('realtime_ticket_refused')
+    this.name = 'RealtimeTicketRefusedError'
+    this.status = status
+  }
+}
+
+function isTicketRefusal(error: unknown) {
+  return error instanceof RealtimeTicketRefusedError
+    || (typeof error === 'object' && error !== null && 'status' in error && ((error as { status?: unknown }).status === 401 || (error as { status?: unknown }).status === 403))
+}
+
 const TYPING_TOKEN_REFRESH_MARGIN_MS = 60_000
 const TYPING_TOKEN_FAILURE_RETRY_MS = 60_000
 
@@ -86,6 +113,9 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   /** Set when the next reconnect follows a close the server made on a working connection. */
   let spreadNextReconnect = false
+  /** Ticket refusals and other failures in a row, since the last socket that opened. */
+  let ticketRefusals = 0
+  let failures = 0
   let typingTimer: ReturnType<typeof setTimeout> | null = null
   let lastTypingSentAt = 0
   const pendingTyping = new Map<string, TypingInput>()
@@ -115,13 +145,14 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     heartbeatTimer = null
   }
 
-  function scheduleReconnect() {
+  function scheduleReconnect(fixedDelayMs?: number) {
     if (!active || reconnectTimer) return
     setStatus('backoff')
     const spread = spreadNextReconnect ? Math.floor(Math.min(1, Math.max(0, random())) * SERVER_CLOSE_RECONNECT_SPREAD_MS) : 0
     spreadNextReconnect = false
-    const delay = reconnectDelayMs(reconnectAttempt, random) + spread
-    reconnectAttempt += 1
+    const delay = fixedDelayMs ?? (failures >= SLOW_RETRY_AFTER_FAILURES ? SLOW_RETRY_MS : reconnectDelayMs(reconnectAttempt, random) + spread)
+    // A refusal's fixed wait does not advance the usual backoff.
+    if (fixedDelayMs === undefined) reconnectAttempt += 1
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       void connect()
@@ -156,6 +187,8 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
         if (!active || socket !== nextSocket) return
         opened = true
         reconnectAttempt = 0
+        ticketRefusals = 0
+        failures = 0
         setStatus('connected')
         clearRenewalTimer()
         renewalTimer = setTimeout(() => {
@@ -186,10 +219,20 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
         clearHeartbeat()
         // A working connection the server closed: spread this tab's reconnect over up to 30 s.
         if (opened && !closedByClient) spreadNextReconnect = true
+        if (!opened) failures += 1
         if (active) scheduleReconnect()
       }
-    } catch {
-      if (active) scheduleReconnect()
+    } catch (error) {
+      if (!active) return
+      if (isTicketRefusal(error)) {
+        ticketRefusals += 1
+        // Stop asking: the socket stays down (so the timed polls run) until the tab is shown or goes online again.
+        if (ticketRefusals >= MAX_TICKET_REFUSALS) setStatus('disconnected')
+        else scheduleReconnect(TICKET_REFUSED_RETRY_MS)
+        return
+      }
+      failures += 1
+      scheduleReconnect()
     } finally {
       connecting = false
     }
@@ -216,10 +259,13 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     setStatus('disconnected')
   }
 
+  /** The tab was shown again or came back online: try at once, with fresh counts. */
   function reconnectNow() {
     if (!active || socket || connecting) return
     clearReconnectTimer()
     reconnectAttempt = 0
+    ticketRefusals = 0
+    failures = 0
     void connect()
   }
 
