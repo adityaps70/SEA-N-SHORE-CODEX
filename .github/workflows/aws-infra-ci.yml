@@ -105,6 +105,8 @@ jobs:
         run: node --test scripts/aws/remote-verify-log-window.test.mjs
       - name: Verify public organization page edge check contract
         run: node --test scripts/aws/org-page-edge-check.test.mjs
+      - name: Verify Remote Verify Cognito detail contract
+        run: node --test scripts/aws/remote-verify-cognito-detail.test.mjs
       - name: Verify staging deploy guard contract
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
       - name: Verify health check token header contract
