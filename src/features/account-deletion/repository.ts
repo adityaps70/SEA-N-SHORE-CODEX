@@ -24,6 +24,8 @@ export type AccountDeletionResult = {
   cancelledEventAttendees?: Array<{ profileId: string; eventId: string; eventTitle: string }>
   /** Other Cognito users that signed in to this profile (e.g. mobile sign-in), removed after the commit. */
   otherSignInUsernames?: string[]
+  /** Round ARCH (Phase 2): organizations left without a manager (now unclaimed): their public page is cleared after the commit. */
+  unmanagedCompanyIds?: string[]
   plan?: AccountDeletionPlan
 }
 
@@ -806,6 +808,7 @@ async function cleanupAccount(query: Query, profileId: string, currentSub: strin
     )))],
     refundOrderIds: owned.refundOrderIds,
     cancelledEventAttendees: owned.cancelledEventAttendees,
+    unmanagedCompanyIds: plan.strippedCompanyIds,
     otherSignInUsernames: signIns.flatMap((row) => (
       row.provider_subject !== currentSub && typeof row.provider_username === 'string' && row.provider_username.trim()
         ? [row.provider_username.trim()]

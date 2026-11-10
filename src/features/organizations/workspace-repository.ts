@@ -255,6 +255,18 @@ const WORKSPACE_COLUMNS = `id, slug, name, logo_path, cover_path, tagline, compa
               vessel_types, office_locations, coalesce(is_verified, false) as is_verified,
               ${organizationClaimStatusSql('companies')} as claim_status`
 
+/**
+ * Round ARCH (Phase 2): an organization page visitors may see signed out (and that search engines may list):
+ * claimed, and listed to members by the same rule as everywhere else (verified, or a page that never went
+ * through an application; never one whose application is pending, awaiting changes, rejected or suspended).
+ * Unclaimed (imported) pages stay signed-in only; a deleted organization has no row.
+ */
+export function organizationPubliclyVisibleSql(alias: string) {
+  return `(${organizationClaimStatusSql(alias)} = 'claimed' and ${listableOrganizationSql(alias)})`
+}
+
+export type PublicOrganizationSitemapEntry = { slug: string; updatedAt: string | null }
+
 /** Card columns for `public.companies company`; $1 is the viewer. */
 const CARD_COLUMNS = `company.id,
          company.slug,
@@ -309,6 +321,63 @@ export function createOrganizationWorkspaceRepository(input: {
       [slug],
     ) as WorkspaceRow[]
     return rows[0] ? mapWorkspace(rows[0]) : null
+  }
+
+  /** Round ARCH (Phase 2): the signed-out page; null for an organization that must not be shown to visitors. */
+  async function getPublicBySlug(slug: string): Promise<OrganizationWorkspace | null> {
+    const rows = await queryRows(
+      `select ${WORKSPACE_COLUMNS}
+       from public.companies
+       where slug = $1
+         and ${organizationPubliclyVisibleSql('companies')}
+       limit 1`,
+      [slug],
+    ) as WorkspaceRow[]
+    return rows[0] ? mapWorkspace(rows[0]) : null
+  }
+
+  /** Round ARCH (Phase 2): the slug of an organization, for clearing its page from CloudFront. */
+  async function getSlugById(companyId: string): Promise<string | null> {
+    const rows = await queryRows(`select slug from public.companies where id = $1 limit 1`, [companyId]) as Array<{ slug?: string | null }>
+    return typeof rows[0]?.slug === 'string' && rows[0].slug ? rows[0].slug : null
+  }
+
+  /** Round ARCH (Phase 2): the slug of the organization that publishes a course (null for a personal course). */
+  async function getSlugByCourseId(courseId: string): Promise<string | null> {
+    const rows = await queryRows(
+      `select company.slug
+       from public.learning_courses course
+       join public.companies company on company.id = course.company_id
+       where course.id = $1
+       limit 1`,
+      [courseId],
+    ) as Array<{ slug?: string | null }>
+    return typeof rows[0]?.slug === 'string' && rows[0].slug ? rows[0].slug : null
+  }
+
+  /** Round ARCH (Phase 2): publicly visible organization pages for the sitemap, most recently updated first. */
+  async function listPublicSitemapOrganizations(limit: number): Promise<PublicOrganizationSitemapEntry[]> {
+    const rows = await queryRows(
+      `select companies.slug, companies.updated_at
+       from public.companies
+       where ${organizationPubliclyVisibleSql('companies')}
+       order by companies.updated_at desc nulls last, companies.id asc
+       limit $1`,
+      [Math.max(1, Math.min(limit, 50_000))],
+    ) as Array<{ slug: string; updated_at: Date | string | null }>
+    return rows.map((row) => ({
+      slug: row.slug,
+      updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at ?? null,
+    }))
+  }
+
+  /** Round ARCH (Phase 2): the follower count alone (no viewer), for the signed-out page. */
+  async function countFollowers(companyId: string): Promise<number> {
+    const rows = await queryRows(
+      `select count(*) as follower_count from public.organization_follows where company_id = $1`,
+      [companyId],
+    )
+    return number(rows[0]?.follower_count)
   }
 
   async function getById(companyId: string): Promise<OrganizationWorkspace | null> {
@@ -867,6 +936,11 @@ export function createOrganizationWorkspaceRepository(input: {
 
   return {
     getBySlug,
+    getPublicBySlug,
+    getSlugById,
+    getSlugByCourseId,
+    listPublicSitemapOrganizations,
+    countFollowers,
     getById,
     listMembers,
     updateMemberRole,

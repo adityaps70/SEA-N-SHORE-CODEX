@@ -18,7 +18,7 @@ test('membership experience is reflected across profile, creator, activities, or
   const learnPage = read('src/app/(public)/learn/page.tsx')
   const hiringOrganization = read('src/app/(app)/hiring/organization/page.tsx')
   const organizationsPage = read('src/app/(app)/organizations/page.tsx')
-  const organizationWorkspace = read('src/app/(app)/organizations/[slug]/page.tsx')
+  const organizationWorkspace = read('src/app/(public)/organizations/[slug]/signed-in-page.tsx')
   const organizationBranding = read('src/features/organizations/components/organization-branding-form.tsx')
 
   assert.match(profileRepository, /p\.persona/)
@@ -48,7 +48,7 @@ test('membership experience is reflected across profile, creator, activities, or
   assert.match(read('src/features/organizations/components/organization-logo.tsx'), /unoptimized/)
   assert.match(organizationBranding, /unoptimized/)
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/page.tsx')))
-  assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/page.tsx')))
+  assert.ok(fs.existsSync(path.join(root, 'src/app/(public)/organizations/[slug]/signed-in-page.tsx')))
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/team/page.tsx')))
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/branding/page.tsx')))
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/analytics/page.tsx')))

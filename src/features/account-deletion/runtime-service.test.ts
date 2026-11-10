@@ -18,6 +18,8 @@ vi.mock('@/features/auth/cognito-user-admin', () => ({ createCognitoUserAdmin: m
 vi.mock('@/features/billing/account-closure', () => ({ stopAutoRenewForClosingAccount: vi.fn() }))
 vi.mock('@/features/payments/event-payment-runtime', () => ({ eventPaymentService: { refundOrder: vi.fn() } }))
 vi.mock('./repository', () => ({ accountDeletionRepository: {} }))
+const clearOrganizationPublicPage = vi.hoisted(() => vi.fn(async () => undefined))
+vi.mock('@/features/organizations/public-page-refresh', () => ({ clearOrganizationPublicPage }))
 
 import { runtimeAccountDeletionEffects } from './runtime-service'
 
@@ -36,5 +38,10 @@ describe('runtime account deletion effects', () => {
   it('surfaces a Cognito failure so the deletion service can report it', async () => {
     mocks.deleteUser.mockRejectedValueOnce(new Error('AccessDenied'))
     await expect(runtimeAccountDeletionEffects().deleteOtherSignIn!('uuid-2')).rejects.toThrow('AccessDenied')
+  })
+
+  it('clears an unclaimed organization\'s public page at once, without the per-minute wait (Round ARCH, Phase 2)', async () => {
+    await runtimeAccountDeletionEffects().clearOrganizationPage!('company-a')
+    expect(clearOrganizationPublicPage).toHaveBeenCalledWith({ companyId: 'company-a' }, { immediate: true })
   })
 })

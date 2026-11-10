@@ -7,6 +7,7 @@ import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from './mfa-gate'
 import { adminRepository, type AdminCompanyAccessDecision, type AdminOrganizationDecision } from './repository'
 import { MODERATION_TARGET_TYPES, type ModerationAction } from '@/features/moderation/types'
 import { accessRequestErrorMessage } from '@/features/organizations/access-request-messages'
+import { clearOrganizationPublicPage } from '@/features/organizations/public-page-refresh'
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole } from '@/features/organizations/types'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
 
@@ -155,6 +156,12 @@ export async function reviewOrganizationApplication(
     }
     return { ok: false, error: 'The organization review could not be saved. Please try again.' }
   }
+
+  // Round ARCH (Phase 2): approval opens the public page; suspension or rejection must take it down now
+  // (signed out it is then not found). Either way clear CloudFront at once, without the per-minute wait.
+  await clearOrganizationPublicPage({
+    resolveSlug: async () => (await adminRepository.getOrganizationApplicationReview(user.id, parsed.data.applicationId))?.company.slug,
+  }, { immediate: true })
 
   revalidatePath('/admin')
   revalidatePath('/admin/organizations')

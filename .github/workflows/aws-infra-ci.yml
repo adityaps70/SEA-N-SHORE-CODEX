@@ -103,6 +103,8 @@ jobs:
         run: node --test scripts/aws/remote-execution-config.test.mjs
       - name: Verify remote runtime log window contract
         run: node --test scripts/aws/remote-verify-log-window.test.mjs
+      - name: Verify public organization page edge check contract
+        run: node --test scripts/aws/org-page-edge-check.test.mjs
       - name: Verify staging deploy guard contract
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
       - name: Verify health check token header contract

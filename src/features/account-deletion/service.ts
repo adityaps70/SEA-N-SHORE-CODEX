@@ -31,6 +31,8 @@ export type AccountDeletionEffects = {
   notifyEventCancelled?: (input: { profileId: string; eventId: string; eventTitle: string }) => Promise<void>
   /** Removes another Cognito user that signed in to this profile (e.g. a mobile sign-in). */
   deleteOtherSignIn?: (username: string) => Promise<void>
+  /** Round ARCH (Phase 2): clears the public page of an organization the deletion left unclaimed. Never throws. */
+  clearOrganizationPage?: (companyId: string) => Promise<void>
   log?: (message: string, details?: Record<string, unknown>) => void
 }
 
@@ -119,6 +121,11 @@ export function createAccountDeletionService(input: {
       }
     }
     if (signInFailures) log('account_deletion_sign_in_cleanup_incomplete', { failures: signInFailures })
+
+    for (const companyId of result.unmanagedCompanyIds ?? []) {
+      if (!effects.clearOrganizationPage) break
+      await effects.clearOrganizationPage(companyId).catch(() => undefined)
+    }
   }
 
   /**

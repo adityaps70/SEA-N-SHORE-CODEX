@@ -13,6 +13,7 @@ import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
 import { COMPANY_SIZE_VALUES, MAX_SPECIALTIES, TAGLINE_MAX_LENGTH, type CompanySize } from './organization-page-profile'
 import { plainFieldErrors } from '@/lib/validation/plain-messages'
 import { verifyStoredUploadSignature } from '@/lib/uploads/verify-stored-upload'
+import { clearOrganizationPublicPage } from './public-page-refresh'
 
 const uuidSchema = z.string().uuid()
 const assignableRoles = [
@@ -121,6 +122,8 @@ function workspacePath(slug: string) {
 }
 
 function refreshOrganizationWorkspace(slug: string) {
+  // Round ARCH (Phase 2): the public page shows the branding, logo, cover and about details.
+  void clearOrganizationPublicPage({ slug })
   revalidatePath('/organizations')
   revalidatePath(workspacePath(slug))
   revalidatePath(`${workspacePath(slug)}/manage`)

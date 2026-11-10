@@ -15,7 +15,9 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   flagContentAutomatically: vi.fn(async () => undefined),
   requireCapability: vi.fn(async () => undefined),
+  clearOrganizationPublicPage: vi.fn(async () => undefined),
 }))
+vi.mock('@/features/organizations/public-page-refresh', () => ({ clearOrganizationPublicPage: mocks.clearOrganizationPublicPage }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
@@ -251,6 +253,22 @@ describe('hiring server actions', () => {
       error: expect.stringMatching(/creator pro|organization pro|publishing access/i),
     })
     expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('clears the publishing organization\'s public page when a job is posted, edited, moved or deleted (Round ARCH, Phase 2)', async () => {
+    await createHiringJob(createInput())
+    expect(mocks.clearOrganizationPublicPage).toHaveBeenLastCalledWith({ slug: undefined, companyId })
+
+    mocks.clearOrganizationPublicPage.mockClear()
+    mocks.getManagedJob.mockResolvedValue(managedJob({ status: 'draft' }))
+    await expect(deleteHiringJob(jobId)).resolves.toEqual({ ok: true })
+    expect(mocks.clearOrganizationPublicPage).toHaveBeenCalledWith({ slug: 'oceanic', companyId })
+  })
+
+  it('clears no organization page for a personal job', async () => {
+    mocks.getManagedJob.mockResolvedValue(managedJob({ status: 'draft', companyId: null, companySlug: null }))
+    await deleteHiringJob(jobId)
+    expect(mocks.clearOrganizationPublicPage).not.toHaveBeenCalled()
   })
 
   it('creates a vacancy with the server-authenticated recruiter and revalidates candidate and hiring surfaces', async () => {

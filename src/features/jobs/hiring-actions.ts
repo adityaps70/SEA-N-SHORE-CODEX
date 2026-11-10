@@ -6,6 +6,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { requireCapability } from '@/features/access/server'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
+import { clearOrganizationPublicPage } from '@/features/organizations/public-page-refresh'
 import { isOwnerSettableApplicationStatus, validateApplicationStatusChange } from './application-status'
 import {
   hiringRepository,
@@ -274,7 +275,9 @@ function asStoredDraft<T extends HiringJobUpdateInput>(input: T): { ok: true; da
   }
 }
 
-function refreshJobMutation(jobId: string) {
+function refreshJobMutation(jobId: string, company: { companyId?: string | null; companySlug?: string | null } | null = null) {
+  // Round ARCH (Phase 2): the company's public page lists its published jobs.
+  if (company?.companyId || company?.companySlug) void clearOrganizationPublicPage({ slug: company.companySlug, companyId: company.companyId })
   revalidatePath('/hiring')
   revalidatePath('/hiring/jobs')
   revalidatePath(`/hiring/jobs/${jobId}/applicants`)
@@ -343,7 +346,7 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
     await requirePublishCapability(user.id, jobInput.publisherType === 'personal' ? null : jobInput.companyId)
     const jobId = await hiringRepository.createJob(user.id, { ...jobInput, joiningUntil: null })
     await flagAutomatedJobModeration(jobId, moderation)
-    refreshJobMutation(jobId)
+    refreshJobMutation(jobId, jobInput.publisherType === 'organization' ? { companyId: jobInput.companyId } : null)
     return { ok: true, jobId }
   } catch (error) {
     logHiringMutationError('create_job', error)
@@ -422,7 +425,7 @@ export async function updateHiringJob(
       nextStatus,
     })
     await flagAutomatedJobModeration(parsedJobId.data, moderation)
-    refreshJobMutation(parsedJobId.data)
+    refreshJobMutation(parsedJobId.data, job)
     revalidatePath(`/hiring/jobs/${parsedJobId.data}/edit`)
     return { ok: true }
   } catch (error) {
@@ -482,7 +485,7 @@ export async function changeHiringJobStatus(
       applyUntil: transition.applyUntil,
     })
     await flagAutomatedJobModeration(parsedJobId.data, moderation)
-    refreshJobMutation(parsedJobId.data)
+    refreshJobMutation(parsedJobId.data, job)
     revalidatePath(`/hiring/jobs/${parsedJobId.data}/edit`)
     return { ok: true }
   } catch (error) {
@@ -503,7 +506,7 @@ export async function deleteHiringJob(jobId: string): Promise<HiringActionResult
     if (!transition.ok) throw new HiringValidationError(transition.message)
 
     await hiringRepository.deleteJob(user.id, parsedJobId.data, job.status)
-    refreshJobMutation(parsedJobId.data)
+    refreshJobMutation(parsedJobId.data, job)
     revalidatePath('/jobs/saved')
     revalidatePath('/jobs/applications')
     return { ok: true }

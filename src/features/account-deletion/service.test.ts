@@ -158,6 +158,31 @@ describe('account deletion service', () => {
     expect(effects.deleteOtherSignIn).toHaveBeenCalledWith('phone-user')
     expect(log).toHaveBeenCalledWith('account_deletion_refunds_incomplete', { attempted: 2, failures: 1 })
   })
+
+  it('clears the public page of every organization the deletion left unclaimed, after the commit (Round ARCH, Phase 2)', async () => {
+    const api = {
+      signIn: vi.fn(async () => ({ kind: 'authenticated' as const, authentication: { accessToken: 'fresh-token', expiresIn: 3600 } })),
+      deleteUser: vi.fn(async () => undefined),
+    }
+    const calls: string[] = []
+    const repository = {
+      deleteAccountWithIdentity: vi.fn(async (_id: string, deleteIdentity: () => Promise<void>) => {
+        await deleteIdentity()
+        calls.push('commit')
+        return { mediaPaths: [], unmanagedCompanyIds: ['company-a', 'company-b'] }
+      }),
+      finalizeAccountDeletion: vi.fn(async () => ({ mediaPaths: [] as string[] })),
+    }
+    const clearOrganizationPage = vi.fn(async (companyId: string) => {
+      calls.push(`clear:${companyId}`)
+      if (companyId === 'company-a') throw new Error('cloudfront down')
+    })
+    const service = createAccountDeletionService({ api, repository, deleteMediaObject: vi.fn(), effects: { clearOrganizationPage } })
+
+    await expect(service.deleteAccount({ profileId, email: 'captain@example.com', password: 'CorrectPassword123', cognitoSub: 'email-sub' })).resolves.toEqual({ ok: true })
+    // A failed clear never undoes or fails the deletion; the next organization is still cleared.
+    expect(calls).toEqual(['commit', 'clear:company-a', 'clear:company-b'])
+  })
 })
 
 describe('account deletion with an authenticator app (Round 14, 2.11)', () => {

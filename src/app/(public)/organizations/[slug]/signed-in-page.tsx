@@ -1,4 +1,3 @@
-import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -49,7 +48,7 @@ import {
   parseOrganizationPageTab,
   websiteLabel,
 } from '@/features/organizations/organization-page-profile'
-import { organizationJsonLd, organizationMetadata } from '@/features/organizations/organization-seo'
+import { organizationJsonLd } from '@/features/organizations/organization-seo'
 import { isWellbeingType, organizationTypeHasField, wellbeingServiceLabel } from '@/features/organizations/organization-types'
 import { organizationRepository } from '@/features/organizations/repository'
 import { getRelatedOrganizations } from '@/features/ranking/suggestions'
@@ -57,14 +56,6 @@ import { organizationWorkspaceRepository, type OrganizationWorkspace } from '@/f
 import { siteOrigin } from '@/features/learning/course-seo'
 import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import { jsonLd } from '@/lib/seo/meta'
-
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params
-  const workspace = await organizationWorkspaceRepository.getBySlug(slug).catch(() => null)
-  if (!workspace) return { title: 'Organization' }
-  // Round H (H5): canonical address (no ?tab=) and a plain-text description.
-  return organizationMetadata(workspace)
-}
 
 type Settled<T> = { ok: true; value: T } | { ok: false }
 
@@ -79,7 +70,7 @@ async function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
 /** Roles that manage the page (plain members see their workspace from the side card instead). */
 const MANAGING_ROLES = new Set(['owner', 'administrator', 'recruiter', 'lms_manager', 'event_manager', 'content_manager', 'analyst'])
 
-function SupportOffered({ workspace }: { workspace: OrganizationWorkspace }) {
+export function SupportOffered({ workspace }: { workspace: OrganizationWorkspace }) {
   const details = workspace.details
   return (
     <PageSection id="support-heading" title="Support offered">
@@ -113,7 +104,7 @@ function SupportOffered({ workspace }: { workspace: OrganizationWorkspace }) {
   )
 }
 
-function Operations({ workspace }: { workspace: OrganizationWorkspace }) {
+export function Operations({ workspace }: { workspace: OrganizationWorkspace }) {
   const details = workspace.details
   return (
     <PageSection id="operations-heading" title="Operations">
@@ -124,7 +115,7 @@ function Operations({ workspace }: { workspace: OrganizationWorkspace }) {
   )
 }
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
+export function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
       <dt className="text-sm font-semibold text-navy-950">{label}</dt>
@@ -133,7 +124,11 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-export default async function OrganizationPage({
+/**
+ * Round ARCH (Phase 2): the organization page for a signed-in member, unchanged from the (app) route it moved
+ * from. ./page.tsx renders it when there is a member; visitors get ./public-page.tsx.
+ */
+export async function SignedInOrganizationPage({
   params,
   searchParams,
 }: {
