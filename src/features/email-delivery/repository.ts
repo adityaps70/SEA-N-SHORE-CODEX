@@ -19,7 +19,8 @@ const BACKFILL_SETTLED_SQL = `status = 'sent' and resend_message_id is not null 
  * Records a delivery event in one transaction:
  *   1. the general email log (public.email_delivery_events): a webhook delivery is kept once per svix-id and a
  *      backfilled status once per email, so retries and re-runs change nothing;
- *   2. the "Last event" of the legacy invitation or reminder the email was. A newer event wins; the backfill only
+ *   2. the "Last event" of the legacy invitation, second reminder or final reminder the email was (and, for the
+ *      invitation and the final reminder, when it was delivered). A newer event wins; the backfill only
  *      fills a row that has no event yet, so it never overwrites what the webhook recorded. An invitation with any
  *      recorded event counts as checked, so the backfill does not fetch it;
  *   3. the do-not-email list, for a hard bounce, a complaint or a suppression.
@@ -74,6 +75,23 @@ async function record(client: DatabaseQueryClient, event: DeliveryEvent) {
          updated_at = now()
      where resend_message_id = $1`,
     values,
+  )
+  await client.query(
+    `update public.legacy_profile_invite_final_reminders
+     set last_event = case
+           when $4::boolean and last_event is not null then last_event
+           when last_event_at is null or last_event_at <= $3::timestamptz then $2
+           else last_event
+         end,
+         last_event_at = case
+           when $4::boolean and last_event is not null then last_event_at
+           when last_event_at is null or last_event_at <= $3::timestamptz then $3::timestamptz
+           else last_event_at
+         end,
+         delivered_at = case when $2 = any($5::text[]) then coalesce(delivered_at, $3::timestamptz) else delivered_at end,
+         updated_at = now()
+     where resend_message_id = $1`,
+    [...values, [...DELIVERED_EVENT_TYPES]],
   )
 
   const reason = suppressionReasonFor(event)

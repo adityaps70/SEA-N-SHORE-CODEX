@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { hasFinalReminderSql } from './final-reminder-repository'
 
 export type LegacyInviteStatus = 'prepared' | 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled'
 
@@ -89,6 +90,8 @@ function eligibleSql() {
         from public.email_suppressions suppression
         where suppression.email = candidate.email
       )
+      -- P4: after a final legacy reminder, no more legacy emails to that address.
+      and not ${hasFinalReminderSql('candidate.email')}
   `
 }
 
@@ -255,6 +258,7 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
                 where identity.email_verified = true
                   and lower(identity.email) = lower(claimed.email)
               )
+              and not ${hasFinalReminderSql('claimed.email')}
             ) as still_eligible
           from claimed
           join public.profiles profile on profile.id = claimed.profile_id

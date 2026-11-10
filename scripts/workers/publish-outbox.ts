@@ -5,6 +5,7 @@ import { deletedPostRetention } from '../../src/features/feed/deleted-post-reten
 import { createNewsletterWorker } from '../../src/features/newsletter/worker'
 import { createLegacyInviteWorker } from '../../src/features/legacy-invites/sending'
 import { createLegacyReminderWorker } from '../../src/features/legacy-invites/reminder-sending'
+import { createLegacyFinalReminderWorker } from '../../src/features/legacy-invites/final-reminder-sending'
 import { createDeliveryBackfillWorker } from '../../src/features/email-delivery/backfill'
 import { subscriptionService } from '../../src/features/billing/subscription-service'
 import { createUnconfirmedUserCleanup } from '../../src/features/auth/unconfirmed-user-cleanup'
@@ -42,6 +43,11 @@ const legacyInviteWorker = createLegacyInviteWorker()
 const LEGACY_REMINDER_SWEEP_MS = 60 * 1000
 let nextLegacyReminderSweepAt = 0
 const legacyReminderWorker = createLegacyReminderWorker()
+// P4: the final legacy reminder, the last legacy email: same pace (at most 5 a minute), only after the admin starts it,
+// and it pauses by itself on a high complaint or bounce rate. The worker logs counts only.
+const LEGACY_FINAL_REMINDER_SWEEP_MS = 60 * 1000
+let nextLegacyFinalReminderSweepAt = 0
+const legacyFinalReminderWorker = createLegacyFinalReminderWorker()
 // Resend delivery status backfill (each sent invitation fetched once, about 20 every 20 s) and the suppression list
 // sync (every 6 hours). Both only read from Resend; the backfill finds nothing to do once every invitation is checked.
 const DELIVERY_BACKFILL_SWEEP_MS = 20 * 1000
@@ -182,6 +188,18 @@ async function runLegacyReminderSweepIfDue() {
     if (result.claimed > 0) console.info('[legacy_reminder_sweep]', result)
   } catch (error) {
     console.error('[legacy_reminder_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
+async function runLegacyFinalReminderSweepIfDue() {
+  const now = Date.now()
+  if (now < nextLegacyFinalReminderSweepAt) return
+  nextLegacyFinalReminderSweepAt = now + LEGACY_FINAL_REMINDER_SWEEP_MS
+
+  try {
+    await legacyFinalReminderWorker.runSweep(5)
+  } catch (error) {
+    console.error('[legacy_final_reminder_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
   }
 }
 
@@ -431,6 +449,7 @@ async function main() {
       await runNewsletterSweepIfDue()
       await runLegacyInviteSweepIfDue()
       await runLegacyReminderSweepIfDue()
+      await runLegacyFinalReminderSweepIfDue()
       await runDeliveryBackfillIfDue()
       await runBillingSweepIfDue()
       await runUnconfirmedUserSweepIfDue()

@@ -17,6 +17,26 @@ const mocks = vi.hoisted(() => ({
   reminderMetrics: vi.fn(async () => ({ prepared: 10, queued: 0, sending: 0, sent: 0, failed: 0, skipped: 0, cancelled: 0 })),
   reminderRecent: vi.fn(async () => []),
   sendTest: vi.fn(async () => ({ status: 'sent', to: 'admin@example.test' })),
+  finalBreakdown: vi.fn(async () => ({
+    total: 4600,
+    eligible: 2000,
+    excluded: {
+      first_not_sent: 53, reminder_not_sent: 1500, already_final: 0, too_recent: 400, bounced_or_suppressed: 150,
+      not_delivered: 200, claimed: 150, has_account: 100, opted_out: 40, duplicate_email: 7,
+    },
+  })),
+  finalMetrics: vi.fn(async () => ({ prepared: 0, queued: 0, sending: 0, sent: 100, failed: 0, skipped: 0, cancelled: 0 })),
+  finalControls: vi.fn(async (): Promise<{ paused: boolean; pausedReason: string | null; pausedAt: string | null; resumedAt: string | null; resumedByName: string | null }> => ({
+    paused: false, pausedReason: null, pausedAt: null, resumedAt: null, resumedByName: null,
+  })),
+  finalRates: vi.fn(async () => ({ sent: 100, bounced: 2, complained: 0, bounceRate: 0.02, complaintRate: 0 })),
+  finalBatch: vi.fn(async () => ({
+    size: 100, finished: 100, lastSentAt: '2026-11-09T10:00:00.000Z', opensAt: new Date(Date.now() + 5 * 3_600_000 + 20 * 60_000).toISOString(),
+    open: false, delivered: 97, bounced: 2, complained: 0, clicked: 11,
+  })),
+  finalClaims: vi.fn(async () => 4),
+  liveCounts: vi.fn(async () => ({ openJobs: 321, courses: null, upcomingEvents: 6 })),
+  resume: vi.fn(async () => ({ status: 'step_up_required' })),
 }))
 
 vi.mock('@/features/admin/access', () => ({ requirePlatformAdministratorUser: mocks.requireAdmin }))
@@ -24,6 +44,21 @@ vi.mock('@/features/legacy-invites/admin-actions', () => ({
   prepareLegacyInviteBatch: vi.fn(), startPreparedLegacyInvites: vi.fn(), cancelPreparedLegacyInvites: vi.fn(), stopUnsentLegacyInvites: vi.fn(),
   prepareLegacyReminderBatch: vi.fn(), startPreparedLegacyReminders: vi.fn(), cancelPreparedLegacyReminders: vi.fn(), stopUnsentLegacyReminders: vi.fn(),
   sendLegacyReminderTest: mocks.sendTest,
+}))
+vi.mock('@/features/legacy-invites/final-reminder-admin-actions', () => ({
+  prepareLegacyFinalReminderBatch: vi.fn(), startPreparedLegacyFinalReminders: vi.fn(), cancelPreparedLegacyFinalReminders: vi.fn(),
+  stopUnsentLegacyFinalReminders: vi.fn(), resumeLegacyFinalReminders: mocks.resume, sendLegacyFinalReminderTest: vi.fn(),
+}))
+vi.mock('@/features/legacy-invites/final-reminder-repository', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/legacy-invites/final-reminder-repository')>()),
+  legacyFinalReminderRepository: {
+    breakdown: mocks.finalBreakdown, metrics: mocks.finalMetrics, controls: mocks.finalControls, rates: mocks.finalRates,
+    firstBatch: mocks.finalBatch, claimsFromClicks: mocks.finalClaims,
+  },
+}))
+vi.mock('@/features/legacy-invites/live-counts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/legacy-invites/live-counts')>()),
+  legacyLiveCounts: { read: mocks.liveCounts },
 }))
 vi.mock('@/features/legacy-invites/repository', () => ({ legacyInviteRepository: { metrics: mocks.inviteMetrics, recent: mocks.inviteRecent } }))
 vi.mock('@/features/email-delivery/repository', () => ({ emailDeliveryRepository: { backfillProgress: mocks.backfill } }))
@@ -33,6 +68,7 @@ vi.mock('@/features/legacy-invites/reminder-repository', async (importOriginal) 
 }))
 
 import LegacyInvitesAdminPage from './page'
+import { legacyFinalReminderEmail } from '@/features/legacy-invites/final-reminder-email'
 
 afterEach(cleanup)
 
@@ -91,5 +127,64 @@ describe('Admin → Legacy invites', () => {
     render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({ mode: 'reminder' }) }))
     fireEvent.click(screen.getByRole('button', { name: 'Send test to me' }))
     expect(await screen.findByText('No test was sent: you have sent 5 tests in the last hour. Try again later.')).toBeInTheDocument()
+  })
+
+  it('has a Final reminder mode with every exclusion count, the rates, the first-batch gate and clicks, counts only', async () => {
+    render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({ mode: 'final' }) }))
+    expect(screen.getByRole('link', { name: 'Final reminder' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Final reminder' })).toHaveAttribute('href', '/admin/legacy-invites?mode=final')
+    expect(screen.getByText('Eligible now').nextSibling).toHaveTextContent('2000')
+    for (const [label, value] of [
+      ['First invitation was never sent', '53'],
+      ['Second reminder was never sent', '1500'],
+      ['Final reminder already prepared or sent', '0'],
+      ['Second reminder sent less than 14 days ago', '400'],
+      ['Bounced, complained or suppressed on an earlier email', '150'],
+      ['Delivery of the first invitation or second reminder not confirmed', '200'],
+      ['Profile already claimed', '150'],
+      ['Has a Sea N Shore account with this email', '100'],
+      ['Opted out', '40'],
+      ['More than one legacy profile has this email', '7'],
+    ]) expect(screen.getByRole('row', { name: new RegExp(label) })).toHaveTextContent(value)
+    expect(screen.getByText('Bounce rate').nextSibling).toHaveTextContent('2.00%')
+    expect(screen.getByText('Complaint rate').nextSibling).toHaveTextContent('0.00%')
+    expect(screen.getByText(/Finished\. More can be prepared in 5 h (19|20) min/)).toBeInTheDocument()
+    expect(screen.getByText('Batch clicked').nextSibling).toHaveTextContent('11')
+    expect(screen.getByText('Claims from this email').nextSibling).toHaveTextContent('4')
+    expect(screen.queryByRole('button', { name: 'Resume' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Prepare 10' })).toBeEnabled()
+    expect(screen.queryByRole('table', { name: /Recent/ })).toBeNull()
+  })
+
+  it('previews exactly the email the worker sends: same render function, sample person and live counts', async () => {
+    render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({ mode: 'final' }) }))
+    const expected = legacyFinalReminderEmail({
+      fullName: 'Captain Example',
+      email: 'captain@example.com',
+      clickToken: '33333333-3333-4333-8333-333333333333',
+      unsubscribeToken: '22222222-2222-4222-8222-222222222222',
+      counts: { openJobs: 321, courses: null, upcomingEvents: 6 },
+    })
+    const frame = screen.getByTitle('Final reminder email preview preview')
+    expect(frame).toHaveAttribute('sandbox', '')
+    expect(frame.getAttribute('srcdoc')).toBe(expected.html)
+    expect(screen.getByText('Last reminder: your Sea N Shore profile is still waiting')).toBeInTheDocument()
+    expect(screen.getByText('List-Unsubscribe-Post')).toBeInTheDocument()
+    const plain = screen.getByText('Show plain-text version').closest('details')!.querySelector('pre')!
+    expect(plain.textContent).toBe(expected.text)
+    expect(expected.text).toContain('Verified jobs: 321 open right now')
+  })
+
+  it('while paused, shows why, blocks preparing and offers Resume, which asks for the admin step-up', async () => {
+    mocks.finalControls.mockResolvedValueOnce({ paused: true, pausedReason: 'Complaint rate 0.20% is above 0.1% (2 of 1000 sent)', pausedAt: '2026-11-09T10:00:00.000Z', resumedAt: null, resumedByName: null })
+    mocks.finalMetrics.mockResolvedValueOnce({ prepared: 5, queued: 0, sending: 0, sent: 1000, failed: 0, skipped: 0, cancelled: 0 })
+    render(await LegacyInvitesAdminPage({ searchParams: Promise.resolve({ mode: 'final' }) }))
+    expect(screen.getByText(/Complaint rate 0\.20% is above 0\.1%/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Prepare 10' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Start sending 5/ })).toBeDisabled()
+    vi.spyOn(window, 'confirm').mockReturnValueOnce(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
+    expect(await screen.findByText(/Not resumed: confirm your password and authenticator code first/)).toBeInTheDocument()
+    expect(mocks.resume).toHaveBeenCalledTimes(1)
   })
 })
