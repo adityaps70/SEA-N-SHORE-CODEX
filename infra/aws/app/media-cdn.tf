@@ -101,6 +101,26 @@ resource "aws_iam_role_policy" "ecs_execution_media_cdn_signing_key" {
   })
 }
 
+# Round ARCH (Phase 2): the web task clears a claimed organization's public page from the app distribution after
+# an edit (src/lib/edge/cloudfront-invalidation.ts). Only CreateInvalidation, and only on this distribution; the
+# app sends at most one per organization per minute. Applied by scripts/aws/media-cdn-infra.sh (apply-once).
+resource "aws_iam_role_policy" "ecs_task_org_page_invalidation" {
+  name = "${local.name_prefix}-org-page-invalidation"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ClearOrganizationPages"
+        Effect   = "Allow"
+        Action   = ["cloudfront:CreateInvalidation"]
+        Resource = local.app_distribution_arn
+      }
+    ]
+  })
+}
+
 output "media_cdn_key_pair_id" {
   description = "CloudFront public key id the web task names in signed media URLs (MEDIA_CDN_KEY_PAIR_ID)."
   value       = aws_cloudfront_public_key.media_cdn.id

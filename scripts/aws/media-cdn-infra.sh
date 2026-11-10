@@ -14,6 +14,10 @@
 # with it (infra/aws/app/media-transcode.tf). Once the role exists, enable-once also gives the outbox worker task the
 # role ARN and the media bucket, which switch its transcode sweep on with the next deploy; disable-once removes them.
 #
+# Round ARCH (Phase 2): the same runner owns the web task's permission to clear organization pages from the app
+# distribution (cloudfront:CreateInvalidation on that distribution only; media-cdn.tf). apply-once creates it and
+# verify_live checks it. The staging deploy gives the web task APP_CLOUDFRONT_DISTRIBUTION_ID.
+#
 # The private key is read only into a private temporary file to sign the probe; it is never printed.
 set -euo pipefail
 umask 077
@@ -28,6 +32,8 @@ APP_DIR="$PWD/infra/aws/app"
 ACTION_FILE="scripts/aws/media-cdn-infra-action.txt"
 SECRET_NAME="sea-n-shore-staging/media-cdn-signing-key"
 EXECUTION_ROLE="sea-n-shore-staging-ecs-execution"
+TASK_ROLE="sea-n-shore-staging-ecs-task"
+INVALIDATION_POLICY_NAME="sea-n-shore-staging-org-page-invalidation"
 POLICY_NAME="sea-n-shore-staging-media-cdn-signing-key"
 MEDIA_BUCKET="sea-n-shore-staging-310356785722-media"
 DISTRIBUTION_ID="EF1K45UVP11XZ"
@@ -51,6 +57,7 @@ RESOURCES=(
   "aws_iam_role.mediaconvert"
   "aws_iam_role_policy.mediaconvert_media"
   "aws_iam_role_policy.outbox_worker_mediaconvert"
+  "aws_iam_role_policy.ecs_task_org_page_invalidation"
 )
 
 [[ "${MEDIA_CDN_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
@@ -134,7 +141,13 @@ created_only = {
 create_or_update = {
     'aws_cloudfront_origin_access_control.media', 'aws_iam_role_policy.ecs_execution_media_cdn_signing_key',
     'aws_iam_role.mediaconvert', 'aws_iam_role_policy.mediaconvert_media', 'aws_iam_role_policy.outbox_worker_mediaconvert',
+    'aws_iam_role_policy.ecs_task_org_page_invalidation',
 }
+# Round ARCH (Phase 2): the task role's only CloudFront right: clear paths on the app distribution.
+expected_invalidation = [{
+    'Sid': 'ClearOrganizationPages', 'Effect': 'Allow', 'Action': ['cloudfront:CreateInvalidation'],
+    'Resource': f'arn:aws:cloudfront::310356785722:distribution/{distribution}',
+}]
 expected_statement = {
     'Sid': 'CloudFrontReadsMediaCdnPrefix', 'Effect': 'Allow',
     'Principal': {'Service': 'cloudfront.amazonaws.com'}, 'Action': 's3:GetObject',
@@ -161,6 +174,14 @@ for change in plan.get('resource_changes', []):
         errors.append('The media bucket policy may only gain the CloudFront read of m/*')
         continue
     errors.append(f'Unexpected change: {address} {actions}')
+for change in plan.get('resource_changes', []):
+    if change['address'] != 'aws_iam_role_policy.ecs_task_org_page_invalidation' or change['change']['actions'] == ['no-op']:
+        continue
+    after = change['change']['after'] or {}
+    policy = after.get('policy')
+    statements = json.loads(policy).get('Statement') if isinstance(policy, str) else None
+    if after.get('name') != 'sea-n-shore-staging-org-page-invalidation' or statements != expected_invalidation:
+        errors.append('The organization page invalidation policy may only allow cloudfront:CreateInvalidation on the app distribution')
 oac = [c for c in plan.get('resource_changes', []) if c['address'] == 'aws_cloudfront_origin_access_control.media' and c['change']['actions'] != ['no-op']]
 for change in oac:
     after = change['change']['after']
@@ -233,6 +254,16 @@ verify_live() {
     and ([.PolicyDocument.Statement[] | select(.Sid == "StartAndReadCourseVideoJobs")][0].Action | sort) == ["mediaconvert:CreateJob", "mediaconvert:GetJob"]
   ' "$WORK_DIR/outbox-mediaconvert.json" >/dev/null
   echo "MEDIA_TRANSCODE_ROLE_VERIFIED=true"
+
+  # Round ARCH (Phase 2): the web task may only clear paths on the app distribution.
+  aws iam get-role-policy --role-name "$TASK_ROLE" --policy-name "$INVALIDATION_POLICY_NAME" --output json > "$WORK_DIR/org-page-invalidation.json"
+  jq -e --arg distribution "$DISTRIBUTION_ID" '
+    def as_array: if type == "array" then . else [.] end;
+    (.PolicyDocument.Statement | length) == 1 and .PolicyDocument.Statement[0].Effect == "Allow"
+    and ((.PolicyDocument.Statement[0].Action | as_array) == ["cloudfront:CreateInvalidation"])
+    and ((.PolicyDocument.Statement[0].Resource | as_array) == ["arn:aws:cloudfront::310356785722:distribution/" + $distribution])
+  ' "$WORK_DIR/org-page-invalidation.json" >/dev/null
+  echo "ORG_PAGE_INVALIDATION_POLICY_VERIFIED=true"
   echo "MEDIA_CDN_INFRA_LIVE_VERIFIED=true"
 }
 

@@ -365,6 +365,9 @@ jobs:
         if: env.DEPLOY_TO_ECS == 'true'
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
+          # Round ARCH (Phase 2): the app distribution the web task clears organization pages from (the same id as
+          # app_distribution_id in infra/aws/app/media-cdn.tf; scripts/aws/media-cdn-infra.test.mjs checks they match).
+          APP_CLOUDFRONT_DISTRIBUTION_ID: EF1K45UVP11XZ
         run: |
           set -euo pipefail
           AURORA_USER_SECRET="${DB_CREDENTIALS_SECRET_ARN}:username::"
@@ -389,6 +392,7 @@ jobs:
             --arg AURORA_PASSWORD_SECRET "$AURORA_PASSWORD_SECRET" \
             --arg DB_CREDENTIALS_SECRET_ARN "$DB_CREDENTIALS_SECRET_ARN" \
             --arg HEALTH_CHECK_TOKEN_SECRET "$HEALTH_CHECK_TOKEN_SECRET_ARN" \
+            --arg APP_CLOUDFRONT_DISTRIBUTION_ID "$APP_CLOUDFRONT_DISTRIBUTION_ID" \
             '
             del(
               .taskDefinitionArn,
@@ -421,6 +425,7 @@ jobs:
                             and .name != "AURORA_DATABASE"
                             and .name != "AURORA_SSL"
                             and .name != "AURORA_SECRET_ARN"
+                            and .name != "APP_CLOUDFRONT_DISTRIBUTION_ID"
                           )))
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
@@ -430,7 +435,8 @@ jobs:
                           {"name":"AURORA_PORT","value":$AURORA_PORT},
                           {"name":"AURORA_DATABASE","value":$AURORA_DATABASE},
                           {"name":"AURORA_SSL","value":"true"},
-                          {"name":"AURORA_SECRET_ARN","value":$DB_CREDENTIALS_SECRET_ARN}
+                          {"name":"AURORA_SECRET_ARN","value":$DB_CREDENTIALS_SECRET_ARN},
+                          {"name":"APP_CLOUDFRONT_DISTRIBUTION_ID","value":$APP_CLOUDFRONT_DISTRIBUTION_ID}
                         ]
                     )
                   | .secrets = (
