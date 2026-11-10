@@ -1,7 +1,8 @@
 name: AWS Capacity and Media Report
 
 # Round P3: a read-only report of what the stack runs, what it used over the last 14 days and what media is
-# stored. It runs only when scripts/aws/capacity-media-report-action.txt reads "report-once <sha>" from an
+# stored. When scripts/aws/capacity-media-report-window.txt reads "compare <start> <end|now> [split <time>]" it runs
+# only the before-and-after comparison of that window with the same hours a day earlier (Round ARCH, Phase 5). It runs only when scripts/aws/capacity-media-report-action.txt reads "report-once <sha>" from an
 # owner-merged arm PR, after approval in staging-apply; "plan" only runs the read-only contract test. The
 # remote script describes, gets and lists only (scripts/aws/capacity-media-report-guard.test.mjs) and prints
 # aggregates, never member data.
@@ -12,6 +13,7 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - scripts/aws/capacity-media-report-action.txt
+      - scripts/aws/capacity-media-report-window.txt
       - scripts/aws/capacity-media-report.cjs
       - scripts/aws/capacity-media-report-remote.py
       - scripts/aws/capacity-media-report-guard.test.mjs
@@ -78,7 +80,7 @@ jobs:
         id: plan_scope
         env:
           GUARD_FILE: scripts/aws/capacity-media-report-action.txt
-          RUNNER_FILES: "scripts/aws/capacity-media-report.cjs scripts/aws/capacity-media-report-remote.py scripts/aws/capacity-media-report-guard.test.mjs"
+          RUNNER_FILES: "scripts/aws/capacity-media-report-window.txt scripts/aws/capacity-media-report.cjs scripts/aws/capacity-media-report-remote.py scripts/aws/capacity-media-report-guard.test.mjs"
         shell: bash
         run: |
           set -euo pipefail
