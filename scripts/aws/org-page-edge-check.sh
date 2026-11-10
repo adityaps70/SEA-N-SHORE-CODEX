@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Round ARCH (Phase 2): live check, after a deploy, that a public organization page is cached at CloudFront for
 # visitors and that nothing signed-in or personal ever is. Run by .github/workflows/aws-remote-verify.yml.
-# Read-only: one SELECT in a READ ONLY transaction that is rolled back, then plain HTTPS requests.
+# Read-only: one SELECT in a READ ONLY transaction that is rolled back (run on the bootstrap host through SSM),
+# then plain HTTPS requests from here.
 #
 # The page probed is read from the database, never a typed slug: the organization whose name is exactly the one in
 # scripts/aws/org-page-probe-name.txt (the owner's choice; Sea N Shore has no organization page of its own yet).
@@ -31,6 +32,18 @@ PROBE_NAME="$(sed -e 's/[[:space:]]*$//' scripts/aws/org-page-probe-name.txt)"
 [[ -n "$PROBE_NAME" && ${#PROBE_NAME} -le 120 && "$PROBE_NAME" != *'"'* && "$PROBE_NAME" != *'\'* ]] || { echo "scripts/aws/org-page-probe-name.txt must hold one organization name (no quotes or backslashes)." >&2; exit 1; }
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]] || { echo "Unexpected AWS account; refusing the check." >&2; exit 1; }
 
+# The read-only lookup runs on the bootstrap host through SSM (the host can reach the database; this runner's role
+# cannot, and is not given that access). It prints only the Data API's JSON for one SELECT.
+INSTANCE_IDS="$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)"
+[[ "$(jq 'length' <<<"$INSTANCE_IDS")" -eq 1 ]] || { echo "Expected exactly one running bootstrap host." >&2; exit 1; }
+INSTANCE_ID="$(jq -r '.[0]' <<<"$INSTANCE_IDS")"
+[[ "$INSTANCE_ID" =~ ^i-[0-9a-f]+$ ]] || { echo "Unexpected bootstrap instance id." >&2; exit 1; }
+
+PARAMS_FILE="$(mktemp)"
+RESULT_FILE="$(mktemp)"
+trap 'rm -f -- "$PARAMS_FILE" "$RESULT_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+REMOTE_SCRIPT="$(printf 'set -euo pipefail\numask 077\nexport AWS_PAGER=""\nAWS_REGION=%q\nCLUSTER_ID=%q\nDATABASE_NAME=%q\nPROBE_NAME=%q\n' "$AWS_REGION" "$CLUSTER_ID" "$DATABASE_NAME" "$PROBE_NAME")
+$(cat <<'REMOTE'
 CLUSTER_JSON="$(aws rds describe-db-clusters --region "$AWS_REGION" --db-cluster-identifier "$CLUSTER_ID" --output json)"
 CLUSTER_ARN="$(jq -r '.DBClusters[0].DBClusterArn // empty' <<<"$CLUSTER_JSON")"
 SECRET_ARN="$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn // empty' <<<"$CLUSTER_JSON")"
@@ -54,6 +67,21 @@ SLUGS_JSON="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-a
          )
          SELECT slug, claimed, verified FROM candidates
          ORDER BY slug")"
+printf '%s\n' "$SLUGS_JSON"
+REMOTE
+)"
+python3 -c 'import json, shlex, sys; print(json.dumps({"executionTimeout": ["300"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(sys.stdin.read())]}))' <<<"$REMOTE_SCRIPT" > "$PARAMS_FILE"
+COMMAND_ID="$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+  --comment "Sea N Shore read-only organization page probe lookup" --timeout-seconds 300 \
+  --parameters "file://$PARAMS_FILE" --query 'Command.CommandId' --output text)"
+[[ "$COMMAND_ID" =~ ^[0-9a-f-]{36}$ ]] || { echo "SSM did not accept the lookup." >&2; exit 1; }
+for attempt in $(seq 1 60); do
+  STATUS="$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)"
+  case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
+done
+aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > "$RESULT_FILE"
+[[ "$(jq -r '.Status' "$RESULT_FILE")" == Success ]] || { echo "The read-only lookup on the bootstrap host did not succeed: $(jq -r '.StandardErrorContent // empty' "$RESULT_FILE" | tail -c 400)" >&2; exit 1; }
+SLUGS_JSON="$(jq -r '.StandardOutputContent' "$RESULT_FILE")"
 MATCHES="$(jq '.records | length' <<<"$SLUGS_JSON")"
 [[ "$MATCHES" -eq 1 ]] || { echo "Expected exactly one organization named as in org-page-probe-name.txt; found $MATCHES." >&2; exit 1; }
 [[ "$(jq -r '.records[0][1].booleanValue' <<<"$SLUGS_JSON")" == true ]] || { echo "The probe organization is not claimed." >&2; exit 1; }
