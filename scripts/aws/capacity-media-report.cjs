@@ -15,11 +15,33 @@ assert.match(instanceId || '', /^i-[0-9a-f]+$/)
 const remoteScript = readFileSync('scripts/aws/capacity-media-report-remote.py', 'utf8')
 const encoded = Buffer.from(remoteScript, 'utf8').toString('base64')
 const ALL_SECTIONS = ['config', 'usage', 'media']
-// The load test (aws-load-test.yml) asks for the usage section over its own window only.
-const SECTIONS = (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
-assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s)), 'unknown report section')
+const MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/
+const isoMinute = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+// Round ARCH (Phase 5 measurement): the committed window file either reads "none" (the full report) or
+// "compare <start> <end|now> [split <time>]": then only the compare section runs, over start..end and the same hours
+// 24 hours earlier. "now" is the run's start less 10 minutes (ALB logs arrive every 5 minutes); the window is capped
+// at 24 hours so the two never overlap.
+function compareWindow() {
+  const line = readFileSync('scripts/aws/capacity-media-report-window.txt', 'utf8').trim()
+  if (line === 'none') return null
+  const m = line.match(/^compare (\S+) (\S+)(?: split (\S+))?$/)
+  assert.ok(m && MINUTE.test(m[1]) && (m[2] === 'now' || MINUTE.test(m[2])) && (!m[3] || MINUTE.test(m[3])),
+    'the window file must read "none" or "compare <start> <end|now> [split <time>]" in whole UTC minutes')
+  const start = new Date(m[1])
+  let end = m[2] === 'now' ? new Date(Math.floor((Date.now() - 10 * 60_000) / 60_000) * 60_000) : new Date(m[2])
+  end = new Date(Math.min(end.getTime(), start.getTime() + 24 * 3600_000))
+  assert.ok(end > start, 'the compare window ends before it starts')
+  if (m[3]) assert.ok(new Date(m[3]) > start && new Date(m[3]) < end, 'the split must fall inside the compare window')
+  return { start: m[1], end: isoMinute(end), split: m[3] || '' }
+}
+
+// The load test (aws-load-test.yml) asks for the usage section over its own window only; it never runs the compare.
+const COMPARE = process.env.REPORT_SECTIONS ? null : compareWindow()
+const SECTIONS = COMPARE ? ['compare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE && s === 'compare')), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
-for (const value of Object.values(WINDOW)) assert.match(value, /^$|^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/)
+for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
 
 function quote(value) {
@@ -41,6 +63,9 @@ export AWS_REGION=${quote(region)}
 export REPORT_SECTION=${quote(section)}
 export REPORT_START=${quote(WINDOW.start)}
 export REPORT_END=${quote(WINDOW.end)}
+export COMPARE_START=${quote(COMPARE ? COMPARE.start : '')}
+export COMPARE_END=${quote(COMPARE ? COMPARE.end : '')}
+export COMPARE_SPLIT=${quote(COMPARE ? COMPARE.split : '')}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

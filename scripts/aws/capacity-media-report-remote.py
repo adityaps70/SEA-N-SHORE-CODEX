@@ -411,6 +411,14 @@ ROUTE_WORDS = frozenset([
 ])
 
 
+BOT_PATTERN = r"bot|crawl|spider|slurp|HealthProbe|ELB-HealthChecker|Lighthouse|curl|python|Go-http|axios|node-fetch|headless|SeaNShore-LoadTest"
+
+
+def request_kind(method, path, query):
+    return ("image" if path.startswith("/_next/image") else "rsc" if "_rsc=" in query else
+            "action" if method == "POST" and not path.startswith("/api/") else "api" if path.startswith("/api/") else "page")
+
+
 def route_shape(path):
     parts = [p for p in path.split("/") if p][:3]
     return "/" + "/".join(p.lower() if p.lower() in ROUTE_WORDS else ":x" for p in parts)
@@ -421,7 +429,8 @@ def parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot):
     if not m:
         return
     t = m.group(2)
-    if t < iso(START):
+    # Whole seconds: "...:00.5Z" sorts before "...:00Z" as text.
+    if t[:19] < iso(START)[:19] or t[:19] >= iso(NOW)[:19]:
         return
     target_time = float(m.group(7))
     status = m.group(9)
@@ -438,9 +447,7 @@ def parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot):
     if STATIC.search(path):
         totals["static_at_origin"] += 1
         return
-    kind = ("image" if path.startswith("/_next/image") else "rsc" if "_rsc=" in query else
-            "action" if method == "POST" and not path.startswith("/api/") else "api" if path.startswith("/api/") else "page")
-    key = "%s %s" % (kind, route_shape(path))
+    key = "%s %s" % (request_kind(method, path, query), route_shape(path))
     if target_time >= 0:
         by_route[key].append(target_time)
     if status.startswith("5"):
@@ -448,37 +455,43 @@ def parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot):
         totals["5xx"] += 1
 
 
-def alb_log_stats():
+def alb_day_lines(day, totals, budget):
+    """Yields every line of one UTC day's ALB access logs, read from a temporary download. Stops at a 6 GB total."""
     bucket = "%s-%s-alb-logs" % (PREFIX, ACCOUNT)
+    prefix = "alb/AWSLogs/%s/elasticloadbalancing/%s/%04d/%02d/%02d/" % (ACCOUNT, REGION, day.year, day.month, day.day)
+    listing = aws("s3api", "list-objects-v2", "--bucket", bucket, "--prefix", prefix) or {}
+    day_bytes = sum(o["Size"] for o in listing.get("Contents", []))
+    if not day_bytes:
+        return
+    if budget["bytes"] + day_bytes > 6 * 1024 ** 3:
+        totals["days_skipped_size_cap"] += 1
+        return
+    budget["bytes"] += day_bytes
+    with tempfile.TemporaryDirectory() as tmp:
+        got = subprocess.run(["aws", "s3", "cp", "s3://%s/%s" % (bucket, prefix), tmp, "--recursive", "--only-show-errors",
+                              "--region", REGION], capture_output=True, timeout=1800)
+        if got.returncode != 0:
+            totals["log_days_read_errors"] += 1
+            return
+        for root, _dirs, files in os.walk(tmp):
+            for file_name in files:
+                with gzip.open(os.path.join(root, file_name), "rt", errors="replace") as fh:
+                    yield from fh
+
+
+def alb_log_stats():
     totals = Counter()
     per_minute = Counter()
     by_route = defaultdict(list)
     errors_by_route = Counter()
-    bot = re.compile(r"bot|crawl|spider|slurp|HealthProbe|ELB-HealthChecker|Lighthouse|curl|python|Go-http|axios|node-fetch|headless", re.I)
-    bytes_scanned = 0
+    bot = re.compile(BOT_PATTERN, re.I)
+    budget = {"bytes": 0}
     day = START.date()
     while day <= NOW.date():
-        prefix = "alb/AWSLogs/%s/elasticloadbalancing/%s/%04d/%02d/%02d/" % (ACCOUNT, REGION, day.year, day.month, day.day)
+        for line in alb_day_lines(day, totals, budget):
+            parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot)
         day += dt.timedelta(days=1)
-        listing = aws("s3api", "list-objects-v2", "--bucket", bucket, "--prefix", prefix) or {}
-        day_bytes = sum(o["Size"] for o in listing.get("Contents", []))
-        if not day_bytes:
-            continue
-        if bytes_scanned + day_bytes > 6 * 1024 ** 3:
-            totals["days_skipped_size_cap"] += 1
-            continue
-        bytes_scanned += day_bytes
-        with tempfile.TemporaryDirectory() as tmp:
-            got = subprocess.run(["aws", "s3", "cp", "s3://%s/%s" % (bucket, prefix), tmp, "--recursive", "--only-show-errors",
-                                  "--region", REGION], capture_output=True, timeout=1800)
-            if got.returncode != 0:
-                totals["log_days_read_errors"] += 1
-                continue
-            for root, _dirs, files in os.walk(tmp):
-                for file_name in files:
-                    with gzip.open(os.path.join(root, file_name), "rt", errors="replace") as fh:
-                        for line in fh:
-                            parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot)
+    bytes_scanned = budget["bytes"]
     out("ALB_LOGS", "scannedMB=%s" % mb(bytes_scanned), json.dumps(dict(totals)))
     if per_minute:
         rpm = list(per_minute.values())
@@ -605,6 +618,194 @@ def section_usage():
                 out("COST_SERVICE", label, g["Keys"][0], "%.2f" % float(g["Metrics"]["UnblendedCost"]["Amount"]))
 
 
+# ---------------------------------------------------------------- section: compare
+
+# Round ARCH (Phase 5 measurement): the same hours on two days, after a change (COMPARE_START to COMPARE_END) and
+# 24 hours earlier. COMPARE_SPLIT (optional) marks a deploy inside the window; both windows are also cut there.
+# Background requests are Server Action POSTs (the timed polls are Server Actions). People online are counted as
+# distinct real members with a new feed impression in each hour (load-test profiles excluded): Phase 5 does not
+# change how members scroll, so the count is comparable across the two windows. Counts only, never member data.
+REALTIME_FUNCTIONS = ("realtime-authorizer", "realtime-connection", "realtime-fanout",
+                      "cognito-pre-sign-up-link", "cognito-resend-email-sender")
+
+
+def parse_minute(value):
+    return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+
+
+def compare_windows():
+    after_start, after_end = parse_minute(os.environ["COMPARE_START"]), parse_minute(os.environ["COMPARE_END"])
+    assert after_start < after_end <= after_start + dt.timedelta(hours=24), "the compare window must be under 24 hours"
+    split = parse_minute(os.environ["COMPARE_SPLIT"]) if os.environ.get("COMPARE_SPLIT") else None
+    assert split is None or after_start < split < after_end, "the split must fall inside the window"
+    day = dt.timedelta(hours=24)
+    return [("before", after_start - day, after_end - day), ("after", after_start, after_end)], split
+
+
+def metric_points(namespace, name, dims, stat, period, start, end):
+    """(timestamp, value) pairs of one metric between start and end."""
+    q = {"Id": "m", "MetricStat": {"Metric": {"Namespace": namespace, "MetricName": name,
+         "Dimensions": [{"Name": k, "Value": v} for k, v in dims.items()]}, "Period": period, "Stat": stat},
+         "ReturnData": True}
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump([q], f)
+        path = f.name
+    try:
+        data = aws("cloudwatch", "get-metric-data", "--start-time", iso(start), "--end-time", iso(end),
+                   "--metric-data-queries", "file://" + path, "--scan-by", "TimestampAscending")
+    finally:
+        os.unlink(path)
+    points = []
+    for r in (data or {}).get("MetricDataResults", []):
+        for t, v in zip(r.get("Timestamps", []), r.get("Values", [])):
+            points.append((dt.datetime.fromisoformat(t.replace("Z", "+00:00")), v))
+    return points
+
+
+def hour_index(t, start):
+    return int((t - start).total_seconds() // 3600)
+
+
+def ratio(a, b):
+    return round(a / b, 3) if b else None
+
+
+def change(before, after):
+    return "%+.0f%%" % ((after - before) * 100 / before) if before else "n/a"
+
+
+def section_compare():
+    windows, split = compare_windows()
+    hours = -(-int((windows[1][2] - windows[1][1]).total_seconds()) // 3600)
+    out("=== PHASE 5 BEFORE AND AFTER (same hours, 24 hours apart) ===")
+    for label, start, end in windows:
+        out("COMPARE_WINDOW", label, iso(start), iso(end), "hours=%.2f" % ((end - start).total_seconds() / 3600))
+    if split:
+        out("COMPARE_SPLIT", iso(split), "(and %s in the before window)" % iso(split - dt.timedelta(hours=24)))
+    split_hours = (split - windows[1][1]).total_seconds() / 3600 if split else None
+
+    # ALB access logs, both windows in one pass.
+    bot = re.compile(BOT_PATTERN, re.I)
+    stats = {label: {"kinds": Counter(), "action_routes": Counter(), "api_routes": Counter(), "hourly": defaultdict(Counter)} for label, _s, _e in windows}
+    bounds = [(label, iso(start)[:19], iso(end)[:19], start) for label, start, end in windows]
+    totals, budget = Counter(), {"bytes": 0}
+    day = windows[0][1].date()
+    while day <= windows[1][2].date():
+        for line in alb_day_lines(day, totals, budget):
+            m = LOG_LINE.match(line)
+            if not m:
+                continue
+            t = m.group(2)
+            window = next((b for b in bounds if b[1] <= t[:19] < b[2]), None)
+            if not window:
+                continue
+            label, _s, _e, start = window
+            st = stats[label]
+            st["kinds"]["requests"] += 1
+            if bot.search(m.group(14)):
+                st["kinds"]["bot_or_probe"] += 1
+                continue
+            request = m.group(13).split(" ")
+            method = request[0] if request else "-"
+            url = request[1] if len(request) > 1 else ""
+            path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0] or "/"
+            query = url.split("?", 1)[1] if "?" in url else ""
+            if STATIC.search(path):
+                st["kinds"]["static_at_origin"] += 1
+                continue
+            kind = request_kind(method, path, query)
+            st["kinds"][kind] += 1
+            if m.group(9).startswith("5"):
+                st["kinds"]["5xx"] += 1
+            if m.group(9) in ("404", "500") and kind == "action":
+                st["kinds"]["action_404_or_500"] += 1
+            if kind in ("action", "api"):
+                st[kind + "_routes"][route_shape(path)] += 1
+            idx = hour_index(dt.datetime.strptime(t[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc), start)
+            st["hourly"][idx][kind] += 1
+        day += dt.timedelta(days=1)
+    out("COMPARE_ALB_LOGS", "scannedMB=%s" % mb(budget["bytes"]), json.dumps(dict(totals)))
+
+    # People online: distinct real members with a new feed impression, per hour and over the whole window.
+    statements = []
+    for _label, start, end in windows:
+        where = ("from public.post_impressions i join public.profiles p on p.id = i.viewer_id where not p.is_load_test "
+                 "and i.first_seen_at >= timestamptz '%s' and i.first_seen_at < timestamptz '%s'" % (iso(start), iso(end)))
+        statements.append("select floor(extract(epoch from (i.first_seen_at - timestamptz '%s')) / 3600)::int as h, "
+                          "count(distinct i.viewer_id)::int as viewers %s group by 1 order by 1" % (iso(start), where))
+        statements.append("select count(distinct i.viewer_id)::int as viewers %s" % where)
+    rows = sql_rows(statements)
+    for i, (label, _s, _e) in enumerate(windows):
+        hourly, whole = rows[2 * i], rows[2 * i + 1]
+        for r in hourly or []:
+            stats[label]["hourly"][r["h"]]["viewers"] += r["viewers"]
+        stats[label]["kinds"]["distinct_viewers"] = (whole or [{}])[0].get("viewers", 0)
+        if hourly is None:
+            out("COMPARE_VIEWERS", label, "UNAVAILABLE")
+
+    # Realtime socket traffic and the five Lambdas.
+    apis = [a for a in (aws("apigatewayv2", "get-apis") or {}).get("Items", []) if a.get("ProtocolType") == "WEBSOCKET"]
+    for label, start, end in windows:
+        for a in apis:
+            for name, key in (("ConnectCount", "ws_connects"), ("MessageCount", "ws_messages")):
+                for t, v in metric_points("AWS/ApiGateway", name, {"ApiId": a["ApiId"]}, "Sum", 300, start, end):
+                    stats[label]["hourly"][hour_index(t, start)][key] += int(v)
+                    stats[label]["kinds"][key] += int(v)
+        for short in REALTIME_FUNCTIONS:
+            fn = "%s-%s" % (PREFIX, short)
+            values = {}
+            for name, stat, agg in (("Invocations", "Sum", sum), ("Errors", "Sum", sum), ("Throttles", "Sum", sum),
+                                    ("ConcurrentExecutions", "Maximum", max)):
+                points = [v for _t, v in metric_points("AWS/Lambda", name, {"FunctionName": fn}, stat, 60, start, end)]
+                values[name] = ("%d" % agg(points)) if points else "NO_DATA"
+            out("COMPARE_LAMBDA", label, short, "invocations=%s" % values["Invocations"], "errors=%s" % values["Errors"],
+                "throttles=%s" % values["Throttles"], "peak_concurrency_1min=%s" % values["ConcurrentExecutions"])
+        for name in ("ConcurrentExecutions", "UnreservedConcurrentExecutions"):
+            points = [v for _t, v in metric_points("AWS/Lambda", name, {}, "Maximum", 60, start, end)]
+            out("COMPARE_LAMBDA_ACCOUNT", label, name + "_peak_1min=%s" % (int(max(points)) if points else "NO_DATA"))
+    for short in REALTIME_FUNCTIONS:
+        reserved = aws("lambda", "get-function-concurrency", "--function-name", "%s-%s" % (PREFIX, short)) or {}
+        out("COMPARE_LAMBDA_RESERVED_NOW", short, reserved.get("ReservedConcurrentExecutions", "none"))
+
+    # Per window and per hour.
+    for label, _s, _e in windows:
+        st = stats[label]
+        out("COMPARE_ALB", label, json.dumps(dict(st["kinds"]), sort_keys=True))
+        out("COMPARE_ACTION_ROUTES", label, " ".join("%s=%d" % kv for kv in st["action_routes"].most_common(12)) or "none")
+        out("COMPARE_API_ROUTES", label, " ".join("%s=%d" % kv for kv in st["api_routes"].most_common(12)) or "none")
+    for h in range(hours):
+        parts = []
+        for label, start, _e in windows:
+            c = stats[label]["hourly"][h]
+            parts.append("%s[%s action=%d api=%d rsc=%d page=%d viewers=%d ws_connects=%d ws_messages=%d]" % (
+                label, (start + dt.timedelta(hours=h)).strftime("%dT%H:%M"), c["action"], c["api"], c["rsc"], c["page"],
+                c["viewers"], c["ws_connects"], c["ws_messages"]))
+        out("COMPARE_HOUR", "h=%d" % h, *parts)
+
+    # The headline: background requests per person online, and per navigation.
+    def headline(name, pick):
+        results = {}
+        for label, _s, _e in windows:
+            hourly = stats[label]["hourly"]
+            chosen = [hourly[h] for h in range(hours) if pick(h)]
+            action = sum(c["action"] for c in chosen)
+            person_hours = sum(c["viewers"] for c in chosen)
+            navigations = sum(c["page"] + c["rsc"] for c in chosen)
+            results[label] = (action, person_hours, navigations, ratio(action, person_hours), ratio(action, navigations))
+            out("COMPARE_RESULT", name, label, "action_posts=%d" % action, "person_hours=%d" % person_hours,
+                "navigations=%d" % navigations, "action_per_person_hour=%s" % results[label][3],
+                "action_per_navigation=%s" % results[label][4])
+        b, a = results["before"], results["after"]
+        if b[3] is not None and a[3] is not None:
+            out("COMPARE_CHANGE", name, "action_per_person_hour", change(b[3], a[3]), "action_per_navigation",
+                change(b[4], a[4]) if b[4] and a[4] is not None else "n/a")
+
+    headline("whole_window", lambda h: True)
+    if split_hours is not None:
+        headline("hours_before_split", lambda h: h + 1 <= split_hours)
+        headline("hours_after_split", lambda h: h >= split_hours)
+
+
 # ---------------------------------------------------------------- section: media
 
 # Fixed words that may appear in object keys (folders and file-name prefixes the app writes). Anything else,
@@ -670,7 +871,7 @@ def section_media():
 
 def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
-    {"config": section_config, "usage": section_usage, "media": section_media}[SECTION]()
+    {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

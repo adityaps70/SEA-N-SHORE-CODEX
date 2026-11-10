@@ -9,6 +9,7 @@ const actionPath = 'scripts/aws/capacity-media-report-action.txt'
 const workflowPath = '.github/workflows/aws-capacity-media-report.yml'
 const wrapperPath = 'scripts/aws/capacity-media-report.cjs'
 const remotePath = 'scripts/aws/capacity-media-report-remote.py'
+const windowPath = 'scripts/aws/capacity-media-report-window.txt'
 
 const READ_ONLY_ACTION = /^(describe|get|list)-[a-z-]+$/
 const DATA_API_READ = new Set(['begin-transaction', 'execute-statement', 'rollback-transaction'])
@@ -35,6 +36,36 @@ test('the SSM wrapper only sends the report and reads its result', () => {
   assert.deepEqual([...new Set(calls)].sort(), ['ssm get-command-invocation', 'ssm send-command'])
   assert.match(wrapper, /capacity-media-report-remote\.py/)
   assert.match(wrapper, /\['config', 'usage', 'media'\]/)
+  // The load test's usage report (REPORT_SECTIONS set) never turns into the compare.
+  assert.match(wrapper, /const COMPARE = process\.env\.REPORT_SECTIONS \? null : compareWindow\(\)/)
+})
+
+test('the committed window reads none or one compare window in whole UTC minutes', () => {
+  const line = readFileSync(windowPath, 'utf8').trim()
+  const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
+  assert.match(line, new RegExp(String.raw`^(none|compare ${minute} (now|${minute})( split ${minute})?)$`))
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
+  assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
+})
+
+test('the compare runs on the last 24 hours at most and never overlaps the day before', () => {
+  const run = (window, env = {}) => spawnSync('python3', ['-I', '-c', `
+import datetime as dt, importlib.util, os
+os.environ.update(${JSON.stringify(env)})
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+(b, bs, be), (a, as_, ae) = r.compare_windows()[0]
+assert (b, a) == ("before", "after")
+assert as_ - bs == dt.timedelta(hours=24) and ae - be == dt.timedelta(hours=24) and be <= as_
+print("ok", r.iso(bs), r.iso(be))
+`], { encoding: 'utf8', env: { ...process.env, COMPARE_START: window[0], COMPARE_END: window[1], COMPARE_SPLIT: window[2] ?? '' } })
+  const ok = run(['2026-11-09T15:25:00Z', '2026-11-10T05:30:00Z', '2026-11-09T17:29:00Z'])
+  assert.equal(ok.status, 0, ok.stderr)
+  assert.match(ok.stdout, /ok 2026-11-08T15:25:00Z 2026-11-09T05:30:00Z/)
+  assert.notEqual(run(['2026-11-09T15:25:00Z', '2026-11-10T15:26:00Z']).status, 0, 'a window over 24 hours is refused')
+  assert.notEqual(run(['2026-11-09T15:25:00Z', '2026-11-10T05:30:00Z', '2026-11-10T06:00:00Z']).status, 0, 'a split outside is refused')
 })
 
 test('every AWS call in the remote script describes, gets or lists (or reads through the Data API)', () => {
