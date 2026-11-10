@@ -43,7 +43,7 @@ describe('web memory contract (Round 13)', () => {
       'src/features/events/event-banner-media.ts',
       'src/features/feed/media.ts',
       'src/app/(app)/community/[slug]/page.tsx',
-      'src/app/(app)/organizations/[slug]/page.tsx',
+      'src/app/(public)/organizations/[slug]/signed-in-page.tsx',
     ]) {
       const source = fs.readFileSync(file, 'utf8')
       expect(source, file).toContain('createMediaImageSrc')

@@ -117,7 +117,7 @@ describe('premium hiring workspace contract', () => {
 
   it('routes legacy company management into the shared verified organization workspace', () => {
     const legacyPage = source('src/app/(app)/hiring/company/page.tsx')
-    const workspace = source('src/app/(app)/organizations/[slug]/page.tsx')
+    const workspace = source('src/app/(public)/organizations/[slug]/signed-in-page.tsx')
     // Round 4: the workspace tools moved from the public organization page to its Manage page.
     const manage = source('src/app/(app)/organizations/[slug]/manage/page.tsx')
 

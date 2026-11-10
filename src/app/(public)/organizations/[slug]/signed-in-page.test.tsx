@@ -74,7 +74,7 @@ vi.mock('@/features/organizations/follow-actions', () => ({ followOrganizationAc
 vi.mock('@/features/jobs/actions', () => ({ applyToJob: vi.fn(), prepareJobApplicationCvUpload: vi.fn(), saveJob: vi.fn(), unsaveJob: vi.fn() }))
 vi.mock('@/features/messaging/actions', () => ({ startDirectConversationAction: vi.fn() }))
 
-import OrganizationPage from './page'
+import { SignedInOrganizationPage as OrganizationPage } from './signed-in-page'
 
 const workspace = {
   id: 'c1',

@@ -6,6 +6,7 @@ import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
+import { PUBLIC_ORGANIZATION_PAGE_PATH } from '@/lib/http/public-page-cache'
 import { RETURN_PATH_COOKIE, returnPathCookieOptions, returnPathForRequest, safeReturnPath } from './return-path'
 
 // About, Help, Accessibility, Privacy, Terms and Copyright are public so signed-out visitors (and
@@ -57,6 +58,10 @@ const SOFT_AUTH_PATHS = [
   // engines. Saved jobs, applications, alerts and any other /jobs page stay signed-in only.
   /^\/jobs$/,
   /^\/jobs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+  // Round ARCH (Phase 2): a claimed organization's main page opens for visitors too (the page itself shows
+  // unclaimed, suspended and rejected organizations as not found when signed out). /organizations, the
+  // register page and every sub-page (manage, team, training, claim, branding, analytics) stay signed-in only.
+  PUBLIC_ORGANIZATION_PAGE_PATH,
 ]
 
 export function isSoftAuthRoute(pathname: string) {

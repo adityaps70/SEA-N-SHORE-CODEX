@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   headMediaObject: vi.fn(),
   deleteMediaObject: vi.fn(),
   revalidatePath: vi.fn(),
+  clearOrganizationPublicPage: vi.fn(async () => undefined),
 }))
+vi.mock('./public-page-refresh', () => ({ clearOrganizationPublicPage: mocks.clearOrganizationPublicPage }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
@@ -76,6 +78,8 @@ describe('updateOrganizationBranding page details', () => {
       officeLocations: ['Mumbai', 'Singapore'],
     }))
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations/oceanic/manage')
+    // Round ARCH (Phase 2): the public page shows these details, so it is cleared from CloudFront.
+    expect(mocks.clearOrganizationPublicPage).toHaveBeenCalledWith({ slug: 'oceanic' })
   })
 
   it('explains invalid page details field by field', async () => {

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   listPublicCourseUrls: vi.fn(),
   listSitemapJobs: vi.fn(),
   listSearchIndexableProfiles: vi.fn(),
+  listPublicSitemapOrganizations: vi.fn(),
 }))
 
 vi.mock('@/features/learning/public-course-repository', () => ({
@@ -11,6 +12,9 @@ vi.mock('@/features/learning/public-course-repository', () => ({
 }))
 vi.mock('@/features/jobs/repository', () => ({ listSitemapJobs: mocks.listSitemapJobs }))
 vi.mock('@/features/profiles/repository', () => ({ listSearchIndexableProfiles: mocks.listSearchIndexableProfiles }))
+vi.mock('@/features/organizations/workspace-repository', () => ({
+  organizationWorkspaceRepository: { listPublicSitemapOrganizations: mocks.listPublicSitemapOrganizations },
+}))
 
 import robots from './robots'
 import { GET as sitemapIndex } from './sitemap.xml/route'
@@ -30,6 +34,7 @@ describe('sitemap.xml and robots.txt', () => {
     mocks.listPublicCourseUrls.mockResolvedValue([])
     mocks.listSitemapJobs.mockResolvedValue([])
     mocks.listSearchIndexableProfiles.mockResolvedValue([])
+    mocks.listPublicSitemapOrganizations.mockResolvedValue([])
   })
 
   it('lists the public pages and every public course', async () => {
@@ -50,8 +55,8 @@ describe('sitemap.xml and robots.txt', () => {
     expect(urls.some((url) => url.includes('/learn/courses/'))).toBe(false)
   })
 
-  it('splits by page type: pages, courses, jobs and public profiles', async () => {
-    expect(await generateSitemaps()).toEqual([{ id: 'pages' }, { id: 'courses' }, { id: 'jobs' }, { id: 'people' }])
+  it('splits by page type: pages, courses, jobs, public profiles and public organizations', async () => {
+    expect(await generateSitemaps()).toEqual([{ id: 'pages' }, { id: 'courses' }, { id: 'jobs' }, { id: 'people' }, { id: 'organizations' }])
     mocks.listSitemapJobs.mockResolvedValue([{ id: 'job-1', updatedAt: '2026-10-10T00:00:00.000Z' }])
 
     const jobs = await sitemap({ id: Promise.resolve('jobs') })
@@ -76,16 +81,38 @@ describe('sitemap.xml and robots.txt', () => {
     expect(mocks.listSearchIndexableProfiles).toHaveBeenCalledWith(50_000)
   })
 
-  it('leaves out organization, event and community pages while they need sign-in', async () => {
+  it('leaves out event and community pages while they need sign-in', async () => {
     const urls = (await allEntries()).map((entry) => entry.url)
-    expect(urls.some((url) => /\/(organizations|events|community)(\/|$)/.test(url))).toBe(false)
+    expect(urls.some((url) => /\/(events|community)(\/|$)/.test(url))).toBe(false)
+    // Round ARCH (Phase 2): no organization reaches the sitemap unless the public-page rule returns it.
+    expect(urls.some((url) => /\/organizations(\/|$)/.test(url))).toBe(false)
+  })
+
+  it('lists the claimed organizations the public-page rule returns, and only those (Round ARCH, Phase 2)', async () => {
+    // The repository applies the rule (claimed and listed to members); unclaimed, pending, suspended and
+    // rejected organizations never come back from it, so they never reach the sitemap.
+    mocks.listPublicSitemapOrganizations.mockResolvedValue([
+      { slug: 'harbour-minds', updatedAt: '2026-11-01T00:00:00.000Z' },
+      { slug: 'oceanic-ship-management', updatedAt: null },
+    ])
+    const organizations = await sitemap({ id: Promise.resolve('organizations') })
+    expect(organizations).toEqual([
+      { url: 'https://seanshore.in/organizations/harbour-minds', lastModified: '2026-11-01T00:00:00.000Z', changeFrequency: 'weekly', priority: 0.6 },
+      { url: 'https://seanshore.in/organizations/oceanic-ship-management', changeFrequency: 'weekly', priority: 0.6 },
+    ])
+    expect(mocks.listPublicSitemapOrganizations).toHaveBeenCalledWith(50_000)
+    const urls = (await allEntries()).map((entry) => entry.url)
+    expect(urls.filter((url) => url.includes('/organizations/'))).toHaveLength(2)
+    expect(urls.some((url) => /\/organizations\/[^/]+\//.test(url))).toBe(false)
   })
 
   it('keeps the other sitemaps when one lookup fails', async () => {
     mocks.listSitemapJobs.mockRejectedValue(new Error('db down'))
     mocks.listSearchIndexableProfiles.mockRejectedValue(new Error('db down'))
+    mocks.listPublicSitemapOrganizations.mockRejectedValue(new Error('db down'))
     expect(await sitemap({ id: Promise.resolve('jobs') })).toEqual([])
     expect(await sitemap({ id: Promise.resolve('people') })).toEqual([])
+    expect(await sitemap({ id: Promise.resolve('organizations') })).toEqual([])
     expect((await sitemap({ id: Promise.resolve('pages') })).length).toBeGreaterThan(5)
   })
 
@@ -94,7 +121,7 @@ describe('sitemap.xml and robots.txt', () => {
     expect(response.headers.get('Content-Type')).toContain('application/xml')
     const xml = await response.text()
     expect(xml).toContain('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
-    for (const id of ['pages', 'courses', 'jobs', 'people']) {
+    for (const id of ['pages', 'courses', 'jobs', 'people', 'organizations']) {
       expect(xml).toContain(`<loc>https://seanshore.in/sitemaps/sitemap/${id}.xml</loc>`)
     }
   })
@@ -108,6 +135,7 @@ describe('sitemap.xml and robots.txt', () => {
         'https://seanshore.in/sitemaps/sitemap/courses.xml',
         'https://seanshore.in/sitemaps/sitemap/jobs.xml',
         'https://seanshore.in/sitemaps/sitemap/people.xml',
+        'https://seanshore.in/sitemaps/sitemap/organizations.xml',
       ],
     })
     const disallow = (robots().rules as { disallow: string[] }).disallow

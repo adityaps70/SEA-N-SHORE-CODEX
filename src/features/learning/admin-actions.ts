@@ -10,6 +10,7 @@ import {
   type MentorReviewDecision,
 } from './admin-repository'
 import { firstPlainIssue, plainIssueMessage } from '@/lib/validation/plain-messages'
+import { clearOrganizationPublicPage } from '@/features/organizations/public-page-refresh'
 
 const mentorReviewSchema = z.object({
   applicationId: z.string().uuid(),
@@ -146,6 +147,8 @@ export async function reviewCourse(
       parsed.data.reviewerNote,
     )
     refreshCourseReview(parsed.data.courseId)
+    // Round ARCH (Phase 2): a publishing organization's public page lists its published courses.
+    void clearOrganizationPublicPage({ courseId: parsed.data.courseId })
     return { ok: true, status: result.status }
   } catch (error) {
     return { ok: false, error: courseReviewError(error) }

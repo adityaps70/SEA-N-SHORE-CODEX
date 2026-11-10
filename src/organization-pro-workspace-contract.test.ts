@@ -8,7 +8,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8')
 
 test('Organization Pro workspace exposes team, branding and analytics through central capabilities', () => {
   for (const file of [
-    'src/app/(app)/organizations/[slug]/page.tsx',
+    'src/app/(public)/organizations/[slug]/signed-in-page.tsx',
     'src/app/(app)/organizations/[slug]/team/page.tsx',
     'src/app/(app)/organizations/[slug]/branding/page.tsx',
     'src/app/(app)/organizations/[slug]/analytics/page.tsx',

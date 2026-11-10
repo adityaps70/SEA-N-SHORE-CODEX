@@ -2,6 +2,8 @@ import type { MetadataRoute } from 'next'
 import { listSitemapJobs } from '@/features/jobs/repository'
 import { siteOrigin } from '@/features/learning/course-seo'
 import { publicCourseRepository } from '@/features/learning/public-course-repository'
+import { organizationPath } from '@/features/organizations/organization-seo'
+import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
 import { listSearchIndexableProfiles } from '@/features/profiles/repository'
 import { SITEMAP_MAX_URLS } from './sitemap-urls'
 
@@ -63,6 +65,16 @@ export async function sitemapSectionEntries(section: string): Promise<MetadataRo
         lastModified: profile.updatedAt,
         changeFrequency: 'weekly' as const,
         priority: 0.5,
+      }))
+    }
+    case 'organizations': {
+      // Round ARCH (Phase 2): the same rule as the public page itself (claimed and listed to members).
+      const organizations = await organizationWorkspaceRepository.listPublicSitemapOrganizations(SITEMAP_MAX_URLS).catch(() => [])
+      return organizations.slice(0, SITEMAP_MAX_URLS).map((organization) => ({
+        url: `${origin}${organizationPath(encodeURIComponent(organization.slug))}`,
+        ...(organization.updatedAt ? { lastModified: organization.updatedAt } : {}),
+        changeFrequency: 'weekly' as const,
+        priority: 0.6,
       }))
     }
     default:

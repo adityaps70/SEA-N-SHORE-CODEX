@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   reviewOrganizationApplication: vi.fn(),
   reviewCompanyAccessRequest: vi.fn(),
   revalidatePath: vi.fn(),
+  getOrganizationApplicationReview: vi.fn(),
+  clearOrganizationPublicPage: vi.fn(),
 }))
 
 // Round 15: platform-admin server actions require a session that answered an authenticator app.
@@ -20,8 +22,10 @@ vi.mock('./repository', () => ({
     isPlatformAdministrator: adminMfa.isPlatformAdministrator,
     reviewOrganizationApplication: mocks.reviewOrganizationApplication,
     reviewCompanyAccessRequest: mocks.reviewCompanyAccessRequest,
+    getOrganizationApplicationReview: mocks.getOrganizationApplicationReview,
   },
 }))
+vi.mock('@/features/organizations/public-page-refresh', () => ({ clearOrganizationPublicPage: mocks.clearOrganizationPublicPage }))
 
 import { reviewCompanyAccessRequest, reviewOrganizationApplication } from './actions'
 import { ADMIN_MFA_REQUIRED_MESSAGE } from './mfa-gate'
@@ -34,6 +38,26 @@ describe('platform admin organization review actions', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1', cognitoSub: 'sub-1', email: 'admin@example.com' })
     mocks.reviewOrganizationApplication.mockResolvedValue(true)
     mocks.reviewCompanyAccessRequest.mockResolvedValue(true)
+    mocks.getOrganizationApplicationReview.mockResolvedValue({ company: { slug: 'harbour-minds' } })
+    mocks.clearOrganizationPublicPage.mockResolvedValue(undefined)
+  })
+
+  it.each(['suspended', 'rejected', 'approved'] as const)(
+    'clears the organization\'s public page from CloudFront at once after a %s decision (Round ARCH, Phase 2)',
+    async (decision) => {
+      await expect(reviewOrganizationApplication(applicationId, decision, 'Reviewed by the platform team.')).resolves.toEqual({ ok: true })
+      expect(mocks.clearOrganizationPublicPage).toHaveBeenCalledTimes(1)
+      const [target, options] = mocks.clearOrganizationPublicPage.mock.calls[0]!
+      expect(options).toEqual({ immediate: true })
+      await expect(target.resolveSlug()).resolves.toBe('harbour-minds')
+      expect(mocks.getOrganizationApplicationReview).toHaveBeenCalledWith('admin-1', applicationId)
+    },
+  )
+
+  it('clears nothing when the review was not saved', async () => {
+    mocks.reviewOrganizationApplication.mockRejectedValueOnce(new Error('organization_review_transition_forbidden'))
+    await reviewOrganizationApplication(applicationId, 'suspended', 'Reviewed by the platform team.')
+    expect(mocks.clearOrganizationPublicPage).not.toHaveBeenCalled()
   })
 
   it('refuses a platform administrator whose session has not answered an authenticator app', async () => {

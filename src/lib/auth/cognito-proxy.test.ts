@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
-import { createCognitoProxyHandler, isCognitoProtectedRoute, rememberReturnPath, renewsSessionOnPublicRoute } from './cognito-proxy'
+import { createCognitoProxyHandler, isCognitoProtectedRoute, isSoftAuthRoute, rememberReturnPath, renewsSessionOnPublicRoute } from './cognito-proxy'
 import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
 import { RETURN_PATH_COOKIE } from './return-path'
 
@@ -212,6 +212,48 @@ describe('Cognito protected route proxy', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('location')).toBeNull()
     expect(refreshSession).toHaveBeenCalledTimes(1)
+    expect(isCognitoProtectedRoute(path)).toBe(false)
+  })
+
+  it('a claimed organization page opens signed out, after trying to refresh a member session (Round ARCH, Phase 2)', async () => {
+    const getVerifiedPrincipal = vi.fn(async () => null)
+    const refreshSession = vi.fn(async () => false)
+    const allowSignedOutView = vi.fn(() => true)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal, refreshSession }, { allowSignedOutView })
+
+    const response = await handler(request('/organizations/harbour-minds'))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('location')).toBeNull()
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+    // Signed-out views share the per-visitor rate limit with post and job pages.
+    expect(allowSignedOutView).toHaveBeenCalledTimes(1)
+    expect(isSoftAuthRoute('/organizations/harbour-minds')).toBe(true)
+  })
+
+  it('a member with an expired access token on an organization page is refreshed, not shown the visitor page', async () => {
+    const refreshSession = vi.fn(async () => true)
+    const allowSignedOutView = vi.fn(() => true)
+    const handler = createCognitoProxyHandler({ getVerifiedPrincipal: vi.fn(async () => null), refreshSession }, { allowSignedOutView })
+
+    const response = await handler(request('/organizations/harbour-minds'))
+
+    expect(response.status).toBe(200)
+    expect(refreshSession).toHaveBeenCalledTimes(1)
+    expect(allowSignedOutView).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    '/organizations',
+    '/organizations/register',
+    '/organizations/harbour-minds/manage',
+    '/organizations/harbour-minds/team',
+    '/organizations/harbour-minds/training',
+    '/organizations/harbour-minds/claim',
+    '/organizations/harbour-minds/branding',
+    '/organizations/harbour-minds/analytics',
+  ])('%s is not opened up: not a signed-out page, and its signed-in (app) layout still guards it', (path) => {
+    expect(isSoftAuthRoute(path)).toBe(false)
     expect(isCognitoProtectedRoute(path)).toBe(false)
   })
 

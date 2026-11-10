@@ -5,6 +5,7 @@ import { query } from '@/lib/db/client'
 import { getCognitoEnvironment } from '@/lib/env'
 import { createCognitoUserAdmin } from '@/features/auth/cognito-user-admin'
 import { stopAutoRenewForClosingAccount } from '@/features/billing/account-closure'
+import { clearOrganizationPublicPage } from '@/features/organizations/public-page-refresh'
 import { eventPaymentService } from '@/features/payments/event-payment-runtime'
 import { accountDeletionRepository } from './repository'
 import { createAccountDeletionService, type AccountDeletionEffects } from './service'
@@ -30,6 +31,7 @@ export function runtimeAccountDeletionEffects(): AccountDeletionEffects {
         region: environment.AWS_COGNITO_REGION,
       }).deleteUser(username)
     },
+    clearOrganizationPage: (companyId) => clearOrganizationPublicPage({ companyId }, { immediate: true }),
   }
 }
 

@@ -5,7 +5,7 @@ import { setRefreshTokenLedger, updateCognitoRouteSession } from '@/lib/auth/cog
 import { createRefreshTokenLedger } from '@/features/account-security/refresh-token-ledger'
 import { query } from '@/lib/db/client'
 import { arrivedAtReturnPath, RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
-import { isPublicPageCacheable, PUBLIC_PAGE_CACHE_CONTROL } from '@/lib/http/public-page-cache'
+import { publicPageCacheControl } from '@/lib/http/public-page-cache'
 import {
   API_CONTENT_SECURITY_POLICY,
   CONTENT_SECURITY_POLICY_HEADER,
@@ -43,7 +43,8 @@ export async function proxy(incoming: NextRequest) {
   if (responsePolicy) response.headers.set(CONTENT_SECURITY_POLICY_HEADER, responsePolicy)
   // Round P3 (B4): a signed-out load of a public page may be cached at CloudFront; this header
   // replaces Next's `private, no-store` for that response only (public-page-cache.ts).
-  if (isPublicPageCacheable(request, response)) response.headers.set('Cache-Control', PUBLIC_PAGE_CACHE_CONTROL)
+  const publicCacheControl = publicPageCacheControl(request, response)
+  if (publicCacheControl) response.headers.set('Cache-Control', publicCacheControl)
   return response
 }
 
