@@ -77,6 +77,8 @@ type CognitoSignUpResponse = {
 
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
   NotAuthorizedException: 'Cognito request was not authorized.',
+  // Round ARCH: a refresh token that was already exchanged came back after the grace period; the sign-in has ended.
+  RefreshTokenReuseException: 'This sign-in was renewed elsewhere and has ended.',
   UserNotFoundException: 'Cognito user was not found.',
   UsernameExistsException: 'A Cognito user with this identity already exists.',
   InvalidPasswordException: 'The password does not meet Cognito requirements.',

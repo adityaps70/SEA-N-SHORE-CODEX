@@ -170,6 +170,54 @@ describe('Cognito server session verification', () => {
     expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
   })
 
+  it('treats a refresh token Cognito refuses as reused like a refused one: cookies cleared, counted, our record ended (Round ARCH)', async () => {
+    const fake = createFakeCookieStore({
+      [COGNITO_COOKIE_NAMES.access]: 'expired-access-token',
+      [COGNITO_COOKIE_NAMES.refresh]: 'reused-refresh-token',
+    })
+    const api = createFakeApi({ refresh: async () => { throw new CognitoApiError('RefreshTokenReuseException') } })
+    const ledger = { check: vi.fn(async () => 'ok' as const), record: vi.fn(async () => undefined), endSession: vi.fn(async () => undefined) }
+    const onRefreshReuse = vi.fn()
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshReuse })
+
+    await expect(sessions.refreshSession()).resolves.toBe(false)
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+    expect(onRefreshReuse).toHaveBeenCalledWith('cognito')
+    expect(onRefreshReuse).toHaveBeenCalledTimes(1)
+    expect(ledger.endSession).toHaveBeenCalledWith('reused-refresh-token')
+    expect(ledger.record).not.toHaveBeenCalled()
+    expect(new CognitoApiError('RefreshTokenReuseException').message).toBe('This sign-in was renewed elsewhere and has ended.')
+  })
+
+  it('never throws on a reused refresh token, even when ending our record or counting it fails (Round ARCH)', async () => {
+    const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'reused-refresh-token' })
+    const api = createFakeApi({ refresh: async () => { throw new CognitoApiError('RefreshTokenReuseException') } })
+    const ledger = { check: vi.fn(async () => 'ok' as const), record: vi.fn(async () => undefined), endSession: vi.fn(async () => { throw new Error('db down') }) }
+    const onRefreshReuse = vi.fn(() => { throw new Error('metrics down') })
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshReuse })
+    await expect(sessions.refreshSession()).resolves.toBe(false)
+  })
+
+  it('counts a reuse our ledger catches before asking Cognito (Round ARCH)', async () => {
+    const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'stolen-old-refresh-token' })
+    const api = createFakeApi()
+    const ledger = { check: vi.fn(async () => 'reused' as const), record: vi.fn(async () => undefined) }
+    const onRefreshReuse = vi.fn()
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshReuse })
+    await expect(sessions.refreshSession()).resolves.toBe(false)
+    expect(onRefreshReuse).toHaveBeenCalledWith('ledger')
+    expect(api.refresh).not.toHaveBeenCalled()
+  })
+
+  it('still throws other Cognito errors (a transport failure is not a signed-out visitor)', async () => {
+    const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'refresh-token' })
+    const api = createFakeApi({ refresh: async () => { throw new CognitoApiError('TransportError') } })
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com' })
+    await expect(sessions.refreshSession()).rejects.toBeInstanceOf(CognitoApiError)
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(true)
+  })
+
   it('clears every Cognito cookie when refresh authorization fails', async () => {
     const fake = createFakeCookieStore({
       [COGNITO_COOKIE_NAMES.access]: 'expired-access-token',

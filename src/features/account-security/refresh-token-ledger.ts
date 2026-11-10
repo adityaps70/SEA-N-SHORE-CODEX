@@ -71,6 +71,28 @@ export function createRefreshTokenLedger(input: {
       }
     },
 
+    /**
+     * Round ARCH: Cognito refused this refresh token as reused (RefreshTokenReuseException). The sign-in it belongs to,
+     * found through this ledger by the token's hash (never from an unverified cookie), is ended like a reuse we catch
+     * ourselves (auth_sessions.reuse_detected_at), so the session check refuses every token of it.
+     */
+    async endSession(refreshToken) {
+      try {
+        const updated = await input.query(
+          `update public.auth_sessions
+           set reuse_detected_at = now()
+           where reuse_detected_at is null
+             and token_origin_hash = (
+               select origin_hash from public.auth_refresh_tokens where token_hash = $1 limit 1
+             )
+           returning id`,
+          [refreshTokenHash(refreshToken)],
+        )
+        if (updated.length > 0) warn('[auth_refresh_reuse]', { action: 'session_ended', source: 'cognito' })
+      } catch (error) {
+        failed('end_session', error)
+      }
+    },
     async record({ previousRefreshToken, authentication }: { previousRefreshToken: string; authentication: CognitoAuthenticationResult }) {
       const next = authentication.refreshToken
       if (!next || next === previousRefreshToken) return

@@ -6,6 +6,7 @@ import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
+import { emitMetric } from '@/lib/observability/emf'
 import { PUBLIC_ORGANIZATION_PAGE_PATH } from '@/lib/http/public-page-cache'
 import { RETURN_PATH_COOKIE, returnPathCookieOptions, returnPathForRequest, safeReturnPath } from './return-path'
 
@@ -224,6 +225,8 @@ export async function updateCognitoRouteSession(request: NextRequest) {
     },
     siteUrl: request.nextUrl.origin,
     ledger: refreshTokenLedger,
+    // Round ARCH: a count per reused refresh token (namespace SeaNShore/App, Area=auth), so a spike shows.
+    onRefreshReuse: (source) => emitMetric({ dimensions: { Area: 'auth', Source: source }, metrics: { RefreshTokenReuse: { value: 1 } } }),
   })
 
   const response = await createCognitoProxyHandler(session)(request)
