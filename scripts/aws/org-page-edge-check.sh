@@ -3,9 +3,9 @@
 # visitors and that nothing signed-in or personal ever is. Run by .github/workflows/aws-remote-verify.yml.
 # Read-only: one SELECT in a READ ONLY transaction that is rolled back, then plain HTTPS requests.
 #
-# The page probed is Sea N Shore's own organization, read from the database, never a typed slug: the claimed,
-# verified organization whose website is the public site (scripts/aws/public-site-url.txt), else the one named
-# exactly "Sea N Shore". Exactly one must match.
+# The page probed is read from the database, never a typed slug: the organization whose name is exactly the one in
+# scripts/aws/org-page-probe-name.txt (the owner's choice; Sea N Shore has no organization page of its own yet).
+# Exactly one organization must have that name, and it must be claimed and verified.
 #
 # Checks, each on a fresh query string so earlier visits cannot answer:
 #   1. signed out, /organizations/<slug> reaches "x-cache: Hit from cloudfront" with the organization header;
@@ -27,7 +27,8 @@ HIT_WAIT_SECONDS="${ORG_PAGE_HIT_WAIT_SECONDS:-10}"
 
 SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
 [[ "$SITE" =~ ^https://([a-z0-9.-]+)$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
-SITE_HOST="${BASH_REMATCH[1]}"
+PROBE_NAME="$(sed -e 's/[[:space:]]*$//' scripts/aws/org-page-probe-name.txt)"
+[[ -n "$PROBE_NAME" && ${#PROBE_NAME} -le 120 && "$PROBE_NAME" != *'"'* && "$PROBE_NAME" != *'\'* ]] || { echo "scripts/aws/org-page-probe-name.txt must hold one organization name (no quotes or backslashes)." >&2; exit 1; }
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]] || { echo "Unexpected AWS account; refusing the check." >&2; exit 1; }
 
 CLUSTER_JSON="$(aws rds describe-db-clusters --region "$AWS_REGION" --db-cluster-identifier "$CLUSTER_ID" --output json)"
@@ -40,24 +41,24 @@ TX_ID="$(aws rds-data begin-transaction --region "$AWS_REGION" --resource-arn "$
 trap 'aws rds-data rollback-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --transaction-id "$TX_ID" >/dev/null 2>&1 || true' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" \
   --transaction-id "$TX_ID" --sql "SET TRANSACTION READ ONLY" >/dev/null
-# The site host and the name are bound parameters; the slug comes back as data.
+# The name is a bound parameter; the slug and the two flags come back as data.
 SLUGS_JSON="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" \
   --transaction-id "$TX_ID" --output json \
-  --parameters "[{\"name\":\"host\",\"value\":{\"stringValue\":\"$SITE_HOST\"}}]" \
+  --parameters "[{\"name\":\"probe_name\",\"value\":{\"stringValue\":\"$PROBE_NAME\"}}]" \
   --sql "WITH candidates AS (
            SELECT slug,
-                  lower(regexp_replace(regexp_replace(coalesce(website, ''), '^https?://(www\\.)?', ''), '[/:?#].*$', '')) = lower(:host) AS by_website,
-                  lower(btrim(name)) = 'sea n shore' AS by_name
+                  coalesce(to_jsonb(companies) ->> 'claim_status', 'claimed') = 'claimed' AS claimed,
+                  coalesce(is_verified, false) AS verified
            FROM public.companies
-           WHERE coalesce(to_jsonb(companies) ->> 'claim_status', 'claimed') = 'claimed'
-             AND coalesce(is_verified, false)
+           WHERE btrim(name) = :probe_name
          )
-         SELECT slug FROM candidates
-         WHERE by_website OR (by_name AND NOT EXISTS (SELECT 1 FROM candidates WHERE by_website))
+         SELECT slug, claimed, verified FROM candidates
          ORDER BY slug")"
-mapfile -t SLUGS < <(jq -r '.records[]?[0].stringValue // empty' <<<"$SLUGS_JSON")
-[[ "${#SLUGS[@]}" -eq 1 ]] || { echo "Expected exactly one Sea N Shore organization page (claimed, verified, website $SITE_HOST or named Sea N Shore); found ${#SLUGS[@]}." >&2; exit 1; }
-SLUG="${SLUGS[0]}"
+MATCHES="$(jq '.records | length' <<<"$SLUGS_JSON")"
+[[ "$MATCHES" -eq 1 ]] || { echo "Expected exactly one organization named as in org-page-probe-name.txt; found $MATCHES." >&2; exit 1; }
+[[ "$(jq -r '.records[0][1].booleanValue' <<<"$SLUGS_JSON")" == true ]] || { echo "The probe organization is not claimed." >&2; exit 1; }
+[[ "$(jq -r '.records[0][2].booleanValue' <<<"$SLUGS_JSON")" == true ]] || { echo "The probe organization is not verified." >&2; exit 1; }
+SLUG="$(jq -r '.records[0][0].stringValue // empty' <<<"$SLUGS_JSON")"
 [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "The organization slug is not in the expected form." >&2; exit 1; }
 echo "ORG_PAGE_PROBE_SLUG=$SLUG"
 
