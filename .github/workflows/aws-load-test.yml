@@ -193,14 +193,11 @@ jobs:
   # Traffic is started only by the nightly start (01:05 IST, from main: by hand, or its schedule as a backup). Refuses
   # a start outside 01:00-01:45 IST (the ramp then ends by about 02:20, inside the 01:00-03:00 window), and a second
   # start on the same armed commit. The sessions-only proof sends no traffic: its arm's merge (the push) starts it, once.
-  # ONE-OFF, owner-approved for 11 Nov 2026 only (the 9 Nov approach): merging a run-signed-in-once arm (a push) starts
-  # the signed-in run at once when it lands between 15:00 and 17:30 IST on DAYTIME_DATE, so the run ends by 18:30 IST.
-  # Removed again right after that run.
   window:
     needs:
       - apply-gate
       - apply-approval
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (needs.apply-gate.outputs.action == 'sessions-only-once' || needs.apply-gate.outputs.action == 'run-signed-in-once'))) }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.apply-gate.outputs.action == 'sessions-only-once')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -230,25 +227,14 @@ jobs:
             *) echo "Not armed for a run." >&2; exit 1 ;;
           esac
 
-      - name: Require the nightly start inside 01:00-01:45 IST (or the one-off daytime window), once per arm
+      - name: Require the nightly start inside 01:00-01:45 IST, once per arm
         env:
           GH_TOKEN: ${{ github.token }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           MIX: ${{ steps.mix.outputs.mix }}
-          DAYTIME_DATE: "2026-11-11"
         shell: bash
         run: |
           set -euo pipefail
-          # ONE-OFF (11 Nov 2026 only): the signed-in arm's merge starts the run between 15:00 and 17:30 IST, once.
-          if [[ "$MIX" == signed-in && "$GITHUB_EVENT_NAME" == push ]]; then
-            NOW=$(date -u +%s)
-            DAY_START=$(date -u -d "$DAYTIME_DATE 09:30:00" +%s)
-            DAY_END=$(date -u -d "$DAYTIME_DATE 12:00:00" +%s)
-            if (( NOW < DAY_START || NOW > DAY_END )); then echo "Merged outside the one-off daytime window (15:00-17:30 IST on $DAYTIME_DATE); only the nightly start may begin the load test." >&2; exit 1; fi
-            [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || { echo "This arm was already started once; re-arm for another run." >&2; exit 1; }
-            echo "LOAD_TEST_DAYTIME_WINDOW_OPEN"
-            exit 0
-          fi
           # The sessions-only proof: only from its arm's merge (a push), never re-run, and no traffic to the site.
           if [[ "$MIX" == sessions-only || "$GITHUB_EVENT_NAME" == push ]]; then
             [[ "$MIX" == sessions-only && "$GITHUB_EVENT_NAME" == push ]] || { echo "Only the sessions-only proof starts from its arm's merge; traffic needs the nightly start." >&2; exit 1; }
