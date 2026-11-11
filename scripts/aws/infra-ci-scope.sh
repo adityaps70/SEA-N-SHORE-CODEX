@@ -4,7 +4,8 @@
 # byte-identical to a commit whose Infra CI passed; anything uncertain runs everything.
 #   1. A merge whose tree is exactly its second parent's (an up-to-date PR branch): that branch's
 #      passing run already verified this exact tree.
-#   2. Otherwise, against the previous head of the branch (the push's "before"), if its run passed:
+#   2. Otherwise, against the previous head of the branch (the push's "before"; for a pull request, the base branch
+#      tip that GitHub's test merge commit is built on), if its run passed:
 #      - Application verify and the Docker build read everything except workflows, docs, guard
 #        values (scripts/aws/*-action.txt) and Terraform files;
 #      - Terraform validate reads infra/aws/**;
@@ -28,9 +29,11 @@ all() {
 }
 
 ci_passed() {
-  local api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$1&event=push&per_page=100"
+  # Round DB (Actions minutes): a PR branch is checked by its pull_request run (no push run any more), so either event
+  # counts. The newest such run on that exact commit decides.
+  local api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$1&per_page=100"
   curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api" \
-    | jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // "missing"' \
+    | jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI" and (.event == "push" or .event == "pull_request"))][0].conclusion // "missing"' \
     || echo unavailable
 }
 
@@ -52,9 +55,13 @@ image_changed_since_before() {
 }
 
 decide() {
-  if [[ "${GITHUB_EVENT_NAME:-}" != "push" ]]; then
-    echo "reason=not a push" >&2; all true; return
-  fi
+  case "${GITHUB_EVENT_NAME:-}" in
+    push) ;;
+    # Round DB (Actions minutes): a PR run checks GitHub's test merge commit. Its first parent is the base branch tip,
+    # so the PR is scoped against that tip, which must have passed Infra CI, exactly like a push against its "before".
+    pull_request) BEFORE="$(git rev-parse --verify --quiet "${GITHUB_SHA}^1" || true)" ;;
+    *) echo "reason=not a push or pull request" >&2; all true; return ;;
+  esac
   local head_tree parent2
   head_tree="$(git rev-parse "${GITHUB_SHA}^{tree}")"
   if parent2="$(git rev-parse --verify --quiet "${GITHUB_SHA}^2")"; then
@@ -95,8 +102,12 @@ decide() {
   echo "reason=changed since the previous head (whose Infra CI passed): $(wc -l <<<"$CHANGED") files" >&2
 }
 
-# A push to any branch but the feature branch never builds the image.
-if [[ "${GITHUB_EVENT_NAME:-}" == "push" && -n "${GITHUB_REF:-}" && "$GITHUB_REF" != "$FEATURE_REF" ]]; then
+# A push to any branch but the feature branch never builds the image, and neither does a pull request run (the merge
+# to the feature branch builds it when its inputs changed).
+if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+  decide | sed 's/^container=true$/container=false/' >> "${GITHUB_OUTPUT:-/dev/stdout}"
+  echo "container: not built on a pull request" >&2
+elif [[ "${GITHUB_EVENT_NAME:-}" == "push" && -n "${GITHUB_REF:-}" && "$GITHUB_REF" != "$FEATURE_REF" ]]; then
   decide | sed 's/^container=true$/container=false/' >> "${GITHUB_OUTPUT:-/dev/stdout}"
   echo "container: not built on a push to $GITHUB_REF" >&2
 else

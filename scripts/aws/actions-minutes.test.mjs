@@ -69,7 +69,7 @@ test('Infra CI: superseded runs cancel; heavy jobs follow the change scope; cont
 })
 
 // Behaviour of scripts/aws/infra-ci-scope.sh on real git history, with the GitHub API stubbed.
-function scope({ event = 'push', ref, before, parentCi = 'success', api = true, setup }) {
+function scope({ event = 'push', ref, before, parentCi = 'success', parentEvent = 'push', api = true, setup }) {
   const root = mkdtempSync(join(tmpdir(), 'ci-scope-'))
   const repo = join(root, 'repo')
   const sh = (cmd) => execSync(cmd, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
@@ -84,7 +84,7 @@ function scope({ event = 'push', ref, before, parentCi = 'success', api = true, 
   const bin = join(root, 'bin')
   mkdirSync(bin)
   writeFileSync(join(bin, 'curl'), api
-    ? `#!/bin/bash\ncat <<'J'\n{"workflow_runs":[{"name":"AWS Infrastructure CI","conclusion":${JSON.stringify(parentCi)}}]}\nJ\n`
+    ? `#!/bin/bash\ncat <<'J'\n{"workflow_runs":[{"name":"AWS Infrastructure CI","event":${JSON.stringify(parentEvent)},"conclusion":${JSON.stringify(parentCi)}}]}\nJ\n`
     : '#!/bin/bash\nexit 22\n', { mode: 0o755 })
   const out = join(root, 'out')
   writeFileSync(out, '')
@@ -114,6 +114,38 @@ test('scope: rearms, workflow-only changes and merges of verified trees skip the
   assert.deepEqual(scope({ before: undefined, ref: FEATURE, parentCi: 'failure', setup: merge('infra/aws/app/main.tf') }), ALL)
 })
 
+// Round DB (Actions minutes, owner-approved 11 Nov): Infra CI runs on pushes to the feature branch and main and on
+// pull requests into them. A PR run is scoped against its base branch tip and never builds the image; a merge reuses its
+// PR's passing pull_request run.
+test('Infra CI triggers: pushes to the feature branch and main, pull requests into them', () => {
+  const text = byName['aws-infra-ci.yml']
+  assert.match(text, /^  push:\n    branches:\n      - feat\/aws-native-phase-0-1\n      - main\n    paths:\n/m)
+  assert.match(text, /^  pull_request:\n    branches: \[main, feat\/aws-native-phase-0-1\]\n    paths:\n/m)
+  assert.match(text, /^  workflow_dispatch:\n/m)
+  // The same files trigger both.
+  const paths = (block) => [...block.matchAll(/^      - (.+)$/gm)].map((m) => m[1])
+  const push = text.slice(text.indexOf('\n  push:\n'), text.indexOf('\n  pull_request:\n'))
+  const pr = text.slice(text.indexOf('\n  pull_request:\n'), text.indexOf('\npermissions:'))
+  assert.deepEqual(paths(push).filter((p) => !['feat/aws-native-phase-0-1', 'main'].includes(p)), paths(pr))
+})
+
+test('scope: a pull request is scoped against its base branch tip and never builds the image', () => {
+  const pr = (file) => ({ write, sh }) => { write(file, 'v2\n'); sh(`git commit -qam ${file.replace(/\W/g, '')}`) }
+  // An arm PR (a guard file only) skips the heavy jobs once the base tip passed; it never needs the image.
+  assert.deepEqual(scope({ event: 'pull_request', ref: 'refs/pull/1/merge', setup: pr('scripts/aws/x-action.txt') }), NONE)
+  assert.deepEqual(scope({ event: 'pull_request', ref: 'refs/pull/1/merge', setup: pr('src/a.ts') }), { application: true, terraform: false, guard: false, container: false })
+  assert.deepEqual(scope({ event: 'pull_request', ref: 'refs/pull/1/merge', setup: pr('infra/aws/app/main.tf') }), { application: false, terraform: true, guard: true, container: false })
+  // Its "before" is the test merge commit's first parent, never the event's own value.
+  assert.deepEqual(scope({ event: 'pull_request', ref: 'refs/pull/1/merge', before: '0000000000000000000000000000000000000000', setup: pr('scripts/aws/x-action.txt') }), NONE)
+  // A merge to the feature branch reuses its PR's passing pull_request run (and builds the image once).
+  const merge = ({ write, sh, base }) => {
+    sh('git checkout -qb pr'); write('src/a.ts', 'v2\n'); sh('git commit -qam feature')
+    sh(`git checkout -q ${base} && git checkout -qb main && git merge -q --no-ff pr -m merge`)
+  }
+  assert.deepEqual(scope({ before: undefined, ref: FEATURE, parentEvent: 'pull_request', setup: merge }), { ...NONE, container: true })
+  assert.deepEqual(scope({ before: undefined, ref: FEATURE, parentEvent: 'pull_request', parentCi: 'failure', setup: merge }), ALL)
+})
+
 test('scope: a push to any branch but the feature branch never builds the image', () => {
   const app = ({ write, sh }) => { write('src/a.ts', 'v2\n'); sh('git commit -qam app') }
   assert.deepEqual(scope({ ref: 'refs/heads/claude/new-session-x', setup: app }), { application: true, terraform: false, guard: false, container: false })
@@ -137,7 +169,12 @@ test('scope: any doubt runs everything', () => {
   for (const parentCi of ['failure', 'cancelled', null]) assert.deepEqual(scope({ parentCi, setup: arm }), ALL, String(parentCi))
   assert.deepEqual(scope({ api: false, setup: arm }), ALL, 'GitHub API unavailable')
   assert.deepEqual(scope({ event: 'workflow_dispatch', setup: arm }), ALL)
-  assert.deepEqual(scope({ event: 'pull_request', setup: arm }), ALL)
+  // Round DB: a pull request is scoped against its base branch tip, so with any doubt about that tip it runs
+  // everything but the image build (the merge builds the image).
+  for (const parentCi of ['failure', 'cancelled', null]) assert.deepEqual(scope({ event: 'pull_request', parentCi, setup: arm }), { ...ALL, container: false }, `pull request, base ${parentCi}`)
+  assert.deepEqual(scope({ event: 'pull_request', api: false, setup: arm }), { ...ALL, container: false }, 'pull request, GitHub API unavailable')
+  // A run by some other workflow event on that commit is no evidence.
+  assert.deepEqual(scope({ parentEvent: 'workflow_dispatch', setup: arm }), ALL)
   assert.deepEqual(scope({ before: '0000000000000000000000000000000000000000', setup: arm }), ALL)
   // A merge whose tree differs from the PR branch (the branch was behind) is verified in full.
   assert.deepEqual(scope({

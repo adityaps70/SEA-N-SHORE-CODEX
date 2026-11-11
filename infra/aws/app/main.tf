@@ -315,9 +315,11 @@ resource "aws_cloudwatch_log_group" "app" {
 resource "aws_ecs_cluster" "app" {
   name = local.name_prefix
 
+  # Round DB (cost, owner-approved 11 Nov): Container Insights off (its 88 custom metrics were most of the CloudWatch
+  # bill). The two alarms that read it moved to free metrics (scripts/aws/cost-trim-infra.sh).
   setting {
     name  = "containerInsights"
-    value = "enabled"
+    value = "disabled"
   }
 
   tags = local.common_tags

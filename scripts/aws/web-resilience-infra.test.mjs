@@ -39,10 +39,18 @@ test('Round 13 Terraform keeps two tasks, scales on memory and alerts the owner'
   assert.match(terraform, /predefined_metric_type = "ECSServiceAverageMemoryUtilization"/)
   assert.match(terraform, /target_value\s*=\s*70/)
   assert.match(terraform, /protocol\s*=\s*"email"/)
-  for (const alarm of ['web_memory_high', 'web_running_tasks_low', 'alb_gateway_errors', 'alb_target_connection_errors', 'web_ephemeral_storage_high']) {
+  for (const alarm of ['web_memory_high', 'web_running_tasks_low', 'alb_gateway_errors', 'alb_target_connection_errors']) {
     const block = terraform.slice(terraform.indexOf(`"aws_cloudwatch_metric_alarm" "${alarm}"`))
     assert.match(block.slice(0, 2500), /alarm_actions\s*=\s*\[aws_sns_topic\.alerts\.arn\]/, alarm)
   }
+  // Round DB (cost): with Container Insights off, the running-tasks alarm counts healthy web targets behind the ALB
+  // (fewer than 2 for 5 minutes still pages), and the ephemeral storage alarm, which needed Container Insights, is gone.
+  const running = terraform.slice(terraform.indexOf('"aws_cloudwatch_metric_alarm" "web_running_tasks_low"'), terraform.indexOf('"aws_cloudwatch_metric_alarm" "alb_gateway_errors"'))
+  assert.match(running, /namespace\s*=\s*"AWS\/ApplicationELB"\n\s*metric_name\s*=\s*"HealthyHostCount"/)
+  assert.match(running, /dimensions\s*=\s*\{ TargetGroup = aws_lb_target_group\.app\.arn_suffix, LoadBalancer = local\.alb_dimension \}/)
+  assert.match(running, /statistic\s*=\s*"Minimum"[\s\S]*period\s*=\s*60[\s\S]*evaluation_periods\s*=\s*5[\s\S]*threshold\s*=\s*2[\s\S]*"LessThanThreshold"[\s\S]*treat_missing_data\s*=\s*"breaching"/)
+  assert.doesNotMatch(terraform, /ECS\/ContainerInsights|resource "aws_cloudwatch_metric_alarm" "web_ephemeral_storage_high"/)
+  assert.doesNotMatch(script, /web_ephemeral_storage_high|web-ephemeral-storage-high/)
   assert.match(terraform, /threshold\s*=\s*80/)
   assert.match(terraform, /HTTPCode_ELB_502_Count/)
   assert.match(terraform, /TargetConnectionErrorCount/)

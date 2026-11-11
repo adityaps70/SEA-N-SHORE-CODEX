@@ -144,14 +144,30 @@ resource "aws_ecr_lifecycle_policy" "app" {
   repository = aws_ecr_repository.app.name
 
   policy = jsonencode({
+    # Round DB (cost, owner-approved 11 Nov): keep 10 images. The social-events worker images (social-<sha>) share this
+    # repository but are rebuilt only when worker code changes, so they keep their own 10: one shared count could
+    # expire the image the running workers use. Applied by scripts/aws/cost-trim-infra.sh.
     rules = [
       {
         rulePriority = 1
-        description  = "Keep the latest 30 application images"
+        description  = "Keep the latest 10 social-events worker images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["social-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Keep the latest 10 application images"
         selection = {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"
-          countNumber = 30
+          countNumber = 10
         }
         action = {
           type = "expire"
