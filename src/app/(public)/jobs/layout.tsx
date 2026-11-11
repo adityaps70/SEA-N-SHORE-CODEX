@@ -1,7 +1,7 @@
 import { MainLandmark } from '@/components/layout/main-landmark'
+import { getChromeCountsForRequest } from '@/components/navigation/chrome-counts'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { MessagingDock } from '@/features/messaging/components/messaging-dock'
-import { getUnreadMessageCount } from '@/features/messaging/queries'
 import { LegacyOrganizationConversionBanner } from '@/features/organizations/components/legacy-conversion-banner'
 import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
 import { SourceVisitBeacon } from '@/features/ranking/components/source-visit-beacon'
@@ -20,7 +20,8 @@ export default async function PublicJobsLayout({ children }: { children: React.R
   if (!viewer) return <MainLandmark className={MAIN_CLASS}>{children}</MainLandmark>
 
   const [messagingUnreadCount, legacyConversion] = await Promise.all([
-    getUnreadMessageCount().catch(() => 0),
+    // Round DB: the (public) layout's chrome already read this count in this render; share it, don't re-query.
+    getChromeCountsForRequest(viewer.id).then((counts) => counts.messagingUnreadCount).catch(() => 0),
     legacyOrganizationConversionRepository.getConversion(viewer.id).catch(() => null),
   ])
   return (

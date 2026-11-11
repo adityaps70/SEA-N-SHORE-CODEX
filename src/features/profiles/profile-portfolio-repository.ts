@@ -129,7 +129,8 @@ function credentialValues(data: ProfileCredentialInput) {
 export function createProfilePortfolioRepository({ query = defaultQuery }: { query?: QueryFn } = {}) {
   return {
     async getProfilePortfolio(profileId: string): Promise<ProfilePortfolio> {
-      const experiences = await query<ExperienceRow>(
+      // Round DB: the two reads are independent, so they run side by side (one round trip of waiting, not two).
+      const [experiences, credentials] = await Promise.all([query<ExperienceRow>(
         `select
           id,
           profile_id,
@@ -151,9 +152,7 @@ export function createProfilePortfolioRepository({ query = defaultQuery }: { que
         where profile_id = $1
         order by is_current desc, started_on desc nulls last, sort_order asc, id asc`,
         [profileId],
-      )
-
-      const credentials = await query<CredentialRow>(
+      ), query<CredentialRow>(
         `select
           id,
           profile_id,
@@ -169,7 +168,7 @@ export function createProfilePortfolioRepository({ query = defaultQuery }: { que
         where profile_id = $1
         order by sort_order asc, issued_on desc nulls last, id asc`,
         [profileId],
-      )
+      )])
 
       return {
         experiences: experiences.map(mapExperience),

@@ -121,13 +121,7 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
     },
 
     async countUnread(recipientId: string): Promise<number> {
-      const rows = await queryRows(
-        `select count(*)::text as unread_count
-         from public.notifications
-         where recipient_id = $1
-           and read_at is null`,
-        [recipientId],
-      )
+      const rows = await queryRows(UNREAD_NOTIFICATION_COUNT_SQL, [recipientId])
       const row = rows[0] as CountRow | undefined
       return Number(row?.unread_count ?? 0)
     },
@@ -158,6 +152,34 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
         [notificationId, recipientId],
       )
       return Boolean((rows[0] as IdRow | undefined)?.id)
+    },
+
+    /**
+     * Round DB: a grouped row ("X and 5 others reacted") marks all its notifications read in one statement, only those
+     * that belong to `recipientId`. Returns how many distinct ids were found for this recipient.
+     */
+    async markReadMany(recipientId: string, notificationIds: string[]): Promise<number> {
+      const rows = await queryRows(
+        `update public.notifications
+         set read_at = now()
+         where id = any($1::uuid[])
+           and recipient_id = $2
+         returning id`,
+        [notificationIds, recipientId],
+      )
+      return rows.length
+    },
+
+    /** Round DB: deletes a grouped row's notifications in one statement, only those that belong to `recipientId`. */
+    async deleteManyForRecipient(recipientId: string, notificationIds: string[]): Promise<number> {
+      const rows = await queryRows(
+        `delete from public.notifications
+         where id = any($1::uuid[])
+           and recipient_id = $2
+         returning id`,
+        [notificationIds, recipientId],
+      )
+      return rows.length
     },
 
     async markAllRead(recipientId: string): Promise<void> {
@@ -233,6 +255,12 @@ export function createNotificationEventRepositoryForClient(client: DatabaseQuery
   }
 }
 
+/** The bell badge count for recipient $1. Shared with the signed-in chrome's one-query counts (chrome-counts.ts). */
+export const UNREAD_NOTIFICATION_COUNT_SQL = `select count(*)::text as unread_count
+         from public.notifications
+         where recipient_id = $1
+           and read_at is null`
+
 export type NotificationEventRepository = ReturnType<typeof createNotificationEventRepositoryForClient>
 
 const repository = createNotificationRepository()
@@ -242,3 +270,5 @@ export const countUnreadNotificationsFromAurora = repository.countUnread
 export const markNotificationReadInAurora = repository.markRead
 export const markAllNotificationsReadInAurora = repository.markAllRead
 export const deleteNotificationInAurora = repository.deleteForRecipient
+export const markNotificationsReadInAurora = repository.markReadMany
+export const deleteNotificationsInAurora = repository.deleteManyForRecipient

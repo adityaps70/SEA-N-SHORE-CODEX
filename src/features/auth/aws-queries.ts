@@ -10,6 +10,7 @@ import {
   getProfileAccountStatus,
   provisionProfileForCognitoPrincipal,
   resolveProfileIdForCognitoSub,
+  resolveProfileWithStatusForCognitoSub,
 } from './identity-repository'
 
 export type AwsVerifiedUser = {
@@ -21,7 +22,10 @@ export type AwsVerifiedUser = {
 type GetPrincipal = () => Promise<CognitoPrincipal | null>
 type ResolveProfileId = (sub: string) => Promise<string | null>
 type ProvisionProfileId = (principal: CognitoPrincipal) => Promise<string>
-type GetProfileAccountStatus = (profileId: string) => Promise<'active' | 'restricted' | 'suspended' | 'deletion_requested' | null>
+type AccountStatus = 'active' | 'restricted' | 'suspended' | 'deletion_requested'
+type GetProfileAccountStatus = (profileId: string) => Promise<AccountStatus | null>
+/** Round DB: the mapping and the account status in one query; null when there is no mapping yet. */
+type ResolveProfileWithStatus = (sub: string) => Promise<{ profileId: string; accountStatus: AccountStatus | null } | null>
 type CacheVerifiedUser = <T>(loader: () => Promise<T>) => () => Promise<T>
 /** Round H (H3): this device's session state (see features/account-security/session-guard). */
 type CheckSession = (profileId: string) => Promise<
@@ -48,6 +52,7 @@ export function createAwsAuthQueries(input: {
   resolveProfileId: ResolveProfileId
   provisionProfileId: ProvisionProfileId
   getProfileAccountStatus: GetProfileAccountStatus
+  resolveProfileWithStatus?: ResolveProfileWithStatus
   cacheVerifiedUser?: CacheVerifiedUser
   checkSession?: CheckSession
 }) {
@@ -57,9 +62,18 @@ export function createAwsAuthQueries(input: {
     const principal = await input.getPrincipal()
     if (!principal?.sub) return signedOut
 
-    const existingProfileId = await input.resolveProfileId(principal.sub)
-    const profileId = existingProfileId ?? await input.provisionProfileId(principal)
-    const accountStatus = await input.getProfileAccountStatus(profileId)
+    let profileId: string
+    let accountStatus: AccountStatus | null
+    const existing = input.resolveProfileWithStatus ? await input.resolveProfileWithStatus(principal.sub) : null
+    if (existing) {
+      profileId = existing.profileId
+      accountStatus = existing.accountStatus
+    } else {
+      // No mapping yet (first sign-in), or a caller without the one-query lookup: the original two steps.
+      const existingProfileId = input.resolveProfileWithStatus ? null : await input.resolveProfileId(principal.sub)
+      profileId = existingProfileId ?? await input.provisionProfileId(principal)
+      accountStatus = await input.getProfileAccountStatus(profileId)
+    }
     if (!accountStatus || accountStatus === 'suspended' || accountStatus === 'deletion_requested') {
       return signedOut
     }
@@ -136,6 +150,7 @@ const productionQueries = createAwsAuthQueries({
   resolveProfileId: resolveProfileIdForCognitoSub,
   provisionProfileId: provisionProfileForCognitoPrincipal,
   getProfileAccountStatus,
+  resolveProfileWithStatus: resolveProfileWithStatusForCognitoSub,
   cacheVerifiedUser: (loader) => cache(loader),
   checkSession: checkCurrentSession,
 })

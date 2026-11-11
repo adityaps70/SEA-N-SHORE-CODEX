@@ -117,6 +117,40 @@ describe('Aurora notification repository', () => {
     await expect(repository.markRead(RECIPIENT_ID, NOTIFICATION_ID)).resolves.toBe(false)
   })
 
+  it('marks a grouped row read in one statement, only for the recipient, and counts what it found', async () => {
+    const SECOND_ID = '33333333-3333-4333-8333-333333333333'
+    const query = vi.fn(async () => [{ id: NOTIFICATION_ID }])
+    const { createNotificationRepository } = await import('./repository')
+    const repository = createNotificationRepository({ query })
+
+    await expect(repository.markReadMany(RECIPIENT_ID, [NOTIFICATION_ID, SECOND_ID])).resolves.toBe(1)
+
+    expect(query).toHaveBeenCalledTimes(1)
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toContain('update public.notifications')
+    expect(sql).toContain('id = any($1::uuid[])')
+    expect(sql).toContain('recipient_id = $2')
+    expect(sql).toContain('read_at = now()')
+    expect(sql).toContain('returning id')
+    expect(values).toEqual([[NOTIFICATION_ID, SECOND_ID], RECIPIENT_ID])
+  })
+
+  it('deletes a grouped row in one statement, only for the recipient, and counts what it found', async () => {
+    const SECOND_ID = '33333333-3333-4333-8333-333333333333'
+    const query = vi.fn(async () => [{ id: NOTIFICATION_ID }, { id: SECOND_ID }])
+    const { createNotificationRepository } = await import('./repository')
+    const repository = createNotificationRepository({ query })
+
+    await expect(repository.deleteManyForRecipient(RECIPIENT_ID, [NOTIFICATION_ID, SECOND_ID])).resolves.toBe(2)
+
+    expect(query).toHaveBeenCalledTimes(1)
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toContain('delete from public.notifications')
+    expect(sql).toContain('id = any($1::uuid[])')
+    expect(sql).toContain('recipient_id = $2')
+    expect(values).toEqual([[NOTIFICATION_ID, SECOND_ID], RECIPIENT_ID])
+  })
+
   it('marks all unread notifications read only for the authenticated recipient', async () => {
     const query = vi.fn(async () => [])
     const { createNotificationRepository } = await import('./repository')

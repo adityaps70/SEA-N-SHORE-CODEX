@@ -96,7 +96,9 @@ test('SQL runs read-only and is rolled back; output carries shapes and counts, n
   // Round DB: EXPLAIN only plans (GENERIC_PLAN, never ANALYZE), so nothing it explains is ever run.
   assert.match(remote, /^EXPLAIN_PREFIX = "explain \(generic_plan, costs, format json\) "$/m)
   assert.doesNotMatch(remote, /explain \([^)]*analyze/i)
-  assert.match(remote, /finally:\n\s+aws\("rds-data", "rollback-transaction"/)
+  // Round DB: rollback-transaction takes no --database (with it, every rollback failed and the transaction stayed open).
+  assert.match(remote, /finally:\n(\s+#[^\n]*\n)*\s+if aws\("rds-data", "rollback-transaction", "--resource-arn", arn, "--secret-arn", secret, "--transaction-id", txid\) is None:/)
+  assert.doesNotMatch(remote, /"rollback-transaction", \*base/)
   // Object keys and request paths are only printed through the shape functions.
   assert.doesNotMatch(remote, /out\([^)]*obj\["Key"\]/)
   assert.match(remote, /route_shape\(path\)/)
@@ -160,4 +162,37 @@ print("ok")
   // Statements are printed only as normalised shapes from pg_stat_statements and Performance Insights.
   assert.match(remote, /left\(regexp_replace\(query, '\\\\s\+', ' ', 'g'\), 420\) as q from pg_stat_statements/)
   assert.match(remote, /"db\.sql_tokenized\.statement"/)
+})
+
+// Round DB (owner, 11 Nov): "p95 under 1 s" is judged on the ALB's server-side time per ramp step. The load test names
+// its step in the User-Agent; the report cuts the ALB logs by it and prints aggregates only.
+test('the server-side per-step lines judge p95 under 1 s from the ALB target times, counting up from step 1', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+assert r.LOAD_TEST_STEP.search("SeaNShore-LoadTest/1 step/3").group(1) == "3"
+assert r.LOAD_TEST_STEP.search("SeaNShore-LoadTest/1") is None
+assert r.LOAD_TEST_STEP.search("Mozilla/5.0 step/2") is None
+def step(times, errors=0):
+    return {"n": len(times), "times": times, "5xx": errors}
+fast = [0.1] * 95 + [0.4] * 5
+lines = r.server_step_lines({1: step(fast), 2: step([0.2] * 90 + [1.5] * 10), 3: step(fast)}, ["100", "300", "600"])
+assert lines[0] == "LOAD_TEST_STEP_SERVER step=1 target_rpm=100 requests=100 p50_s=0.100 p95_s=0.100 p99_s=0.400 server_5xx_pct=0.00 within_1s=true measured_at=alb_target", lines[0]
+assert "within_1s=false" in lines[1] and "p95_s=1.500" in lines[1], lines[1]
+# Step 3 is fast again, but the count stops at the first step over 1 s.
+assert "within_1s=true" in lines[2], lines[2]
+assert lines[3] == "LOAD_TEST_P95_UNDER_1S_SERVER highest_step=1 highest_rpm=100 measured_at=alb_target", lines[3]
+# Server errors over 1% also break it; a step with no requests is skipped; no steps means no lines.
+errs = r.server_step_lines({1: step(fast, errors=2)}, ["100"])
+assert "server_5xx_pct=2.00 within_1s=false" in errs[0] and errs[-1].startswith("LOAD_TEST_P95_UNDER_1S_SERVER highest_step=0 highest_rpm=0"), errs
+assert r.server_step_lines({1: step([])}, ["100"]) == []
+assert r.server_step_lines({}, []) == []
+text = "\\n".join(lines)
+assert "http" not in text and "@" not in text
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
 })

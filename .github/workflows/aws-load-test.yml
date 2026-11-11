@@ -358,7 +358,10 @@ jobs:
         shell: bash
         run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup
 
-  # Stop rule 3: Aurora at its maximum ACU for 5 minutes in a row cancels the run (read-only CloudWatch).
+  # Round DB (owner-approved 11 Nov): server-side stop rules, read-only CloudWatch every minute. The run is cancelled
+  # when the last 3 one-minute values of any one are over its limit: Aurora CPU >= 90%, DB load (Performance Insights
+  # DBLoad) >= 1.5 sessions, or ALB target response p95 > 2 s (scripts/load-test/monitor-stop.mjs). Aurora at its
+  # maximum ACU is logged as information only: it is Aurora scaling up, not running out.
   monitor:
     needs:
       - apply-gate
@@ -374,13 +377,15 @@ jobs:
       actions: write
     env:
       AWS_REGION: ap-south-1
-      LOAD_TEST_AURORA_MAX_ACU: "2"
+      LOAD_TEST_AURORA_CLUSTER: sea-n-shore-staging-aurora
+      LOAD_TEST_AURORA_WRITER: sea-n-shore-staging-aurora-writer
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             scripts/load-test
+            scripts/aws/alb-metric-dimension.sh
           sparse-checkout-cone-mode: false
 
       - name: Configure AWS credentials with GitHub OIDC
@@ -389,21 +394,33 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
 
-      - name: Watch Aurora capacity until the shards finish
+      - name: Watch Aurora CPU, DB load and server-side p95 until the shards finish
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          ALB="$(bash scripts/aws/alb-metric-dimension.sh)"
+          mkdir -p /tmp/monitor
+          # The last 6 minutes of one metric, one value per minute, oldest first.
+          series() {
+            local namespace="$1" name="$2" dimension="$3" stat="$4" field="$5"
+            aws cloudwatch get-metric-statistics --region "$AWS_REGION" --namespace "$namespace" --metric-name "$name" \
+              --dimensions "$dimension" $stat --period 60 \
+              --start-time "$(date -u -d '-6 minutes' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" --output json \
+              | jq -c "[.Datapoints | sort_by(.Timestamp) | .[] | $field]"
+          }
           for minute in $(seq 1 45); do
             sleep 60
-            VALUES="$(aws cloudwatch get-metric-statistics --region "$AWS_REGION" --namespace AWS/RDS --metric-name ServerlessDatabaseCapacity \
-              --dimensions Name=DBClusterIdentifier,Value=sea-n-shore-staging-aurora --statistics Maximum --period 60 \
-              --start-time "$(date -u -d '-6 minutes' +%FT%TZ)" --end-time "$(date -u +%FT%TZ)" --output json | jq -c '[.Datapoints | sort_by(.Timestamp) | .[-5:][] | .Maximum]')"
-            echo "LOAD_TEST_AURORA_ACU minute=$minute last5=$VALUES"
-            if node scripts/load-test/aurora-stop.mjs "$VALUES" "$LOAD_TEST_AURORA_MAX_ACU"; then
-              echo "LOAD_TEST_STOP Aurora at its maximum of ${LOAD_TEST_AURORA_MAX_ACU} ACU for 5 minutes" | tee -a "$GITHUB_STEP_SUMMARY"
+            CPU="$(series AWS/RDS CPUUtilization "Name=DBClusterIdentifier,Value=$LOAD_TEST_AURORA_CLUSTER" "--statistics Maximum" .Maximum)"
+            LOAD="$(series AWS/RDS DBLoad "Name=DBInstanceIdentifier,Value=$LOAD_TEST_AURORA_WRITER" "--statistics Average" .Average)"
+            P95="$(series AWS/ApplicationELB TargetResponseTime "Name=LoadBalancer,Value=$ALB" "--extended-statistics p95" '.ExtendedStatistics.p95')"
+            ACU="$(series AWS/RDS ServerlessDatabaseCapacity "Name=DBClusterIdentifier,Value=$LOAD_TEST_AURORA_CLUSTER" "--statistics Maximum" .Maximum)"
+            echo "LOAD_TEST_MONITOR minute=$minute aurora_cpu=$CPU db_load=$LOAD server_p95_s=$P95 aurora_acu_info=$ACU"
+            if REASON="$(node scripts/load-test/monitor-stop.mjs "$(jq -nc --argjson cpu "$CPU" --argjson dbLoad "$LOAD" --argjson p95 "$P95" '{cpu: $cpu, dbLoad: $dbLoad, p95: $p95}')")"; then
+              echo "LOAD_TEST_STOP $REASON" | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "$REASON" > /tmp/monitor/stop-monitor.txt
               curl -fsS -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API/cancel" >/dev/null
               exit 0
             fi
@@ -414,6 +431,16 @@ jobs:
             SHARDS="$(jq '[.jobs[] | select(.name | startswith("load"))] | length' <<<"$JOBS")"
             [[ "$LEFT" == 0 && "$SHARDS" -gt 0 && $minute -gt 2 ]] && { echo "Every shard has finished."; exit 0; }
           done
+
+      # The report counts a monitor stop like a shard stop (stopped=true and its reason).
+      - name: Upload the monitor's stop reason
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: load-test-monitor
+          path: /tmp/monitor
+          retention-days: 14
+          if-no-files-found: ignore
 
   load:
     needs:
@@ -526,6 +553,8 @@ jobs:
       - window
       - sessions
       - load
+      # Round DB: the monitor's stop reason (load-test-monitor) must be uploaded before the report downloads it.
+      - monitor
     if: ${{ always() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
@@ -539,7 +568,8 @@ jobs:
       - name: Download the shards' numbers
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: load-test-shard-*
+          # The shards' numbers and, when the monitor stopped the run, its reason (load-test-monitor).
+          pattern: load-test-*
           path: /tmp/shards
 
       - name: Load test report (aggregates only)
@@ -585,12 +615,15 @@ jobs:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
           REPORT_SECTIONS: usage
           REPORT_START: ${{ needs.window.outputs.started_at }}
+          LOAD_TEST_STEP_RPM: ${{ env.LOAD_TEST_TOTAL_RPM }}
         shell: bash
         run: |
           set -euo pipefail
           sleep 300
           export REPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
-          node scripts/aws/capacity-media-report.cjs
+          # Round DB: the server-side (ALB) times per step, which judge "p95 under 1 s", go to the summary too.
+          node scripts/aws/capacity-media-report.cjs | tee /tmp/site-metrics.txt
+          grep -E '^LOAD_TEST_(STEP_SERVER|P95_UNDER_1S_SERVER) ' /tmp/site-metrics.txt | tee -a "$GITHUB_STEP_SUMMARY" || true
 
       # The sessions-only proof: every shard opened its part, and the parts add up to the 50 sessions.
       - name: Sessions-only proof (counts only)

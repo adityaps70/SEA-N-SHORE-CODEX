@@ -7,8 +7,10 @@ import { userFacingError } from '@/lib/errors/user-messages'
 import { getNotificationChrome, getNotifications, getUnreadNotificationCount } from './queries'
 import {
   deleteNotificationInAurora,
+  deleteNotificationsInAurora,
   markAllNotificationsReadInAurora,
   markNotificationReadInAurora,
+  markNotificationsReadInAurora,
 } from './repository'
 import type { NetworkNotification, NotificationChrome } from './types'
 
@@ -80,21 +82,54 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
 
 /** Deletes one of the signed-in member's own notifications (the phone row "…" sheet). */
 /** Round G (G6): a grouped row ("X and 5 others reacted") stands for several notifications. */
-export async function markNotificationsRead(ids: string[]): Promise<NotificationActionResult> {
-  if (!Array.isArray(ids) || !ids.length || ids.length > 50) return { ok: false, error: 'Invalid notification.' }
+// Round DB: a grouped row's notifications in one statement, with one sign-in check and one revalidation, instead of
+// one action per id (up to 50 ids: about 150 queries and 150 revalidations per click).
+function parseNotificationIds(ids: string[]): string[] | null {
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50) return null
+  const parsed: string[] = []
   for (const id of ids) {
-    const result = await markNotificationRead(id)
-    if (!result.ok) return result
+    const result = notificationIdSchema.safeParse(id)
+    if (!result.success) return null
+    parsed.push(result.data)
   }
+  return [...new Set(parsed)]
+}
+
+export async function markNotificationsRead(ids: string[]): Promise<NotificationActionResult> {
+  const parsed = parseNotificationIds(ids)
+  if (!parsed) return { ok: false, error: 'Invalid notification.' }
+
+  try {
+    const user = await requireAwsUser()
+    const updated = await markNotificationsReadInAurora(user.id, parsed)
+    if (updated < parsed.length) {
+      if (updated > 0) revalidateNotificationSurfaces()
+      return { ok: false, error: 'This notification is no longer available. Refresh the page to see your latest notifications.' }
+    }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not update this notification. Please try again.') }
+  }
+
+  revalidateNotificationSurfaces()
   return { ok: true }
 }
 
 export async function deleteNotifications(ids: string[]): Promise<NotificationActionResult> {
-  if (!Array.isArray(ids) || !ids.length || ids.length > 50) return { ok: false, error: 'Invalid notification.' }
-  for (const id of ids) {
-    const result = await deleteNotification(id)
-    if (!result.ok) return result
+  const parsed = parseNotificationIds(ids)
+  if (!parsed) return { ok: false, error: 'Invalid notification.' }
+
+  try {
+    const user = await requireAwsUser()
+    const deleted = await deleteNotificationsInAurora(user.id, parsed)
+    if (deleted < parsed.length) {
+      if (deleted > 0) revalidateNotificationSurfaces()
+      return { ok: false, error: 'This notification is no longer available. Refresh the page to see your latest notifications.' }
+    }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not delete this notification. Please try again.') }
   }
+
+  revalidateNotificationSurfaces()
   return { ok: true }
 }
 

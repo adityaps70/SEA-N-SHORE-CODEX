@@ -39,6 +39,55 @@ describe('AWS profile queries', () => {
     expect(profileRepository.getOwnProfile).not.toHaveBeenCalledWith('cognito-sub-1')
   })
 
+  it('signs the avatar and cover from the profile row without a second media lookup (Round DB)', async () => {
+    const profileRepository = repository()
+    const row = { id: VIEWER_ID, avatarPath: 'avatars/a.jpg', coverPath: 'covers/c.jpg' }
+    profileRepository.getOwnProfile.mockResolvedValueOnce(row as never)
+    const mediaRepository = { getMediaPaths: vi.fn(async () => new Map()), replaceMediaPath: vi.fn() }
+    const createReadUrl = vi.fn(async (key: string) => `https://cdn.example/${key}`)
+    const { createAwsProfileQueries } = await import('./aws-queries')
+    const queries = createAwsProfileQueries({
+      requireUser: vi.fn(async () => verifiedUser),
+      getVerifiedUser: vi.fn(async () => verifiedUser),
+      repository: profileRepository,
+      mediaRepository,
+      createReadUrl,
+    })
+
+    await expect(queries.getAwsOwnProfile()).resolves.toEqual({
+      ...row,
+      avatarUrl: 'https://cdn.example/avatars/a.jpg',
+      coverUrl: 'https://cdn.example/covers/c.jpg',
+    })
+    expect(mediaRepository.getMediaPaths).not.toHaveBeenCalled()
+  })
+
+  it('still looks up media paths for a profile that arrived without its cover path', async () => {
+    const profileRepository = repository()
+    profileRepository.getOwnProfile.mockResolvedValueOnce({ id: VIEWER_ID, avatarPath: null } as never)
+    const mediaRepository = {
+      getMediaPaths: vi.fn(async () => new Map([[VIEWER_ID, { avatarPath: 'avatars/a.jpg', coverPath: null }]])),
+      replaceMediaPath: vi.fn(),
+    }
+    const { createAwsProfileQueries } = await import('./aws-queries')
+    const queries = createAwsProfileQueries({
+      requireUser: vi.fn(async () => verifiedUser),
+      getVerifiedUser: vi.fn(async () => verifiedUser),
+      repository: profileRepository,
+      mediaRepository,
+      createReadUrl: vi.fn(async (key: string) => `https://cdn.example/${key}`),
+    })
+
+    await expect(queries.getAwsOwnProfile()).resolves.toEqual({
+      id: VIEWER_ID,
+      avatarPath: 'avatars/a.jpg',
+      avatarUrl: 'https://cdn.example/avatars/a.jpg',
+      coverPath: null,
+      coverUrl: null,
+    })
+    expect(mediaRepository.getMediaPaths).toHaveBeenCalledWith([VIEWER_ID])
+  })
+
   it('loads an anonymous public slug without inventing viewer block context', async () => {
     const profileRepository = repository()
     const requireUser = vi.fn(async () => verifiedUser)

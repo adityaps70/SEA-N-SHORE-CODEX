@@ -104,11 +104,14 @@ const BROWSER_PAGE_LOAD = { Accept: 'text/html,application/xhtml+xml', 'Sec-Fetc
 
 // Per-VU state for the signed-in mix: which account, and where this "visit" is in the Top-for-you feed.
 let feed = { sessionId: null, position: null, pages: 0 }
+// Round DB: each request names its ramp step in the User-Agent, so the report can cut the ALB's server-side times
+// per step exactly (the shards start a few seconds apart). Set per iteration.
+let stepAgent = 'SeaNShore-LoadTest/1'
 
 function signedInRequest(name) {
   const session = SESSIONS[(__VU - 1) % SESSIONS.length]
   const cookie = `sns_cognito_access=${session.accessToken}${session.refreshToken ? `; sns_cognito_refresh=${session.refreshToken}` : ''}`
-  const base = { 'X-SNS-Load-Test': 'P3', Cookie: cookie }
+  const base = { 'X-SNS-Load-Test': 'P3', 'User-Agent': stepAgent, Cookie: cookie }
   // Page loads look like a browser's (as in the signed-out mix); the realtime state is a fetch, not a page.
   const page = (path, tag) => http.get(BASE_URL + path, {
     headers: path.startsWith('/api/') ? base : { ...base, ...BROWSER_PAGE_LOAD }, redirects: 0, timeout: '20s', tags: { name: tag || path },
@@ -158,13 +161,14 @@ function pickSignedIn() {
 
 export default function loadTestIteration(data) {
   const step = Math.min(TOTAL_RPM.length, Math.floor((Date.now() - data.startedAt) / 1000 / STEP_SECONDS) + 1)
+  stepAgent = `SeaNShore-LoadTest/1 step/${step}`
   if (MIX === 'signed-in') {
     record(signedInRequest(pickSignedIn()), step)
     return
   }
   const path = PATHS[Math.floor(Math.random() * PATHS.length)]
   const res = http.get(BASE_URL + path, {
-    headers: { 'X-SNS-Load-Test': 'P3', ...BROWSER_PAGE_LOAD },
+    headers: { 'X-SNS-Load-Test': 'P3', 'User-Agent': stepAgent, ...BROWSER_PAGE_LOAD },
     redirects: 0,
     timeout: '20s',
     tags: { name: path === JOB_PATH ? '/jobs/:id' : path === COURSE_PATH ? '/learn/courses/:slug' : path },

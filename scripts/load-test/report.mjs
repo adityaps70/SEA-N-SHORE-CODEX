@@ -4,7 +4,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ERROR_LIMIT, MIN_SAMPLES, P95_LIMIT_MS, percentile } from './stop-watch.mjs'
+import { ERROR_LIMIT, MIN_SAMPLES, percentile } from './stop-watch.mjs'
 
 export const P95_UNDER_ONE_SECOND_MS = 1000
 
@@ -29,26 +29,34 @@ export function reportLines(steps, totalRpm, stepSeconds, stops = []) {
   // The owner's yardstick: the highest step, counting up from the first, still within every limit AND with p95 under 1 s.
   let underOneSecond = 0
   let underOneSecondBroken = false
-  for (const [n, m] of [...steps.entries()].sort((a, b) => a[0] - b[0])) {
+  const reasons = [...new Set(stops.map((s) => s.trim()).filter(Boolean))]
+  // Round DB: a step a stop rule fired in is never within limits. A shard's reason names its step ("step 3: ..."); the
+  // monitor's server-side reason does not, so it marks the last step that ran (the stop ended the run there).
+  const ordered = [...steps.entries()].sort((a, b) => a[0] - b[0])
+  const stoppedSteps = new Set(reasons.map((reason) => {
+    const named = /^step (\d+):/.exec(reason)
+    return named ? Number(named[1]) : ordered.at(-1)?.[0]
+  }).filter((n) => n !== undefined))
+  for (const [n, m] of ordered) {
     const p95 = percentile(m.durations, 95)
-    const ok = m.requests >= MIN_SAMPLES && p95 <= P95_LIMIT_MS && m.server_errors / m.requests <= ERROR_LIMIT && m.blocked / m.requests <= ERROR_LIMIT && m.auth_refused / m.requests <= ERROR_LIMIT
+    // Round DB: the client view judges errors only; p95 is judged on the server side (ALB, LOAD_TEST_STEP_SERVER).
+    const ok = !stoppedSteps.has(n) && m.requests >= MIN_SAMPLES && m.server_errors / m.requests <= ERROR_LIMIT && m.blocked / m.requests <= ERROR_LIMIT && m.auth_refused / m.requests <= ERROR_LIMIT
     lines.push([
       `LOAD_TEST_STEP step=${n}`, `target_rpm=${totalRpm[n - 1] ?? '?'}`,
       `achieved_rpm=${Math.round(m.requests / (stepSeconds / 60))}`, `requests=${m.requests}`,
       `p50_ms=${percentile(m.durations, 50)}`, `p95_ms=${p95}`, `p99_ms=${percentile(m.durations, 99)}`,
       `server_error_pct=${pct(m.server_errors, m.requests)}`, `waf_block_pct=${pct(m.blocked, m.requests)}`,
       `auth_refused_pct=${pct(m.auth_refused, m.requests)}`, `other_4xx_pct=${pct(m.other, m.requests)}`, `edge_cache_hit_pct=${pct(m.cache_hits, m.cache_samples)}`,
-      `within_limits=${ok}`,
+      `within_limits=${ok}`, 'measured_from=github_us_runners',
     ].join(' '))
     if (ok && failedAt === null) passed = n
     else if (failedAt === null) failedAt = n
     if (!underOneSecondBroken && ok && p95 < P95_UNDER_ONE_SECOND_MS) underOneSecond = n
     else underOneSecondBroken = true
   }
-  const reasons = [...new Set(stops.map((s) => s.trim()).filter(Boolean))]
   lines.push(`LOAD_TEST_RESULT highest_step_within_limits=${passed} highest_rpm_within_limits=${passed ? totalRpm[passed - 1] : 0} stopped=${reasons.length > 0}`)
   for (const reason of reasons) lines.push(`LOAD_TEST_STOP_REASON ${reason}`)
-  lines.push(`LOAD_TEST_P95_UNDER_1S highest_step=${underOneSecond} highest_rpm=${underOneSecond ? totalRpm[underOneSecond - 1] : 0}`)
+  lines.push(`LOAD_TEST_P95_UNDER_1S_CLIENT highest_step=${underOneSecond} highest_rpm=${underOneSecond ? totalRpm[underOneSecond - 1] : 0} measured_from=github_us_runners`)
   return lines
 }
 

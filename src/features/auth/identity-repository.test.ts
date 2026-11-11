@@ -67,6 +67,55 @@ describe('Cognito identity repository', () => {
     )
   })
 
+  describe('resolveProfileWithStatusForCognitoSub (Round DB: one query for the sign-in check)', () => {
+    const PROFILE_ID = '11111111-1111-4111-8111-111111111111'
+
+    it('returns the profile and its account status from one identity-to-profile query', async () => {
+      const query = vi.fn(async (): Promise<IdentityRow[]> => [{ profile_id: PROFILE_ID, account_status: 'restricted' }])
+      const { createIdentityRepository } = await import('./identity-repository')
+      const repository = createIdentityRepository({ query })
+
+      await expect(repository.resolveProfileWithStatusForCognitoSub('cognito-sub-1')).resolves.toEqual({
+        profileId: PROFILE_ID,
+        accountStatus: 'restricted',
+      })
+      expect(query).toHaveBeenCalledTimes(1)
+      const [sql, values] = query.mock.calls[0] as unknown as [string, unknown[]]
+      expect(sql).toContain('from public.identity_accounts ia')
+      expect(sql).toContain('left join public.profiles p on p.id = ia.profile_id')
+      expect(sql).toContain('account_status')
+      expect(values).toEqual(['cognito', 'cognito-sub-1'])
+    })
+
+    it('returns null when no mapping exists, so the caller provisions as before', async () => {
+      const query = vi.fn(async (): Promise<IdentityRow[]> => [])
+      const { createIdentityRepository } = await import('./identity-repository')
+      const repository = createIdentityRepository({ query })
+      await expect(repository.resolveProfileWithStatusForCognitoSub('missing-sub')).resolves.toBeNull()
+    })
+
+    it('gives a null status for a missing profile row or an unknown status, as getProfileAccountStatus does', async () => {
+      const { createIdentityRepository } = await import('./identity-repository')
+      for (const row of [{ profile_id: PROFILE_ID }, { profile_id: PROFILE_ID, account_status: 'archived' }]) {
+        const repository = createIdentityRepository({ query: vi.fn(async () => [row as IdentityRow]) })
+        await expect(repository.resolveProfileWithStatusForCognitoSub('cognito-sub-1')).resolves.toEqual({
+          profileId: PROFILE_ID,
+          accountStatus: null,
+        })
+      }
+    })
+
+    it('fails closed when more than one mapping is returned', async () => {
+      const query = vi.fn(async () => [
+        { profile_id: PROFILE_ID, account_status: 'active' as const },
+        { profile_id: '22222222-2222-4222-8222-222222222222', account_status: 'active' as const },
+      ])
+      const { createIdentityRepository, IdentityMappingError } = await import('./identity-repository')
+      const repository = createIdentityRepository({ query })
+      await expect(repository.resolveProfileWithStatusForCognitoSub('duplicate-sub')).rejects.toBeInstanceOf(IdentityMappingError)
+    })
+  })
+
   it('provisions one incomplete profile and Cognito mapping inside one locked transaction', async () => {
     const profileId = '33333333-3333-4333-8333-333333333333'
     const transactionQuery = vi.fn()

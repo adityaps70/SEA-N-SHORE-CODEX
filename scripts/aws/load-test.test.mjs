@@ -6,6 +6,7 @@ import test from 'node:test'
 import { guardAction } from './guard-value.mjs'
 import { createStats, stopReason, percentile, summary, MIN_SAMPLES, P95_LIMIT_MS, ERROR_LIMIT } from '../load-test/stop-watch.mjs'
 import { mergeShards, reportLines } from '../load-test/report.mjs'
+import { MONITOR_MINUTES, MONITOR_RULES, monitorStopReason } from '../load-test/monitor-stop.mjs'
 import { openShard, sealShard, splitSessions, handoffKey } from '../load-test/sessions.mjs'
 import { randomBytes } from 'node:crypto'
 
@@ -48,7 +49,10 @@ test('signed-out: only GETs of public pages; signed-in: reads, plus only the two
   assert.equal((script.match(/'X-SNS-Load-Test': 'P3'/g) ?? []).length, 2, 'both mixes mark every request')
   // Requests look like browser page loads, so public pages can be served from the edge cache as for real visitors.
   assert.match(script, /const BROWSER_PAGE_LOAD = \{ Accept: 'text\/html,application\/xhtml\+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' \}/)
-  assert.match(script, /headers: \{ 'X-SNS-Load-Test': 'P3', \.\.\.BROWSER_PAGE_LOAD \}/)
+  assert.match(script, /headers: \{ 'X-SNS-Load-Test': 'P3', 'User-Agent': stepAgent, \.\.\.BROWSER_PAGE_LOAD \}/)
+  // Round DB: both mixes name the ramp step in the User-Agent, so the ALB's server-side times are cut per step.
+  assert.match(script, /stepAgent = `SeaNShore-LoadTest\/1 step\/\$\{step\}`/)
+  assert.match(script, /const base = \{ 'X-SNS-Load-Test': 'P3', 'User-Agent': stepAgent, Cookie: cookie \}/)
   // Signed in too: page loads are browser page loads; only the realtime state (a fetch) is not.
   assert.match(script, /headers: path\.startsWith\('\/api\/'\) \? base : \{ \.\.\.base, \.\.\.BROWSER_PAGE_LOAD \}/)
   assert.match(script, /redirects: 0/)
@@ -68,7 +72,7 @@ test('signed-out: only GETs of public pages; signed-in: reads, plus only the two
   assert.equal(weights.reduce((sum, w) => sum + w, 0), 100)
 })
 
-test('stop rules: p95 over 2 s, server errors or WAF blocks over 1%, judged after 30 requests per step', () => {
+test('shard stop rules: server errors, WAF blocks or refused sessions over 1%, judged after 30 requests per step; client p95 is reported, not a stop', () => {
   assert.equal(P95_LIMIT_MS, 2000)
   assert.equal(ERROR_LIMIT, 0.01)
   assert.equal(MIN_SAMPLES, 30)
@@ -82,8 +86,11 @@ test('stop rules: p95 over 2 s, server errors or WAF blocks over 1%, judged afte
   assert.equal(stopReason(csv(fast).steps), null)
   // One slow first request is not judged on its own.
   assert.equal(stopReason(csv([['lt_req', 9000, 'cls=ok&step=2'], ...fast]).steps), null)
+  // Round DB (owner, 11 Nov): a slow client p95 (measured from GitHub's US runners) no longer stops the run; the p95
+  // stop is the server-side one in the monitor job.
   const slow = Array.from({ length: 40 }, (_, i) => ['lt_req', i < 37 ? 2500 : 100, 'cls=ok&step=2'])
-  assert.match(stopReason(csv([...fast, ...slow]).steps), /^step 2: p95 2500 ms/)
+  assert.equal(stopReason(csv([...fast, ...slow]).steps), null)
+  assert.match(stopReason(csv([...fast, ...slow, ['lt_req', 100, 'cls=5xx&step=2']]).steps), /^step 2: server errors 1\/41/)
   const errors = [...fast, ['lt_req', 100, 'cls=5xx&step=1']]
   assert.match(stopReason(csv(errors).steps), /^step 1: server errors 1\/41/)
   assert.match(stopReason(csv([...fast, ['lt_req', 100, 'cls=neterr&step=1']]).steps), /server errors/)
@@ -99,17 +106,24 @@ test('stop rules: p95 over 2 s, server errors or WAF blocks over 1%, judged afte
 
 test('the report merges shards and names the highest step within limits, with aggregates only', () => {
   const shard = (step, ms, server = 0) => ({ step, requests: 50, ok: 50 - server, server_errors: server, blocked: 0, other: 0, cache_hits: 40, cache_samples: 50, durations_ms: Array(50).fill(ms) })
-  const lines = reportLines(mergeShards([[shard(1, 100), shard(2, 300), shard(3, 2600)], [shard(1, 120), shard(2, 320), shard(3, 2400)]]), [100, 300, 600], 300, ['step 3: p95 2600 ms over 2000 ms (50 requests)\n'])
-  assert.match(lines[0], /^LOAD_TEST_STEP step=1 target_rpm=100 achieved_rpm=20 requests=100 p50_ms=100 p95_ms=120 .* edge_cache_hit_pct=80\.00 within_limits=true$/)
-  assert.match(lines[2], /step=3 .* within_limits=false$/)
+  // Round DB: the monitor's server-side stop names no step, so it marks the last step that ran.
+  const monitorStop = 'server-side p95 over 2 s for 3 minutes (2.1, 2.5, 3 s)\n'
+  const lines = reportLines(mergeShards([[shard(1, 100), shard(2, 300), shard(3, 2600)], [shard(1, 120), shard(2, 320), shard(3, 2400)]]), [100, 300, 600], 300, [monitorStop])
+  // Every client figure says where it was measured from.
+  assert.match(lines[0], /^LOAD_TEST_STEP step=1 target_rpm=100 achieved_rpm=20 requests=100 p50_ms=100 p95_ms=120 .* edge_cache_hit_pct=80\.00 within_limits=true measured_from=github_us_runners$/)
+  assert.match(lines[2], /step=3 .* within_limits=false measured_from=github_us_runners$/)
   assert.equal(lines[3], 'LOAD_TEST_RESULT highest_step_within_limits=2 highest_rpm_within_limits=300 stopped=true')
-  assert.equal(lines[4], 'LOAD_TEST_STOP_REASON step 3: p95 2600 ms over 2000 ms (50 requests)')
-  // The owner's yardstick: the highest step from the first that stays within limits with p95 under 1 s.
-  assert.equal(lines[5], 'LOAD_TEST_P95_UNDER_1S highest_step=2 highest_rpm=300')
-  const slower = reportLines(mergeShards([[shard(1, 400), shard(2, 1200), shard(3, 500)]]), [100, 300, 600], 300)
+  assert.equal(lines[4], 'LOAD_TEST_STOP_REASON server-side p95 over 2 s for 3 minutes (2.1, 2.5, 3 s)')
+  // The client yardstick, kept alongside the server-side one: the highest step from the first within limits with p95 under 1 s.
+  assert.equal(lines[5], 'LOAD_TEST_P95_UNDER_1S_CLIENT highest_step=2 highest_rpm=300 measured_from=github_us_runners')
+  // A shard's stop names its step; that step is not within limits even if a later step ran.
+  const shardStop = reportLines(mergeShards([[shard(1, 100), shard(2, 300, 5), shard(3, 300)]]), [100, 300, 600], 300, ['step 2: server errors 5/50 over 1%'])
+  assert.match(shardStop.join('\n'), /^LOAD_TEST_RESULT highest_step_within_limits=1 highest_rpm_within_limits=100 stopped=true$/m)
+  // A slow client p95 alone is not over a limit any more (no stop, within limits); it only ends the under-1 s count.
+  const slower = reportLines(mergeShards([[shard(1, 400), shard(2, 1200), shard(3, 2500)]]), [100, 300, 600], 300)
   assert.match(slower.join('\n'), /^LOAD_TEST_RESULT highest_step_within_limits=3 highest_rpm_within_limits=600 stopped=false$/m)
-  assert.equal(slower.at(-1), 'LOAD_TEST_P95_UNDER_1S highest_step=1 highest_rpm=100')
-  assert.equal(reportLines(mergeShards([[shard(1, 1000)]]), [100], 300).at(-1), 'LOAD_TEST_P95_UNDER_1S highest_step=0 highest_rpm=0')
+  assert.equal(slower.at(-1), 'LOAD_TEST_P95_UNDER_1S_CLIENT highest_step=1 highest_rpm=100 measured_from=github_us_runners')
+  assert.equal(reportLines(mergeShards([[shard(1, 1000)]]), [100], 300).at(-1), 'LOAD_TEST_P95_UNDER_1S_CLIENT highest_step=0 highest_rpm=0 measured_from=github_us_runners')
   assert.doesNotMatch(lines.join('\n'), /https?:|\/jobs\/|@/)
 })
 
@@ -174,13 +188,31 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   for (const mode of ['create-once', 'sessions']) {
     assert.match(sessions, new RegExp(`load-test-host-command\\.sh ${mode} [^\\n]*\\|\\| \\{ grep -E '\\^LOAD_TEST_ACCOUNTS_' [^\\n]*>&2 \\|\\| true; exit 1; \\}`))
   }
-  // Stop rule 3: the monitor cancels the run when Aurora sits at its maximum ACU for 5 minutes.
-  assert.match(jobOf('monitor'), /node scripts\/load-test\/aurora-stop\.mjs "\$VALUES" "\$LOAD_TEST_AURORA_MAX_ACU"/)
-  assert.match(jobOf('monitor'), /LOAD_TEST_AURORA_MAX_ACU: "2"/)
+  // Round DB stop rules (owner, 11 Nov), judged server-side by the monitor every minute: Aurora CPU >= 90% or DB load
+  // >= 1.5 sessions or ALB p95 > 2 s, each for 3 minutes. Aurora at its maximum ACU is logged as information only.
+  const monitor = jobOf('monitor')
+  assert.match(monitor, /LOAD_TEST_AURORA_CLUSTER: sea-n-shore-staging-aurora\n/)
+  assert.match(monitor, /LOAD_TEST_AURORA_WRITER: sea-n-shore-staging-aurora-writer\n/)
+  assert.match(monitor, /ALB="\$\(bash scripts\/aws\/alb-metric-dimension\.sh\)"/)
+  assert.match(monitor, /series AWS\/RDS CPUUtilization "Name=DBClusterIdentifier,Value=\$LOAD_TEST_AURORA_CLUSTER" "--statistics Maximum" \.Maximum/)
+  assert.match(monitor, /series AWS\/RDS DBLoad "Name=DBInstanceIdentifier,Value=\$LOAD_TEST_AURORA_WRITER" "--statistics Average" \.Average/)
+  assert.match(monitor, /series AWS\/ApplicationELB TargetResponseTime "Name=LoadBalancer,Value=\$ALB" "--extended-statistics p95" '\.ExtendedStatistics\.p95'/)
+  assert.match(monitor, /--period 60/)
+  assert.match(monitor, /aurora_acu_info=\$ACU/)
+  assert.match(monitor, /if REASON="\$\(node scripts\/load-test\/monitor-stop\.mjs "\$\(jq -nc [^\n]*'\{cpu: \$cpu, dbLoad: \$dbLoad, p95: \$p95\}'\)"\)"; then/)
+  assert.doesNotMatch(monitor, /aurora-stop|LOAD_TEST_AURORA_MAX_ACU/)
+  // The stop counts in the report (stopped=true and its reason): the monitor uploads it, the report waits for it.
+  assert.match(monitor, /echo "\$REASON" > \/tmp\/monitor\/stop-monitor\.txt\n\s+curl -fsS -X POST [^\n]*"\$API\/cancel"/)
+  assert.match(monitor, /name: load-test-monitor\n\s+path: \/tmp\/monitor\n/)
+  assert.match(jobOf('report'), /needs:\n(\s+(#[^\n]*|- [a-z-]+)\n)*\s+- monitor\n/)
+  assert.match(jobOf('report'), /pattern: load-test-\*\n/)
+  assert.match(jobOf('report'), /find \/tmp\/shards -name 'stop-\*\.txt'/)
+  // Server-side p95 per step (the owner's yardstick), from the ALB logs, next to the client figures.
+  assert.match(jobOf('report'), /LOAD_TEST_STEP_RPM: \$\{\{ env\.LOAD_TEST_TOTAL_RPM \}\}/)
+  assert.match(jobOf('report'), /grep -E '\^LOAD_TEST_\(STEP_SERVER\|P95_UNDER_1S_SERVER\) ' \/tmp\/site-metrics\.txt/)
   // Run 42486602879: the monitor must keep watching while the signed-in sessions job runs, before any shard exists.
   assert.match(jobOf('monitor'), /select\(\.name == "sessions" or \(\.name \| startswith\("load"\)\)\) \| select\(\.status != "completed"\)/)
   assert.match(jobOf('monitor'), /\[\[ "\$LEFT" == 0 && "\$SHARDS" -gt 0 && \$minute -gt 2 \]\]/)
-  assert.match(read('../../infra/aws/app/aws-native-variables.tf'), /variable "aurora_max_acu" \{[^}]*default\s+= 2/)
   assert.match(jobOf('load'), /needs\.window\.result == 'success'/)
   assert.match(jobOf('report'), /needs\.apply-gate\.result == 'success'/)
   assert.match(jobOf('report'), /REPORT_SECTIONS: usage/)
@@ -240,13 +272,21 @@ test('sessions move from the sessions job to the shards sealed end to end', () =
   assert.throws(() => handoffKey('short'), /32 random bytes/)
 })
 
-test('the Aurora stop rule needs 5 one-minute maximums all at the maximum ACU', async () => {
-  const { auroraAtMax } = await import('../load-test/aurora-stop.mjs')
-  assert.equal(auroraAtMax([2, 2, 2, 2, 2], 2), true)
-  assert.equal(auroraAtMax([1.5, 2, 2, 2, 2, 2], 2), true)
-  assert.equal(auroraAtMax([2, 2, 2, 1.5, 2], 2), false)
-  assert.equal(auroraAtMax([2, 2, 2, 2], 2), false)
-  assert.equal(auroraAtMax('nope', 2), false)
+test('the monitor stop rules need 3 one-minute values all over one limit: CPU >= 90%, DB load >= 1.5, server p95 > 2 s', () => {
+  assert.equal(MONITOR_MINUTES, 3)
+  assert.deepEqual(MONITOR_RULES.map((rule) => [rule.key, rule.limit]), [['cpu', 90], ['dbLoad', 1.5], ['p95', 2]])
+  assert.match(monitorStopReason({ cpu: [91, 92, 95] }), /^Aurora CPU at or above 90% for 3 minutes/)
+  assert.match(monitorStopReason({ cpu: [40, 90, 90, 90] }), /CPU/, 'exactly 90% counts')
+  assert.match(monitorStopReason({ dbLoad: [1.6, 1.7, 1.5] }), /^DB load at or above 1\.5 sessions/)
+  assert.match(monitorStopReason({ p95: [2.1, 2.5, 3] }), /^server-side p95 over 2 s/)
+  assert.equal(monitorStopReason({ p95: [2, 2, 2] }), null, 'exactly 2 s is not over 2 s')
+  assert.equal(monitorStopReason({ cpu: [95, 95, 89] }), null, 'the last 3 minutes must all hold')
+  assert.equal(monitorStopReason({ cpu: [90, 90] }), null, 'fewer than 3 datapoints never stop')
+  assert.equal(monitorStopReason({ cpu: [95, 95], dbLoad: [1, 1, 1], p95: [0.2, 0.3, 0.2] }), null)
+  assert.equal(monitorStopReason('nope'), null)
+  assert.equal(monitorStopReason({ cpu: ['x', null, 95, 95] }), null, 'non-numbers are dropped, not counted')
+  // Aurora at its maximum ACU is information, never a stop.
+  assert.equal(monitorStopReason({ acu: [2, 2, 2, 2, 2] }), null)
 })
 
 test('the sessions-only proof sends no traffic and cleans up everything, whatever happens', () => {
@@ -278,4 +318,19 @@ test('the sessions-only proof sends no traffic and cleans up everything, whateve
   }
   // The nightly start never starts the proof.
   assert.doesNotMatch(read('../../.github/workflows/load-test-nightly.yml'), /sessions-only/)
+})
+
+test('the monitor reads the ALB metric dimension read-only through the bootstrap host and prints only that value', () => {
+  const lookup = read('./alb-metric-dimension.sh')
+  assert.match(lookup, /^set -euo pipefail$/m)
+  // One running bootstrap host, one read-only describe, nothing else sent.
+  assert.match(lookup, /"Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running"/)
+  assert.match(lookup, /\[\[ "\$\(jq 'length' <<<"\$IDS"\)" -eq 1 \]\]/)
+  assert.match(lookup, /LOOKUP="aws elbv2 describe-load-balancers --region \$AWS_REGION --names sea-n-shore-staging-alb --query 'LoadBalancers\[0\]\.LoadBalancerArn' --output text"/)
+  assert.equal((lookup.match(/aws ssm send-command/g) ?? []).length, 1)
+  assert.doesNotMatch(lookup, /elbv2 (modify|create|delete|set|add|remove|register|deregister)-|aws (s3|rds|ecs|iam) /)
+  // The printed value must be exactly the dimension shape, or the monitor fails instead of watching the wrong thing.
+  assert.match(lookup, /\[\[ "\$DIMENSION" =~ \^app\/sea-n-shore-staging-alb\/\[0-9a-f\]\{16\}\$ \]\] \|\| \{ echo "Could not read the ALB's metric dimension\." >&2; exit 1; \}/)
+  assert.match(lookup, /printf '%s\\n' "\$DIMENSION"$/m)
+  assert.match(jobOf('monitor'), /sparse-checkout: \|\n\s+scripts\/load-test\n\s+scripts\/aws\/alb-metric-dimension\.sh\n/)
 })

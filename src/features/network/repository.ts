@@ -25,6 +25,13 @@ function canonicalPair(userA: string, userB: string) {
   return userA < userB ? [userA, userB] as const : [userB, userA] as const
 }
 
+/** The Network badge count (pending requests sent to $1). Shared with the signed-in chrome's one-query counts. */
+export const INCOMING_REQUEST_COUNT_SQL = `select count(*)::int as count
+       from public.connections
+       where (user_low_id = $1 or user_high_id = $1)
+         and status = 'pending'
+         and requested_by <> $1`
+
 export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
   const queryRows: NetworkQuery = input.query ?? ((text, values) => databaseQuery(text, values))
 
@@ -53,14 +60,7 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
 
   /** Pending connection requests other members sent to the viewer (the Network tab badge). */
   async function countIncomingRequests(viewerId: string) {
-    const rows = await queryRows(
-      `select count(*)::int as count
-       from public.connections
-       where (user_low_id = $1 or user_high_id = $1)
-         and status = 'pending'
-         and requested_by <> $1`,
-      [viewerId],
-    ) as CountRow[]
+    const rows = await queryRows(INCOMING_REQUEST_COUNT_SQL, [viewerId]) as CountRow[]
     return Number(rows[0]?.count ?? 0)
   }
 
