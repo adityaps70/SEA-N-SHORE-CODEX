@@ -7,13 +7,17 @@
 const assert = require('node:assert/strict')
 const { readFileSync } = require('node:fs')
 const { spawnSync } = require('node:child_process')
+const { gzipSync } = require('node:zlib')
 
 const instanceId = process.env.INSTANCE_ID
 const region = process.env.AWS_REGION || 'ap-south-1'
 assert.match(instanceId || '', /^i-[0-9a-f]+$/)
 
 const remoteScript = readFileSync('scripts/aws/capacity-media-report-remote.py', 'utf8')
-const encoded = Buffer.from(remoteScript, 'utf8').toString('base64')
+// Round DB: gzipped before base64. Plain base64 of the script passed SSM's 97 KB command limit
+// (run 43017998127, MaxDocumentSizeExceeded); gzip brings it to about a quarter.
+const encoded = gzipSync(Buffer.from(remoteScript, 'utf8'), { level: 9 }).toString('base64')
+assert.ok(encoded.length < 60_000, 'the encoded report script must stay well under the 97 KB SSM limit')
 const ALL_SECTIONS = ['config', 'usage', 'media']
 const MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/
 const isoMinute = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -88,7 +92,7 @@ export REPORT_PROBE_ORG_NAME=${quote(PROBE_ORG_NAME)}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-printf '%s' ${quote(encoded)} | base64 -d > "$WORK/report.py"
+printf '%s' ${quote(encoded)} | base64 -d | gunzip > "$WORK/report.py"
 cd "$WORK"
 python3 -I report.py
 `
