@@ -30,7 +30,7 @@ test('the report is staging-only, exact-head and armed by an owner-merged guard'
   assert.match(workflow, /report-once\)\n\s+\[\[ "\$GITHUB_EVENT_NAME" == push \]\]/)
 })
 
-test('the SSM wrapper only sends the report and reads its result', () => {
+test('the SSM wrapper only sends the report and reads its result', async () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
   const calls = [...wrapper.matchAll(/'(ssm|ecs|rds|s3|s3api|ec2|lambda|iam)', '([a-z-]+)'/g)].map((m) => `${m[1]} ${m[2]}`)
   assert.deepEqual([...new Set(calls)].sort(), ['ssm get-command-invocation', 'ssm send-command'])
@@ -38,6 +38,11 @@ test('the SSM wrapper only sends the report and reads its result', () => {
   assert.match(wrapper, /\['config', 'usage', 'media'\]/)
   // The load test's usage report (REPORT_SECTIONS set) never turns into the compare.
   assert.match(wrapper, /const COMPARE = process\.env\.REPORT_SECTIONS \? null : compareWindow\(\)/)
+  // Run 43017998127: plain base64 passed SSM's 97 KB limit, so the script goes gzipped, and stays well under it.
+  assert.match(wrapper, /gzipSync\(Buffer\.from\(remoteScript, 'utf8'\), \{ level: 9 \}\)\.toString\('base64'\)/)
+  assert.match(wrapper, /\| base64 -d \| gunzip > "\$WORK\/report\.py"/)
+  const { gzipSync } = await import('node:zlib')
+  assert.ok(gzipSync(readFileSync(remotePath), { level: 9 }).toString('base64').length < 60_000, 'the encoded script is too big for SSM')
 })
 
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
