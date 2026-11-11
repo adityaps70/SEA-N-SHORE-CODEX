@@ -106,12 +106,14 @@ resource "aws_cloudwatch_metric_alarm" "web_memory_high" {
   tags                = local.common_tags
 }
 
+# Round DB (cost): healthy web targets behind the ALB (a free ALB metric) instead of Container Insights' running task
+# count. A task that runs but fails its health check now counts as missing, which is what the alarm is for.
 resource "aws_cloudwatch_metric_alarm" "web_running_tasks_low" {
   alarm_name          = "${local.name_prefix}-web-running-tasks-low"
-  alarm_description   = "Fewer than 2 web tasks running for 5 minutes."
-  namespace           = "ECS/ContainerInsights"
-  metric_name         = "RunningTaskCount"
-  dimensions          = local.web_service_dimensions
+  alarm_description   = "Fewer than 2 healthy web targets behind the ALB for 5 minutes."
+  namespace           = "AWS/ApplicationELB"
+  metric_name         = "HealthyHostCount"
+  dimensions          = { TargetGroup = aws_lb_target_group.app.arn_suffix, LoadBalancer = local.alb_dimension }
   statistic           = "Minimum"
   period              = 60
   evaluation_periods  = 5
@@ -177,46 +179,8 @@ resource "aws_cloudwatch_metric_alarm" "alb_target_connection_errors" {
   tags                = local.common_tags
 }
 
-resource "aws_cloudwatch_metric_alarm" "web_ephemeral_storage_high" {
-  alarm_name          = "${local.name_prefix}-web-ephemeral-storage-high"
-  alarm_description   = "Web task ephemeral storage above 80% (image cache growth) for 15 minutes."
-  evaluation_periods  = 3
-  threshold           = 80
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "missing"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-  tags                = local.common_tags
-
-  metric_query {
-    id          = "ephemeral_percent"
-    expression  = "100 * used / reserved"
-    label       = "Ephemeral storage used %"
-    return_data = true
-  }
-
-  metric_query {
-    id = "used"
-    metric {
-      namespace   = "ECS/ContainerInsights"
-      metric_name = "EphemeralStorageUtilized"
-      dimensions  = local.web_service_dimensions
-      stat        = "Maximum"
-      period      = 300
-    }
-  }
-
-  metric_query {
-    id = "reserved"
-    metric {
-      namespace   = "ECS/ContainerInsights"
-      metric_name = "EphemeralStorageReserved"
-      dimensions  = local.web_service_dimensions
-      stat        = "Maximum"
-      period      = 300
-    }
-  }
-}
+# Round DB (cost, owner-approved 11 Nov): the web ephemeral storage alarm read Container Insights, which is off, so it
+# is removed with it. scripts/aws/cost-trim-infra.sh deletes it.
 
 resource "aws_cloudwatch_event_rule" "ecs_out_of_memory" {
   name        = "${local.name_prefix}-ecs-out-of-memory"

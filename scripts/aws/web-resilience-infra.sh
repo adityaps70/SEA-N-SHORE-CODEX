@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Round 13 guarded infrastructure: keep at least two web tasks, scale on memory as well as CPU,
 # and alert the owner (SNS email) on web memory, running task count, ALB 5xx / connection errors,
-# ephemeral storage and OOM task stops. Targeted plan; only creates and in-place updates of these
+# ephemeral storage and OOM task stops. Round DB (cost): the running task count is now the ALB's healthy targets and
+# the ephemeral storage alarm is gone with Container Insights (scripts/aws/cost-trim-infra.sh). Targeted plan; only creates and in-place updates of these
 # resources are accepted. The action file holds "plan" or "apply-once".
 # Round H (H1): adds the operations inbox subscription (Round P3: info@beaufortmarine.in), the app 5xx rate, web CPU, the
 # per-area server error alarms (SeaNShore/App ServerErrors) and the site health alarms (SiteUp).
@@ -93,7 +94,6 @@ TARGETS=(
   aws_cloudwatch_metric_alarm.web_running_tasks_low
   aws_cloudwatch_metric_alarm.alb_gateway_errors
   aws_cloudwatch_metric_alarm.alb_target_connection_errors
-  aws_cloudwatch_metric_alarm.web_ephemeral_storage_high
   aws_cloudwatch_event_rule.ecs_out_of_memory
   aws_cloudwatch_event_target.ecs_out_of_memory
   aws_sns_topic_subscription.alerts_operations_email
@@ -127,10 +127,11 @@ allowed = {
   'aws_sns_topic_subscription.alerts_email': {('create',)},
   'aws_sns_topic_policy.alerts': {('create',)},
   'aws_cloudwatch_metric_alarm.web_memory_high': {('create',)},
-  'aws_cloudwatch_metric_alarm.web_running_tasks_low': {('create',)},
+  # Round DB (cost): the alarm moves to the ALB's HealthyHostCount (scripts/aws/cost-trim-infra.sh applies it); see
+  # the bounded update check below.
+  'aws_cloudwatch_metric_alarm.web_running_tasks_low': {('create',), ('update',)},
   'aws_cloudwatch_metric_alarm.alb_gateway_errors': {('create',)},
   'aws_cloudwatch_metric_alarm.alb_target_connection_errors': {('create',)},
-  'aws_cloudwatch_metric_alarm.web_ephemeral_storage_high': {('create',)},
   'aws_cloudwatch_event_rule.ecs_out_of_memory': {('create',)},
   'aws_cloudwatch_event_target.ecs_out_of_memory': {('create',)},
   # Round H (H1)
@@ -182,6 +183,11 @@ for r in changes:
             raise SystemExit('scaling target change outside min/max refused: ' + ','.join(changed))
         if after.get('min_capacity') != 2 or after.get('max_capacity') != 8:
             raise SystemExit('scaling target must be min 2 max 8')
+    if r['address'] == 'aws_cloudwatch_metric_alarm.web_running_tasks_low' and r['change']['actions'] == ['update']:
+        before, after = r['change']['before'] or {}, r['change']['after'] or {}
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
+        if set(changed) - {'namespace', 'metric_name', 'dimensions', 'alarm_description'} or (after.get('namespace'), after.get('metric_name')) != ('AWS/ApplicationELB', 'HealthyHostCount'):
+            raise SystemExit('running tasks alarm change outside the move to HealthyHostCount refused: ' + ','.join(changed))
     if r['address'] == 'aws_cloudwatch_metric_alarm.web_cpu_high' and r['change']['actions'] == ['update']:
         before, after = r['change']['before'] or {}, r['change']['after'] or {}
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
@@ -247,7 +253,7 @@ jq -r '.Subscriptions[] | "ALERT_SUBSCRIPTION protocol=\(.Protocol) status=\(if 
 jq -e '([.Subscriptions[].Endpoint] | index("info@beaufortmarine.in") != null) and ([.Subscriptions[].Endpoint] | index("operations@beaufortmarine.in") == null)' "$WORK_DIR/subscriptions.json" >/dev/null
 echo "OPERATIONS_ALERT_INBOX_VERIFIED=info@beaufortmarine.in"
 aws cloudwatch describe-alarms --region "$AWS_REGION" --alarm-name-prefix sea-n-shore-staging- --output json > "$WORK_DIR/alarms.json"
-for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-connection-errors web-ephemeral-storage-high \
+for alarm in web-memory-high web-running-tasks-low alb-502-503-504 alb-target-connection-errors \
   alb-target-5xx-rate web-cpu-high web-latency-p95 lambda-throttles \
   api-feed-server-errors api-impressions-server-errors api-messaging-server-errors api-jobs-server-errors \
   api-learning-server-errors api-payments-webhooks-server-errors site-home-down site-api-health-down; do

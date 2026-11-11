@@ -2,7 +2,12 @@ name: AWS Infrastructure CI
 
 on:
   workflow_dispatch:
+  # Round DB (Actions minutes, owner-approved 11 Nov): pushes to the feature branch and main, and pull requests into
+  # them. A PR branch is checked by its pull_request run, not by a push run too; a branch push with no PR runs nothing.
   push:
+    branches:
+      - feat/aws-native-phase-0-1
+      - main
     paths:
       - Dockerfile
       - .dockerignore
@@ -20,7 +25,7 @@ on:
       - package-lock.json
       - .github/workflows/aws-*.yml
   pull_request:
-    branches: [main]
+    branches: [main, feat/aws-native-phase-0-1]
     paths:
       - Dockerfile
       - .dockerignore
@@ -51,7 +56,8 @@ jobs:
   # Actions minutes: a heavy job below is skipped only when every file it reads is byte-identical to a
   # commit whose Infra CI passed (a merge of an up-to-date PR branch, a rearm, a workflow-only change);
   # see scripts/aws/infra-ci-scope.sh. The SSM execution contract job (guard and runner contract
-  # tests) always runs. A non-push event, or any doubt, runs everything.
+  # tests) always runs. A pull request is scoped against its base branch tip; a manual run, or any doubt, runs
+  # everything.
   scope:
     name: Change scope
     runs-on: ubuntu-latest
@@ -180,7 +186,7 @@ jobs:
       - name: Verify admin step-up migration runner contract (0095)
         run: node --test scripts/aws/admin-step-up-migration.test.mjs
       - name: Verify host Terraform init and SHA-guard contracts
-        run: node --test scripts/aws/terraform-init-providers.test.mjs scripts/aws/round-9b-migration.test.mjs scripts/aws/learning-round-a-migration.test.mjs scripts/aws/learning-course-list-items.test.mjs scripts/aws/learning-round-b-migration.test.mjs scripts/aws/learning-round-c-migration.test.mjs scripts/aws/gst-tax-migration.test.mjs scripts/aws/learning-round-d-migration.test.mjs scripts/aws/company-training-migration.test.mjs scripts/aws/legacy-reminder-migration.test.mjs scripts/aws/site-fixes-round-f-migration.test.mjs scripts/aws/round-g-release-1-migration.test.mjs scripts/aws/round-g-release-2-migration.test.mjs scripts/aws/sire-course-transfer-migration.test.mjs scripts/aws/site-fixes-round-h-release-1-migration.test.mjs scripts/aws/site-fixes-round-h-release-2-migration.test.mjs scripts/aws/site-fixes-round-h-release-3-migration.test.mjs scripts/aws/site-fixes-round-h-h9-event-migration.test.mjs scripts/aws/round-db-indexes-migration.test.mjs
+        run: node --test scripts/aws/terraform-init-providers.test.mjs scripts/aws/round-9b-migration.test.mjs scripts/aws/learning-round-a-migration.test.mjs scripts/aws/learning-course-list-items.test.mjs scripts/aws/learning-round-b-migration.test.mjs scripts/aws/learning-round-c-migration.test.mjs scripts/aws/gst-tax-migration.test.mjs scripts/aws/learning-round-d-migration.test.mjs scripts/aws/company-training-migration.test.mjs scripts/aws/legacy-reminder-migration.test.mjs scripts/aws/site-fixes-round-f-migration.test.mjs scripts/aws/round-g-release-1-migration.test.mjs scripts/aws/round-g-release-2-migration.test.mjs scripts/aws/sire-course-transfer-migration.test.mjs scripts/aws/site-fixes-round-h-release-1-migration.test.mjs scripts/aws/site-fixes-round-h-release-2-migration.test.mjs scripts/aws/site-fixes-round-h-release-3-migration.test.mjs scripts/aws/site-fixes-round-h-h9-event-migration.test.mjs scripts/aws/round-db-indexes-migration.test.mjs scripts/aws/cost-trim-infra.test.mjs
       - name: Verify guarded migration runner template (evidence check per path)
         run: node --test scripts/aws/guarded-migration-template.test.mjs
       - name: Verify onboarding e2e guard contract
