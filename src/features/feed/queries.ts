@@ -165,16 +165,23 @@ export function createFeedQueries(input: {
    * `commentPreview`: load only the top N comments of each post (feed pages, round G); the post says
    * `commentsComplete: false` and the rest load on demand. Without it, every comment is loaded.
    */
-  async function hydratePosts(rows: FeedPostRow[], viewerId: string, options: { commentPreview?: number } = {}): Promise<FeedPost[]> {
+  async function hydratePosts(rows: FeedPostRow[], viewerId: string, options: { commentPreview?: number | 'newest' } = {}): Promise<FeedPost[]> {
     if (!rows.length) return []
     const postIds = rows.map((row) => row.id)
     const sourceIds = repostSourceIds(rows)
     const allViewerStateIds = [...new Set([...postIds, ...sourceIds])]
+    // Round DB: 'newest' loads only what each card shows first (the newest comment, its replies and the phone
+    // preview), with the counts of the full load; see repository.getNewestCommentPreview.
+    const newest = options.commentPreview === 'newest'
+      ? await input.repository.getNewestCommentPreview(postIds, viewerId)
+      : null
     const [viewer, comments, repostSources] = await Promise.all([
       input.repository.getViewerState(viewerId, allViewerStateIds),
-      options.commentPreview
-        ? input.repository.getCommentPreview(postIds, viewerId, options.commentPreview)
-        : input.repository.getComments(postIds, viewerId),
+      newest
+        ? Promise.resolve(newest.rows)
+        : typeof options.commentPreview === 'number'
+          ? input.repository.getCommentPreview(postIds, viewerId, options.commentPreview)
+          : input.repository.getComments(postIds, viewerId),
       sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
     ])
     const paths = [...new Set([
@@ -200,6 +207,11 @@ export function createFeedQueries(input: {
         post_comments: commentsByPost.get(row.id) ?? [],
         repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
       }, viewer, signedUrls, viewerId)
+      if (newest) {
+        const counts = newest.counts.get(row.id) ?? { roots: 0, total: 0 }
+        const loadedRows = (commentsByPost.get(row.id) ?? []).length
+        return { ...post, commentsComplete: loadedRows >= counts.total, commentRootCount: counts.roots }
+      }
       if (!options.commentPreview) return post
       const loaded = (commentsByPost.get(row.id) ?? []).filter((comment) => !comment.deleted_at).length
       return { ...post, commentsComplete: loaded >= post.commentCount }
@@ -251,7 +263,8 @@ export function createFeedQueries(input: {
     const pageRows = rows.slice(0, parsed.limit)
     const nextCursor = feedNextCursor(pageRows, hasMore)
     // An organization's own post list and a group feed stay newest first.
-    if (parsed.companyId || parsed.groupId || parsed.hashtag) return { posts: await hydratePosts(pageRows, user.id), nextCursor }
+    // Round DB: these pages load only what each post card shows first (identical to loading every comment).
+    if (parsed.companyId || parsed.groupId || parsed.hashtag) return { posts: await hydratePosts(pageRows, user.id, { commentPreview: 'newest' }), nextCursor }
     // Round DB: only the authors on this page are looked up (the only ones the ordering below asks about).
     const preferredAuthorIds = new Set(await input.getPreferredAuthorIds(pageRows.map(feedRowAuthorId)))
     preferredAuthorIds.add(user.id)
@@ -261,7 +274,7 @@ export function createFeedQueries(input: {
       feedRowAuthorId,
       (row) => Boolean(row.viewer_follows_organization),
     )
-    return { posts: await hydratePosts(displayRows, user.id), nextCursor }
+    return { posts: await hydratePosts(displayRows, user.id, { commentPreview: 'newest' }), nextCursor }
   }
 
   /**

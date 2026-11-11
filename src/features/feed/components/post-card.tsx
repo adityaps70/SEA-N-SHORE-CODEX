@@ -773,6 +773,7 @@ export function PostCard({
               composerOpen={composerOpen}
               expandReplies={detail}
               commentsComplete={post.commentsComplete ?? true}
+              rootCount={post.commentRootCount}
               totalCount={post.commentCount}
             />
           </div>
