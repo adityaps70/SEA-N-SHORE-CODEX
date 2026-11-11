@@ -90,6 +90,14 @@ async function loadViewerGraph(viewerId: string) {
   }
 }
 
+async function loadViewerGraphWith(viewerId: string, memberIds: readonly string[]) {
+  try {
+    return await networkRepository.loadViewerGraphWith(viewerId, memberIds)
+  } catch {
+    throw new Error('Unable to load your professional relationships.')
+  }
+}
+
 function profilesInIdOrder<T extends { id: string }>(profiles: T[], ids: readonly string[]) {
   const byId = new Map(profiles.map((profile) => [profile.id, profile]))
   return ids.map((id) => byId.get(id)).filter((profile): profile is T => Boolean(profile))
@@ -121,7 +129,8 @@ export function withMessageAccess(profiles: NetworkProfile[], access: ReadonlyMa
 
 export async function getRelationshipState(targetId: string): Promise<RelationshipState> {
   const user = await requireAwsUser()
-  const graph = await loadViewerGraph(user.id)
+  // Round DB: only the rows between the viewer and this one member, not the viewer's whole graph.
+  const graph = await loadViewerGraphWith(user.id, [targetId])
   return relationshipFromRows(user.id, targetId, graph.followedIds, graph.connections)
 }
 
@@ -318,9 +327,13 @@ export async function getPeopleYouMayKnow(limit: number = PEOPLE_SUGGESTION_LIMI
   return getPeopleSuggestions(limit)
 }
 
-export async function getPreferredFeedAuthorIds(): Promise<Set<string>> {
+/**
+ * The authors the recent feed lifts to the top: followed members and accepted connections. Round DB: only among the
+ * authors on the page being shown (`authorIds`), the only ones the feed asks about, instead of the whole graph.
+ */
+export async function getPreferredFeedAuthorIds(authorIds: readonly string[]): Promise<Set<string>> {
   const user = await requireAwsUser()
-  const graph = await loadViewerGraph(user.id)
+  const graph = await loadViewerGraphWith(user.id, authorIds)
   const preferred = new Set(graph.followedIds)
 
   for (const connection of graph.connections) {

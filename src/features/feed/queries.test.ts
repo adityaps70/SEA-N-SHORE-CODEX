@@ -130,17 +130,23 @@ describe('Aurora feed queries', () => {
       getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
       getComments: vi.fn(async () => []),
     } as unknown as FeedRepository
+    const getPreferredAuthorIds = vi.fn(async (_authorIds: readonly string[]) => [connectionId])
     const { createFeedQueries } = await import('./queries')
     const queries = createFeedQueries({
       requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
       repository,
-      getPreferredAuthorIds: vi.fn(async () => [connectionId]),
+      getPreferredAuthorIds,
       resolveMediaUrls: vi.fn(async () => new Map()),
     })
 
     const page = await queries.getFeedPage({ limit: 20 })
 
     expect(page.posts.map((post) => post.id)).toEqual([ownPost.id, connectionPost.id])
+    // Round DB: only the authors on this page are looked up, not the viewer's whole graph.
+    expect(getPreferredAuthorIds).toHaveBeenCalledTimes(1)
+    const { feedRowAuthorId } = await import('./queries')
+    expect(getPreferredAuthorIds).toHaveBeenCalledWith(rows.map(feedRowAuthorId))
+    expect(new Set(rows.map(feedRowAuthorId))).toEqual(new Set([viewerId, connectionId]))
   })
 
   it('loads saved posts through the authenticated viewer and marks them saved after hydration', async () => {

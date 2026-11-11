@@ -58,6 +58,36 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
     }
   }
 
+  /**
+   * Round DB: the same follows and connection rows as loadViewerGraph, but only those between the viewer and the given
+   * members (one profile, or the authors on one feed page), instead of the viewer's whole graph.
+   */
+  async function loadViewerGraphWith(viewerId: string, memberIds: readonly string[]) {
+    const ids = [...new Set(memberIds)]
+    if (!ids.length) return { followedIds: new Set<string>(), connections: [] as NetworkConnectionRow[] }
+    const [follows, connections] = await Promise.all([
+      queryRows(
+        `select following_id
+         from public.follows
+         where follower_id = $1
+           and following_id = any($2::uuid[])`,
+        [viewerId, ids],
+      ) as Promise<FollowRow[]>,
+      queryRows(
+        `select id, user_low_id, user_high_id, requested_by, status::text as status, created_at, updated_at
+         from public.connections
+         where (user_low_id = $1 and user_high_id = any($2::uuid[]))
+            or (user_high_id = $1 and user_low_id = any($2::uuid[]))
+         order by updated_at desc, id asc`,
+        [viewerId, ids],
+      ) as Promise<ConnectionRow[]>,
+    ])
+    return {
+      followedIds: new Set(follows.map((row) => row.following_id)),
+      connections: connections as NetworkConnectionRow[],
+    }
+  }
+
   /** Pending connection requests other members sent to the viewer (the Network tab badge). */
   async function countIncomingRequests(viewerId: string) {
     const rows = await queryRows(INCOMING_REQUEST_COUNT_SQL, [viewerId]) as CountRow[]
@@ -285,6 +315,7 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
   return {
     loadViewerGraph,
     countIncomingRequests,
+    loadViewerGraphWith,
     loadFollowerIds,
     loadMessageAccess,
     isMemberReady,

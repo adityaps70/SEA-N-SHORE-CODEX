@@ -19,7 +19,7 @@ import type { CursorPage, FeedComment, FeedCursor, FeedJobShare, FeedMode, FeedP
 type RequireUser = () => Promise<AwsVerifiedUser>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
-type GetPreferredAuthorIds = () => Promise<Iterable<string>>
+type GetPreferredAuthorIds = (authorIds: readonly string[]) => Promise<Iterable<string>>
 type ListAdministeredGroupIds = (viewerId: string) => Promise<string[]>
 type LoadJobShareCards = (postIds: string[]) => Promise<Map<string, FeedJobShare>>
 type TopFeed = ReturnType<typeof createTopFeed>
@@ -252,7 +252,8 @@ export function createFeedQueries(input: {
     const nextCursor = feedNextCursor(pageRows, hasMore)
     // An organization's own post list and a group feed stay newest first.
     if (parsed.companyId || parsed.groupId || parsed.hashtag) return { posts: await hydratePosts(pageRows, user.id), nextCursor }
-    const preferredAuthorIds = new Set(await input.getPreferredAuthorIds())
+    // Round DB: only the authors on this page are looked up (the only ones the ordering below asks about).
+    const preferredAuthorIds = new Set(await input.getPreferredAuthorIds(pageRows.map(feedRowAuthorId)))
     preferredAuthorIds.add(user.id)
     const displayRows = prioritizeRecentFeedRows(
       pageRows,
