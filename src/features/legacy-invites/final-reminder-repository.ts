@@ -124,6 +124,11 @@ export function hasFinalReminderSql(emailSql: string) {
  * The rule a first invitation (alias `invite`, with its second reminder as alias `reminder`, possibly null) fails
  * first, or 'eligible'. Emails compare case-insensitively. `includeFinal` is false when checking a final reminder that
  * already exists (at send time).
+ *
+ * Round DB: "already has a final reminder" is three EXISTS (by invite, by reminder, by email), each served by its own
+ * index, instead of one EXISTS over an OR that no single index serves; the claims lookups by lower(email) use
+ * legacy_profile_claims_email_lookup_idx (migration 0100). Same answers, proven against the frozen previous SQL in
+ * legacy-final-reminder.integration.test.ts.
  */
 export function finalReminderExclusionSql(includeFinal: boolean) {
   const messageIds = `(invite.resend_message_id, reminder.resend_message_id)`
@@ -133,8 +138,13 @@ export function finalReminderExclusionSql(includeFinal: boolean) {
       when reminder.id is null or reminder.status <> 'sent' or reminder.sent_at is null then 'reminder_not_sent'
       ${includeFinal ? `when exists (
         select 1 from public.legacy_profile_invite_final_reminders final
-        where (final.invite_id = invite.id or final.reminder_id = reminder.id or lower(final.email) = lower(invite.email))
-          and ${ACTIVE_FINAL_SQL}
+        where final.invite_id = invite.id and ${ACTIVE_FINAL_SQL}
+      ) or exists (
+        select 1 from public.legacy_profile_invite_final_reminders final
+        where final.reminder_id = reminder.id and ${ACTIVE_FINAL_SQL}
+      ) or exists (
+        select 1 from public.legacy_profile_invite_final_reminders final
+        where lower(final.email) = lower(invite.email) and ${ACTIVE_FINAL_SQL}
       ) then 'already_final'` : ''}
       when reminder.sent_at > now() - interval '14 days' then 'too_recent'
       when exists (

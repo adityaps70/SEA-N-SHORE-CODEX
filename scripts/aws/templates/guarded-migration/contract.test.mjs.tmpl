@@ -5,6 +5,11 @@ import { guardAction } from './guard-value.mjs'
 const migrations = [
 @@MIGRATION_NAMES_JS@@
 ]
+// Files that each hold exactly one CREATE INDEX CONCURRENTLY, run outside a transaction by the concurrent-index step.
+const concurrentIndexes = [
+@@CONCURRENT_NAMES_JS@@
+]
+const CONCURRENT_SHAPE = /^create index concurrently if not exists [a-z_][a-z0-9_]{0,62} on public\.[a-z_][a-z0-9_]* (using btree )?\([^;]+\)( where [^;]+)?;$/i
 const script = fs.readFileSync('scripts/aws/@@NAME@@.sh', 'utf8')
 const guard = guardAction(fs.readFileSync('scripts/aws/@@NAME@@-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-@@NAME@@.yml', 'utf8')
@@ -27,6 +32,14 @@ for (const name of migrations) {
   assert.ok(script.includes(path), `script applies ${name}`)
   assert.ok(workflow.includes(path), `workflow watches ${name}`)
   assert.match(sql, /-- statement-breakpoint/, `${name} is split into statements`)
+  if (concurrentIndexes.includes(name)) {
+    const statements = statementsOf(sql)
+    assert.equal(statements.length, 1, `${name} holds exactly one statement`)
+    assert.match(norm(statements[0]), CONCURRENT_SHAPE, `${name} is one CREATE INDEX CONCURRENTLY IF NOT EXISTS on public`)
+    assert.doesNotMatch(statements[0], /\b(drop|truncate|delete|update|alter|grant|revoke|unique)\b/i, `${name} only builds an index`)
+    assert.ok(script.slice(script.indexOf('CONCURRENT_INDEX_MIGRATIONS=('), script.indexOf('is_concurrent_index()')).includes(`"${path}"`), `${name} runs in the concurrent-index step`)
+    continue
+  }
   for (const statement of statementsOf(sql)) {
     const flat = norm(statement)
     if (APPROVED.includes(flat)) { seenApproved.add(flat); continue }
@@ -60,6 +73,18 @@ assert.match(script, /pg_advisory_xact_lock/)
 assert.match(script, /sea_n_shore_applied_migrations/)
 assert.match(script, /already_applied @@AFTER@@/, '@@TITLE@@ follows @@AFTER@@')
 assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
+
+// The concurrent-index step: outside a transaction, the catalog is the evidence, an INVALID index is dropped (only
+// ever that index, by name) and fails the run, and the ledger row is written only for a valid, ready index.
+const concurrentStep = script.slice(script.indexOf('apply_concurrent_index_file() {'), script.indexOf('for migration in "${PENDING[@]}"; do\n  if is_concurrent_index'))
+assert.ok(concurrentStep.length > 0, 'the concurrent-index step is present')
+assert.doesNotMatch(concurrentStep, /--transaction-id|begin_transaction/, 'the concurrent index runs outside a transaction')
+assert.match(concurrentStep, /data_api --continue-after-timeout --sql "\$sql"/)
+assert.match(concurrentStep, /pg_stat_progress_create_index WHERE relid = to_regclass\('public\.\$table'\)/)
+assert.match(script, /WHEN i\.indisvalid AND i\.indisready THEN 'valid' ELSE 'invalid' END FROM pg_index i WHERE i\.indexrelid = to_regclass\('public\.\$1'\)/)
+assert.deepEqual([...script.matchAll(/DROP INDEX[^"]*/g)].map((m) => m[0]), ['DROP INDEX CONCURRENTLY IF EXISTS public.$index', 'DROP INDEX CONCURRENTLY IF EXISTS public.$index'], 'only the step drops, and only its own index')
+assert.ok(concurrentStep.indexOf('valid) ;;') < concurrentStep.indexOf('INSERT INTO public.sea_n_shore_applied_migrations'), 'the ledger row follows a valid index')
+assert.match(concurrentStep, /invalid\)\n\s+data_api --sql "DROP INDEX CONCURRENTLY IF EXISTS public\.\$index" >\/dev\/null\n[^\n]*\n[^\n]*\n\s+exit 1 ;;/)
 
 // A plan run previews in a transaction it always rolls back, and never commits or writes the ledger.
 const plan = script.slice(script.indexOf('if [[ "$ACTION" == "plan" ]]; then'), script.indexOf('echo "@@MARKER@@_PLAN_ONLY_NO_APPLY"'))

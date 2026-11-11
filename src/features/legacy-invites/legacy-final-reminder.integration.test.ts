@@ -21,6 +21,8 @@ const { createLegacyFinalReminderWorker } = await import('./final-reminder-sendi
 const { legacyReminderRepository } = await import('./reminder-repository')
 const { legacyInviteRepository } = await import('./repository')
 const { emailDeliveryRepository } = await import('@/features/email-delivery/repository')
+const { previousExclusionSql } = await import('./final-reminder-previous-sql.fixture')
+const { finalReminderExclusionSql } = await import('./final-reminder-repository')
 const { parseResendWebhookEvent } = await import('@/features/email-delivery/events')
 const { withEmailSuppression } = await import('@/lib/email/suppression')
 const unsubscribeRoute = await import('@/app/api/email/legacy/unsubscribe/route')
@@ -628,5 +630,66 @@ describe('final reminder unsubscribe', () => {
     await expect(unsubscribeFromLegacyReminder(token)).resolves.toEqual({ ok: true })
     expect(await db.query(`select email, reason from public.email_suppressions`)).toEqual([{ email: someone.email, reason: 'unsubscribed' }])
     await expect(unsubscribeFromLegacyReminder('55555555-5555-4555-8555-555555555555')).resolves.toEqual({ ok: false })
+  })
+})
+
+// Round DB (Deploy B): the rewritten exclusion rule is a shadow of the previous one (frozen in the fixture).
+describe('the Round DB rewrite of the exclusion rule (shadow comparison)', () => {
+  async function classify(sql: string) {
+    return (await db.query(`
+      select invite.id::text as id, ${sql} as reason
+      from public.legacy_profile_invites invite
+      left join public.legacy_profile_invite_reminders reminder on reminder.invite_id = invite.id
+      order by invite.id
+    `)).map((row) => `${row.id}:${row.reason}`)
+  }
+
+  it('gives every invitation the same reason as the previous SQL', async () => {
+    const people = [
+      await person(), await person({ firstStatus: 'cancelled' }), await person({ reminder: 'none' }), await person({ reminder: 'queued' }),
+      await person({ reminderDaysAgo: 3 }), await person({ firstEvent: 'bounced' }), await person({ reminderEvent: 'complained' }),
+      await person({ suppression: 'hard_bounce' }), await person({ suppression: 'unsubscribed' }), await person({ firstDelivered: false }),
+      await person({ reminderDelivered: false }), await person({ claimed: true }), await person({ account: { verified: true } }),
+      await person({ newsletterUnsubscribed: true }), await person({ duplicate: true }), await person(), await person(), await person(),
+    ]
+    // Final reminders matched by each key: by invite (a), by reminder only (b), by email only (d), the invite of a row
+    // made for someone else's reminder and email (c), one cancelled before it was ever tried (e, never counts) and one
+    // cancelled after an attempt (f, counts).
+    const [a, b, c, d, e, f] = await Promise.all(Array.from({ length: 6 }, () => person()))
+    const final = (invite: { inviteId: string; profileId: string }, reminderId: string | null, email: string, status: string, attempts: number) => db.query(
+      `insert into public.legacy_profile_invite_final_reminders (invite_id, reminder_id, profile_id, email, status, attempts) values ($1, $2, $3, $4, $5, $6)`,
+      [invite.inviteId, reminderId, invite.profileId, email, status, attempts],
+    )
+    await final(a!, a!.reminderId, a!.email, 'sent', 1)
+    await final(c!, b!.reminderId, d!.email, 'sent', 1)
+    await final(e!, e!.reminderId, e!.email, 'cancelled', 0)
+    await final(f!, f!.reminderId, f!.email, 'cancelled', 1)
+    const reasons = Object.fromEntries((await classify(finalReminderExclusionSql(true))).map((row) => row.split(':')))
+    expect([a, b, c, d, f].map((who) => reasons[who!.inviteId])).toEqual(Array(5).fill('already_final'))
+    expect(reasons[e!.inviteId]).toBe('eligible')
+    expect(people.length).toBe(18)
+    // The live shadow statement the migration runner sends (the committed file) runs here too: every pair matches.
+    const { readFileSync } = await import('node:fs')
+    const shadow = readFileSync('scripts/aws/round-db-final-reminder-shadow.sql', 'utf8').split('\n').filter((line) => !line.startsWith('--')).join('\n')
+    const pairs = await db.query(shadow)
+    expect(pairs.length).toBeGreaterThan(5)
+    expect(pairs.every((row) => row.previous_reason === row.current_reason)).toBe(true)
+    expect(pairs.reduce((sum, row) => sum + Number(row.n), 0)).toBe((await db.query('select count(*)::int as n from public.legacy_profile_invites'))[0]!.n)
+    expect(Object.keys(pairs[0]!).sort()).toEqual(['current_reason', 'n', 'previous_reason'])
+    for (const includeFinal of [true, false]) {
+      const before = await classify(previousExclusionSql(includeFinal))
+      const after = await classify(finalReminderExclusionSql(includeFinal))
+      expect(after).toEqual(before)
+      expect(new Set(before.map((row) => row.split(':')[1])).size).toBeGreaterThan(5)
+    }
+  })
+
+  it('looks claims up by lower(email) through the new index', async () => {
+    const plan = await db.transaction(async (query) => {
+      await query('set local enable_seqscan = off')
+      return (await query(`explain select 1 from public.legacy_profile_claims claim where lower(claim.email) = lower('Fixture@Example.test') and claim.claimed_at is not null`))
+        .map((row) => String(Object.values(row)[0])).join('\n')
+    })
+    expect(plan).toContain('legacy_profile_claims_email_lookup_idx')
   })
 })
