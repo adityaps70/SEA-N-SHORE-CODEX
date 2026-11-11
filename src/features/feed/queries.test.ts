@@ -69,6 +69,7 @@ describe('Aurora feed queries', () => {
         pollVotes: new Map<string, string>(),
       })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
     const requireUser = vi.fn(async (): Promise<AwsVerifiedUser> => ({
       id: viewerId,
@@ -91,6 +92,9 @@ describe('Aurora feed queries', () => {
       limit: 2,
     })
     expect(repository.getViewerState).toHaveBeenCalledWith(viewerId, [rows[0].id])
+    // Round DB (Deploy C): the page loads only the comments each card shows first, for the same viewer.
+    expect(repository.getNewestCommentPreview).toHaveBeenCalledWith([rows[0].id], viewerId)
+    expect(repository.getComments).not.toHaveBeenCalled()
     expect(page.posts[0].viewerLiked).toBe(true)
     expect(page.nextCursor).toEqual({ createdAt: rows[0].created_at, id: rows[0].id })
   })
@@ -102,6 +106,7 @@ describe('Aurora feed queries', () => {
       listFeedRows: vi.fn(async () => [shared, plain]),
       getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
     const card = { jobId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', title: 'Placeholder Job', companyName: 'Placeholder Company', location: null, open: false }
     const loadJobShareCards = vi.fn(async () => new Map([[shared.id, card]]))
@@ -129,18 +134,25 @@ describe('Aurora feed queries', () => {
       listFeedRows: vi.fn(async () => rows),
       getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
+    const getPreferredAuthorIds = vi.fn<(authorIds: readonly string[]) => Promise<string[]>>(async () => [connectionId])
     const { createFeedQueries } = await import('./queries')
     const queries = createFeedQueries({
       requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
       repository,
-      getPreferredAuthorIds: vi.fn(async () => [connectionId]),
+      getPreferredAuthorIds,
       resolveMediaUrls: vi.fn(async () => new Map()),
     })
 
     const page = await queries.getFeedPage({ limit: 20 })
 
     expect(page.posts.map((post) => post.id)).toEqual([ownPost.id, connectionPost.id])
+    // Round DB: only the authors on this page are looked up, not the viewer's whole graph.
+    expect(getPreferredAuthorIds).toHaveBeenCalledTimes(1)
+    const { feedRowAuthorId } = await import('./queries')
+    expect(getPreferredAuthorIds).toHaveBeenCalledWith(rows.map(feedRowAuthorId))
+    expect(new Set(rows.map(feedRowAuthorId))).toEqual(new Set([viewerId, connectionId]))
   })
 
   it('loads saved posts through the authenticated viewer and marks them saved after hydration', async () => {
@@ -154,6 +166,7 @@ describe('Aurora feed queries', () => {
         pollVotes: new Map<string, string>(),
       })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
     const requireUser = vi.fn(async (): Promise<AwsVerifiedUser> => ({
       id: viewerId,
@@ -189,6 +202,7 @@ describe('Aurora feed queries', () => {
       listFeedRows: vi.fn(async () => rows),
       getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
     const listAdministeredGroupIds = vi.fn(async () => [groupId])
     const { createFeedQueries } = await import('./queries')
@@ -213,6 +227,7 @@ describe('Aurora feed queries', () => {
       listFeedRows: vi.fn(async () => rows),
       getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
     const listAdministeredGroupIds = vi.fn(async () => [])
     const { createFeedQueries } = await import('./queries')
@@ -234,6 +249,7 @@ describe('Aurora feed queries', () => {
       getPostRow: vi.fn(async () => post),
       getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
     const { createFeedQueries } = await import('./queries')
     const queries = createFeedQueries({

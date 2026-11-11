@@ -859,6 +859,57 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return getComments(postIds, viewerProfileId, top.map((row) => row.id))
   }
 
+  /**
+   * Round DB (Deploy C): the comments a post card shows first, for pages that used to load every comment: the newest
+   * top-level comment (what the thread shows first, even a removed one kept for its replies), the newest live one (the
+   * phone preview), and every reply of the newest. The same rows and rules as getComments; `counts` per post are what
+   * the full load would hold (top-level comments and all rows), so the card can say "View N more comments" as before.
+   */
+  async function getNewestCommentPreview(postIds: string[], viewerProfileId: string): Promise<{
+    rows: FeedCommentRow[]
+    counts: Map<string, { roots: number; total: number }>
+  }> {
+    const counts = new Map<string, { roots: number; total: number }>()
+    if (!postIds.length) return { rows: [], counts }
+    const picked = await queryRows(
+      `with visible as (
+         select c.id, c.post_id, c.parent_comment_id, c.deleted_at, c.created_at
+         from public.post_comments c
+         where c.post_id = any($1::uuid[])
+           and (
+             c.deleted_at is null
+             or (c.parent_comment_id is null and exists (
+               select 1 from public.post_comments reply
+               where reply.parent_comment_id = c.id and reply.deleted_at is null
+             ))
+           )
+       ),
+       newest as (
+         select distinct on (post_id) id, post_id from visible
+         where parent_comment_id is null
+         order by post_id, created_at desc, id desc
+       ),
+       newest_live as (
+         select distinct on (post_id) id, post_id from visible
+         where parent_comment_id is null and deleted_at is null
+         order by post_id, created_at desc, id desc
+       )
+       select 'pick' as kind, id, post_id, 0 as roots, 0 as total from newest
+       union all select 'pick', id, post_id, 0, 0 from newest_live
+       union all select 'pick', v.id, v.post_id, 0, 0 from visible v join newest n on v.parent_comment_id = n.id
+       union all select 'count', null, post_id, (count(*) filter (where parent_comment_id is null))::int, count(*)::int
+         from visible group by post_id`,
+      [postIds],
+    ) as Array<QueryResultRow & { kind: string; id: string | null; post_id: string; roots: number | string; total: number | string }>
+    const ids = new Set<string>()
+    for (const row of picked) {
+      if (row.kind === 'count') counts.set(row.post_id, { roots: Number(row.roots), total: Number(row.total) })
+      else if (row.id) ids.add(row.id)
+    }
+    if (!ids.size) return { rows: [], counts }
+    return { rows: await getComments(postIds, viewerProfileId, [...ids]), counts }
+  }
+
   async function getComments(postIds: string[], viewerProfileId?: string, onlyCommentIds?: string[]): Promise<FeedCommentRow[]> {
     if (!postIds.length) return []
     const viewerSql = viewerProfileId
@@ -1670,6 +1721,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     listReactionDetails,
     getComments,
     getCommentPreview,
+    getNewestCommentPreview,
     listRowsByIds,
     listTopLevelComments,
     countTopLevelComments,

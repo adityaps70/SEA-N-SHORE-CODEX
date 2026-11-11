@@ -260,6 +260,8 @@ export type FeedPost = {
    * demand; absent or true when every comment is loaded.
    */
   commentsComplete?: boolean
+  /** Round DB: with a partial comment load, how many top-level comments the post has (for "View N more comments"). */
+  commentRootCount?: number
   /** Round G "Top for you": why the post is shown, and the collapsed reposts label. */
   rank?: FeedPostRank | null
   /** Round I (I1): the job this post shares ("Share to feed"), shown as a job card with an Apply button. */

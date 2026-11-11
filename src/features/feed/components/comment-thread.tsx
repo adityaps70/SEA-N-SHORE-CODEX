@@ -418,7 +418,7 @@ function ReplyThread({ root, replies, expanded, onToggle, children }: {
   )
 }
 
-export function CommentThread({ postId, postAuthorId, comments, readOnly = false, composerOpen = false, expandReplies = false, commentsComplete = true, totalCount = 0 }: {
+export function CommentThread({ postId, postAuthorId, comments, readOnly = false, composerOpen = false, expandReplies = false, commentsComplete = true, totalCount = 0, rootCount }: {
   postId: string
   postAuthorId?: string
   comments: FeedComment[]
@@ -428,6 +428,8 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
   expandReplies?: boolean
   /** Round G: false when `comments` is a preview; "View all comments" loads the rest. */
   commentsComplete?: boolean
+  /** Round DB: the post's top-level comment count when only the first ones are loaded ("View N more comments"). */
+  rootCount?: number
   /** Round G: the post's comment count, for "View all N comments". */
   totalCount?: number
 }) {
@@ -448,7 +450,7 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
     setComplete(commentsComplete)
   }
 
-  function loadAllComments() {
+  function loadAllComments(reveal: (count: number) => number = (count) => Math.max(count, 10)) {
     setLoadError('')
     startLoadingAll(async () => {
       const result = await feedActions.loadAllPostComments(postId)
@@ -458,7 +460,7 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
       }
       setThreadComments(result.comments)
       setComplete(true)
-      setVisibleRootCount((count) => Math.max(count, 10))
+      setVisibleRootCount(reveal)
     })
   }
 
@@ -507,7 +509,9 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
   }, [composerOpen, postId, readOnly])
 
   const visibleRoots = roots.slice(0, visibleRootCount)
-  const remaining = Math.max(0, roots.length - visibleRoots.length)
+  // Round DB: with only the first comments loaded, the count comes from the server, so the card reads as before.
+  const partial = !complete && rootCount !== undefined
+  const remaining = Math.max(0, (partial ? rootCount : roots.length) - visibleRoots.length)
 
   function isExpanded(rootId: string, replyCount: number) {
     return expandedRoots[rootId] ?? (expandReplies || replyCount <= REPLY_PREVIEW_LIMIT)
@@ -541,9 +545,11 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
               </div>
             )
           })}
-          {remaining > 0 ? <button type="button" onClick={() => setVisibleRootCount((count) => Math.min(roots.length, count + 10))} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50">{`View ${pluralize(remaining, 'more comment', 'more comments')}`}</button> : null}
+          {remaining > 0 ? <button type="button" disabled={partial && loadingAll} onClick={() => partial
+            ? loadAllComments((count) => Math.min(rootCount, count + 10))
+            : setVisibleRootCount((count) => Math.min(roots.length, count + 10))} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50">{`View ${pluralize(remaining, 'more comment', 'more comments')}`}</button> : null}
           {remaining === 0 && moreOnServer ? (
-            <button type="button" onClick={loadAllComments} disabled={loadingAll} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50 disabled:opacity-60">
+            <button type="button" onClick={() => loadAllComments()} disabled={loadingAll} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50 disabled:opacity-60">
               {loadingAll ? 'Loading comments…' : `View all ${pluralize(totalCount, 'comment')}`}
             </button>
           ) : null}
