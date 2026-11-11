@@ -272,7 +272,9 @@ test('the sessions-only proof sends no traffic and cleans up everything, whateve
   }
   assert.match(jobOf('sessions'), /- name: Delete the hand-off object and count what is left\n\s+if: always\(\)\n/)
   for (const job of [jobOf('sessions'), report]) {
-    assert.match(job, /aws s3api delete-object --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --key "\$LOAD_TEST_HANDOFF_OBJECT" >\/dev\/null\n\s+LEFT="\$\(aws s3api list-objects-v2 --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions\/ --query KeyCount --output text\)"/)
+    assert.match(job, /aws s3api delete-object --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --key "\$LOAD_TEST_HANDOFF_OBJECT" >\/dev\/null\n\s+LEFT="\$\(aws s3api list-objects-v2 --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions\/ --query 'length\(Contents \|\| `\[\]`\)' --output text\)"/)
+    // Run 42980081657: KeyCount reads None on an empty bucket, so "0 left" must count the listed objects.
+    assert.doesNotMatch(job, /--query KeyCount/)
   }
   // The nightly start never starts the proof.
   assert.doesNotMatch(read('../../.github/workflows/load-test-nightly.yml'), /sessions-only/)

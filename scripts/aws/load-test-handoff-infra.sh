@@ -101,7 +101,8 @@ live_state() {
     | python3 scripts/aws/check-load-test-handoff-plan.py --key-policy "$GITHUB_ROLE_ARN")"
   encryption="$(aws s3api get-bucket-encryption --region "$AWS_REGION" --bucket "$BUCKET" --output json \
     | jq --arg key "$key_arn" '.ServerSideEncryptionConfiguration.Rules | length == 1 and .[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm == "aws:kms" and .[0].ApplyServerSideEncryptionByDefault.KMSMasterKeyID == $key and .[0].BucketKeyEnabled == true')"
-  versioning="$(aws s3api get-bucket-versioning --region "$AWS_REGION" --bucket "$BUCKET" --output json | jq -r '.Status // "never"')"
+  # Run 42980081657: a bucket that was never versioned returns no output at all, so read it slurped.
+  versioning="$(aws s3api get-bucket-versioning --region "$AWS_REGION" --bucket "$BUCKET" --output json | jq -rs '.[0].Status // "never"')"
   public="$(aws s3api get-public-access-block --region "$AWS_REGION" --bucket "$BUCKET" --output json \
     | jq '.PublicAccessBlockConfiguration | [.BlockPublicAcls, .IgnorePublicAcls, .BlockPublicPolicy, .RestrictPublicBuckets] | all')"
   lifecycle="$(aws s3api get-bucket-lifecycle-configuration --region "$AWS_REGION" --bucket "$BUCKET" --output json \
@@ -111,7 +112,8 @@ live_state() {
   task_policy="$(aws iam get-role-policy --role-name "$TASK_ROLE" --policy-name "$TASK_POLICY_NAME" --query PolicyDocument --output json \
     | jq --arg bucket "$BUCKET" '.Statement == [{"Sid": "WriteSealedLoadTestSessions", "Effect": "Allow", "Action": "s3:PutObject", "Resource": ("arn:aws:s3:::" + $bucket + "/sessions/*")}] or .Statement == [{"Sid": "WriteSealedLoadTestSessions", "Effect": "Allow", "Action": ["s3:PutObject"], "Resource": ("arn:aws:s3:::" + $bucket + "/sessions/*")}]')"
   local objects
-  objects="$(aws s3api list-objects-v2 --region "$AWS_REGION" --bucket "$BUCKET" --query KeyCount --output text)"
+  # Run 42980081657: KeyCount reads None on an empty bucket; count the listed objects instead.
+  objects="$(aws s3api list-objects-v2 --region "$AWS_REGION" --bucket "$BUCKET" --query 'length(Contents || `[]`)' --output text)"
   echo "key=enabled:$enabled rotation=$rotation key_policy=$key_policy encryption=$encryption versioning=$versioning public_blocked=$public lifecycle_1_day=$lifecycle bucket_policy=$bucket_policy task_put_only=$task_policy objects=$objects"
 }
 
