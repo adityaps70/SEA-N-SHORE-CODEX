@@ -28,6 +28,13 @@ The options:
 - `--after` names the migration that must already be in the ledger.
 - `--preview` lists the files a plan run tries in a rolled-back transaction. It defaults to every file. Leave out a
   file whose new enum values a later file uses: Postgres refuses a new enum value in the transaction that added it.
+- `--concurrent-index` (Round DB) names a migration that holds exactly one
+  `create index concurrently if not exists <name> on public.<table> (...)` and nothing else. Use it for an index on a
+  busy table. The runner's concurrent-index step builds it outside any transaction, so a plan run reports the table,
+  the index's current state and the row estimate instead of previewing it. On apply it first drops an index of that
+  name left INVALID by an earlier interrupted build. After the build the index must be valid and ready, or it is
+  dropped and the run fails. Only then is the ledger row written. Such a file is never previewed, and is left out of
+  the default `--preview` list.
 
 Then:
 

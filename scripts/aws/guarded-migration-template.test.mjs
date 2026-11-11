@@ -105,3 +105,120 @@ test('the renderer refuses bad names, unordered files and unknown placeholders',
   assert.throws(() => renderRunner({ ...SAMPLE, previews: ['infra/aws/database/migrations/0999_other.sql'] }), /--preview/)
   assert.throws(() => renderRunner({ ...SAMPLE, after: 'round_b' }), /--after/)
 })
+
+// Round DB: the concurrent-index step. A file listed with --concurrent-index holds exactly one
+// CREATE INDEX CONCURRENTLY IF NOT EXISTS, runs outside a transaction, and is recorded only once the index is valid.
+const CONCURRENT_SAMPLE = {
+  ...SAMPLE,
+  migrations: [...SAMPLE.migrations, 'infra/aws/database/migrations/0992_sample_index.sql'],
+  previews: [],
+  concurrentIndexes: ['infra/aws/database/migrations/0992_sample_index.sql'],
+}
+const SAMPLE_INDEX = 'create index concurrently if not exists sample_round_email_idx\n  on public.sample_round (lower(email))\n  where email is not null;'
+
+function concurrentTree(indexSql = SAMPLE_INDEX) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'guarded-migration-concurrent-'))
+  mkdirSync(path.join(root, 'infra/aws/database/migrations'), { recursive: true })
+  mkdirSync(path.join(root, 'scripts/aws'), { recursive: true })
+  copyFileSync(new URL('./guard-value.mjs', import.meta.url), path.join(root, 'scripts/aws/guard-value.mjs'))
+  writeFileSync(path.join(root, SAMPLE.migrations[0]), "-- statement-breakpoint\nalter type public.network_notification_type add value if not exists 'sample';\n")
+  writeFileSync(path.join(root, SAMPLE.migrations[1]), '-- statement-breakpoint\ncreate table if not exists public.sample_round (id uuid primary key, email text);\n')
+  writeFileSync(path.join(root, CONCURRENT_SAMPLE.concurrentIndexes[0]), `-- statement-breakpoint\n${indexSql}\n`)
+  writeRunner(root, CONCURRENT_SAMPLE)
+  return root
+}
+
+test('a runner with a concurrent index passes its contract test, never previews the index and refuses any other shape', () => {
+  const root = concurrentTree()
+  try {
+    assert.match(execFileSync('node', [`scripts/aws/${SAMPLE.name}.test.mjs`], { cwd: root, encoding: 'utf8' }), new RegExp(`${M}_CONTRACT_VERIFIED=true`))
+    const script = readFileSync(path.join(root, `scripts/aws/${SAMPLE.name}.sh`), 'utf8')
+    execFileSync('bash', ['-n', path.join(root, `scripts/aws/${SAMPLE.name}.sh`)])
+    const block = (name) => script.slice(script.indexOf(`${name}=(`), script.indexOf(')', script.indexOf(`${name}=(`)))
+    assert.match(block('CONCURRENT_INDEX_MIGRATIONS'), /0992_sample_index\.sql/)
+    assert.doesNotMatch(block('PREVIEW_MIGRATIONS'), /0992_sample_index\.sql/, 'the default preview leaves out the concurrent index')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+  for (const bad of [
+    'create index sample_round_email_idx on public.sample_round (lower(email));',
+    'create unique index concurrently if not exists sample_round_email_idx on public.sample_round (lower(email));',
+    `${SAMPLE_INDEX}\n-- statement-breakpoint\ncreate table if not exists public.other (id uuid);`,
+    'create index concurrently if not exists sample_round_email_idx on other.sample_round (lower(email));',
+  ]) {
+    const badRoot = concurrentTree(bad)
+    try {
+      const result = spawnSync('node', [`scripts/aws/${SAMPLE.name}.test.mjs`], { cwd: badRoot, encoding: 'utf8' })
+      assert.notEqual(result.status, 0, bad)
+    } finally {
+      rmSync(badRoot, { recursive: true, force: true })
+    }
+  }
+  assert.throws(() => renderRunner({ ...CONCURRENT_SAMPLE, concurrentIndexes: ['infra/aws/database/migrations/0999_other.sql'] }), /--concurrent-index/)
+  assert.throws(() => renderRunner({ ...CONCURRENT_SAMPLE, previews: CONCURRENT_SAMPLE.concurrentIndexes }), /cannot be previewed/)
+  // Without --concurrent-index the rendered runner keeps the plain path for every file.
+  assert.match(renderRunner(SAMPLE)[`scripts/aws/${SAMPLE.name}.sh`], /CONCURRENT_INDEX_MIGRATIONS=\(\n\n\)/)
+})
+
+// The step's own functions, run against a stubbed Data API: the catalog states it reads, in order, and what it sends.
+function runConcurrentStep(states) {
+  const root = concurrentTree()
+  try {
+    const script = readFileSync(path.join(root, `scripts/aws/${SAMPLE.name}.sh`), 'utf8')
+    const fn = (name) => {
+      const start = script.indexOf(`\n${name}() {`)
+      assert.ok(start >= 0, name)
+      return script.slice(start, script.indexOf('\n}\n', start) + 3)
+    }
+    const log = path.join(root, 'calls.log')
+    const stateFile = path.join(root, 'states.txt')
+    writeFileSync(stateFile, states.join('\n') + '\n')
+    const harness = [
+      'set -euo pipefail',
+      `cd ${JSON.stringify(root)}`,
+      `${M}_EXPECTED_SHA=${'a'.repeat(40)}`,
+      `data_api() { printf '%s\\n' "$*" >> ${JSON.stringify(log)}; }`,
+      'read_count() { echo 0; }',
+      `read_text() { local s; s="$(head -1 ${JSON.stringify(stateFile)})"; sed -i 1d ${JSON.stringify(stateFile)}; [[ "$s" == absent ]] || printf '%s\\n' "$s"; }`,
+      fn('statements_b64'), fn('concurrent_index_parts'), fn('index_state'), fn('apply_concurrent_index_file'),
+      `apply_concurrent_index_file ${CONCURRENT_SAMPLE.concurrentIndexes[0]}`,
+    ].join('\n')
+    const result = spawnSync('bash', ['-c', harness], { encoding: 'utf8' })
+    let calls = ''
+    try { calls = readFileSync(log, 'utf8') } catch { calls = '' }
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr, calls }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+}
+
+test('the concurrent-index step records only a valid index, and drops an INVALID one', () => {
+  const ok = runConcurrentStep(['absent', 'valid'])
+  assert.equal(ok.status, 0, ok.stderr)
+  assert.match(ok.calls, /^--continue-after-timeout --sql create index concurrently if not exists sample_round_email_idx/m)
+  assert.doesNotMatch(ok.calls, /DROP INDEX|--transaction-id/)
+  assert.match(ok.calls, /INSERT INTO public\.sea_n_shore_applied_migrations \(name, sha256, git_sha\) VALUES \('0992_sample_index'/)
+  assert.match(ok.stdout, new RegExp(`^${M}_CONCURRENT_INDEX_VALID index=sample_round_email_idx table=sample_round$`, 'm'))
+  assert.match(ok.stdout, new RegExp(`^${M}_APPLIED 0992_sample_index$`, 'm'))
+
+  // An INVALID index left by an earlier interrupted build is dropped before the new build.
+  const retried = runConcurrentStep(['invalid', 'valid'])
+  assert.equal(retried.status, 0, retried.stderr)
+  const lines = retried.calls.trim().split('\n')
+  assert.equal(lines[0], '--sql DROP INDEX CONCURRENTLY IF EXISTS public.sample_round_email_idx')
+  assert.match(lines[1], /^--continue-after-timeout --sql create index concurrently/)
+  assert.match(retried.stdout, /CONCURRENT_INDEX_INVALID_DROPPED index=sample_round_email_idx/)
+
+  // A build that ends INVALID is dropped and fails the run, with no ledger row.
+  const broken = runConcurrentStep(['absent', 'invalid'])
+  assert.notEqual(broken.status, 0)
+  assert.match(broken.calls, /--sql DROP INDEX CONCURRENTLY IF EXISTS public\.sample_round_email_idx\n$/)
+  assert.doesNotMatch(broken.calls, /sea_n_shore_applied_migrations/)
+  assert.match(broken.stderr, /left an INVALID index; it was dropped/)
+
+  // No index at all after the build fails the run, with no ledger row.
+  const missing = runConcurrentStep(['absent', 'absent'])
+  assert.notEqual(missing.status, 0)
+  assert.doesNotMatch(missing.calls, /sea_n_shore_applied_migrations|DROP INDEX/)
+  assert.match(missing.stderr, /was not created/)
+})

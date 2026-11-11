@@ -3,6 +3,7 @@
 //   node scripts/aws/templates/guarded-migration/render.mjs --name learning-round-c-migration \
 //     --title "learning round C" --after 0073_learning_round_b \
 //     --migration infra/aws/database/migrations/0074_learning_round_c.sql [--migration ...] [--preview <path> ...]
+//     [--concurrent-index <path> ...]   (one of the migrations, holding one CREATE INDEX CONCURRENTLY; see README.md)
 // Writes the workflow, runner, contract test and guard file (set to plan). Refuses to overwrite anything.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -10,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 
 const TEMPLATE_DIR = path.dirname(fileURLToPath(import.meta.url))
 
-export function runnerValues({ name, title, after, migrations, previews }) {
+export function runnerValues({ name, title, after, migrations, previews, concurrentIndexes = [] }) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*-migration$/.test(name ?? '')) throw new Error('--name must be kebab-case and end in -migration')
   if (!/^[a-z0-9][a-zA-Z0-9 ]*$/.test(title ?? '')) throw new Error('--title must be plain words, e.g. "learning round C"')
   if (!/^\d{4}_[a-z0-9_]+$/.test(after ?? '')) throw new Error('--after must name the migration that must already be applied, e.g. 0073_learning_round_b')
@@ -20,8 +21,11 @@ export function runnerValues({ name, title, after, migrations, previews }) {
   }
   const sorted = [...migrations].sort()
   if (sorted.join() !== migrations.join() || new Set(migrations).size !== migrations.length) throw new Error('--migration files must be distinct and in numeric order')
-  const preview = previews?.length ? previews : migrations
+  for (const file of concurrentIndexes) if (!migrations.includes(file)) throw new Error(`--concurrent-index ${file} is not one of the migrations`)
+  // A concurrent index runs outside a transaction, so it is never previewed in one.
+  const preview = previews?.length ? previews : migrations.filter((file) => !concurrentIndexes.includes(file))
   for (const file of preview) if (!migrations.includes(file)) throw new Error(`--preview ${file} is not one of the migrations`)
+  for (const file of preview) if (concurrentIndexes.includes(file)) throw new Error(`--preview ${file} is a concurrent index, which cannot be previewed in a transaction`)
 
   const marker = name.toUpperCase().replaceAll('-', '_')
   const short = name.replace(/-migration$/, '')
@@ -38,6 +42,8 @@ export function runnerValues({ name, title, after, migrations, previews }) {
     MIGRATION_PATHS_YAML: migrations.map((file) => `      - ${file}`).join('\n'),
     MIGRATION_ARRAY: migrations.map((file) => `  "${file}"`).join('\n'),
     PREVIEW_ARRAY: preview.map((file) => `  "${file}"`).join('\n'),
+    CONCURRENT_ARRAY: concurrentIndexes.map((file) => `  "${file}"`).join('\n'),
+    CONCURRENT_NAMES_JS: concurrentIndexes.map((file) => `  '${path.basename(file, '.sql')}',`).join('\n'),
     RUNNER_FILES: [...migrations, `scripts/aws/${name}.sh`, `scripts/aws/${name}.test.mjs`].join(' '),
     MIGRATION_NAMES_JS: migrations.map((file) => `  '${path.basename(file, '.sql')}',`).join('\n'),
   }
@@ -76,7 +82,7 @@ export function writeRunner(root, options) {
 }
 
 function parseArgs(argv) {
-  const options = { migrations: [], previews: [], root: process.cwd() }
+  const options = { migrations: [], previews: [], concurrentIndexes: [], root: process.cwd() }
   for (let index = 0; index < argv.length; index += 2) {
     const [flag, value] = [argv[index], argv[index + 1]]
     if (value === undefined) throw new Error(`${flag} needs a value`)
@@ -85,6 +91,7 @@ function parseArgs(argv) {
     else if (flag === '--after') options.after = value
     else if (flag === '--migration') options.migrations.push(value)
     else if (flag === '--preview') options.previews.push(value)
+    else if (flag === '--concurrent-index') options.concurrentIndexes.push(value)
     else if (flag === '--root') options.root = value
     else throw new Error(`unknown option ${flag}`)
   }
