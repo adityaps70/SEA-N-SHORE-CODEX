@@ -329,7 +329,7 @@ jobs:
           aws s3api get-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" "$WORK/sealed" > "$WORK/object.json"
           jq -e '.ServerSideEncryption == "aws:kms" and .BucketKeyEnabled == true and (.SSEKMSKeyId | startswith("arn:aws:kms:ap-south-1:310356785722:key/"))' "$WORK/object.json" >/dev/null || { echo "The hand-off object is not encrypted with the hand-off key." >&2; exit 1; }
           aws s3api delete-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" >/dev/null
-          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query KeyCount --output text)"
+          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query 'length(Contents || `[]`)' --output text)"
           echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT"
           [[ "$LEFT" == 0 ]] || { echo "The hand-off bucket still holds sessions objects." >&2; exit 1; }
           node scripts/load-test/sessions.mjs open "$WORK/private.pem" "$WORK/sealed" > "$WORK/sessions.json"
@@ -349,7 +349,7 @@ jobs:
         run: |
           set -euo pipefail
           aws s3api delete-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" >/dev/null
-          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query KeyCount --output text)"
+          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query 'length(Contents || `[]`)' --output text)"
           echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT"
           [[ "$LEFT" == 0 ]]
 
@@ -629,7 +629,7 @@ jobs:
         run: |
           set -euo pipefail
           aws s3api delete-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" >/dev/null
-          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query KeyCount --output text)"
+          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query 'length(Contents || `[]`)' --output text)"
           echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT" | tee -a "$GITHUB_STEP_SUMMARY"
           [[ "$LEFT" == 0 ]]
 

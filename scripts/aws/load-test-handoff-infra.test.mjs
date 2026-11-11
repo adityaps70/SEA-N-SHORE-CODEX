@@ -94,6 +94,10 @@ test('guarded, exact-head, plan by default, only the hand-off targets, applies o
   // After the apply: no further change, and the live shape exactly as approved, with the bucket empty.
   assert.match(script, /classify "\$WORK_DIR\/after\.json" \| grep -qx 'LOAD_TEST_HANDOFF_PLAN=NO_CHANGES'/)
   assert.match(script, /key=enabled:True rotation=True key_policy=true encryption=true versioning=never public_blocked=true lifecycle_1_day=true bucket_policy=true task_put_only=true objects=0/)
+  // Run 42980081657: a never-versioned bucket returns no output, and KeyCount reads None when the bucket is empty.
+  assert.match(script, /get-bucket-versioning [^\n]*--output json \| jq -rs '\.\[0\]\.Status \/\/ "never"'/)
+  assert.match(script, /--query 'length\(Contents \|\| `\[\]`\)' --output text/)
+  assert.doesNotMatch(script, /--query KeyCount/)
   // It reads names, settings and the object count only: never an object.
   assert.doesNotMatch(script, /s3api get-object --bucket "\$BUCKET"|s3 cp|s3api put-object/)
 })
