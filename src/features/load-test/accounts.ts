@@ -12,8 +12,9 @@ import { onboardingActivationSchema, type OnboardingActivationInput } from '@/fe
  *   plan         counts only;
  *   create-once  creates what is missing (safe to repeat);
  *   delete-once  deletes every flagged account, the community and their Cognito users, and refuses anything unflagged;
- *   sessions     sets a fresh random password per account, signs each in, and prints the sessions encrypted to the
- *                run's public key (nothing readable reaches the logs);
+ *   sessions     sets a fresh random password per account, signs each in, seals the sessions to the run's public
+ *                key and stores them as one S3 object for the runner (infra/aws/app/load-test-handoff.tf); the log
+ *                gets counts only;
  *   sign-out     ends every test account's sessions (Cognito global sign-out) after a run.
  * Every line printed is a count or a status: no email, name, password or token.
  */
@@ -52,7 +53,7 @@ export function randomLoadTestPassword() {
 export type LoadTestSession = { index: number; accessToken: string; refreshToken: string | null }
 
 /**
- * The sessions bundle as printed: AES-256-GCM over the JSON, the AES key wrapped with RSA-OAEP-SHA256 to the run's
+ * The sessions bundle as stored: AES-256-GCM over the JSON, the AES key wrapped with RSA-OAEP-SHA256 to the run's
  * public key. Only the runner that generated the key pair can read it.
  */
 export function encryptSessions(sessions: LoadTestSession[], publicKeyPem: string) {
@@ -82,15 +83,12 @@ export type LoadTestAccountDeps = {
   randomPassword?: () => string
   /** The deployed build's ids for the read-only server actions the signed-in load test calls (not secret). */
   readActionIds?: () => Promise<Record<string, string>>
+  /**
+   * Stores the sealed sessions as the run's one hand-off object (S3, SSE-KMS; the task may only write it). Run
+   * 42486602879 and the 9 Nov run: a log of about 200 KB printed at exit never fully reached CloudWatch.
+   */
+  storeSealed?: (sealed: string) => Promise<void>
   log(line: string): void
-}
-
-const SEALED_PART_LENGTH = 8000
-
-export function sealedParts(sealed: string) {
-  const parts: string[] = []
-  for (let i = 0; i < sealed.length; i += SEALED_PART_LENGTH) parts.push(sealed.slice(i, i + SEALED_PART_LENGTH))
-  return parts
 }
 
 /** The read-only server actions the signed-in mix calls, by file and export name. */
@@ -251,10 +249,10 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
       result.push({ index, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
     }
     deps.log(`LOAD_TEST_SESSIONS count=${result.length}`)
-    // Container logs split long lines, so the sealed bundle is printed in numbered parts the runner joins.
+    if (!deps.storeSealed) throw new Error('load_test_handoff_missing')
     const sealed = encryptSessions(result, publicKeyPem)
-    const parts = sealedParts(sealed)
-    parts.forEach((part, i) => deps.log(`LOAD_TEST_SESSIONS_SEALED_PART ${i + 1}/${parts.length} ${part}`))
+    await deps.storeSealed(sealed)
+    deps.log(`LOAD_TEST_SESSIONS_STORED count=${result.length} bytes=${Buffer.byteLength(sealed)}`)
     if (deps.readActionIds) deps.log(`LOAD_TEST_ACTIONS ${JSON.stringify(await deps.readActionIds())}`)
     deps.log('LOAD_TEST_SESSIONS_VERIFIED=true')
   }

@@ -15,7 +15,12 @@ name: AWS Load Test
 # IST, the branch head still the armed merge commit, and no earlier nightly start on that commit.
 # Signed in, a sessions job gets each account a fresh session sealed end to end (scripts/load-test/sessions.mjs,
 # GitHub secret LOAD_TEST_HANDOFF_KEY), a monitor job stops the run if Aurora stays at its maximum ACU for 5
-# minutes, and every session is signed out afterwards.
+# minutes, and every session is signed out afterwards. The sessions task hands the sealed sessions over as one
+# S3 object (infra/aws/app/load-test-handoff.tf): the sessions job reads it, deletes it and proves the prefix is
+# empty, and the report job deletes it again whatever happened.
+# "sessions-only-once <sha>" (owner-merged arm; the merge itself starts it, as it sends no traffic to the site):
+# the hand-off proof. It creates the 50 accounts, hands their sessions off, checks the count, opens each shard's
+# part with no k6 at all, then signs out and deletes everything and reports what is left (0).
 # "plan" sends no traffic to the site: it runs the contract test and the whole pipeline against a local
 # server on the runner.
 
@@ -57,6 +62,7 @@ jobs:
       pull-requests: read
     outputs:
       approval: ${{ steps.apply_guard.outputs.approval }}
+      action: ${{ steps.apply_guard.outputs.action }}
       skip: ${{ steps.plan_scope.outputs.skip }}
     timeout-minutes: 10
     steps:
@@ -78,6 +84,7 @@ jobs:
             plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
           esac
+          [[ "$ACTION" =~ ^[a-z-]+$ ]] && echo "action=$ACTION" >> "$GITHUB_OUTPUT"
           echo "Guard action: $ACTION"
 
       - name: Require an owner-merged arm naming the exact SHA
@@ -183,13 +190,14 @@ jobs:
       - name: Approved for the load test
         run: echo "Armed by an owner-merged arm PR. Only the nightly start at 01:05 IST sends traffic; a push run sends none."
 
-  # Started only by the nightly schedule (01:05 IST). Refuses a start outside 01:00-01:45 IST (the ramp then ends
-  # by about 02:20, inside the 01:00-03:00 window), and a second start on the same armed commit.
+  # Traffic is started only by the nightly start (01:05 IST, from main: by hand, or its schedule as a backup). Refuses
+  # a start outside 01:00-01:45 IST (the ramp then ends by about 02:20, inside the 01:00-03:00 window), and a second
+  # start on the same armed commit. The sessions-only proof sends no traffic: its arm's merge (the push) starts it, once.
   window:
     needs:
       - apply-gate
       - apply-approval
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && github.event_name == 'workflow_dispatch' }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.apply-gate.outputs.action == 'sessions-only-once')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -215,6 +223,7 @@ jobs:
           case "$(cut -d' ' -f1 < scripts/aws/load-test-action.txt)" in
             run-once) echo "mix=signed-out" >> "$GITHUB_OUTPUT" ;;
             run-signed-in-once) echo "mix=signed-in" >> "$GITHUB_OUTPUT" ;;
+            sessions-only-once) echo "mix=sessions-only" >> "$GITHUB_OUTPUT" ;;
             *) echo "Not armed for a run." >&2; exit 1 ;;
           esac
 
@@ -222,9 +231,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          MIX: ${{ steps.mix.outputs.mix }}
         shell: bash
         run: |
           set -euo pipefail
+          # The sessions-only proof: only from its arm's merge (a push), never re-run, and no traffic to the site.
+          if [[ "$MIX" == sessions-only || "$GITHUB_EVENT_NAME" == push ]]; then
+            [[ "$MIX" == sessions-only && "$GITHUB_EVENT_NAME" == push ]] || { echo "Only the sessions-only proof starts from its arm's merge; traffic needs the nightly start." >&2; exit 1; }
+            [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || { echo "The sessions-only proof runs once per arm; re-arm for another." >&2; exit 1; }
+            echo "LOAD_TEST_SESSIONS_ONLY_NO_TRAFFIC"
+            exit 0
+          fi
           [[ "$TRIGGERING_ACTOR" == "github-actions[bot]" ]] || { echo "Only the nightly start may begin the load test (started by $TRIGGERING_ACTOR)." >&2; exit 1; }
           NOW=$(date -u +%s)
           START=$(date -u -d "$(date -u +%F) 19:30:00" +%s)
@@ -242,6 +259,7 @@ jobs:
 
       - name: Pick one public job page and one public course page
         id: pages
+        if: steps.mix.outputs.mix != 'sessions-only'
         shell: bash
         run: |
           set -euo pipefail
@@ -258,19 +276,23 @@ jobs:
           echo "started_at=$(date -u +%Y-%m-%dT%H:%M:00Z)" >> "$GITHUB_OUTPUT"
           echo "LOAD_TEST_WINDOW_OPEN"
 
-  # Signed-in mix only: each test account gets a fresh session, sealed to a key pair made here; the private key never
-  # leaves this job. The shards get their own accounts' sessions re-sealed with LOAD_TEST_HANDOFF_KEY.
+  # Signed-in mix and the sessions-only proof: each test account gets a fresh session, sealed to a key pair made here;
+  # the private key never leaves this job. The sessions task stores the sealed sessions as the run's one S3 object;
+  # this job reads it, deletes it and proves the prefix is empty. The shards get their own accounts' sessions
+  # re-sealed with LOAD_TEST_HANDOFF_KEY.
   sessions:
     needs:
       - apply-gate
       - apply-approval
       - window
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' && needs.window.outputs.mix == 'signed-in' }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' && (needs.window.outputs.mix == 'signed-in' || needs.window.outputs.mix == 'sessions-only') }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 20
     env:
       AWS_REGION: ap-south-1
+      LOAD_TEST_HANDOFF_BUCKET: sea-n-shore-staging-310356785722-load-test-handoff
+      LOAD_TEST_HANDOFF_OBJECT: sessions/${{ github.run_id }}-${{ github.run_attempt }}.sealed
     outputs:
       sealed: ${{ steps.handoff.outputs.sealed }}
       actions: ${{ steps.handoff.outputs.actions }}
@@ -299,19 +321,37 @@ jobs:
           grep -E '^LOAD_TEST_ACCOUNTS_(CREATED|CREATE_ONCE_VERIFIED)' <<<"$CREATED"
           grep -q '^LOAD_TEST_ACCOUNTS_CREATE_ONCE_VERIFIED=true$' <<<"$CREATED" || { echo "The test accounts were not created." >&2; exit 1; }
           PUBLIC_KEY="$(node scripts/load-test/sessions.mjs keypair "$WORK")"
-          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY")" || { grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${OUTPUT:-}" >&2 || true; exit 1; }
+          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY" "$LOAD_TEST_HANDOFF_OBJECT")" || { grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${OUTPUT:-}" >&2 || true; exit 1; }
           grep -q '^LOAD_TEST_SESSIONS_READY=true$' <<<"$OUTPUT" || { echo "The host did not prepare the sessions." >&2; exit 1; }
-          URL="$(sed -n 's/^LOAD_TEST_SESSIONS_URL //p' <<<"$OUTPUT" | head -1)"
+          grep -E '^LOAD_TEST_SESSIONS_STORED count=50 bytes=[0-9]+$' <<<"$OUTPUT"
           ACTIONS="$(sed -n 's/^LOAD_TEST_ACTIONS //p' <<<"$OUTPUT" | head -1)"
-          curl -fsS --max-time 60 -o "$WORK/sealed" "$URL"
-          aws s3 rm --only-show-errors "s3://sea-n-shore-staging-310356785722-migration/ci-checkouts/load-test-sessions/${GITHUB_RUN_ID}.sealed"
+          # The run's one hand-off object: read it (it must carry the hand-off key), delete it, prove nothing is left.
+          aws s3api get-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" "$WORK/sealed" > "$WORK/object.json"
+          jq -e '.ServerSideEncryption == "aws:kms" and .BucketKeyEnabled == true and (.SSEKMSKeyId | startswith("arn:aws:kms:ap-south-1:310356785722:key/"))' "$WORK/object.json" >/dev/null || { echo "The hand-off object is not encrypted with the hand-off key." >&2; exit 1; }
+          aws s3api delete-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" >/dev/null
+          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query KeyCount --output text)"
+          echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT"
+          [[ "$LEFT" == 0 ]] || { echo "The hand-off bucket still holds sessions objects." >&2; exit 1; }
           node scripts/load-test/sessions.mjs open "$WORK/private.pem" "$WORK/sealed" > "$WORK/sessions.json"
+          jq -e 'type == "array" and length == 50 and all(.[]; (.accessToken | type) == "string" and (.accessToken | length) > 0)' "$WORK/sessions.json" >/dev/null || { echo "The opened hand-off does not hold 50 sessions." >&2; exit 1; }
+          echo "LOAD_TEST_SESSIONS_OPENED count=50"
           SEALED="$(node scripts/load-test/sessions.mjs seal-shards "$WORK/sessions.json" "$LOAD_TEST_SHARDS")"
           jq -e 'type == "object" and length == ('"$LOAD_TEST_SHARDS"')' <<<"$SEALED" >/dev/null
           jq -e '.loadTopFeedPage and .loadUnreadNotificationCount' <<<"$ACTIONS" >/dev/null
           echo "sealed=$SEALED" >> "$GITHUB_OUTPUT"
           echo "actions=$ACTIONS" >> "$GITHUB_OUTPUT"
           echo "LOAD_TEST_SESSIONS_HANDED_OFF shards=$LOAD_TEST_SHARDS"
+
+      # Whatever happened above: the run's hand-off object is gone and the sessions/ prefix is empty.
+      - name: Delete the hand-off object and count what is left
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3api delete-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" >/dev/null
+          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query KeyCount --output text)"
+          echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT"
+          [[ "$LEFT" == 0 ]]
 
       - name: Delete the host checkout bundle
         if: always()
@@ -324,7 +364,7 @@ jobs:
       - apply-gate
       - apply-approval
       - window
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' && needs.window.outputs.mix != 'sessions-only' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 50
@@ -406,6 +446,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Install the pinned k6
+        if: env.LOAD_TEST_MIX != 'sessions-only'
         shell: bash
         run: |
           set -euo pipefail
@@ -413,15 +454,29 @@ jobs:
           echo "$K6_DEB_SHA256  /tmp/k6.deb" | sha256sum -c -
           sudo dpkg -i /tmp/k6.deb
 
-      - name: Open this shard's sessions (signed-in mix)
-        if: env.LOAD_TEST_MIX == 'signed-in'
+      - name: Open this shard's sessions (signed-in mix and the sessions-only proof)
+        if: env.LOAD_TEST_MIX == 'signed-in' || env.LOAD_TEST_MIX == 'sessions-only'
         env:
           LOAD_TEST_HANDOFF_KEY: ${{ secrets.LOAD_TEST_HANDOFF_KEY }}
           LOAD_TEST_SHARD_SEALED: ${{ fromJSON(needs.sessions.outputs.sealed || '{}')[format('{0}', matrix.shard)] }}
         shell: bash
-        run: node scripts/load-test/sessions.mjs open-shard "$LOAD_TEST_SESSIONS_FILE"
+        run: |
+          set -euo pipefail
+          node scripts/load-test/sessions.mjs open-shard "$LOAD_TEST_SESSIONS_FILE"
+          mkdir -p /tmp/shard
+          jq 'length' "$LOAD_TEST_SESSIONS_FILE" > "/tmp/shard/handoff-count-$LOAD_TEST_SHARD.txt"
+
+      # The sessions-only proof stops here: no k6, no request to the site.
+      - name: Sessions-only proof (no traffic)
+        if: env.LOAD_TEST_MIX == 'sessions-only'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "$LOAD_TEST_SESSIONS_FILE"
+          echo "LOAD_TEST_SHARD_PROOF_NO_TRAFFIC shard=$LOAD_TEST_SHARD"
 
       - name: Run this shard with the stop rules
+        if: env.LOAD_TEST_MIX != 'sessions-only'
         shell: bash
         run: |
           set -euo pipefail
@@ -488,6 +543,7 @@ jobs:
           path: /tmp/shards
 
       - name: Load test report (aggregates only)
+        if: needs.window.outputs.mix != 'sessions-only'
         shell: bash
         run: |
           set -euo pipefail
@@ -524,6 +580,7 @@ jobs:
       # The read-only capacity report's usage section over the test window: ALB, ECS, Aurora, CloudFront and
       # Lambda metrics (describe, get and list only; scripts/aws/capacity-media-report-guard.test.mjs).
       - name: Site metrics during the test (read-only)
+        if: needs.window.outputs.mix != 'sessions-only'
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
           REPORT_SECTIONS: usage
@@ -535,9 +592,23 @@ jobs:
           export REPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
           node scripts/aws/capacity-media-report.cjs
 
-      # Signed-in mix: every test account's sessions end now (Cognito global sign-out), whatever happened above.
+      # The sessions-only proof: every shard opened its part, and the parts add up to the 50 sessions.
+      - name: Sessions-only proof (counts only)
+        if: needs.window.outputs.mix == 'sessions-only'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t COUNTS < <(find /tmp/shards -name 'handoff-count-*.txt' 2>/dev/null)
+          SUM=0
+          for file in "${COUNTS[@]}"; do VALUE="$(tr -d '[:space:]' < "$file")"; [[ "$VALUE" =~ ^[0-9]+$ ]]; SUM=$((SUM + VALUE)); done
+          echo "LOAD_TEST_HANDOFF_SHARDS opened=${#COUNTS[@]} of=$LOAD_TEST_SHARDS sessions=$SUM" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ "${#COUNTS[@]}" == "$LOAD_TEST_SHARDS" && "$SUM" == 50 ]] || { echo "The shards did not open all 50 sessions." >&2; exit 1; }
+          echo "LOAD_TEST_HANDOFF_PROOF_VERIFIED=true"
+
+      # Signed-in mix and the sessions-only proof: every test account's sessions end now (Cognito global sign-out),
+      # whatever happened above.
       - name: Sign out and delete every test account (signed-in mix)
-        if: always() && needs.window.outputs.mix == 'signed-in'
+        if: always() && (needs.window.outputs.mix == 'signed-in' || needs.window.outputs.mix == 'sessions-only')
         shell: bash
         run: |
           set -euo pipefail
@@ -548,7 +619,21 @@ jobs:
           grep -E '^LOAD_TEST_ACCOUNTS_(DELETED|AFTER_DELETE|DELETE_ONCE_VERIFIED)' <<<"$DELETED" | tee -a "$GITHUB_STEP_SUMMARY"
           grep -q '^LOAD_TEST_ACCOUNTS_DELETE_ONCE_VERIFIED=true$' <<<"$DELETED"
 
+      # Whatever happened above: the run's hand-off object is gone and the sessions/ prefix is empty.
+      - name: Delete the hand-off object and count what is left
+        if: always() && (needs.window.outputs.mix == 'signed-in' || needs.window.outputs.mix == 'sessions-only')
+        env:
+          LOAD_TEST_HANDOFF_BUCKET: sea-n-shore-staging-310356785722-load-test-handoff
+          LOAD_TEST_HANDOFF_OBJECT: sessions/${{ github.run_id }}-${{ github.run_attempt }}.sealed
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3api delete-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" >/dev/null
+          LEFT="$(aws s3api list-objects-v2 --bucket "$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions/ --query KeyCount --output text)"
+          echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ "$LEFT" == 0 ]]
+
       - name: Delete the host checkout bundle
-        if: always() && needs.window.outputs.mix == 'signed-in'
+        if: always() && (needs.window.outputs.mix == 'signed-in' || needs.window.outputs.mix == 'sessions-only')
         shell: bash
         run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup

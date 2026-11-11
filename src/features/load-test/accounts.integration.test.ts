@@ -86,14 +86,19 @@ describe('load-test accounts (Round ARCH)', () => {
     expect(lines.join('\n')).not.toMatch(/@|Load Test \d/)
   })
 
-  it('seals sessions to the run\'s public key, so nothing readable reaches the logs', async () => {
+  it('seals sessions to the run\'s public key and hands them off as one stored object, with counts only in the log', async () => {
     const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
     lines.length = 0
-    await accounts().sessions(publicKey.export({ type: 'spki', format: 'pem' }).toString())
-    const parts = lines.filter((line) => line.startsWith('LOAD_TEST_SESSIONS_SEALED_PART '))
-    expect(parts.length).toBeGreaterThan(0)
-    const sealed = parts.map((line) => line.split(' ')[2]).join('')
-    expect(lines.join('\n')).not.toMatch(/access-|refresh-|loadtest-/)
+    const stored: string[] = []
+    await createLoadTestAccounts({ ...accountsDeps(), storeSealed: async (value) => { stored.push(value) } })
+      .sessions(publicKey.export({ type: 'spki', format: 'pem' }).toString())
+    expect(stored).toHaveLength(1)
+    const sealed = stored[0]!
+    // The log has counts and statuses only: no sealed part, token or address.
+    expect(lines.join('\n')).not.toMatch(/access-|refresh-|loadtest-|SEALED_PART/)
+    expect(lines.join('\n')).not.toContain(sealed.slice(0, 40))
+    expect(lines).toContain(`LOAD_TEST_SESSIONS_STORED count=${LOAD_TEST_ACCOUNT_COUNT} bytes=${Buffer.byteLength(sealed)}`)
+    expect(lines.at(-1)).toBe('LOAD_TEST_SESSIONS_VERIFIED=true')
     const [wrapped, iv, tag, body] = sealed.split('.').map((part) => Buffer.from(part, 'base64'))
     const key = privateDecrypt({ key: privateKey, padding: cryptoConstants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, wrapped!)
     const decipher = createDecipheriv('aes-256-gcm', key, iv!)
@@ -103,6 +108,15 @@ describe('load-test accounts (Round ARCH)', () => {
     expect(sessions[0]).toEqual({ index: 1, accessToken: `access-${loadTestEmail(1)}`, refreshToken: `refresh-${loadTestEmail(1)}` })
     await accounts().signOut()
     expect(users.get(loadTestEmail(50))!.signedOut).toBe(1)
+  })
+
+  it('refuses to hand off sessions without the S3 store, and reports no success when the store fails', async () => {
+    const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    const pem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    lines.length = 0
+    await expect(accounts().sessions(pem)).rejects.toThrow('load_test_handoff_missing')
+    await expect(createLoadTestAccounts({ ...accountsDeps(), storeSealed: async () => { throw new Error('AccessDenied') } }).sessions(pem)).rejects.toThrow('AccessDenied')
+    expect(lines.join('\n')).not.toMatch(/LOAD_TEST_SESSIONS_(STORED|VERIFIED)/)
   })
 
   it('refuses to delete when a flagged profile is not a test account, and otherwise deletes everything it made', async () => {

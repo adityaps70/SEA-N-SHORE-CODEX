@@ -402,6 +402,25 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-migration/ci-checkouts/*"
       },
       {
+        # Round ARCH (signed-in load test): the one sealed sessions object the sessions task wrote is read and deleted
+        # by the runner, which lists only the sessions/ prefix to prove nothing is left (app/load-test-handoff.tf).
+        Sid      = "LoadTestSessionsHandoffObjects"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:DeleteObject"]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-load-test-handoff/sessions/*"
+      },
+      {
+        Sid      = "LoadTestSessionsHandoffList"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-load-test-handoff"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = ["sessions/", "sessions/*"]
+          }
+        }
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
