@@ -280,6 +280,7 @@ describe('feed queries: organization posts', () => {
       listFeedRows: vi.fn(async () => rows),
       getViewerState: vi.fn(async () => ({ postReactions: new Map(), likedPostIds: new Set<string>(), savedPostIds: new Set<string>(), pollVotes: new Map<string, string>() })),
       getComments: vi.fn(async () => []),
+      getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
       listCompanyIdentities: vi.fn(async () => [
         { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG Carriers', logoPath: 'companies/nordic/logo.png' },
       ]),
