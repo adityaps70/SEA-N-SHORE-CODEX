@@ -82,8 +82,8 @@ test('the task log is read across every page, and the runner waits for the task\
   try {
     // A fake aws CLI: three pages, the last returning its own token again (the end of the stream).
     const pages = {
-      '': { events: [{ message: 'LOAD_TEST_SESSIONS_SEALED_PART 1/2 aaa' }], nextForwardToken: 'f/1' },
-      'f/1': { events: [{ message: 'LOAD_TEST_SESSIONS_SEALED_PART 2/2 bbb' }], nextForwardToken: 'f/2' },
+      '': { events: [{ message: 'LOAD_TEST_SESSIONS count=50' }], nextForwardToken: 'f/1' },
+      'f/1': { events: [{ message: 'LOAD_TEST_SESSIONS_STORED count=50 bytes=1234' }], nextForwardToken: 'f/2' },
       'f/2': { events: [{ message: 'LOAD_TEST_SESSIONS_VERIFIED=true' }], nextForwardToken: 'f/3' },
       'f/3': { events: [], nextForwardToken: 'f/3' },
     }
@@ -95,8 +95,27 @@ jq -c --arg t "$token" '.[$t]' "${dir}/pages.json"
     chmodSync(join(dir, 'aws'), 0o755)
     const run = spawnSync('bash', ['-c', `set -euo pipefail\nAWS_REGION=x LOG_GROUP=g LOG_STREAM=s\n${fn}read_task_log`], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}` } })
     assert.equal(run.status, 0, run.stderr)
-    assert.deepEqual(run.stdout.trim().split('\n'), ['LOAD_TEST_SESSIONS_SEALED_PART 1/2 aaa', 'LOAD_TEST_SESSIONS_SEALED_PART 2/2 bbb', 'LOAD_TEST_SESSIONS_VERIFIED=true'])
+    assert.deepEqual(run.stdout.trim().split('\n'), ['LOAD_TEST_SESSIONS count=50', 'LOAD_TEST_SESSIONS_STORED count=50 bytes=1234', 'LOAD_TEST_SESSIONS_VERIFIED=true'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// The S3 hand-off (owner-approved): the sessions task writes the sealed sessions to the run's one object in the
+// hand-off bucket; nothing of them reaches the task log, the host or a link. The runner reads and deletes it.
+test('sessions are handed off as one S3 object, with counts only in the log', () => {
+  // The host passes the run's object key, checked, into the task, and never touches the object itself.
+  assert.match(script, /\[\[ "\$\{LOAD_TEST_SESSIONS_OBJECT_KEY:-\}" =~ \^sessions\/\[0-9\]\{6,20\}-\[0-9\]\{1,3\}\\\.sealed\$ \]\]/)
+  assert.match(script, /\{name:"LOAD_TEST_SESSIONS_OBJECT_KEY",value:\$object\}/)
+  assert.doesNotMatch(script, /SEALED_PART|presign|aws s3 cp|s3api (get|put|delete)-object|ci-checkouts\/load-test-sessions/)
+  assert.match(script, /\[\[ "\$STORED" =~ \^LOAD_TEST_SESSIONS_STORED\\ count=50\\ bytes=\[0-9\]\+\$ \]\]/)
+  // The worker writes once, never overwrites, sends no encryption header (the bucket's KMS default applies), and has
+  // no read, list or delete of S3.
+  assert.match(worker, /const HANDOFF_BUCKET = 'sea-n-shore-staging-310356785722-load-test-handoff'/)
+  assert.match(worker, /new PutObjectCommand\(\{ Bucket: HANDOFF_BUCKET, Key: handoffKey, Body: sealed, ContentType: 'application\/octet-stream', IfNoneMatch: '\*' \}\)/)
+  assert.doesNotMatch(worker, /ServerSideEncryption|SSEKMS|GetObjectCommand|DeleteObjectCommand|ListObjects/)
+  assert.match(worker, /\^sessions\\\/\[0-9\]\{6,20\}-\[0-9\]\{1,3\}\\\.sealed\$/)
+  // The service stores it and logs a count and a size, never a part of it.
+  assert.match(service, /await deps\.storeSealed\(sealed\)\n\s+deps\.log\(`LOAD_TEST_SESSIONS_STORED count=\$\{result\.length\} bytes=\$\{Buffer\.byteLength\(sealed\)\}`\)/)
+  assert.doesNotMatch(service, /SEALED_PART|deps\.log\([^)]*sealed\}/)
 })

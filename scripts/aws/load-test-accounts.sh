@@ -31,12 +31,14 @@ if [[ -n "${LOAD_TEST_ACCOUNTS_ACTION:-}" ]]; then ACTION="$(tr -d '[:space:]' <
 case "$ACTION" in plan|create-once|delete-once) ;; *) echo "Unsupported load-test accounts action: $ACTION" >&2; exit 1 ;; esac
 # The armed signed-in load test (aws-load-test.yml, guarded by its own owner-merged arm) creates the accounts and gets
 # their sessions before the run, and signs them out and deletes them after it. Each needs the run id; sessions also
-# need the run's public key.
+# need the run's public key and its hand-off object key (sessions/<run id>-<attempt>.sealed).
 if [[ -n "${LOAD_TEST_SESSIONS_MODE:-}" ]]; then
   case "$LOAD_TEST_SESSIONS_MODE" in create-once|sessions|sign-out|delete-once) ACTION="$LOAD_TEST_SESSIONS_MODE" ;; *) echo "Unsupported sessions mode." >&2; exit 1 ;; esac
   [[ "${LOAD_TEST_RUN_ID:-}" =~ ^[0-9]{6,20}$ ]] || { echo "LOAD_TEST_RUN_ID is required." >&2; exit 1; }
   if [[ "$ACTION" == sessions ]]; then
     [[ "${LOAD_TEST_SESSIONS_PUBLIC_KEY:-}" =~ ^[A-Za-z0-9+/=]{300,2000}$ ]] || { echo "The run's public key is missing." >&2; exit 1; }
+    # The run's one hand-off object (infra/aws/app/load-test-handoff.tf): the task writes it, the runner reads it.
+    [[ "${LOAD_TEST_SESSIONS_OBJECT_KEY:-}" =~ ^sessions/[0-9]{6,20}-[0-9]{1,3}\.sealed$ ]] || { echo "The run's hand-off object key is missing." >&2; exit 1; }
   fi
 fi
 if [[ "$ACTION" != "plan" ]]; then
@@ -51,7 +53,7 @@ IMAGE="$(aws ecs describe-task-definition --region "$AWS_REGION" --task-definiti
 echo "LOAD_TEST_ACCOUNTS_TASK_DEFINITION=${TASKDEF##*/}"
 echo "LOAD_TEST_ACCOUNTS_IMAGE_TAG=${IMAGE##*:}"
 
-ENVIRONMENT="$(jq -nc --arg mode "$ACTION" --arg key "${LOAD_TEST_SESSIONS_PUBLIC_KEY:-}" '[{name:"LOAD_TEST_ACCOUNTS_MODE",value:$mode}] + (if $key == "" then [] else [{name:"LOAD_TEST_SESSIONS_PUBLIC_KEY",value:$key}] end)')"
+ENVIRONMENT="$(jq -nc --arg mode "$ACTION" --arg key "${LOAD_TEST_SESSIONS_PUBLIC_KEY:-}" --arg object "${LOAD_TEST_SESSIONS_OBJECT_KEY:-}" '[{name:"LOAD_TEST_ACCOUNTS_MODE",value:$mode}] + (if $key == "" then [] else [{name:"LOAD_TEST_SESSIONS_PUBLIC_KEY",value:$key},{name:"LOAD_TEST_SESSIONS_OBJECT_KEY",value:$object}] end)')"
 OVERRIDES="$(jq -nc --arg worker "$WORKER" --argjson environment "$ENVIRONMENT" '{containerOverrides:[{name:"web",command:["node",$worker],environment:$environment}]}')"
 NETWORK="$(jq -c '.services[0].networkConfiguration' <<<"$SERVICE_JSON")"
 
@@ -101,18 +103,12 @@ tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_ACCOUNTS_[A-Z_]+([= ].*)?' || true
 
 [[ "$EXIT_CODE" == "0" ]] || { echo "The load-test accounts task failed: $(jq -r '.tasks[0].stoppedReason // empty' <<<"$TASK_JSON")" >&2; exit 1; }
 if [[ "$ACTION" == "sessions" ]]; then
-  # The sealed bundle can only be opened with the run's private key, which never leaves the runner. It goes up to the
-  # CI bucket and the runner fetches it once through a short-lived link, then deletes it.
+  # The task stored the sealed bundle as the run's hand-off object (S3, SSE-KMS); it can only be opened with the run's
+  # private key, which never leaves the runner. Nothing of it is in the log: the task prints counts only.
   grep -q 'LOAD_TEST_SESSIONS_VERIFIED=true' <<<"$LOGS" || { echo "The sessions were not all created." >&2; exit 1; }
-  PARTS="$(tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_SESSIONS_SEALED_PART [0-9]+/[0-9]+ [A-Za-z0-9+/=.]+' | sort -t' ' -k2,2n -u)"
-  TOTAL="$(head -1 <<<"$PARTS" | sed -E 's#^[^ ]+ [0-9]+/([0-9]+) .*#\1#')"
-  [[ "$TOTAL" =~ ^[0-9]+$ && "$(grep -c . <<<"$PARTS")" == "$TOTAL" ]] || { echo "The sealed sessions are incomplete." >&2; exit 1; }
-  SEALED_FILE="$(mktemp)"
-  trap 'rm -f "$SEALED_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-  sort -t' ' -k2,2n <<<"$PARTS" | sed -E 's#^[^ ]+ [^ ]+ ##' | tr -d '\n' > "$SEALED_FILE"
-  KEY="ci-checkouts/load-test-sessions/${LOAD_TEST_RUN_ID}.sealed"
-  aws s3 cp --region "$AWS_REGION" --only-show-errors "$SEALED_FILE" "s3://sea-n-shore-staging-310356785722-migration/$KEY"
-  echo "LOAD_TEST_SESSIONS_URL $(aws s3 presign --region "$AWS_REGION" --expires-in 600 "s3://sea-n-shore-staging-310356785722-migration/$KEY")"
+  STORED="$(tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_SESSIONS_STORED count=[0-9]+ bytes=[0-9]+' | head -1)"
+  [[ "$STORED" =~ ^LOAD_TEST_SESSIONS_STORED\ count=50\ bytes=[0-9]+$ ]] || { echo "The sealed sessions were not stored for all 50 accounts." >&2; exit 1; }
+  echo "$STORED"
   tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_ACTIONS \{[^}]*\}' | head -1
   echo "LOAD_TEST_SESSIONS_READY=true"
   exit 0

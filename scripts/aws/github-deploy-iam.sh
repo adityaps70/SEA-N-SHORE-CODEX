@@ -12,6 +12,10 @@ MEDIA_BUCKET="sea-n-shore-staging-${EXPECTED_ACCOUNT}-media"
 MEDIA_BUCKET_ARN="arn:aws:s3:::${MEDIA_BUCKET}"
 # Exact-SHA git bundles the runner hands to the bootstrap host (private repo: the host never clones from GitHub).
 CI_CHECKOUT_ARN="arn:aws:s3:::sea-n-shore-staging-${EXPECTED_ACCOUNT}-migration/ci-checkouts/*"
+# Round ARCH (signed-in load test): the runner reads and deletes the one sealed sessions object the sessions task
+# wrote, and lists only the sessions/ prefix to prove nothing is left (infra/aws/app/load-test-handoff.tf).
+LOAD_TEST_HANDOFF_BUCKET_ARN="arn:aws:s3:::sea-n-shore-staging-${EXPECTED_ACCOUNT}-load-test-handoff"
+LOAD_TEST_HANDOFF_SESSIONS_ARN="${LOAD_TEST_HANDOFF_BUCKET_ARN}/sessions/*"
 ECS_EXECUTION_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-ecs-execution"
 ECS_TASK_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-ecs-task"
 OUTBOX_WORKER_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-outbox-worker"
@@ -73,9 +77,11 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" \
   --arg cognitoPool "$COGNITO_POOL_ARN" \
   --arg ciCheckouts "$CI_CHECKOUT_ARN" \
+  --arg handoffBucket "$LOAD_TEST_HANDOFF_BUCKET_ARN" \
+  --arg handoffSessions "$LOAD_TEST_HANDOFF_SESSIONS_ARN" \
   --argjson temporaryProductionAccess "$TEMP_PRODUCTION_ACCESS" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "LoadTestSessionsHandoffObjects" and .Sid != "LoadTestSessionsHandoffList" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
@@ -126,6 +132,17 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
       Action: ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"],
       Resource: $ciCheckouts
     }, {
+      Sid: "LoadTestSessionsHandoffObjects",
+      Effect: "Allow",
+      Action: ["s3:GetObject", "s3:DeleteObject"],
+      Resource: $handoffSessions
+    }, {
+      Sid: "LoadTestSessionsHandoffList",
+      Effect: "Allow",
+      Action: ["s3:ListBucket"],
+      Resource: $handoffBucket,
+      Condition: {StringLike: {"s3:prefix": ["sessions/", "sessions/*"]}}
+    }, {
       Sid: "EcrPublicPullAuth",
       Effect: "Allow",
       Action: ["ecr-public:GetAuthorizationToken"],
@@ -146,7 +163,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken"))' "$CURRENT" > "$CURRENT_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "LoadTestSessionsHandoffObjects" and .Sid != "LoadTestSessionsHandoffList" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -251,6 +268,24 @@ verify_ci_checkout_statement() {
   ' "$file" >/dev/null
 }
 
+verify_load_test_handoff_statements() {
+  local file="$1"
+  jq -e --arg bucket "$LOAD_TEST_HANDOFF_BUCKET_ARN" --arg sessions "$LOAD_TEST_HANDOFF_SESSIONS_ARN" '
+    [.Statement[] | select(.Sid == "LoadTestSessionsHandoffObjects")] as $objects
+    | [.Statement[] | select(.Sid == "LoadTestSessionsHandoffList")] as $list
+    | ($objects | length) == 1
+    and $objects[0].Effect == "Allow"
+    and (($objects[0].Action | sort) == ["s3:DeleteObject", "s3:GetObject"])
+    and $objects[0].Resource == $sessions
+    and ($objects[0] | has("Condition") | not)
+    and ($list | length) == 1
+    and $list[0].Effect == "Allow"
+    and $list[0].Action == ["s3:ListBucket"]
+    and $list[0].Resource == $bucket
+    and $list[0].Condition == {"StringLike": {"s3:prefix": ["sessions/", "sessions/*"]}}
+  ' "$file" >/dev/null
+}
+
 # Round H: signed-in base-image pulls from Amazon ECR Public during the deploy build.
 verify_ecr_public_pull_statements() {
   local file="$1"
@@ -298,6 +333,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_phase5b_ses_identity_manage_statement "$CURRENT"
   verify_phase5b_ses_configuration_set_create_statement "$CURRENT"
   verify_ci_checkout_statement "$CURRENT"
+  verify_load_test_handoff_statements "$CURRENT"
   verify_ecr_public_pull_statements "$CURRENT"
   if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
     verify_phase5b_ses_production_access_request_statement "$CURRENT"
@@ -312,7 +348,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest,CiCheckoutBundles,EcrPublicPullAuth,EcrPublicBearerToken resource=${MEDIA_BUCKET_ARN} ci_checkouts=${CI_CHECKOUT_ARN} cognito_pool=${COGNITO_POOL_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest,CiCheckoutBundles,LoadTestSessionsHandoffObjects,LoadTestSessionsHandoffList,EcrPublicPullAuth,EcrPublicBearerToken resource=${MEDIA_BUCKET_ARN} ci_checkouts=${CI_CHECKOUT_ARN} load_test_handoff=${LOAD_TEST_HANDOFF_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
@@ -340,13 +376,14 @@ verify_phase5b_ses_identity_create_statement "$VERIFIED" || { echo "Phase 5B SES
 verify_phase5b_ses_identity_manage_statement "$VERIFIED" || { echo "Phase 5B SES identity-manage IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_configuration_set_create_statement "$VERIFIED" || { echo "Phase 5B SES configuration-set-create IAM verification failed." >&2; exit 1; }
 verify_ci_checkout_statement "$VERIFIED" || { echo "CI checkout bundle IAM verification failed." >&2; exit 1; }
+verify_load_test_handoff_statements "$VERIFIED" || { echo "Load-test sessions hand-off IAM verification failed." >&2; exit 1; }
 verify_ecr_public_pull_statements "$VERIFIED" || { echo "ECR Public pull IAM verification failed." >&2; exit 1; }
 if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
   verify_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request IAM verification failed." >&2; exit 1; }
 else
   verify_no_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request permission was not removed." >&2; exit 1; }
 fi
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead" and .Sid != "CiCheckoutBundles" and .Sid != "LoadTestSessionsHandoffObjects" and .Sid != "LoadTestSessionsHandoffList" and .Sid != "EcrPublicPullAuth" and .Sid != "EcrPublicBearerToken"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
 cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"

@@ -10,6 +10,7 @@ import {
   InitiateAuthCommand,
   ListUsersCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction } from '../../src/lib/db/client'
 import { provisionProfileForCognitoPrincipal } from '../../src/features/auth/identity-repository'
@@ -22,6 +23,11 @@ const mode = process.env.LOAD_TEST_ACCOUNTS_MODE ?? 'plan'
 const poolId = process.env.AWS_COGNITO_USER_POOL_ID ?? ''
 const clientId = process.env.AWS_COGNITO_CLIENT_ID ?? ''
 const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION ?? 'ap-south-1' })
+// The sessions hand-off (infra/aws/app/load-test-handoff.tf): one object per run under sessions/. No encryption
+// header: the bucket refuses one, and its default (the hand-off KMS key) applies. IfNoneMatch: never overwrite.
+const HANDOFF_BUCKET = 'sea-n-shore-staging-310356785722-load-test-handoff'
+const handoffKey = process.env.LOAD_TEST_SESSIONS_OBJECT_KEY ?? ''
+const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' })
 
 const onboarding = createOnboardingService({
   withTransaction: (fn) => withTransaction((client) => fn(createOnboardingRepositoryForClient(client))),
@@ -70,6 +76,10 @@ const accounts = createLoadTestAccounts({
   provisionProfile: provisionProfileForCognitoPrincipal,
   completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
   readActionIds: async () => actionIdsFromManifest(JSON.parse(readFileSync('.next/server/server-reference-manifest.json', 'utf8'))),
+  storeSealed: async (sealed) => {
+    if (!/^sessions\/[0-9]{6,20}-[0-9]{1,3}\.sealed$/.test(handoffKey)) throw new Error('load_test_handoff_key_invalid')
+    await s3.send(new PutObjectCommand({ Bucket: HANDOFF_BUCKET, Key: handoffKey, Body: sealed, ContentType: 'application/octet-stream', IfNoneMatch: '*' }))
+  },
   log: (line) => console.info(line),
 })
 

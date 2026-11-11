@@ -265,6 +265,8 @@ jobs:
         run: node --test scripts/aws/legacy-final-reminder-migration.test.mjs
       - name: Verify load test accounts runner contract
         run: node --test scripts/aws/load-test-accounts.test.mjs
+      - name: Verify load test sessions hand-off infra runner contract
+        run: node --test scripts/aws/load-test-handoff-infra.test.mjs
       - name: Verify Resend delivery webhook runner contract
         run: node --test scripts/aws/resend-delivery-webhook.test.mjs
       - name: Verify guarded staging data cleanup contract

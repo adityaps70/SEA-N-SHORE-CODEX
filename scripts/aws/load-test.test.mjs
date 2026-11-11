@@ -15,8 +15,8 @@ const script = read('../load-test/p3-load-test.js')
 const jobOf = (id) => workflow.slice(workflow.indexOf(`\n  ${id}:\n`) + 1).split(/^(?=  [A-Za-z0-9_-]+:\n)/m)[0]
 const envValue = (name) => new RegExp(`\\n  ${name}: "?([^"\\n]+)"?\\n`).exec(workflow)?.[1]
 
-test('the guard reads plan, run-once or run-signed-in-once', () => {
-  assert.ok(['plan', 'run-once', 'run-signed-in-once'].includes(guardAction(read('./load-test-action.txt'))))
+test('the guard reads plan, run-once, run-signed-in-once or sessions-only-once', () => {
+  assert.ok(['plan', 'run-once', 'run-signed-in-once', 'sessions-only-once'].includes(guardAction(read('./load-test-action.txt'))))
 })
 
 test('the approved ramp, steps and target', () => {
@@ -104,6 +104,12 @@ test('the report merges shards and names the highest step within limits, with ag
   assert.match(lines[2], /step=3 .* within_limits=false$/)
   assert.equal(lines[3], 'LOAD_TEST_RESULT highest_step_within_limits=2 highest_rpm_within_limits=300 stopped=true')
   assert.equal(lines[4], 'LOAD_TEST_STOP_REASON step 3: p95 2600 ms over 2000 ms (50 requests)')
+  // The owner's yardstick: the highest step from the first that stays within limits with p95 under 1 s.
+  assert.equal(lines[5], 'LOAD_TEST_P95_UNDER_1S highest_step=2 highest_rpm=300')
+  const slower = reportLines(mergeShards([[shard(1, 400), shard(2, 1200), shard(3, 500)]]), [100, 300, 600], 300)
+  assert.match(slower.join('\n'), /^LOAD_TEST_RESULT highest_step_within_limits=3 highest_rpm_within_limits=600 stopped=false$/m)
+  assert.equal(slower.at(-1), 'LOAD_TEST_P95_UNDER_1S highest_step=1 highest_rpm=100')
+  assert.equal(reportLines(mergeShards([[shard(1, 1000)]]), [100], 300).at(-1), 'LOAD_TEST_P95_UNDER_1S highest_step=0 highest_rpm=0')
   assert.doesNotMatch(lines.join('\n'), /https?:|\/jobs\/|@/)
 })
 
@@ -112,8 +118,12 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   assert.match(jobOf('apply-approval'), /environment: staging-apply/)
   const window = jobOf('window')
   assert.match(window, /needs\.apply-approval\.result == 'success'/)
-  // Merging the arm (a push) sends no traffic: only a start from the nightly schedule reaches the window.
-  assert.match(window, /github\.event_name == 'workflow_dispatch' \}\}/)
+  // Merging a traffic arm (a push) sends no traffic: only the nightly start reaches the window with one. The only push
+  // that reaches it is the sessions-only proof's own arm, which sends no traffic.
+  assert.match(window, /\(github\.event_name == 'workflow_dispatch' \|\| \(github\.event_name == 'push' && needs\.apply-gate\.outputs\.action == 'sessions-only-once'\)\) \}\}/)
+  assert.match(window, /\[\[ "\$MIX" == sessions-only && "\$GITHUB_EVENT_NAME" == push \]\]/)
+  assert.match(window, /\[\[ "\$GITHUB_RUN_ATTEMPT" == 1 \]\]/)
+  assert.ok(window.indexOf('exit 0\n          fi\n          [[ "$TRIGGERING_ACTOR"') > 0, 'every other start still needs the nightly start')
   assert.match(window, /\[\[ "\$TRIGGERING_ACTOR" == "github-actions\[bot\]" \]\]/)
   assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
   assert.match(window, /NOW < START \|\| NOW > START \+ 2700/)
@@ -129,13 +139,25 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   // Signed in: the sessions job seals everything; shards only ever open their own sealed part with the GitHub secret.
   const sessions = jobOf('sessions')
   assert.match(sessions, /node scripts\/load-test\/sessions\.mjs keypair "\$WORK"/)
-  assert.match(sessions, /aws s3 rm --only-show-errors/)
+  // The S3 hand-off: the task wrote the run's one object; this job reads it, checks its KMS key, deletes it and
+  // proves the prefix is empty, then checks the opened count. Nothing comes from a log or a link any more.
+  assert.match(sessions, /LOAD_TEST_HANDOFF_BUCKET: sea-n-shore-staging-310356785722-load-test-handoff\n/)
+  assert.match(sessions, /LOAD_TEST_HANDOFF_OBJECT: sessions\/\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}\.sealed\n/)
+  assert.match(sessions, /load-test-host-command\.sh sessions "\$GITHUB_SHA" "\$GITHUB_RUN_ID" "\$PUBLIC_KEY" "\$LOAD_TEST_HANDOFF_OBJECT"/)
+  assert.match(sessions, /aws s3api get-object --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --key "\$LOAD_TEST_HANDOFF_OBJECT" "\$WORK\/sealed" > "\$WORK\/object\.json"/)
+  assert.match(sessions, /\.ServerSideEncryption == "aws:kms" and \.BucketKeyEnabled == true/)
+  assert.match(sessions, /\[\[ "\$LEFT" == 0 \]\] \|\| \{ echo "The hand-off bucket still holds sessions objects\." >&2; exit 1; \}/)
+  assert.match(sessions, /length == 50/)
+  assert.doesNotMatch(workflow, /curl [^\n]*\$URL|LOAD_TEST_SESSIONS_URL|ci-checkouts\/load-test-sessions|SEALED_PART/)
+  // The get-object metadata and the object itself stay in files: never printed.
+  assert.doesNotMatch(sessions, /cat "\$WORK\/(sealed|object\.json)"|jq [^\n]*object\.json[^\n]*\| tee/)
   assert.match(sessions, /LOAD_TEST_HANDOFF_KEY: \$\{\{ secrets\.LOAD_TEST_HANDOFF_KEY \}\}/)
   // The opened sessions only ever go from one file into seal-shards: never printed, never an output.
   assert.doesNotMatch(sessions, /cat "\$WORK|echo "\$\(cat|tee [^|]*sessions/)
   assert.deepEqual([...sessions.matchAll(/[^\n]*\$WORK\/sessions\.json[^\n]*/g)].map((m) => m[0].trim().split(' ').slice(0, 3).join(' ')), [
-    'node scripts/load-test/sessions.mjs open', 'SEALED="$(node scripts/load-test/sessions.mjs seal-shards',
+    'node scripts/load-test/sessions.mjs open', "jq -e 'type", 'SEALED="$(node scripts/load-test/sessions.mjs seal-shards',
   ])
+  assert.match(sessions, /jq -e '[^']*' "\$WORK\/sessions\.json" >\/dev\/null \|\|/)
   assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('load'), /rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('report'), /load-test-host-command\.sh sign-out/)
@@ -169,8 +191,11 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
 
 test('the nightly start fires at 01:05 IST from the default branch and starts only an unused run-once or run-signed-in-once arm', () => {
   const nightly = read('../../.github/workflows/load-test-nightly.yml')
-  assert.match(nightly, /\non:\n  schedule:\n    - cron: "35 19 \* \* \*"\n\n/)
-  assert.doesNotMatch(nightly, /push:|pull_request|workflow_dispatch:/)
+  assert.match(nightly, /\non:\n  schedule:\n    - cron: "35 19 \* \* \*"\n/)
+  // Also started by hand at 01:05 IST (the schedule fires 3-5 hours late), the same as the copy on main; the start
+  // passes the same checks here and in AWS Load Test. Never by a push or a pull request.
+  assert.match(nightly, /\n  workflow_dispatch:\n\npermissions:/)
+  assert.doesNotMatch(nightly, /push:|pull_request/)
   assert.match(nightly, /permissions:\n  contents: read\n  actions: write\n\n/)
   assert.match(nightly, /timeout-minutes: 5\n/)
   assert.doesNotMatch(nightly, /configure-aws-credentials|AWS_ROLE_TO_ASSUME|secrets\./)
@@ -222,4 +247,33 @@ test('the Aurora stop rule needs 5 one-minute maximums all at the maximum ACU', 
   assert.equal(auroraAtMax([2, 2, 2, 1.5, 2], 2), false)
   assert.equal(auroraAtMax([2, 2, 2, 2], 2), false)
   assert.equal(auroraAtMax('nope', 2), false)
+})
+
+test('the sessions-only proof sends no traffic and cleans up everything, whatever happens', () => {
+  const window = jobOf('window')
+  assert.match(window, /sessions-only-once\) echo "mix=sessions-only"/)
+  // No page lookup, no Aurora monitor, no k6, no site metrics wait.
+  assert.match(window, /id: pages\n\s+if: steps\.mix\.outputs\.mix != 'sessions-only'/)
+  assert.match(jobOf('monitor'), /needs\.window\.outputs\.mix != 'sessions-only' \}\}/)
+  const load = jobOf('load')
+  assert.match(load, /- name: Install the pinned k6\n\s+if: env\.LOAD_TEST_MIX != 'sessions-only'/)
+  assert.match(load, /- name: Run this shard with the stop rules\n\s+if: env\.LOAD_TEST_MIX != 'sessions-only'/)
+  assert.equal((load.match(/k6 run/g) || []).length, 1)
+  // Each shard opens its own part (the real path) and keeps only a count; the proof deletes the opened file.
+  assert.match(load, /if: env\.LOAD_TEST_MIX == 'signed-in' \|\| env\.LOAD_TEST_MIX == 'sessions-only'/)
+  assert.match(load, /jq 'length' "\$LOAD_TEST_SESSIONS_FILE" > "\/tmp\/shard\/handoff-count-\$LOAD_TEST_SHARD\.txt"/)
+  assert.match(load, /- name: Sessions-only proof \(no traffic\)\n\s+if: env\.LOAD_TEST_MIX == 'sessions-only'\n[\s\S]*?rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
+  const report = jobOf('report')
+  assert.match(report, /- name: Site metrics during the test \(read-only\)\n\s+if: needs\.window\.outputs\.mix != 'sessions-only'/)
+  assert.match(report, /\[\[ "\$\{#COUNTS\[@\]\}" == "\$LOAD_TEST_SHARDS" && "\$SUM" == 50 \]\]/)
+  // Sign-out, deletion (with what is left), the hand-off object and the host bundle: always, for both mixes.
+  for (const name of ['Sign out and delete every test account (signed-in mix)', 'Delete the hand-off object and count what is left', 'Delete the host checkout bundle']) {
+    assert.match(report, new RegExp(`- name: ${name.replace(/[()]/g, '\\$&')}\\n\\s+if: always\\(\\) && \\(needs\\.window\\.outputs\\.mix == 'signed-in' \\|\\| needs\\.window\\.outputs\\.mix == 'sessions-only'\\)`), name)
+  }
+  assert.match(jobOf('sessions'), /- name: Delete the hand-off object and count what is left\n\s+if: always\(\)\n/)
+  for (const job of [jobOf('sessions'), report]) {
+    assert.match(job, /aws s3api delete-object --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --key "\$LOAD_TEST_HANDOFF_OBJECT" >\/dev\/null\n\s+LEFT="\$\(aws s3api list-objects-v2 --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --prefix sessions\/ --query KeyCount --output text\)"/)
+  }
+  // The nightly start never starts the proof.
+  assert.doesNotMatch(read('../../.github/workflows/load-test-nightly.yml'), /sessions-only/)
 })

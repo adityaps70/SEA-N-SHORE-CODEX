@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ERROR_LIMIT, MIN_SAMPLES, P95_LIMIT_MS, percentile } from './stop-watch.mjs'
 
+export const P95_UNDER_ONE_SECOND_MS = 1000
+
 export function mergeShards(shards) {
   const steps = new Map()
   for (const shard of shards) {
@@ -24,6 +26,9 @@ export function reportLines(steps, totalRpm, stepSeconds, stops = []) {
   const pct = (a, b) => (b ? ((100 * a) / b).toFixed(2) : '0.00')
   let passed = 0
   let failedAt = null
+  // The owner's yardstick: the highest step, counting up from the first, still within every limit AND with p95 under 1 s.
+  let underOneSecond = 0
+  let underOneSecondBroken = false
   for (const [n, m] of [...steps.entries()].sort((a, b) => a[0] - b[0])) {
     const p95 = percentile(m.durations, 95)
     const ok = m.requests >= MIN_SAMPLES && p95 <= P95_LIMIT_MS && m.server_errors / m.requests <= ERROR_LIMIT && m.blocked / m.requests <= ERROR_LIMIT && m.auth_refused / m.requests <= ERROR_LIMIT
@@ -37,10 +42,13 @@ export function reportLines(steps, totalRpm, stepSeconds, stops = []) {
     ].join(' '))
     if (ok && failedAt === null) passed = n
     else if (failedAt === null) failedAt = n
+    if (!underOneSecondBroken && ok && p95 < P95_UNDER_ONE_SECOND_MS) underOneSecond = n
+    else underOneSecondBroken = true
   }
   const reasons = [...new Set(stops.map((s) => s.trim()).filter(Boolean))]
   lines.push(`LOAD_TEST_RESULT highest_step_within_limits=${passed} highest_rpm_within_limits=${passed ? totalRpm[passed - 1] : 0} stopped=${reasons.length > 0}`)
   for (const reason of reasons) lines.push(`LOAD_TEST_STOP_REASON ${reason}`)
+  lines.push(`LOAD_TEST_P95_UNDER_1S highest_step=${underOneSecond} highest_rpm=${underOneSecond ? totalRpm[underOneSecond - 1] : 0}`)
   return lines
 }
 
