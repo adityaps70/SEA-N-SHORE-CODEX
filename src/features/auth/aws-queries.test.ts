@@ -55,6 +55,72 @@ describe('AWS auth queries', () => {
     expect(provisionProfileId).not.toHaveBeenCalled()
   })
 
+  describe('one-query sign-in check (Round DB)', () => {
+    const PROFILE_ID = '11111111-1111-4111-8111-111111111111'
+
+    it('uses the joined lookup and skips the separate mapping and status queries', async () => {
+      const resolveProfileWithStatus = vi.fn(async () => ({ profileId: PROFILE_ID, accountStatus: 'active' as const }))
+      const resolveProfileId = vi.fn(async () => PROFILE_ID)
+      const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+      const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+      const { createAwsAuthQueries } = await import('./aws-queries')
+      const queries = createAwsAuthQueries({
+        getPrincipal: vi.fn(async () => principal),
+        resolveProfileId,
+        provisionProfileId,
+        getProfileAccountStatus,
+        resolveProfileWithStatus,
+      })
+
+      await expect(queries.getAwsVerifiedUser()).resolves.toEqual({
+        id: PROFILE_ID,
+        cognitoSub: 'cognito-sub-1',
+        email: 'member@example.com',
+      })
+      expect(resolveProfileWithStatus).toHaveBeenCalledWith('cognito-sub-1')
+      expect(resolveProfileId).not.toHaveBeenCalled()
+      expect(getProfileAccountStatus).not.toHaveBeenCalled()
+      expect(provisionProfileId).not.toHaveBeenCalled()
+    })
+
+    it('still refuses suspended, deletion-requested and missing-status profiles', async () => {
+      const { createAwsAuthQueries } = await import('./aws-queries')
+      for (const accountStatus of ['suspended', 'deletion_requested', null] as const) {
+        const queries = createAwsAuthQueries({
+          getPrincipal: vi.fn(async () => principal),
+          resolveProfileId: vi.fn(async () => PROFILE_ID),
+          provisionProfileId: vi.fn(async () => PROFILE_ID),
+          getProfileAccountStatus: vi.fn(async () => 'active' as const),
+          resolveProfileWithStatus: vi.fn(async () => ({ profileId: PROFILE_ID, accountStatus })),
+        })
+        await expect(queries.getAwsVerifiedUser()).resolves.toBeNull()
+      }
+    })
+
+    it('provisions and reads the status as before when there is no mapping yet', async () => {
+      const resolveProfileId = vi.fn(async () => null)
+      const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+      const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+      const { createAwsAuthQueries } = await import('./aws-queries')
+      const queries = createAwsAuthQueries({
+        getPrincipal: vi.fn(async () => principal),
+        resolveProfileId,
+        provisionProfileId,
+        getProfileAccountStatus,
+        resolveProfileWithStatus: vi.fn(async () => null),
+      })
+
+      await expect(queries.getAwsVerifiedUser()).resolves.toEqual({
+        id: '22222222-2222-4222-8222-222222222222',
+        cognitoSub: 'cognito-sub-1',
+        email: 'member@example.com',
+      })
+      expect(provisionProfileId).toHaveBeenCalledWith(principal)
+      expect(getProfileAccountStatus).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+      expect(resolveProfileId).not.toHaveBeenCalled()
+    })
+  })
+
   it('reuses one verified-user lookup across repeated authenticated reads in a request', async () => {
     const getPrincipal = vi.fn(async () => principal)
     const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')

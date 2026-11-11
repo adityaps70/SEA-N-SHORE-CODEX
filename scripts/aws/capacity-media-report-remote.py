@@ -146,7 +146,10 @@ def sql_rows(statements):
                     "--format-records-as", "JSON")
             results.append(json.loads(r["formattedRecords"]) if r and r.get("formattedRecords") else None)
     finally:
-        aws("rds-data", "rollback-transaction", *base, "--transaction-id", txid, quiet=True)
+        # Round DB: rollback-transaction takes no --database; passing it made every rollback fail quietly, so the
+        # read-only transactions stayed open (idle in transaction) until the Data API timed them out.
+        if aws("rds-data", "rollback-transaction", "--resource-arn", arn, "--secret-arn", secret, "--transaction-id", txid) is None:
+            out("SQL ROLLBACK FAILED")
     return results
 
 
@@ -416,6 +419,12 @@ ROUTE_WORDS = frozenset([
 
 
 BOT_PATTERN = r"bot|crawl|spider|slurp|HealthProbe|ELB-HealthChecker|Lighthouse|curl|python|Go-http|axios|node-fetch|headless|SeaNShore-LoadTest"
+# Round DB: the load test names its ramp step in the User-Agent ("SeaNShore-LoadTest/1 step/N"), so the server-side
+# (ALB target) times are cut per step exactly. LOAD_TEST_STEP_RPM is the ramp's target rate per step (the load test's
+# report passes it); "p95 under 1 s" is judged on these server-side times (owner-approved 11 Nov).
+LOAD_TEST_STEP = re.compile(r"SeaNShore-LoadTest/1 step/(\d+)")
+STEP_RPM = [int(x) for x in os.environ.get("LOAD_TEST_STEP_RPM", "").split(",") if x.strip().isdigit()]
+STEP_STATS = defaultdict(lambda: {"times": [], "n": 0, "5xx": 0})
 
 
 def request_kind(method, path, query):
@@ -444,6 +453,14 @@ def parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot):
     path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0] or "/"
     query = url.split("?", 1)[1] if "?" in url else ""
     ua = m.group(14)
+    step = LOAD_TEST_STEP.search(ua)
+    if step:
+        st = STEP_STATS[int(step.group(1))]
+        st["n"] += 1
+        if target_time >= 0:
+            st["times"].append(target_time)
+        if status.startswith("5"):
+            st["5xx"] += 1
     totals["requests"] += 1
     per_minute[t[:16]] += 1
     if bot.search(ua):
@@ -457,6 +474,34 @@ def parse_alb_line(line, totals, per_minute, by_route, errors_by_route, bot):
     if status.startswith("5"):
         errors_by_route[key] += 1
         totals["5xx"] += 1
+
+
+def server_step_lines(step_stats, step_rpm):
+    """Round DB: the load test's server-side (ALB target) times per ramp step, and the highest step, counting up from
+    the first, whose p95 is under 1 s with server errors at 1% or less. Aggregates only."""
+    lines, highest, broken = [], 0, False
+    for n in sorted(step_stats):
+        st = step_stats[n]
+        times = st["times"]
+        if not st["n"]:
+            continue
+        p95 = pct(times, 95) if times else None
+        errors = st["5xx"] / st["n"]
+        within = p95 is not None and p95 < 1.0 and errors <= 0.01
+        if within and not broken and n == highest + 1:
+            highest = n
+        else:
+            broken = True
+        lines.append(" ".join([
+            "LOAD_TEST_STEP_SERVER step=%d" % n, "target_rpm=%s" % (step_rpm[n - 1] if 0 < n <= len(step_rpm) else "?"),
+            "requests=%d" % st["n"], "p50_s=%s" % ("%.3f" % pct(times, 50) if times else "n/a"),
+            "p95_s=%s" % ("%.3f" % p95 if p95 is not None else "n/a"), "p99_s=%s" % ("%.3f" % pct(times, 99) if times else "n/a"),
+            "server_5xx_pct=%.2f" % (100 * errors), "within_1s=%s" % str(within).lower(), "measured_at=alb_target",
+        ]))
+    if lines:
+        lines.append("LOAD_TEST_P95_UNDER_1S_SERVER highest_step=%d highest_rpm=%s measured_at=alb_target" % (
+            highest, step_rpm[highest - 1] if 0 < highest <= len(step_rpm) else 0))
+    return lines
 
 
 def alb_day_lines(day, totals, budget):
@@ -505,6 +550,8 @@ def alb_log_stats():
     for key, times in ranked:
         out("ROUTE", key, "n=%d" % len(times), "p50=%.3f" % pct(times, 50), "p95=%.3f" % pct(times, 95),
             "p99=%.3f" % pct(times, 99), "max=%.3f" % max(times), "wallSecTotal=%.0f" % sum(times), "5xx=%d" % errors_by_route[key])
+    for line in server_step_lines(STEP_STATS, STEP_RPM):
+        out(line)
     for key in ("image /:x/image", "page /home", "rsc /home", "page /jobs", "rsc /jobs", "page /jobs/:x", "page /messages", "rsc /messages", "api /api/:x"):
         if key in by_route:
             times = by_route[key]

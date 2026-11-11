@@ -155,6 +155,21 @@ describe('profile portfolio repository', () => {
     expect(query).toHaveBeenCalledTimes(2)
   })
 
+  it('starts the experience and credential reads together (Round DB), each for the same profile', async () => {
+    const pending: Array<(rows: unknown[]) => void> = []
+    const query = vi.fn(() => new Promise<unknown[]>((resolve) => { pending.push(resolve) }))
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    const portfolio = createProfilePortfolioRepository({ query: query as never }).getProfilePortfolio(PROFILE_ID)
+    await Promise.resolve()
+    expect(query).toHaveBeenCalledTimes(2)
+    expect(String((query.mock.calls[0] as unknown[])[0])).toContain('from public.profile_experiences')
+    expect(String((query.mock.calls[1] as unknown[])[0])).toContain('from public.profile_credentials')
+    expect(query.mock.calls.map((call) => (call as unknown[])[1])).toEqual([[PROFILE_ID], [PROFILE_ID]])
+    pending.forEach((resolve) => resolve([]))
+    await expect(portfolio).resolves.toEqual({ experiences: [], credentials: [] })
+  })
+
   it('creates a career record under the authenticated profile id', async () => {
     const query = vi.fn().mockResolvedValue([{ id: EXPERIENCE_ID }])
     const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')

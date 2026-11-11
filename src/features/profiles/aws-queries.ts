@@ -28,10 +28,13 @@ export function createAwsProfileQueries(input: {
   /** `avatarOnly`: suggestion cards show no cover, so only the avatar is signed. */
   async function hydrateProfiles<T extends PublicProfile>(profiles: T[], options: { avatarOnly?: boolean } = {}): Promise<T[]> {
     if (!profiles.length) return profiles
-    const pathsById = await mediaRepository.getMediaPaths(profiles.map((profile) => profile.id))
+    // Round DB: the profile select already reads avatar_path and cover_path from the same row, so the separate media
+    // lookup only runs for a profile that arrived without its cover path (a shape that did not select it).
+    const missing = profiles.filter((profile) => profile.coverPath === undefined).map((profile) => profile.id)
+    const pathsById = missing.length ? await mediaRepository.getMediaPaths(missing) : new Map<string, { avatarPath: string | null; coverPath: string | null }>()
 
     return Promise.all(profiles.map(async (profile) => {
-      const media = pathsById.get(profile.id)
+      const media = profile.coverPath === undefined ? pathsById.get(profile.id) : { avatarPath: profile.avatarPath, coverPath: profile.coverPath }
       const avatarPath = media?.avatarPath ?? profile.avatarPath
       const coverPath = media?.coverPath ?? null
       const [avatarUrl, coverUrl] = await Promise.all([

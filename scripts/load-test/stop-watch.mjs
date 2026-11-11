@@ -4,10 +4,11 @@
 //   node stop-watch.mjs summarize <csv> <out.json>          writes the shard's per-step numbers for the report
 //
 // Stop rules, per step of the ramp, once that step has at least MIN_SAMPLES requests on this shard:
-//   p95 over 2 s; server errors (5xx or no response) over 1%; WAF blocks (403/429) over 1%, which would make
+//   server errors (5xx or no response) over 1%; WAF blocks (403/429) over 1%, which would make
 //   the run measure the WAF instead of the site; signed-in requests sent back to sign-in over 1% (the sessions
 //   stopped working, so the run would measure the sign-in page). On a stop it writes the reason to <stop-file> and sends k6 SIGINT
-//   (k6 stops gracefully); the workflow then cancels the other shards.
+//   (k6 stops gracefully); the workflow then cancels the other shards. Round DB: the p95 stop (over 2 s) is judged on
+//   the server side by the monitor job (scripts/load-test/monitor-stop.mjs); the client p95 here is reported only.
 import { appendFileSync, existsSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
@@ -83,8 +84,8 @@ export function stopReason(steps) {
   for (const [n, s] of [...steps.entries()].sort((a, b) => a[0] - b[0])) {
     const count = s.durations.length
     if (count < MIN_SAMPLES) continue
-    const p95 = percentile(s.durations, 95)
-    if (p95 > P95_LIMIT_MS) return `step ${n}: p95 ${p95} ms over ${P95_LIMIT_MS} ms (${count} requests)`
+    // Round DB (owner-approved 11 Nov): the p95 stop is judged on the server side (ALB, by the monitor job). The
+    // client p95 here is measured from GitHub's US runners and is reported, never a stop.
     if (s.server / count > ERROR_LIMIT) return `step ${n}: server errors ${s.server}/${count} over 1%`
     if (s.blocked / count > ERROR_LIMIT) return `step ${n}: WAF blocks ${s.blocked}/${count} over 1%`
     if (s.auth / count > ERROR_LIMIT) return `step ${n}: signed-in sessions refused ${s.auth}/${count} over 1%`

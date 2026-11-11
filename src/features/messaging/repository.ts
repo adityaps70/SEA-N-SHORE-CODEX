@@ -532,32 +532,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
    * there instead of reading and de-duplicating every message of every conversation. Same count.
    */
   async function countUnreadMessages(viewerProfileId: string) {
-    const rows = await queryRows(
-      `select count(*)::int as count
-       from public.conversation_participants mine
-       left join public.messages read_cursor
-         on read_cursor.id = mine.last_read_message_id
-        and read_cursor.conversation_id = mine.conversation_id
-       where mine.profile_id = $1
-         and exists (
-           select 1
-           from public.messages unread_message
-           where unread_message.conversation_id = mine.conversation_id
-             and unread_message.deleted_at is null
-             and unread_message.created_at >= coalesce(greatest(read_cursor.created_at, mine.cleared_before), '-infinity'::timestamptz)
-             and unread_message.sender_profile_id <> mine.profile_id
-             and (mine.cleared_before is null or unread_message.created_at > mine.cleared_before)
-             and (
-               read_cursor.id is null
-               or unread_message.created_at > read_cursor.created_at
-               or (
-                 unread_message.created_at = read_cursor.created_at
-                 and unread_message.id > read_cursor.id
-               )
-             )
-         )`,
-      [viewerProfileId],
-    ) as CountRow[]
+    const rows = await queryRows(UNREAD_MESSAGE_COUNT_SQL, [viewerProfileId]) as CountRow[]
     return Number(rows[0]?.count ?? 0)
   }
 
@@ -639,6 +614,31 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     clearConversationForParticipant,
   }
 }
+
+/** The Messages badge count for profile $1. Shared with the signed-in chrome's one-query counts (chrome-counts.ts). */
+export const UNREAD_MESSAGE_COUNT_SQL = `select count(*)::int as count
+       from public.conversation_participants mine
+       left join public.messages read_cursor
+         on read_cursor.id = mine.last_read_message_id
+        and read_cursor.conversation_id = mine.conversation_id
+       where mine.profile_id = $1
+         and exists (
+           select 1
+           from public.messages unread_message
+           where unread_message.conversation_id = mine.conversation_id
+             and unread_message.deleted_at is null
+             and unread_message.created_at >= coalesce(greatest(read_cursor.created_at, mine.cleared_before), '-infinity'::timestamptz)
+             and unread_message.sender_profile_id <> mine.profile_id
+             and (mine.cleared_before is null or unread_message.created_at > mine.cleared_before)
+             and (
+               read_cursor.id is null
+               or unread_message.created_at > read_cursor.created_at
+               or (
+                 unread_message.created_at = read_cursor.created_at
+                 and unread_message.id > read_cursor.id
+               )
+             )
+         )`
 
 export type MessagingRepository = ReturnType<typeof createMessagingRepository>
 

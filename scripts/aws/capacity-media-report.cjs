@@ -89,6 +89,7 @@ export COMPARE_SPLIT=${quote(COMPARE?.split ?? '')}
 export DB_RUN_START=${quote(COMPARE?.runStart ?? '')}
 export DB_RUN_END=${quote(COMPARE?.runEnd ?? '')}
 export REPORT_PROBE_ORG_NAME=${quote(PROBE_ORG_NAME)}
+export LOAD_TEST_STEP_RPM=${quote(/^[0-9,]*$/.test(process.env.LOAD_TEST_STEP_RPM || '') ? process.env.LOAD_TEST_STEP_RPM || '' : '')}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT

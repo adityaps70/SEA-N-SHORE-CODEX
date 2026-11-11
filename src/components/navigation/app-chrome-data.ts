@@ -2,9 +2,7 @@ import { isRankingEnabled } from '@/features/ranking/switches'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import type { AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { calculateProfileCompletion } from '@/features/feed/profile-completion'
-import { getUnreadMessageCount } from '@/features/messaging/queries'
-import { networkRepository } from '@/features/network/repository'
-import { getUnreadNotificationCount } from '@/features/notifications/queries'
+import { getChromeCountsForRequest } from './chrome-counts'
 import { getProfilePortfolioForRequest, listMemberOrganizationsForRequest } from '@/features/profiles/request-cached-reads'
 import { getOwnProfile } from '@/features/profiles/queries'
 import type { OwnProfile } from '@/features/profiles/types'
@@ -27,21 +25,20 @@ function trimmed(value: string | null | undefined) {
 
 /** Everything the signed-in header, phone top bar, side drawer and bottom tabs need, loaded in parallel. */
 export async function getAppChromeData(user: AwsVerifiedUser) {
-  const [notificationUnreadCount, messagingUnreadCount, canAccessAdmin, profile, memberships, pendingConnectionRequestCount, portfolio, liveSearch] = await Promise.all([
-    // Round 14 (3.9): only the badge count; the bell loads its list when it is opened.
-    getUnreadNotificationCount(),
-    getUnreadMessageCount(),
+  const [counts, canAccessAdmin, profile, memberships, portfolio, liveSearch] = await Promise.all([
+    // Round DB: the Notifications, Messages and Network badges in one query (Round 14, 3.9: only the bell's count;
+    // the bell loads its list when it is opened). The Network badge is the same count as the Requests tab on /network.
+    getChromeCountsForRequest(user.id),
     canAccessPlatformAdmin(user.id),
     getOwnProfile().catch(() => null),
     // Owners and administrators first. The menu still works (without the list) if this fails.
     listMemberOrganizationsForRequest(user.id).catch(() => []),
-    // The Network tab badge: the same count as the Requests tab on /network.
-    networkRepository.countIncomingRequests(user.id).catch(() => 0),
     // Only used for the drawer's "Complete profile · n%" line; the drawer omits it if this fails.
     getProfilePortfolioForRequest(user.id).catch(() => null),
     // Round G (G4): search as you type in the top bar (ranking_settings.search; off keeps the plain form).
     isRankingEnabled('search', user.id).catch(() => false),
   ])
+  const { notificationUnreadCount, messagingUnreadCount, pendingConnectionRequestCount } = counts
   const profileCompletion = profile && (portfolio || !completionNeedsPortfolio(profile))
     ? calculateProfileCompletion(profile, {
         experienceCount: portfolio?.experiences.length ?? 0,

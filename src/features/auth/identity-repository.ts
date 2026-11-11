@@ -58,6 +58,17 @@ function identityValues(principal: CognitoPrincipal) {
   }
 }
 
+type AccountStatus = 'active' | 'restricted' | 'suspended' | 'deletion_requested'
+
+function knownAccountStatus(status: string | null | undefined): AccountStatus | null {
+  return status === 'active'
+    || status === 'restricted'
+    || status === 'suspended'
+    || status === 'deletion_requested'
+    ? status
+    : null
+}
+
 export function createIdentityRepository(
   input: { query?: IdentityQuery; withTransaction?: IdentityTransaction } = {},
 ) {
@@ -299,6 +310,31 @@ export function createIdentityRepository(
       return rows[0]?.profile_id ?? null
     },
 
+    /**
+     * Round DB: the sign-in check's identity lookup and account-status lookup in one statement (it runs on every
+     * signed-in request). Same answers as resolveProfileIdForCognitoSub then getProfileAccountStatus: null when there
+     * is no mapping, IdentityMappingError for more than one, and a null status when the profile row is missing or its
+     * status is not a known one.
+     */
+    async resolveProfileWithStatusForCognitoSub(sub: string): Promise<{ profileId: string; accountStatus: AccountStatus | null } | null> {
+      const rows = await queryRows(
+        `select ia.profile_id, p.account_status::text as account_status
+         from public.identity_accounts ia
+         left join public.profiles p on p.id = ia.profile_id
+         where ia.provider = $1
+           and ia.provider_subject = $2
+         order by ia.id
+         limit 2`,
+        ['cognito', sub],
+      )
+
+      if (rows.length === 0) return null
+      if (rows.length !== 1) throw new IdentityMappingError()
+      const profileId = rows[0]?.profile_id
+      if (!profileId) return null
+      return { profileId, accountStatus: knownAccountStatus(rows[0]?.account_status) }
+    },
+
     async getProfileAccountStatus(profileId: string) {
       const rows = await queryRows(
         `select id as profile_id, account_status::text as account_status
@@ -307,13 +343,7 @@ export function createIdentityRepository(
          limit 1`,
         [profileId],
       )
-      const status = rows[0]?.account_status
-      return status === 'active'
-        || status === 'restricted'
-        || status === 'suspended'
-        || status === 'deletion_requested'
-        ? status
-        : null
+      return knownAccountStatus(rows[0]?.account_status)
     },
 
     async provisionProfileForCognitoPrincipal(principal: CognitoPrincipal): Promise<string> {
@@ -420,6 +450,10 @@ const identityRepository = createIdentityRepository()
 
 export function resolveProfileIdForCognitoSub(sub: string) {
   return identityRepository.resolveProfileIdForCognitoSub(sub)
+}
+
+export function resolveProfileWithStatusForCognitoSub(sub: string) {
+  return identityRepository.resolveProfileWithStatusForCognitoSub(sub)
 }
 
 export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal) {
