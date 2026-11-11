@@ -684,6 +684,25 @@ describe('the Round DB rewrite of the exclusion rule (shadow comparison)', () =>
     }
   })
 
+  it('re-checks each email at send time through the same rule and the new claims index', async () => {
+    // The sending worker's per-email re-check is finalReminderExclusionSql(false) over the claimed final reminders
+    // (final-reminder-repository.ts, claimForSending). Planned here with sequential scans off: the claims lookups
+    // (claimed by email, duplicate email) go through legacy_profile_claims_email_lookup_idx.
+    const plan = await db.transaction(async (query) => {
+      await query('set local enable_seqscan = off')
+      return (await query(`
+        explain select (${finalReminderExclusionSql(false)}) = 'eligible' as still_eligible
+        from public.legacy_profile_invite_final_reminders claimed
+        join public.legacy_profile_invites invite on invite.id = claimed.invite_id
+        join public.legacy_profile_invite_reminders reminder on reminder.id = claimed.reminder_id
+      `)).map((row) => String(Object.values(row)[0])).join('\n')
+    })
+    expect(plan).toContain('legacy_profile_claims_email_lookup_idx')
+    // And the deployed worker uses exactly that rule (the send-time variant, without the already-final check).
+    const { readFileSync } = await import('node:fs')
+    expect(readFileSync('src/features/legacy-invites/final-reminder-repository.ts', 'utf8')).toContain("(${finalReminderExclusionSql(false)}) = 'eligible' as still_eligible")
+  })
+
   it('looks claims up by lower(email) through the new index', async () => {
     const plan = await db.transaction(async (query) => {
       await query('set local enable_seqscan = off')
