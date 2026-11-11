@@ -32,8 +32,6 @@ vi.mock('../mention-actions', () => ({
 
 const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const rootId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-const replyOneId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const replyTwoId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 
 const author = {
   id: '11111111-1111-4111-8111-111111111111',

@@ -136,7 +136,7 @@ describe('Aurora feed queries', () => {
       getComments: vi.fn(async () => []),
       getNewestCommentPreview: vi.fn(async () => ({ rows: [], counts: new Map() })),
     } as unknown as FeedRepository
-    const getPreferredAuthorIds = vi.fn(async (_authorIds: readonly string[]) => [connectionId])
+    const getPreferredAuthorIds = vi.fn<(authorIds: readonly string[]) => Promise<string[]>>(async () => [connectionId])
     const { createFeedQueries } = await import('./queries')
     const queries = createFeedQueries({
       requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
