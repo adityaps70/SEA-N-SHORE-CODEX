@@ -121,6 +121,9 @@ def cluster():
     return (data or {}).get("DBClusters", [{}])[0]
 
 
+EXPLAIN_PREFIX = "explain (generic_plan, costs, format json) "
+
+
 def sql_rows(statements):
     """Runs SELECT/SHOW statements in one READ ONLY transaction, then rolls back. Yields rows per statement."""
     c = cluster()
@@ -137,7 +140,8 @@ def sql_rows(statements):
     try:
         aws("rds-data", "execute-statement", *base, "--transaction-id", txid, "--sql", "SET TRANSACTION READ ONLY")
         for statement in statements:
-            assert re.match(r"^\s*(select|show|with)\b", statement, re.I), "read-only statements only"
+            # Round DB: EXPLAIN only with GENERIC_PLAN and without ANALYZE, so the statement is planned, never run.
+            assert re.match(r"^\s*(select|show|with)\b", statement, re.I) or statement.startswith(EXPLAIN_PREFIX), "read-only statements only"
             r = aws("rds-data", "execute-statement", *base, "--transaction-id", txid, "--sql", statement,
                     "--format-records-as", "JSON")
             results.append(json.loads(r["formattedRecords"]) if r and r.get("formattedRecords") else None)
@@ -917,9 +921,297 @@ def section_media():
             out("S3_REQUEST_METRIC", b, name, "30d_sum=%s" % (round(sum(series)) if series else "NO_DATA (request metrics off)"))
 
 
+# ---------------------------------------------------------------- Round DB: where the database time goes (read-only)
+
+# Round DB (Part 1): the window file reads "db <start> <end>" (the signed-in load test's window). Performance Insights
+# keeps 7 days, so it gives the top SQL for that exact window; pg_stat_statements is cumulative since its last reset.
+# Statements are normalised (PI tokenises values as ?, pg_stat_statements as $n): shapes only, never values.
+DB_RUN_START, DB_RUN_END = os.environ.get("DB_RUN_START", ""), os.environ.get("DB_RUN_END", "")
+PI_STATS = ["db.sql_tokenized.stats.calls_per_sec.avg", "db.sql_tokenized.stats.avg_latency_per_call.avg",
+            "db.sql_tokenized.stats.rows_per_call.avg", "db.sql_tokenized.stats.shared_blks_hit_per_call.avg",
+            "db.sql_tokenized.stats.shared_blks_read_per_call.avg", "db.sql_tokenized.stats.temp_blks_written_per_call.avg"]
+STATEMENT_KINDS = r"^\s*(select|with|insert|update|delete)\b"
+# The same test in PostgreSQL's regex dialect (\y is its word boundary; \b there is a backspace).
+SQL_STATEMENT_KINDS = r"^\s*(select|with|insert|update|delete)\y"
+
+
+def one_line(text, limit):
+    return re.sub(r"\s+", " ", text or "").strip()[:limit]
+
+
+def writer_resource():
+    c = cluster()
+    writer = next((m["DBInstanceIdentifier"] for m in c.get("DBClusterMembers", []) if m.get("IsClusterWriter")), None)
+    inst = (aws("rds", "describe-db-instances", "--db-instance-identifier", writer) or {}).get("DBInstances", [{}])[0] if writer else {}
+    return inst.get("DbiResourceId") if inst.get("PerformanceInsightsEnabled") else None
+
+
+def pi_top(resource, label, start, end, limit=15):
+    seconds = max(60, int((end - start).total_seconds()))
+    load = aws("pi", "get-resource-metrics", "--service-type", "RDS", "--identifier", resource, "--start-time", iso(start),
+               "--end-time", iso(end), "--period-in-seconds", "60" if seconds <= 7200 else "3600",
+               "--metric-queries", '[{"Metric":"db.load.avg"},{"Metric":"os.cpuUtilization.total.avg"}]') or {}
+    for m in load.get("MetricList", []):
+        values = [p["Value"] for p in m.get("DataPoints", []) if p.get("Value") is not None]
+        summarize("pi.%s.%s" % (label, m.get("Key", {}).get("Metric")), values)
+    waits = aws("pi", "describe-dimension-keys", "--service-type", "RDS", "--identifier", resource, "--start-time", iso(start),
+                "--end-time", iso(end), "--metric", "db.load.avg", "--group-by", '{"Group":"db.wait_event","Limit":8}') or {}
+    for k in waits.get("Keys", []):
+        d = k.get("Dimensions") or {}
+        out("PI_WAIT", label, "load=%.4f" % k.get("Total", 0), "%s:%s" % (d.get("db.wait_event.type"), d.get("db.wait_event.name")))
+    top = aws("pi", "describe-dimension-keys", "--service-type", "RDS", "--identifier", resource, "--start-time", iso(start),
+              "--end-time", iso(end), "--metric", "db.load.avg", "--group-by", '{"Group":"db.sql_tokenized","Limit":%d}' % limit,
+              "--additional-metrics", *PI_STATS) or {}
+    total = sum(k.get("Total", 0) for k in top.get("Keys", [])) or 1
+    for rank, k in enumerate(top.get("Keys", []), 1):
+        a = k.get("AdditionalMetrics") or {}
+        stat = lambda name: a.get("db.sql_tokenized.stats.%s.avg" % name)
+        fmt = lambda v, f: (f % v) if isinstance(v, (int, float)) else "n/a"
+        out("PI_TOP_SQL", label, "rank=%d" % rank, "load_AAS=%.4f" % k.get("Total", 0), "share=%.0f%%" % (100 * k.get("Total", 0) / total),
+            "calls_per_s=%s" % fmt(stat("calls_per_sec"), "%.3f"), "ms_per_call=%s" % fmt(stat("avg_latency_per_call"), "%.2f"),
+            "rows_per_call=%s" % fmt(stat("rows_per_call"), "%.1f"), "hit_blks=%s" % fmt(stat("shared_blks_hit_per_call"), "%.0f"),
+            "read_blks=%s" % fmt(stat("shared_blks_read_per_call"), "%.1f"), "temp_blks=%s" % fmt(stat("temp_blks_written_per_call"), "%.1f"),
+            "sql=" + one_line((k.get("Dimensions") or {}).get("db.sql_tokenized.statement", ""), 420))
+
+
+PGSS_COLUMNS = ("queryid::text as id, calls::bigint as calls, round(total_exec_time::numeric / 1000, 1) as total_s, "
+                "round(mean_exec_time::numeric, 2) as mean_ms, round(stddev_exec_time::numeric, 2) as stddev_ms, "
+                "round(max_exec_time::numeric, 1) as max_ms, rows::bigint as rows, shared_blks_hit::bigint as hit, "
+                "shared_blks_read::bigint as read, temp_blks_written::bigint as temp_written")
+
+
+def pgss_top():
+    where = "where query ~* '%s'" % SQL_STATEMENT_KINDS
+    rows = sql_rows([
+        "select " + PGSS_COLUMNS + ", left(regexp_replace(query, '\\s+', ' ', 'g'), 420) as q from pg_stat_statements "
+        + where + " order by total_exec_time desc limit 15",
+        "select " + PGSS_COLUMNS + ", left(regexp_replace(query, '\\s+', ' ', 'g'), 420) as q from pg_stat_statements "
+        + where + " and calls >= 20 order by mean_exec_time desc limit 15",
+        "select stats_reset::text as since, dealloc::bigint as dealloc from pg_stat_statements_info",
+        "select count(*)::int as statements, round(sum(total_exec_time)::numeric / 1000, 0) as total_s, sum(calls)::bigint as calls "
+        "from pg_stat_statements",
+    ])
+    for label, r in zip(("PGSS_TOP_TOTAL", "PGSS_TOP_MEAN", "PGSS_SINCE", "PGSS_TOTALS"), rows):
+        if r is None:
+            out(label, "UNAVAILABLE")
+            continue
+        for rank, row in enumerate(r, 1):
+            q = row.pop("q", None)
+            out(label, "rank=%d" % rank, json.dumps(row, sort_keys=True), ("sql=" + one_line(q, 420)) if q else "")
+    return rows[0] or []
+
+
+def section_db():
+    out("=== ROUND DB PART 1: WHERE THE DATABASE TIME GOES (shapes and counts only) ===")
+    resource = writer_resource()
+    if not resource:
+        out("PI UNAVAILABLE")
+    else:
+        if DB_RUN_START and DB_RUN_END:
+            run_start, run_end = parse_minute(DB_RUN_START), parse_minute(DB_RUN_END)
+            assert run_start < run_end <= run_start + dt.timedelta(hours=3), "the load test window must be under 3 hours"
+            pi_top(resource, "load_test", run_start, run_end)
+        pi_top(resource, "last_7d", NOW - dt.timedelta(days=7) + dt.timedelta(minutes=5), NOW)
+
+
+def section_dbstats():
+    out("=== ROUND DB PART 1: pg_stat_statements, cumulative since its reset (shapes only) ===")
+    pgss_top()
+
+
+def plan_nodes(node, depth=0, found=None):
+    """Plan nodes with what matters for cost: type, table, index, estimated rows and cost. No values."""
+    found = [] if found is None else found
+    entry = node.get("Node Type", "?")
+    if node.get("Relation Name"):
+        entry += " on " + node["Relation Name"]
+    if node.get("Index Name"):
+        entry += " using " + node["Index Name"]
+    if node.get("Sort Key"):
+        entry += " sort(%d keys)" % len(node["Sort Key"])
+    entry += " rows~%s cost~%s" % (int(node.get("Plan Rows", 0)), int(node.get("Total Cost", 0)))
+    found.append("%s%s" % (">" * depth, entry))
+    for child in node.get("Plans", []) or []:
+        plan_nodes(child, depth + 1, found)
+    return found
+
+
+PLAN_NODE = re.compile(r"^(\s*)(?:->\s+)?([A-Z][A-Za-z ]+?)(?: using (\w+))?(?: on (\w+)(?: \w+)?)?\s+\(cost=[\d.]+\.\.([\d.]+) rows=(\d+)")
+
+
+def text_plan_nodes(plan_text):
+    """Node lines of a text plan: type, index, table, estimated rows and cost. Condition and filter lines (which can
+    hold values) are dropped, and nothing quoted is ever kept."""
+    found = []
+    for line in (plan_text or "").splitlines():
+        m = PLAN_NODE.match(line)
+        if not m:
+            continue
+        indent, node, index, table, cost, rows = m.groups()
+        entry = node.strip() + (" on " + table if table else "") + (" using " + index if index else "")
+        found.append("%s%s rows~%s cost~%d" % (">" * (len(indent) // 6), entry, rows, float(cost)))
+    return found
+
+
+def plan_flags(nodes):
+    return sorted({f for n in nodes for f, hit in (("SEQ_SCAN", "Seq Scan" in n), ("SORT", "Sort" in n),
+                   ("NESTED_LOOP", "Nested Loop" in n), ("HASH_JOIN", "Hash Join" in n)) if hit})
+
+
+def section_dbplans():
+    out("=== ROUND DB PART 1: PLANS OF THE TOP STATEMENTS (EXPLAIN GENERIC_PLAN, nothing executed; else Aurora's captured plans) ===")
+    top = sql_rows(["select queryid::text as id, query as q from pg_stat_statements where query ~* '%s' "
+                    "order by total_exec_time desc limit 12" % SQL_STATEMENT_KINDS])[0] or []
+    missing = []
+    for row in top:
+        q = row.get("q") or ""
+        if not re.match(STATEMENT_KINDS, q, re.I) or ";" in q.strip().rstrip(";"):
+            out("PLAN", "id=%s" % row.get("id"), "SKIPPED")
+            continue
+        r = sql_rows([EXPLAIN_PREFIX + q.strip().rstrip(";")])[0]
+        try:
+            value = list(r[0].values())[0]
+            plan = (json.loads(value) if isinstance(value, str) else value)[0]["Plan"]
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+            missing.append(row.get("id"))
+            continue
+        nodes = plan_nodes(plan)
+        out("PLAN", "id=%s" % row.get("id"), "source=generic", "flags=%s" % ",".join(plan_flags(nodes)), "nodes=%d" % len(nodes),
+            " | ".join(nodes)[:900])
+    ids = [i for i in missing if i and re.fullmatch(r"-?\d+", i)]
+    if ids:
+        captured = sql_rows(["select queryid::text as id, calls::bigint as calls, explain_plan as p from aurora_stat_plans(true) "
+                             "where queryid in (%s) order by calls desc" % ",".join(ids)])[0]
+        if captured is None:
+            out("PLAN_CAPTURED", "UNAVAILABLE", "ids=%d" % len(ids))
+        for row in captured or []:
+            nodes = text_plan_nodes(row.pop("p", ""))
+            out("PLAN", "id=%s" % row.get("id"), "source=captured", "calls=%s" % row.get("calls"),
+                "flags=%s" % ",".join(plan_flags(nodes)), "nodes=%d" % len(nodes), " | ".join(nodes)[:900])
+
+
+def section_dbhealth():
+    out("=== ROUND DB PART 1: INDEX, TABLE AND CONNECTION HEALTH (counts and names of schema objects only) ===")
+    statements = [
+        "select stats_reset::text as since from pg_stat_database where datname = current_database()",
+        # Indexes never used since the statistics reset (unique and primary keys enforce rules, so they are listed apart).
+        "select s.relname as tbl, s.indexrelname as idx, s.idx_scan::bigint as scans, pg_relation_size(s.indexrelid)::bigint as bytes, "
+        "i.indisunique as uniq, i.indisprimary as pk from pg_stat_user_indexes s join pg_index i on i.indexrelid = s.indexrelid "
+        "where s.schemaname = 'public' and s.idx_scan = 0 order by pg_relation_size(s.indexrelid) desc limit 40",
+        # Duplicate (same key) or overlapping (key is a prefix of another non-partial index's key) plain indexes.
+        "select a.indrelid::regclass::text as tbl, a.indexrelid::regclass::text as idx, b.indexrelid::regclass::text as covered_by, "
+        "(a.indkey::text = b.indkey::text) as same_key from pg_index a join pg_index b on a.indrelid = b.indrelid "
+        "and a.indexrelid <> b.indexrelid and a.indpred is null and b.indpred is null and a.indexprs is null and b.indexprs is null "
+        "and not a.indisunique and (b.indkey::text like a.indkey::text || ' %' or (b.indkey::text = a.indkey::text and a.indexrelid > b.indexrelid)) "
+        "join pg_class c on c.oid = a.indrelid join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' limit 40",
+        # The 15 biggest tables.
+        "select relname as tbl, n_live_tup::bigint as live, n_dead_tup::bigint as dead, seq_scan::bigint as seq_scans, "
+        "seq_tup_read::bigint as seq_rows_read, coalesce(idx_scan, 0)::bigint as idx_scans, n_mod_since_analyze::bigint as mod_since_analyze, "
+        "pg_total_relation_size(relid)::bigint as bytes, greatest(last_vacuum, last_autovacuum)::date::text as vacuumed, "
+        "greatest(last_analyze, last_autoanalyze)::date::text as analyzed from pg_stat_user_tables where schemaname = 'public' "
+        "order by pg_total_relation_size(relid) desc limit 15",
+        # Tables read mostly by sequential scan.
+        "select relname as tbl, seq_scan::bigint as seq_scans, seq_tup_read::bigint as seq_rows_read, coalesce(idx_scan, 0)::bigint as idx_scans, "
+        "n_live_tup::bigint as live from pg_stat_user_tables where schemaname = 'public' and seq_scan > 1000 and n_live_tup > 1000 "
+        "order by seq_tup_read desc limit 15",
+        "select datname as db, numbackends::int as backends, xact_commit::bigint as commits, blks_hit::bigint as hit, blks_read::bigint as read, "
+        "temp_files::bigint as temp_files, temp_bytes::bigint as temp_bytes, deadlocks::bigint as deadlocks from pg_stat_database "
+        "where datname = current_database()",
+        "select usename as role, coalesce(application_name, '') as app, state, count(*)::int as n from pg_stat_activity "
+        "where backend_type = 'client backend' group by 1, 2, 3 order by 4 desc limit 20",
+        "select rolname as role, coalesce(array_to_string(rolconfig, ','), '') as settings from pg_roles "
+        "where rolcanlogin and rolname not like 'rds%' order by 1",
+        "select name, setting, unit from pg_settings where name in ('max_connections', 'shared_buffers', 'work_mem', "
+        "'effective_cache_size', 'random_page_cost', 'statement_timeout', 'idle_in_transaction_session_timeout', "
+        "'pg_stat_statements.max', 'pg_stat_statements.track', 'track_io_timing', 'default_statistics_target', "
+        "'autovacuum_vacuum_scale_factor', 'autovacuum_analyze_scale_factor') order by name",
+    ]
+    # One read-only transaction per statement, so one failing statement cannot hide the others.
+    rows = [sql_rows([statement])[0] for statement in statements]
+    labels = ["STATS_SINCE", "INDEX_UNUSED", "INDEX_DUPLICATE_OR_OVERLAP", "TABLE_BIGGEST", "TABLE_SEQ_SCANNED",
+              "DB_TOTALS", "CONNECTIONS_BY_ROLE_STATE", "ROLE_SETTINGS", "SETTINGS"]
+    for label, r in zip(labels, rows):
+        if r is None:
+            out(label, "UNAVAILABLE")
+            continue
+        out(label, "count=%d" % len(r))
+        for row in r:
+            out(label, json.dumps(row, sort_keys=True)[:400])
+
+
+# ---------------------------------------------------------------- Round DB: cost (read-only)
+
+def section_cost():
+    out("=== ROUND DB PART 3: COST AND IDLE RESOURCES (amounts, counts and resource names only) ===")
+    month_start = NOW.replace(day=1, hour=0, minute=0).date()
+    last_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+    for label, s, e in (("last_month", last_month_start, month_start), ("month_to_date", month_start, NOW.date())):
+        if s >= e:
+            continue
+        data = aws("ce", "get-cost-and-usage", "--time-period", "Start=%s,End=%s" % (s, e), "--granularity", "MONTHLY",
+                   "--metrics", "UnblendedCost", "UsageQuantity", "--group-by", "Type=DIMENSION,Key=SERVICE",
+                   "Type=DIMENSION,Key=USAGE_TYPE", region=EDGE) or {}
+        groups = [g for p in data.get("ResultsByTime", []) for g in p.get("Groups", [])]
+        groups.sort(key=lambda g: -float(g["Metrics"]["UnblendedCost"]["Amount"]))
+        total = sum(float(g["Metrics"]["UnblendedCost"]["Amount"]) for g in groups)
+        out("COST_TOTAL", label, "%s..%s" % (s, e), "USD=%.2f" % total, "lines=%d" % len(groups))
+        for g in groups[:15]:
+            out("COST_LINE", label, " / ".join(g["Keys"]), "USD=%.2f" % float(g["Metrics"]["UnblendedCost"]["Amount"]),
+                "qty=%.1f" % float(g["Metrics"]["UsageQuantity"]["Amount"]))
+    nat = (aws("ec2", "describe-nat-gateways") or {}).get("NatGateways", [])
+    out("NAT_GATEWAYS", "count=%d" % len([n for n in nat if n.get("State") == "available"]))
+    eips = (aws("ec2", "describe-addresses") or {}).get("Addresses", [])
+    out("ELASTIC_IPS", "count=%d" % len(eips), "unattached=%d" % len([a for a in eips if not a.get("AssociationId")]))
+    vols = (aws("ec2", "describe-volumes") or {}).get("Volumes", [])
+    out("EBS_VOLUMES", "count=%d" % len(vols), "GB=%d" % sum(v.get("Size", 0) for v in vols),
+        "unattached=%d" % len([v for v in vols if v.get("State") == "available"]),
+        "unattachedGB=%d" % sum(v.get("Size", 0) for v in vols if v.get("State") == "available"))
+    snaps = (aws("ec2", "describe-snapshots", "--owner-ids", "self") or {}).get("Snapshots", [])
+    out("EBS_SNAPSHOTS", "count=%d" % len(snaps), "GB=%d" % sum(s.get("VolumeSize", 0) for s in snaps),
+        "oldest=%s" % (min((s.get("StartTime", "")[:10] for s in snaps), default="none")))
+    rds_snaps = (aws("rds", "describe-db-cluster-snapshots", "--snapshot-type", "manual") or {}).get("DBClusterSnapshots", [])
+    out("AURORA_MANUAL_SNAPSHOTS", "count=%d" % len(rds_snaps), "oldest=%s" % min((s.get("SnapshotCreateTime", "")[:10] for s in rds_snaps), default="none"))
+    lbs = (aws("elbv2", "describe-load-balancers") or {}).get("LoadBalancers", [])
+    for lb in lbs:
+        tgs = (aws("elbv2", "describe-target-groups", "--load-balancer-arn", lb["LoadBalancerArn"]) or {}).get("TargetGroups", [])
+        out("LOAD_BALANCER", lb.get("LoadBalancerName"), lb.get("Type"), "scheme=%s" % lb.get("Scheme"), "targetGroups=%d" % len(tgs))
+    clusters = (aws("ecs", "describe-clusters", "--clusters", PREFIX, "--include", "SETTINGS") or {}).get("clusters", [])
+    for c in clusters:
+        out("ECS_CLUSTER_SETTINGS", c.get("clusterName"), json.dumps(c.get("settings", [])),
+            "capacityProviders=%s" % ",".join(c.get("capacityProviders", [])))
+    groups = (aws("logs", "describe-log-groups") or {}).get("logGroups", [])
+    out("LOG_GROUPS", "count=%d" % len(groups), "noRetention=%d" % len([g for g in groups if not g.get("retentionInDays")]),
+        "storedGB=%.2f" % (sum(g.get("storedBytes", 0) for g in groups) / 1024 ** 3))
+    for g in sorted(groups, key=lambda g: -g.get("storedBytes", 0))[:25]:
+        out("LOG_GROUP", g.get("logGroupName"), "retentionDays=%s" % g.get("retentionInDays", "never"),
+            "storedMB=%.1f" % (g.get("storedBytes", 0) / 1048576))
+    custom = Counter()
+    for m in (aws("cloudwatch", "list-metrics") or {}).get("Metrics", []):
+        if not m.get("Namespace", "").startswith("AWS/"):
+            custom[m["Namespace"]] += 1
+    out("CUSTOM_METRICS", json.dumps(dict(custom), sort_keys=True))
+    for b in ("media", "private", "migration", "load-test-handoff"):
+        bucket = "%s-%s-%s" % (PREFIX, ACCOUNT, b)
+        rules = (aws("s3api", "get-bucket-lifecycle-configuration", "--bucket", bucket, quiet=True) or {}).get("Rules", [])
+        uploads = (aws("s3api", "list-multipart-uploads", "--bucket", bucket, quiet=True) or {}).get("Uploads", []) or []
+        out("S3_BUCKET", b, "lifecycleRules=%d" % len(rules), "incompleteUploads=%d" % len(uploads),
+            "rules=%s" % ",".join(sorted(r.get("ID", "?") for r in rules)))
+    versions = aws("s3api", "list-object-versions", "--bucket", "%s-%s-media" % (PREFIX, ACCOUNT),
+                   "--query", "Versions[?IsLatest==`false`].[Size,LastModified]") or []
+    old = [v for v in versions if v and v[1] and v[1][:10] < (NOW - dt.timedelta(days=30)).date().isoformat()]
+    out("S3_MEDIA_NONCURRENT", "versions=%d" % len(versions), "GB=%.3f" % (sum(v[0] for v in versions if v) / 1024 ** 3),
+        "olderThan30d=%d" % len(old), "olderThan30dGB=%.3f" % (sum(v[0] for v in old) / 1024 ** 3))
+    for r in (aws("ecr", "describe-repositories") or {}).get("repositories", []):
+        images = (aws("ecr", "describe-images", "--repository-name", r["repositoryName"]) or {}).get("imageDetails", [])
+        policy = aws("ecr", "get-lifecycle-policy", "--repository-name", r["repositoryName"], quiet=True)
+        out("ECR_REPOSITORY", r["repositoryName"], "images=%d" % len(images),
+            "GB=%.2f" % (sum(i.get("imageSizeInBytes", 0) for i in images) / 1024 ** 3), "lifecyclePolicy=%s" % bool(policy))
+
+
 def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
-    {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks}[SECTION]()
+    {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
+     "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

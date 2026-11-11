@@ -27,6 +27,14 @@ function compareWindow() {
   if (line === 'none') return null
   // Round ARCH: read-only pre-checks before a rollout step (section_checks in the remote script).
   if (line === 'checks') return { checks: true }
+  // Round DB: where the database time goes and what the stack costs, with Performance Insights over one load test
+  // window (under 3 hours): "db <start> <end>". Runs the config, db, dbstats, dbplans, dbhealth and cost sections.
+  const db = line.match(/^db (\S+) (\S+)$/)
+  if (db) {
+    assert.ok(MINUTE.test(db[1]) && MINUTE.test(db[2]) && new Date(db[2]) > new Date(db[1]) &&
+      new Date(db[2]) - new Date(db[1]) <= 3 * 3600_000, 'the db window must be "db <start> <end>", under 3 hours, in whole UTC minutes')
+    return { db: true, runStart: db[1], runEnd: db[2] }
+  }
   const m = line.match(/^compare (\S+) (\S+)(?: split (\S+))?$/)
   assert.ok(m && MINUTE.test(m[1]) && (m[2] === 'now' || MINUTE.test(m[2])) && (!m[3] || MINUTE.test(m[3])),
     'the window file must read "none" or "compare <start> <end|now> [split <time>]" in whole UTC minutes')
@@ -44,8 +52,10 @@ const COMPARE = process.env.REPORT_SECTIONS ? null : compareWindow()
 const PROBE_ORG_NAME = readFileSync('scripts/aws/org-page-probe-name.txt', 'utf8').trim()
 assert.ok(PROBE_ORG_NAME && PROBE_ORG_NAME.length <= 120 && !/["\\]/.test(PROBE_ORG_NAME), 'org-page-probe-name.txt must hold one organization name')
 
-const SECTIONS = COMPARE?.checks ? ['checks'] : COMPARE ? ['compare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
-assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE && s === (COMPARE.checks ? 'checks' : 'compare'))), 'unknown report section')
+const DB_SECTIONS = ['config', 'db', 'dbstats', 'dbplans', 'dbhealth', 'cost']
+const SECTIONS = COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
+  (COMPARE && !COMPARE.db && s === (COMPARE.checks ? 'checks' : 'compare'))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
@@ -72,6 +82,8 @@ export REPORT_END=${quote(WINDOW.end)}
 export COMPARE_START=${quote(COMPARE?.start ?? '')}
 export COMPARE_END=${quote(COMPARE?.end ?? '')}
 export COMPARE_SPLIT=${quote(COMPARE?.split ?? '')}
+export DB_RUN_START=${quote(COMPARE?.runStart ?? '')}
+export DB_RUN_END=${quote(COMPARE?.runEnd ?? '')}
 export REPORT_PROBE_ORG_NAME=${quote(PROBE_ORG_NAME)}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
 WORK=$(mktemp -d)

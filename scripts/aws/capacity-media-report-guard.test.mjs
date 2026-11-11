@@ -43,7 +43,7 @@ test('the SSM wrapper only sends the report and reads its result', () => {
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
   const line = readFileSync(windowPath, 'utf8').trim()
   const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
-  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?)$`))
+  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|db ${minute} ${minute})$`))
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
   assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
@@ -87,7 +87,10 @@ test('every AWS call in the remote script describes, gets or lists (or reads thr
 test('SQL runs read-only and is rolled back; output carries shapes and counts, not member data', () => {
   const remote = readFileSync(remotePath, 'utf8')
   assert.match(remote, /SET TRANSACTION READ ONLY/)
-  assert.match(remote, /assert re\.match\(r"\^\\s\*\(select\|show\|with\)\\b", statement, re\.I\)/)
+  assert.match(remote, /assert re\.match\(r"\^\\s\*\(select\|show\|with\)\\b", statement, re\.I\) or statement\.startswith\(EXPLAIN_PREFIX\)/)
+  // Round DB: EXPLAIN only plans (GENERIC_PLAN, never ANALYZE), so nothing it explains is ever run.
+  assert.match(remote, /^EXPLAIN_PREFIX = "explain \(generic_plan, costs, format json\) "$/m)
+  assert.doesNotMatch(remote, /explain \([^)]*analyze/i)
   assert.match(remote, /finally:\n\s+aws\("rds-data", "rollback-transaction"/)
   // Object keys and request paths are only printed through the shape functions.
   assert.doesNotMatch(remote, /out\([^)]*obj\["Key"\]/)
@@ -115,4 +118,41 @@ print("ok")
 `], { encoding: 'utf8' })
   assert.equal(compiled.status, 0, compiled.stderr)
   assert.match(compiled.stdout, /ok/)
+})
+
+// Round DB (Part 1 and Part 3): the db window runs five read-only sections; plans and statements print shapes only.
+test('the db window runs the read-only Round DB sections over one load test window', () => {
+  const wrapper = readFileSync(wrapperPath, 'utf8')
+  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbstats', 'dbplans', 'dbhealth', 'cost'\]/)
+  assert.match(wrapper, /3 \* 3600_000/)
+  const remote = readFileSync(remotePath, 'utf8')
+  for (const name of ['db', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  // Text plans keep node lines only; condition and filter lines, which can hold values, never come out.
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+plan = """Limit  (cost=0.42..8.44 rows=1 width=16)
+  ->  Nested Loop  (cost=0.42..8.44 rows=20 width=16)
+        ->  Index Scan using posts_author_idx on posts p  (cost=0.42..8.44 rows=1 width=16)
+              Index Cond: (author_id = 'a1b2c3d4'::uuid)
+              Filter: (body ~~ '%Asha Rao%'::text)
+        ->  Seq Scan on profiles  (cost=0.00..120.00 rows=4850 width=40)
+              Filter: (email = 'someone@example.com'::text)"""
+nodes = r.text_plan_nodes(plan)
+text = " ".join(nodes)
+assert "Asha" not in text and "example" not in text and "a1b2" not in text, text
+assert nodes == ["Limit rows~1 cost~8", "Nested Loop rows~20 cost~8", ">Index Scan on posts using posts_author_idx rows~1 cost~8",
+                 ">Seq Scan on profiles rows~4850 cost~120"], nodes
+assert r.plan_flags(nodes) == ["NESTED_LOOP", "SEQ_SCAN"]
+g = r.plan_nodes({"Node Type": "Sort", "Sort Key": ["created_at"], "Plan Rows": 5, "Total Cost": 9.5, "Filter": "x = 'secret'",
+                  "Plans": [{"Node Type": "Seq Scan", "Relation Name": "posts", "Plan Rows": 50, "Total Cost": 4}]})
+assert g == ["Sort sort(1 keys) rows~5 cost~9", ">Seq Scan on posts rows~50 cost~4"], g
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  // Statements are printed only as normalised shapes from pg_stat_statements and Performance Insights.
+  assert.match(remote, /left\(regexp_replace\(query, '\\\\s\+', ' ', 'g'\), 420\) as q from pg_stat_statements/)
+  assert.match(remote, /"db\.sql_tokenized\.statement"/)
 })
