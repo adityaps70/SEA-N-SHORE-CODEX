@@ -285,6 +285,52 @@ export function mapPeopleCandidate(row: Record<string, unknown>): PeopleCandidat
   }
 }
 
+/** "People similar to <name>": $1 = viewer, $2 = the member whose profile it is, $3 = how many. */
+export function similarToSql() {
+  return `with ${excludedPeopleCte()},
+       subject as (
+         select p.id, p.role_key, coalesce(mp.vessel_type_codes, '{}') as vessel_codes, mp.current_company_id,
+                (select coalesce(array_agg(r.code), '{}'::text[]) from public.maritime_ranks sr
+                 join public.maritime_ranks r on r.ladder = sr.ladder and r.department_key = sr.department_key and abs(r.ladder_level - sr.ladder_level) <= 1
+                 where sr.code = p.role_key) as rank_band,
+                (select coalesce(array_agg(distinct vt.vessel_group), '{}'::text[]) from public.vessel_types vt where vt.code = any(coalesce(mp.vessel_type_codes, '{}'))) as vessel_groups
+         from public.profiles p left join public.maritime_profiles mp on mp.user_id = p.id
+         where p.id = $2
+       ),
+       -- Round DB (Option A, owner-approved 12 Nov): only members who can match are read, through three cheap
+       -- lookups, instead of running every eligibility check on every member. The vessel-group match is the same
+       -- test as an array overlap with every vessel type code in the subject's groups. The full condition below
+       -- still applies, so the rows are exactly the same.
+       subject_codes as materialized (
+         select coalesce((select array_agg(vt.code) from public.vessel_types vt, subject s where vt.vessel_group = any(s.vessel_groups)), '{}'::text[]) as group_codes
+       ),
+       matches as materialized (
+         select p.id from public.profiles p, subject s where p.role_key = any(s.rank_band)
+         union
+         select mp.user_id from public.maritime_profiles mp, subject s
+         where s.current_company_id is not null and mp.current_company_id = s.current_company_id
+         union
+         select mp.user_id from public.maritime_profiles mp, subject_codes sc
+         where cardinality(sc.group_codes) > 0 and mp.vessel_type_codes && sc.group_codes
+       )
+       select c.id,
+              ((case when c.role_key = any(subject.rank_band) then 3 else 0 end)
+               + (case when exists (select 1 from public.vessel_types vt where vt.code = any(coalesce(cmp.vessel_type_codes, '{}')) and vt.vessel_group = any(subject.vessel_groups)) then 2 else 0 end)
+               + (case when subject.current_company_id is not null and cmp.current_company_id = subject.current_company_id then 3 else 0 end)) as score
+       from matches
+       join public.profiles c on c.id = matches.id
+       left join public.maritime_profiles cmp on cmp.user_id = c.id
+       cross join subject
+       where c.id <> $2 and ${eligiblePersonSql('c', 'cmp')}
+         and (
+           c.role_key = any(subject.rank_band)
+           or (subject.current_company_id is not null and cmp.current_company_id = subject.current_company_id)
+           or exists (select 1 from public.vessel_types vt where vt.code = any(coalesce(cmp.vessel_type_codes, '{}')) and vt.vessel_group = any(subject.vessel_groups))
+         )
+       order by score desc, c.updated_at desc, c.id
+       limit $3`
+}
+
 export type StoredSuggestion = { candidateId: string; score: number; primarySource: string; reasons: unknown[] }
 
 export function createPeopleCandidateRepository(input: { query?: Query } = {}) {
@@ -399,31 +445,7 @@ export function createPeopleCandidateRepository(input: { query?: Query } = {}) {
    */
   async function listSimilarTo(viewerId: string, profileId: string, limit: number) {
     const rows = await queryRows(
-      `with ${excludedPeopleCte()},
-       subject as (
-         select p.id, p.role_key, coalesce(mp.vessel_type_codes, '{}') as vessel_codes, mp.current_company_id,
-                (select coalesce(array_agg(r.code), '{}'::text[]) from public.maritime_ranks sr
-                 join public.maritime_ranks r on r.ladder = sr.ladder and r.department_key = sr.department_key and abs(r.ladder_level - sr.ladder_level) <= 1
-                 where sr.code = p.role_key) as rank_band,
-                (select coalesce(array_agg(distinct vt.vessel_group), '{}'::text[]) from public.vessel_types vt where vt.code = any(coalesce(mp.vessel_type_codes, '{}'))) as vessel_groups
-         from public.profiles p left join public.maritime_profiles mp on mp.user_id = p.id
-         where p.id = $2
-       )
-       select c.id,
-              ((case when c.role_key = any(subject.rank_band) then 3 else 0 end)
-               + (case when exists (select 1 from public.vessel_types vt where vt.code = any(coalesce(cmp.vessel_type_codes, '{}')) and vt.vessel_group = any(subject.vessel_groups)) then 2 else 0 end)
-               + (case when subject.current_company_id is not null and cmp.current_company_id = subject.current_company_id then 3 else 0 end)) as score
-       from public.profiles c
-       left join public.maritime_profiles cmp on cmp.user_id = c.id
-       cross join subject
-       where c.id <> $2 and ${eligiblePersonSql('c', 'cmp')}
-         and (
-           c.role_key = any(subject.rank_band)
-           or (subject.current_company_id is not null and cmp.current_company_id = subject.current_company_id)
-           or exists (select 1 from public.vessel_types vt where vt.code = any(coalesce(cmp.vessel_type_codes, '{}')) and vt.vessel_group = any(subject.vessel_groups))
-         )
-       order by score desc, c.updated_at desc, c.id
-       limit $3`,
+      similarToSql(),
       [viewerId, profileId, limit],
     )
     return rows.map((row) => String(row.id))

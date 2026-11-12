@@ -323,3 +323,45 @@ print("ok")
   assert.equal(run.status, 0, run.stderr)
   assert.match(run.stdout, /^ok$/m)
 })
+
+// Round DB (Option A, owner 12 Nov): the 24-hour before/after compare also reports the database cost per request.
+test('the compare window reports database seconds and ACU-seconds per 1,000 requests for both windows', () => {
+  const wrapper = readFileSync(wrapperPath, 'utf8')
+  assert.match(wrapper, /COMPARE \? \['compare', 'dbcompare'\]/)
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, datetime as dt
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+import os
+os.environ.update({"COMPARE_START": "2026-11-13T10:00:00Z", "COMPARE_END": "2026-11-13T12:00:00Z", "COMPARE_SPLIT": ""})
+r.writer_resource = lambda: "db-TEST"
+r.search_dims = lambda *a, **k: [{"LoadBalancer": "app/x/1"}]
+after = r.parse_minute("2026-11-13T10:00:00Z")
+def points(namespace, name, dims, stat, period, start, end, region=None):
+    later = start >= after
+    value = {"RequestCount": 50000 if later else 40000, "ServerlessDatabaseCapacity": 1.0 if later else 2.0, "CPUUtilization": 30.0}[name]
+    return [(start, value), (start + dt.timedelta(hours=1), value)]
+r.metric_points = points
+def fake_aws(service, action, *args, **kw):
+    start = args[args.index("--start-time") + 1]
+    v = 0.05 if start >= "2026-11-13T10:00:00Z" else 0.10
+    return {"MetricList": [{"DataPoints": [{"Value": v}, {"Value": v}]}]}
+r.aws = fake_aws
+r.pi_keys = lambda *a, **k: [{"Total": 0.01, "Dimensions": {"db.sql_tokenized.statement": "select x from t where a = ?"},
+                              "AdditionalMetrics": {"db.sql_tokenized.stats.calls_per_sec.avg": 1.0, "db.sql_tokenized.stats.avg_latency_per_call.avg": 2.5}}]
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_dbcompare()
+text = buf.getvalue()
+# Before: 80,000 requests, 0.10 AAS x 7,200 s = 720 DB-s -> 9.00 per 1,000; 2 ACU x 2 h -> 180.00 ACU-s per 1,000.
+assert "COMPARE_DB before requests=80000 db_s=720 db_s_per_1k_requests=9.00 acu_hours=4.0 acu_s_per_1k_requests=180.00" in text, text
+# After: 100,000 requests, 360 DB-s -> 3.60; 1 ACU x 2 h -> 72.00.
+assert "COMPARE_DB after requests=100000 db_s=360 db_s_per_1k_requests=3.60 acu_hours=2.0 acu_s_per_1k_requests=72.00" in text, text
+assert "COMPARE_DB_CHANGE requests +25% db_s_per_1k_requests -60% acu_s_per_1k_requests -60%" in text, text
+assert "COMPARE_DB_SQL after rank=1 db_s=72 calls=7200 ms_per_call=2.50 sql=select x from t where a = ?" in text, text
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})

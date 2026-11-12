@@ -867,6 +867,49 @@ def section_compare():
         headline("hours_after_split", lambda h: h >= split_hours)
 
 
+def section_dbcompare():
+    """Round DB (Option A, owner 12 Nov): database cost per request, before and after, the same hours 24 hours apart.
+    Requests from the ALB; database time from Performance Insights; Aurora capacity and CPU from CloudWatch. Counts,
+    seconds and statement shapes only."""
+    windows, _split = compare_windows()
+    out("=== DATABASE COST PER REQUEST, BEFORE AND AFTER (same hours, 24 hours apart) ===")
+    resource = writer_resource()
+    alb = [d for d in search_dims("AWS/ApplicationELB", "RequestCount", PREFIX + "-alb") if set(d) == {"LoadBalancer"}]
+    results = {}
+    for label, start, end in windows:
+        seconds = (end - start).total_seconds()
+        requests = sum(v for d in alb for _t, v in metric_points("AWS/ApplicationELB", "RequestCount", d, "Sum", 3600, start, end))
+        dims = {"DBClusterIdentifier": CLUSTER_ID}
+        acu = [v for _t, v in metric_points("AWS/RDS", "ServerlessDatabaseCapacity", dims, "Average", 3600, start, end)]
+        cpu = [v for _t, v in metric_points("AWS/RDS", "CPUUtilization", dims, "Average", 3600, start, end)]
+        db_s = None
+        if resource:
+            data = aws("pi", "get-resource-metrics", "--service-type", "RDS", "--identifier", resource, "--start-time", iso(start),
+                       "--end-time", iso(end), "--period-in-seconds", "3600", "--metric-queries", '[{"Metric":"db.load.avg"}]') or {}
+            points = [p["Value"] for m in data.get("MetricList", []) for p in m.get("DataPoints", []) if p.get("Value") is not None]
+            db_s = sum(points) * 3600 if points else None
+        acu_s = sum(acu) * 3600 if acu else None
+        per_1k = lambda v: ("%.2f" % (1000 * v / requests)) if v is not None and requests else "n/a"
+        results[label] = (requests, db_s, acu_s)
+        out("COMPARE_DB", label, "requests=%d" % requests, "db_s=%s" % ("%.0f" % db_s if db_s is not None else "n/a"),
+            "db_s_per_1k_requests=%s" % per_1k(db_s), "acu_hours=%s" % ("%.1f" % (acu_s / 3600) if acu_s is not None else "n/a"),
+            "acu_s_per_1k_requests=%s" % per_1k(acu_s), "aurora_cpu_avg_pct=%s" % ("%.1f" % statistics.fmean(cpu) if cpu else "n/a"),
+            "hours=%.1f" % (seconds / 3600))
+        if resource:
+            for rank, k in enumerate(pi_keys(resource, start, end, "db.sql_tokenized", 12, PI_WINDOW_STATS), 1):
+                a = k.get("AdditionalMetrics") or {}
+                calls_ps = a.get("db.sql_tokenized.stats.calls_per_sec.avg")
+                ms = a.get("db.sql_tokenized.stats.avg_latency_per_call.avg")
+                out("COMPARE_DB_SQL", label, "rank=%d" % rank, "db_s=%.0f" % (k.get("Total", 0) * seconds),
+                    "calls=%s" % ("%.0f" % (calls_ps * seconds) if isinstance(calls_ps, (int, float)) else "n/a"),
+                    "ms_per_call=%s" % ("%.2f" % ms if isinstance(ms, (int, float)) else "n/a"),
+                    "sql=" + one_line((k.get("Dimensions") or {}).get("db.sql_tokenized.statement", ""), 160))
+    (rb, db_b, acu_b), (ra, db_a, acu_a) = results["before"], results["after"]
+    ratio_of = lambda b, a: change(1000 * b / rb, 1000 * a / ra) if None not in (b, a) and rb and ra else "n/a"
+    out("COMPARE_DB_CHANGE", "requests", change(rb, ra), "db_s_per_1k_requests", ratio_of(db_b, db_a),
+        "acu_s_per_1k_requests", ratio_of(acu_b, acu_a))
+
+
 # ---------------------------------------------------------------- section: checks
 
 # Round ARCH (Phase 2): read-only pre-check before the deploy arm (window file "checks"), counts and yes/no only.
@@ -1488,7 +1531,8 @@ def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
-     "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes}[SECTION]()
+     "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
+     "dbcompare": section_dbcompare}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

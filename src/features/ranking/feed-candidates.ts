@@ -242,8 +242,42 @@ function poolSql(mode: 'network' | 'explore') {
     )`
 }
 
+/**
+ * Round DB (Option A, owner-approved 12 Nov): the viewer's reactions, comments and direct messages in the last $6 days,
+ * counted once per author. It replaces three counts that ran for every candidate row (each re-reading the viewer's own
+ * activity: 72% of this query's time, the messages one alone 48%). The same rows are counted: a reaction or comment on
+ * a post by that author, and a message the viewer sent in a direct conversation that author is in (both of its
+ * members count, so for the viewer's own posts every direct message they sent counts, as before).
+ */
+export function viewerAuthorEngagementCte() {
+  return `
+  viewer_author_engagement as materialized (
+    select engaged.author_id, sum(engaged.n)::int as total
+    from (
+      select vp.author_id, count(*) as n
+      from public.post_reactions vr join public.posts vp on vp.id = vr.post_id
+      where vr.user_id = $1 and vr.created_at > now() - make_interval(days => $6)
+      group by vp.author_id
+      union all
+      select vp.author_id, count(*)
+      from public.post_comments vc join public.posts vp on vp.id = vc.post_id
+      where vc.author_id = $1 and vc.deleted_at is null and vc.created_at > now() - make_interval(days => $6)
+      group by vp.author_id
+      union all
+      select member.id, count(*)
+      from public.messages vm
+      join public.conversations conv on conv.id = vm.conversation_id
+      cross join lateral (values (conv.direct_user_low_id), (nullif(conv.direct_user_high_id, conv.direct_user_low_id))) as member(id)
+      where vm.sender_profile_id = $1 and conv.type = 'direct' and vm.created_at > now() - make_interval(days => $6)
+        and member.id is not null
+      group by member.id
+    ) engaged
+    group by engaged.author_id
+  )`
+}
+
 /** Every candidate column. Engagement and the seen check use the content id (the original of a repost). */
-function candidateSql(mode: 'network' | 'explore') {
+export function candidateSql(mode: 'network' | 'explore') {
   return `
   with ${viewerGraphCtes()},
   ${poolSql(mode)},
@@ -251,7 +285,8 @@ function candidateSql(mode: 'network' | 'explore') {
   pool_posts as materialized (
     select p.* from pool join public.posts p on p.id = pool.id
   ),
-  rank_band as materialized (select ${RANK_BAND_SQL} as codes)
+  rank_band as materialized (select ${RANK_BAND_SQL} as codes),
+  ${viewerAuthorEngagementCte()}
   select
     p.id,
     coalesce(p.repost_of_post_id, p.id) as content_id,
@@ -300,17 +335,7 @@ function candidateSql(mode: 'network' | 'explore') {
     author_maritime.current_company_id as author_company_id,
     greatest(0, extract(epoch from (now() - author.created_at)) / 86400)::int as author_account_age_days,
     (select count(*) from public.posts recent where recent.author_id = p.author_id and recent.created_at > now() - interval '1 day' and recent.deleted_at is null)::int as author_posts_last_day,
-    (
-      (select count(*) from public.post_reactions vr join public.posts vp on vp.id = vr.post_id
-       where vr.user_id = $1 and vp.author_id = p.author_id and vr.created_at > now() - make_interval(days => $6))
-      + (select count(*) from public.post_comments vc join public.posts vp on vp.id = vc.post_id
-       where vc.author_id = $1 and vc.deleted_at is null and vp.author_id = p.author_id and vc.created_at > now() - make_interval(days => $6))
-      + (select count(*) from public.messages vm
-         join public.conversations conv on conv.id = vm.conversation_id
-         where vm.sender_profile_id = $1 and conv.type = 'direct'
-           and (conv.direct_user_low_id = p.author_id or conv.direct_user_high_id = p.author_id)
-           and vm.created_at > now() - make_interval(days => $6))
-    )::int as viewer_engagement_with_author,
+    coalesce(viewer_author.total, 0)::int as viewer_engagement_with_author,
     exists (select 1 from public.feed_feedback f where f.viewer_id = $1 and f.author_id = p.author_id and p.company_id is null) as show_less_author,
     exists (select 1 from public.feed_feedback f where f.viewer_id = $1 and f.company_id = p.company_id) as show_less_company,
     exists (select 1 from public.feed_feedback f where f.viewer_id = $1 and f.category = p.category::text and f.created_at > now() - interval '30 days') as show_less_category,
@@ -327,6 +352,8 @@ function candidateSql(mode: 'network' | 'explore') {
   left join public.community_groups g on g.id = p.group_id
   left join public.companies post_company on post_company.id = p.company_id
   left join public.post_stats s on s.post_id = coalesce(p.repost_of_post_id, p.id)
+  -- One row per author (grouped), so this never adds rows.
+  left join viewer_author_engagement viewer_author on viewer_author.author_id = p.author_id
   left join lateral (
     select actor.id as actor_id
     from (
