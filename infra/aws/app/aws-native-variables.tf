@@ -17,9 +17,18 @@ variable "aurora_min_acu" {
 }
 
 variable "aurora_max_acu" {
+  # Round DB (owner-approved 12 Nov): 2 -> 4. Capacity above 2 ACU is paid per use and watched by the hourly
+  # extra-capacity check in aurora-capacity.tf.
   description = "Maximum Aurora Serverless v2 ACUs for staging."
   type        = number
-  default     = 2
+  default     = 4
+}
+
+variable "aurora_extra_acu_allowance_hours" {
+  # Round DB (owner-approved 12 Nov): about ₹700 a month at ₹17.8 per ACU-hour incl. GST.
+  description = "Monthly ACU-hours above 2 ACU after which the alerts topic is emailed once."
+  type        = number
+  default     = 39
 }
 
 variable "aurora_auto_pause_seconds" {
