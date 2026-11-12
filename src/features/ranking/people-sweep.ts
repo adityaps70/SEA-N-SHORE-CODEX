@@ -5,9 +5,15 @@ import { createPeopleSuggestions, peopleSuggestions } from './people-suggestions
 /**
  * Round G (G2): the nightly People you may know rebuild, run from the outbox worker loop. It starts
  * at 02:00 India time (20:30 UTC), or straight away when nothing has been computed yet (the first
- * run after release), and refreshes 25 members per loop pass so the outbox never waits long.
+ * run after release).
+ *
+ * Round DB (PYMK fix 1, owner-approved 12 Nov): it ran 25 members on every loop pass, back to back, and held
+ * Aurora at its maximum capacity and 100% CPU for 5 minutes every night (20:30-20:35 UTC on 11 Nov). It now
+ * refreshes 10 members every 30 seconds (20 a minute): the same members in the same order, spread over about
+ * 25 minutes for today's ~470 members, in bursts of a few seconds.
  */
-export const PEOPLE_SWEEP_BATCH = 25
+export const PEOPLE_SWEEP_BATCH = 10
+export const PEOPLE_SWEEP_PASS_MS = 30_000
 export const PEOPLE_SWEEP_START_UTC = { hour: 20, minute: 30 }
 
 export function nextNightlyStart(after: Date) {
@@ -59,5 +65,5 @@ export function createPeopleSweep(input: {
     return { members: processed, seconds: Math.round((now() - startedAt) / 1000) }
   }
 
-  return { name: 'people_suggestions', everyMs: 0, run }
+  return { name: 'people_suggestions', everyMs: PEOPLE_SWEEP_PASS_MS, run }
 }

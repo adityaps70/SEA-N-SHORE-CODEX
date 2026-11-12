@@ -16,9 +16,55 @@ type ProfileRepository = ReturnType<typeof createProfileRepository>
 
 export type PeopleSuggestion = { candidateId: string; reason: string | null; source: string }
 
-export function createPeopleSuggestions(input: { candidates?: CandidateRepository; profiles?: ProfileRepository } = {}) {
+/**
+ * Round DB (PYMK fix 2, owner-approved 12 Nov): the live top-up scored every member on every list view (the
+ * night re-test: 1,376 runs in 50 minutes, 17 ms and 7,300 buffer reads each). Its result is now kept per
+ * member for 10 minutes as a list of ids, a few deeper than asked. Each view re-runs the same query over only
+ * those ids, so every eligibility rule and exclusion (connections and requests either way, follows, blocks
+ * either way, recent declines, dismissals, opt-outs, inactive, removed, not onboarded, organisations,
+ * load-test and synthetic accounts) is applied now, exactly as before. When the kept ids can no longer fill
+ * the list, it is scored afresh. A member who becomes newly eligible appears in others' top-ups within 10
+ * minutes; nobody excluded ever does.
+ */
+export const PEOPLE_TOP_UP_CACHE_MS = 10 * 60 * 1000
+export const PEOPLE_TOP_UP_SPARE = 6
+export const PEOPLE_TOP_UP_CACHE_ENTRIES = 5000
+
+type TopUpEntry = { at: number; depth: number; ids: string[] }
+
+export function createPeopleSuggestions(input: {
+  candidates?: CandidateRepository
+  profiles?: ProfileRepository
+  now?: () => number
+  topUpCacheMs?: number
+} = {}) {
   const candidates = input.candidates ?? peopleCandidateRepository
   const profiles = input.profiles ?? createProfileRepository()
+  const now = input.now ?? Date.now
+  const topUpCacheMs = input.topUpCacheMs ?? PEOPLE_TOP_UP_CACHE_MS
+  const topUps = new Map<string, TopUpEntry>()
+
+  /** The live profile-match top-up, in score order: at least `wanted` long whenever that many are eligible. */
+  async function liveTopUp(viewerId: string, wanted: number) {
+    const base = {
+      viewerProfileId: viewerId,
+      weights: RECOMMENDATION_WEIGHTS,
+      declinedRequestWindow: DECLINED_REQUEST_SUGGESTION_WINDOW,
+      roundG: true,
+    }
+    const kept = topUps.get(viewerId)
+    if (kept && now() - kept.at < topUpCacheMs && kept.depth >= wanted) {
+      const rechecked = await profiles.getPeopleSuggestions({ ...base, limit: kept.depth, onlyIds: kept.ids })
+      // Enough left, or nobody else was eligible when they were kept: the kept list still answers.
+      if (rechecked.length >= wanted || kept.ids.length < kept.depth) return rechecked
+    }
+    const depth = Math.min(60, wanted + PEOPLE_TOP_UP_SPARE)
+    const fresh = await profiles.getPeopleSuggestions({ ...base, limit: depth })
+    topUps.delete(viewerId)
+    topUps.set(viewerId, { at: now(), depth, ids: fresh.map((profile) => profile.id) })
+    while (topUps.size > PEOPLE_TOP_UP_CACHE_ENTRIES) topUps.delete(topUps.keys().next().value as string)
+    return fresh
+  }
 
   /** Recomputes one member's rows. Returns how many were stored. */
   async function refreshForViewer(viewerId: string) {
@@ -62,13 +108,7 @@ export function createPeopleSuggestions(input: { candidates?: CandidateRepositor
     // A section ("See all") lists only its own source; the general list is always topped up.
     if (picked.length >= limit || options.section) return picked
     const chosen = new Set(picked.map((item) => item.candidateId))
-    const live = await profiles.getPeopleSuggestions({
-      viewerProfileId: viewerId,
-      limit: limit + chosen.size,
-      weights: RECOMMENDATION_WEIGHTS,
-      declinedRequestWindow: DECLINED_REQUEST_SUGGESTION_WINDOW,
-      roundG: true,
-    })
+    const live = await liveTopUp(viewerId, limit + chosen.size)
     for (const profile of live) {
       if (picked.length >= limit) break
       if (chosen.has(profile.id)) continue
