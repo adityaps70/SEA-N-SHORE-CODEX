@@ -1285,6 +1285,10 @@ def plan_nodes(node, depth=0, found=None):
 
 
 PLAN_NODE = re.compile(r"^(\s*)(?:->\s+)?([A-Z][A-Za-z ]+?)(?: using (\w+))?(?: on (\w+)(?: \w+)?)?\s+\(cost=[\d.]+\.\.([\d.]+) rows=(\d+)")
+# Round DB (12 Nov): Aurora's captured plans can come without the cost figures; such a node line ends after the node
+# (an alias at most). SubPlan, InitPlan and CTE markers are kept: they show what runs once per row.
+PLAN_NODE_BARE = re.compile(r"^(\s*)(?:->\s+)?([A-Z][A-Za-z ]+?)(?: using (\w+))?(?: on (\w+)(?: \w+)?)?\s*$")
+PLAN_MARKER = re.compile(r"^(\s*)(SubPlan|InitPlan|CTE) (\w+)")
 
 
 def text_plan_nodes(plan_text):
@@ -1293,12 +1297,34 @@ def text_plan_nodes(plan_text):
     found = []
     for line in (plan_text or "").splitlines():
         m = PLAN_NODE.match(line)
-        if not m:
+        if m:
+            indent, node, index, table, cost, rows = m.groups()
+            entry = node.strip() + (" on " + table if table else "") + (" using " + index if index else "")
+            found.append("%s%s rows~%s cost~%d" % (">" * (len(indent) // 6), entry, rows, float(cost)))
             continue
-        indent, node, index, table, cost, rows = m.groups()
-        entry = node.strip() + (" on " + table if table else "") + (" using " + index if index else "")
-        found.append("%s%s rows~%s cost~%d" % (">" * (len(indent) // 6), entry, rows, float(cost)))
+        marker = PLAN_MARKER.match(line)
+        if marker:
+            found.append("%s%s %s" % (">" * (len(marker.group(1)) // 6), marker.group(2), marker.group(3)))
+            continue
+        bare = PLAN_NODE_BARE.match(line)
+        if bare and "->" in line or (bare and not found):
+            indent, node, index, table = bare.groups()
+            found.append("%s%s" % (">" * (len(indent) // 6), node.strip() + (" on " + table if table else "") + (" using " + index if index else "")))
     return found
+
+
+def captured_plan_nodes(plan):
+    """Aurora's captured plan as nodes, whether it is stored as JSON or as text."""
+    text = plan if isinstance(plan, str) else json.dumps(plan)
+    stripped = (text or "").lstrip()
+    if stripped[:1] in "[{":
+        try:
+            parsed = json.loads(stripped)
+            root = parsed[0] if isinstance(parsed, list) else parsed
+            return "json", plan_nodes(root.get("Plan", root))
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+            return "json-unreadable", []
+    return "text", text_plan_nodes(text)
 
 
 def plan_flags(nodes):
@@ -1333,9 +1359,11 @@ def section_dbplans():
         if captured is None:
             out("PLAN_CAPTURED", "UNAVAILABLE", "ids=%d" % len(ids))
         for row in captured or []:
-            nodes = text_plan_nodes(row.pop("p", ""))
-            out("PLAN", "id=%s" % row.get("id"), "source=captured", "calls=%s" % row.get("calls"),
-                "flags=%s" % ",".join(plan_flags(nodes)), "nodes=%d" % len(nodes), " | ".join(nodes)[:900])
+            raw = row.pop("p", "")
+            kind, nodes = captured_plan_nodes(raw)
+            lines = len(raw.splitlines()) if isinstance(raw, str) else 0
+            out("PLAN", "id=%s" % row.get("id"), "source=captured", "format=%s" % kind, "lines=%d" % lines, "calls=%s" % row.get("calls"),
+                "flags=%s" % ",".join(plan_flags(nodes)), "nodes=%d" % len(nodes), " | ".join(nodes)[:1800])
 
 
 def section_dbhealth():

@@ -292,3 +292,34 @@ print("ok")
   assert.equal(run.status, 0, run.stderr)
   assert.match(run.stdout, /^ok$/m)
 })
+
+// Round DB (12 Nov): Aurora's captured plans may carry no cost figures (they came back as nodes=0). Node, SubPlan and
+// CTE lines are kept; condition and filter lines, which can hold values, never are.
+test('captured plans without costs give their nodes and never their values', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+plan = """Nested Loop Anti Join
+  ->  Hash Join
+        Hash Cond: (c.id = pool.candidate_id)
+        ->  Seq Scan on profiles c
+              Filter: (full_name ~~ '%Asha Rao%'::text)
+  SubPlan 3
+    ->  Index Only Scan using post_impressions_pkey on post_impressions i2
+          Index Cond: (viewer_id = 'a1b2c3d4'::uuid)
+  CTE viewer
+    ->  Index Scan using profiles_pkey on profiles p"""
+kind, nodes = r.captured_plan_nodes(plan)
+text = " ".join(nodes)
+assert kind == "text", kind
+assert "Asha" not in text and "a1b2" not in text and "Cond" not in text and "Filter" not in text, text
+assert "SubPlan 3" in nodes and "CTE viewer" in nodes, nodes
+assert any("Seq Scan on profiles" in n for n in nodes) and any("post_impressions_pkey" in n for n in nodes), nodes
+assert r.captured_plan_nodes('[{"Plan": {"Node Type": "Seq Scan", "Relation Name": "posts", "Plan Rows": 5, "Total Cost": 3, "Filter": "x = 1"}}]') == ("json", ["Seq Scan on posts rows~5 cost~3"])
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
