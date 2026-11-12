@@ -134,7 +134,13 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   assert.match(window, /needs\.apply-approval\.result == 'success'/)
   // Merging a traffic arm (a push) sends no traffic: only the nightly start reaches the window with one. The only push
   // that reaches it is the sessions-only proof's own arm, which sends no traffic.
-  assert.match(window, /\(github\.event_name == 'workflow_dispatch' \|\| \(github\.event_name == 'push' && needs\.apply-gate\.outputs\.action == 'sessions-only-once'\)\) \}\}/)
+  // ONE-OFF (owner-approved for 12 Nov 2026 only): a signed-in arm's merge may start the run between 15:00 and 17:30 IST.
+  assert.match(window, /\(github\.event_name == 'workflow_dispatch' \|\| \(github\.event_name == 'push' && \(needs\.apply-gate\.outputs\.action == 'sessions-only-once' \|\| needs\.apply-gate\.outputs\.action == 'run-signed-in-once'\)\)\) \}\}/)
+  assert.match(window, /DAYTIME_DATE: "2026-11-12"\n/)
+  assert.match(window, /DAY_START=\$\(date -u -d "\$DAYTIME_DATE 09:30:00" \+%s\)/)
+  assert.match(window, /DAY_END=\$\(date -u -d "\$DAYTIME_DATE 12:00:00" \+%s\)/)
+  assert.match(window, /NOW < DAY_START \|\| NOW > DAY_END/)
+  assert.match(window, /if \[\[ "\$MIX" == signed-in && "\$GITHUB_EVENT_NAME" == push \]\]; then[\s\S]*?\[\[ "\$GITHUB_RUN_ATTEMPT" == 1 \]\][\s\S]*?exit 0\n          fi\n/)
   assert.match(window, /\[\[ "\$MIX" == sessions-only && "\$GITHUB_EVENT_NAME" == push \]\]/)
   assert.match(window, /\[\[ "\$GITHUB_RUN_ATTEMPT" == 1 \]\]/)
   assert.ok(window.indexOf('exit 0\n          fi\n          [[ "$TRIGGERING_ACTOR"') > 0, 'every other start still needs the nightly start')
