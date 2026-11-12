@@ -693,7 +693,7 @@ def compare_windows():
     return [("before", after_start - day, after_end - day), ("after", after_start, after_end)], split
 
 
-def metric_points(namespace, name, dims, stat, period, start, end):
+def metric_points(namespace, name, dims, stat, period, start, end, region=REGION):
     """(timestamp, value) pairs of one metric between start and end."""
     q = {"Id": "m", "MetricStat": {"Metric": {"Namespace": namespace, "MetricName": name,
          "Dimensions": [{"Name": k, "Value": v} for k, v in dims.items()]}, "Period": period, "Stat": stat},
@@ -703,7 +703,7 @@ def metric_points(namespace, name, dims, stat, period, start, end):
         path = f.name
     try:
         data = aws("cloudwatch", "get-metric-data", "--start-time", iso(start), "--end-time", iso(end),
-                   "--metric-data-queries", "file://" + path, "--scan-by", "TimestampAscending")
+                   "--metric-data-queries", "file://" + path, "--scan-by", "TimestampAscending", region=region)
     finally:
         os.unlink(path)
     points = []
@@ -1208,6 +1208,60 @@ def section_dbminutes():
         t += dt.timedelta(minutes=1)
 
 
+EDGE_ALB_METRICS = ["RequestCount", "HTTPCode_ELB_5XX_Count", "HTTPCode_ELB_502_Count", "HTTPCode_ELB_503_Count",
+                    "HTTPCode_ELB_504_Count", "HTTPCode_ELB_4XX_Count", "HTTPCode_Target_5XX_Count"]
+
+
+def edge_log_minutes(start, end):
+    """Per minute from the ALB access logs: requests, the load test's share, and status codes that are errors or a
+    client that went away (460). Status codes and counts only."""
+    rows = defaultdict(Counter)
+    totals, budget = Counter(), {"bytes": 0}
+    day = start.date()
+    while day <= end.date():
+        for line in alb_day_lines(day, totals, budget):
+            m = LOG_LINE.match(line)
+            if not m or not (iso(start)[:19] <= m.group(2)[:19] < iso(end)[:19]):
+                continue
+            minute = m.group(2)[11:16]
+            elb, target = m.group(9), m.group(10)
+            row = rows[minute]
+            row["alb_logged"] += 1
+            if LOAD_TEST_STEP.search(m.group(14)) or "SeaNShore-LoadTest" in m.group(14):
+                row["load_test"] += 1
+            if elb.startswith("5") or elb == "460":
+                row["elb_%s_target_%s" % (elb, target)] += 1
+        day += dt.timedelta(days=1)
+    return rows, totals
+
+
+def section_edgeminutes():
+    out("=== ROUND DB: EDGE AND LOAD BALANCER ERRORS MINUTE BY MINUTE (status codes and counts only) ===")
+    start, end = db_window()
+    rows = defaultdict(dict)
+    for dims in search_dims("AWS/CloudFront", "Requests", "", region=EDGE):
+        if dims.get("Region") != "Global":
+            continue
+        tag = "cf_" + str(dims.get("DistributionId", "?"))[-4:]
+        for name, stat, key in (("Requests", "Sum", "req"), ("5xxErrorRate", "Average", "5xx_pct"), ("4xxErrorRate", "Average", "4xx_pct")):
+            for t, v in metric_points("AWS/CloudFront", name, dims, stat, 60, start, end, region=EDGE):
+                rows[t.strftime("%H:%M")]["%s_%s" % (tag, key)] = v
+    for dims in search_dims("AWS/ApplicationELB", "RequestCount", PREFIX + "-alb"):
+        if set(dims) != {"LoadBalancer"}:
+            continue
+        for name in EDGE_ALB_METRICS:
+            for t, v in metric_points("AWS/ApplicationELB", name, dims, "Sum", 60, start, end):
+                rows[t.strftime("%H:%M")]["alb_" + name.replace("HTTPCode_", "").replace("_Count", "")] = v
+    logged, totals = edge_log_minutes(start, end)
+    for minute, counts in logged.items():
+        rows[minute].update(counts)
+    out("EDGE_LOG_TOTALS", json.dumps(dict(totals), sort_keys=True))
+    for minute in sorted(rows):
+        cells = ["%s=%s" % (k, ("%.0f" % v) if isinstance(v, (int, float)) and float(v).is_integer() else ("%.2f" % v))
+                 for k, v in sorted(rows[minute].items()) if v]
+        out("EDGE_MINUTE", minute, *cells)
+
+
 def section_dbstats():
     out("=== ROUND DB PART 1: pg_stat_statements, cumulative since its reset (shapes only) ===")
     pgss_top()
@@ -1231,6 +1285,10 @@ def plan_nodes(node, depth=0, found=None):
 
 
 PLAN_NODE = re.compile(r"^(\s*)(?:->\s+)?([A-Z][A-Za-z ]+?)(?: using (\w+))?(?: on (\w+)(?: \w+)?)?\s+\(cost=[\d.]+\.\.([\d.]+) rows=(\d+)")
+# Round DB (12 Nov): Aurora's captured plans can come without the cost figures; such a node line ends after the node
+# (an alias at most). SubPlan, InitPlan and CTE markers are kept: they show what runs once per row.
+PLAN_NODE_BARE = re.compile(r"^(\s*)(?:->\s+)?([A-Z][A-Za-z ]+?)(?: using (\w+))?(?: on (\w+)(?: \w+)?)?\s*$")
+PLAN_MARKER = re.compile(r"^(\s*)(SubPlan|InitPlan|CTE) (\w+)")
 
 
 def text_plan_nodes(plan_text):
@@ -1239,12 +1297,34 @@ def text_plan_nodes(plan_text):
     found = []
     for line in (plan_text or "").splitlines():
         m = PLAN_NODE.match(line)
-        if not m:
+        if m:
+            indent, node, index, table, cost, rows = m.groups()
+            entry = node.strip() + (" on " + table if table else "") + (" using " + index if index else "")
+            found.append("%s%s rows~%s cost~%d" % (">" * (len(indent) // 6), entry, rows, float(cost)))
             continue
-        indent, node, index, table, cost, rows = m.groups()
-        entry = node.strip() + (" on " + table if table else "") + (" using " + index if index else "")
-        found.append("%s%s rows~%s cost~%d" % (">" * (len(indent) // 6), entry, rows, float(cost)))
+        marker = PLAN_MARKER.match(line)
+        if marker:
+            found.append("%s%s %s" % (">" * (len(marker.group(1)) // 6), marker.group(2), marker.group(3)))
+            continue
+        bare = PLAN_NODE_BARE.match(line)
+        if bare and "->" in line or (bare and not found):
+            indent, node, index, table = bare.groups()
+            found.append("%s%s" % (">" * (len(indent) // 6), node.strip() + (" on " + table if table else "") + (" using " + index if index else "")))
     return found
+
+
+def captured_plan_nodes(plan):
+    """Aurora's captured plan as nodes, whether it is stored as JSON or as text."""
+    text = plan if isinstance(plan, str) else json.dumps(plan)
+    stripped = (text or "").lstrip()
+    if stripped[:1] in "[{":
+        try:
+            parsed = json.loads(stripped)
+            root = parsed[0] if isinstance(parsed, list) else parsed
+            return "json", plan_nodes(root.get("Plan", root))
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+            return "json-unreadable", []
+    return "text", text_plan_nodes(text)
 
 
 def plan_flags(nodes):
@@ -1279,9 +1359,11 @@ def section_dbplans():
         if captured is None:
             out("PLAN_CAPTURED", "UNAVAILABLE", "ids=%d" % len(ids))
         for row in captured or []:
-            nodes = text_plan_nodes(row.pop("p", ""))
-            out("PLAN", "id=%s" % row.get("id"), "source=captured", "calls=%s" % row.get("calls"),
-                "flags=%s" % ",".join(plan_flags(nodes)), "nodes=%d" % len(nodes), " | ".join(nodes)[:900])
+            raw = row.pop("p", "")
+            kind, nodes = captured_plan_nodes(raw)
+            lines = len(raw.splitlines()) if isinstance(raw, str) else 0
+            out("PLAN", "id=%s" % row.get("id"), "source=captured", "format=%s" % kind, "lines=%d" % lines, "calls=%s" % row.get("calls"),
+                "flags=%s" % ",".join(plan_flags(nodes)), "nodes=%d" % len(nodes), " | ".join(nodes)[:1800])
 
 
 def section_dbhealth():
@@ -1406,7 +1488,7 @@ def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
-     "dbwindow": section_dbwindow, "dbminutes": section_dbminutes}[SECTION]()
+     "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 
