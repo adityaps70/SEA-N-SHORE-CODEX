@@ -130,10 +130,10 @@ print("ok")
 // Round DB (Part 1 and Part 3): the db window runs five read-only sections; plans and statements print shapes only.
 test('the db window runs the read-only Round DB sections over one load test window', () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
-  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbwindow', 'dbminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost'\]/)
+  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost'\]/)
   assert.match(wrapper, /3 \* 3600_000/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['db', 'dbwindow', 'dbminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
   // Text plans keep node lines only; condition and filter lines, which can hold values, never come out.
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util
@@ -255,6 +255,38 @@ assert "PI_BY_PROCESS_KIND load_AAS=0.0200 db_s=60 autovacuum worker" in text, t
 assert "WINDOW_SQL_BY_TIME rank=1 db_s=300 share=100% calls=6000 exec_s=150.0 ms_per_call=25.00" in text, text
 assert len(statements) == 3 and all(q.lower().startswith("select") for q in statements)
 assert not any(c in " ".join(statements).lower() for c in ("recipient", "email,", "resend_email_id", "full_name"))
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Round DB (owner, 12 Nov): what the CloudFront 5xx in the daytime re-test were. Per minute: CloudFront requests and
+// error rates, the ALB's own error codes, and from the ALB logs only status-code pairs, 460 (client went away) and counts.
+test('the edge section prints status codes and counts per minute, never paths, addresses or agents', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+r.DB_RUN_START, r.DB_RUN_END = "2026-11-12T11:20:00Z", "2026-11-12T12:00:00Z"
+line = lambda t, elb, target, ua: ('h2 %s app/sea-n-shore-staging-alb/1 203.0.113.9:443 10.0.1.5:3000 0.000 0.010 0.000 %s %s 10 20 '
+                                   '"GET https://example.test:443/in/asha-singh?x=1 HTTP/2.0" "%s"' % (t, elb, target, ua))
+logs = [line("2026-11-12T11:46:12.5Z", "460", "-", "SeaNShore-LoadTest/1 step/4"),
+        line("2026-11-12T11:46:13.1Z", "502", "-", "SeaNShore-LoadTest/1 step/4"),
+        line("2026-11-12T11:30:00.0Z", "200", "200", "Mozilla/5.0"),
+        line("2026-11-12T12:30:00.0Z", "502", "-", "Mozilla/5.0")]
+r.alb_day_lines = lambda day, totals, budget: iter(logs)
+r.search_dims = lambda *a, **k: []
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_edgeminutes()
+text = buf.getvalue()
+assert "EDGE_MINUTE 11:46 alb_logged=2 elb_460_target_-=1 elb_502_target_-=1 load_test=2" in text, text
+assert "EDGE_MINUTE 11:30 alb_logged=1" in text, text
+assert "12:30" not in text, text
+for leak in ("asha", "203.0.113", "10.0.1.5", "Mozilla", "example.test"):
+    assert leak not in text, (leak, text)
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)

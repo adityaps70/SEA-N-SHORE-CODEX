@@ -57,7 +57,7 @@ const COMPARE = process.env.REPORT_SECTIONS ? null : compareWindow()
 const PROBE_ORG_NAME = readFileSync('scripts/aws/org-page-probe-name.txt', 'utf8').trim()
 assert.ok(PROBE_ORG_NAME && PROBE_ORG_NAME.length <= 120 && !/["\\]/.test(PROBE_ORG_NAME), 'org-page-probe-name.txt must hold one organization name')
 
-const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']
+const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']
 const SECTIONS = COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
   (COMPARE && !COMPARE.db && s === (COMPARE.checks ? 'checks' : 'compare'))), 'unknown report section')
