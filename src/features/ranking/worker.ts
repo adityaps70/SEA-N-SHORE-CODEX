@@ -45,7 +45,7 @@ export function createRankingSweeps(input: {
   const sweeps: Sweep[] = input.sweeps ?? [
     { name: 'signal_retention', everyMs: SIGNAL_RETENTION_SWEEP_MS, run: () => purgeExpiredSignals() },
     { name: 'taxonomy_backfill', everyMs: TAXONOMY_BACKFILL_SWEEP_MS, run: () => runTaxonomyBackfill() },
-    // Nightly People you may know (02:00 IST), 25 members per loop pass; it keeps its own schedule.
+    // Nightly People you may know (02:00 IST), 10 members every 30 seconds; it keeps its own schedule.
     createPeopleSweep(),
     // Release 2 (migration 0085): job alerts are queued from 02:00 UTC, and the queue is sent every minute.
     createJobAlertSweep(),

@@ -97,6 +97,11 @@ export type PeopleSuggestionLookup = {
    * members who turned off "Show me in People you may know".
    */
   roundG?: boolean
+  /**
+   * Round DB (PYMK fix 2): re-run this same query over these members only (the cached top-up), so every
+   * eligibility rule and exclusion is applied exactly as in the full query, now.
+   */
+  onlyIds?: readonly string[]
 }
 
 const ROUND_G_PEOPLE_EXCLUSIONS_SQL = `
@@ -138,7 +143,7 @@ export const SYNTHETIC_PROFILE_PATTERN_SQL = String.raw`\ye2e([-_[:space:]]|$)|\
  *   within the declined-request window (social_action_events remembers each request).
  * The rest are ordered by the shared-attribute score, then most recently updated.
  */
-function peopleSuggestionSql(roundG = false) {
+function peopleSuggestionSql(roundG = false, onlyIds = false) {
   return `
   with viewer as (
     select
@@ -198,6 +203,7 @@ function peopleSuggestionSql(roundG = false) {
       and not cp.is_load_test
       and not ${syntheticTextSql("concat_ws(' ', cp.slug, cp.full_name, cp.headline, cp.summary, cmp.rank, cmp.current_company)", '$10')}
       ${roundG ? ROUND_G_PEOPLE_EXCLUSIONS_SQL : ''}
+      ${onlyIds ? 'and cp.id = any($11::uuid[])' : ''}
     order by score desc, cp.updated_at desc, cp.id asc
     limit $2
   )
@@ -564,7 +570,9 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
   async function getPeopleSuggestions(lookup: PeopleSuggestionLookup): Promise<PublicProfile[]> {
     const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
     const { weights } = lookup
-    const rows = await queryRows(peopleSuggestionSql(Boolean(lookup.roundG)), [
+    const onlyIds = lookup.onlyIds ? [...lookup.onlyIds] : null
+    if (onlyIds && !onlyIds.length) return []
+    const rows = await queryRows(peopleSuggestionSql(Boolean(lookup.roundG), Boolean(onlyIds)), [
       lookup.viewerProfileId,
       limit,
       weights.sharedVesselType,
@@ -575,6 +583,7 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
       weights.sameLocation,
       lookup.declinedRequestWindow,
       SYNTHETIC_PROFILE_PATTERN_SQL,
+      ...(onlyIds ? [onlyIds] : []),
     ])
     return mapPublicRows(rows)
   }
