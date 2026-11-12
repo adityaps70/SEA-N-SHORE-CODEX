@@ -53,9 +53,9 @@ resource "aws_iam_role_policy" "aurora_extra_acu_check" {
         Resource = aws_sns_topic.alerts.arn
       },
       {
-        Sid      = "WriteOwnLogs"
-        Effect   = "Allow"
-        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Sid    = "WriteOwnLogs"
+        Effect = "Allow"
+        Action = ["logs:CreateLogStream", "logs:PutLogEvents"]
         # Built from the name (not the log group's ARN) so the policy is known when the plan is checked.
         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.aurora_extra_acu_check_name}:*"
       }
