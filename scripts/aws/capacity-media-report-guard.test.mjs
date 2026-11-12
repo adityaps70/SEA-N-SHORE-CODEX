@@ -130,10 +130,10 @@ print("ok")
 // Round DB (Part 1 and Part 3): the db window runs five read-only sections; plans and statements print shapes only.
 test('the db window runs the read-only Round DB sections over one load test window', () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
-  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbstats', 'dbplans', 'dbhealth', 'cost'\]/)
+  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbwindow', 'dbminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost'\]/)
   assert.match(wrapper, /3 \* 3600_000/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['db', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['db', 'dbwindow', 'dbminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
   // Text plans keep node lines only; condition and filter lines, which can hold values, never come out.
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util
@@ -191,6 +191,70 @@ assert r.server_step_lines({1: step([])}, ["100"]) == []
 assert r.server_step_lines({}, []) == []
 text = "\\n".join(lines)
 assert "http" not in text and "@" not in text
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Round DB (owner, 12 Nov): the night re-test window in detail. Database time by process kind, role, host kind and
+// statement shape, with calls and execution time; background work as counts; minute-by-minute metrics. Host
+// addresses are only used to label hosts (web, worker, bootstrap) and are never printed.
+test('the db window detail labels hosts without printing addresses and prints counts and shapes only', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, json
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+r.DB_RUN_START, r.DB_RUN_END = "2026-11-11T19:55:00Z", "2026-11-11T20:45:00Z"
+r.writer_resource = lambda: "db-TEST"
+statements = []
+def fake_sql(qs):
+    statements.extend(qs)
+    return [[{"sent": 0, "attempted": 0, "queued_now": 0}] for _ in qs]
+r.sql_rows = fake_sql
+def fake_aws(service, action, *args, **kw):
+    if (service, action) == ("ecs", "list-clusters"):
+        return {"clusterArns": ["arn:aws:ecs:x:1:cluster/sea-n-shore-staging"]}
+    if (service, action) == ("ecs", "list-services"):
+        return {"serviceArns": ["arn:aws:ecs:x:1:service/c/sea-n-shore-staging-web", "arn:aws:ecs:x:1:service/c/sea-n-shore-staging-worker"]}
+    if (service, action) == ("ecs", "list-tasks"):
+        return {"taskArns": ["t-" + args[-1]]}
+    if (service, action) == ("ecs", "describe-tasks"):
+        ip = "10.0.1.11" if args[-1].endswith("web") else "10.0.2.22"
+        return {"tasks": [{"attachments": [{"details": [{"name": "privateIPv4Address", "value": ip}]}]}]}
+    if (service, action) == ("ec2", "describe-instances"):
+        return {"Reservations": [{"Instances": [{"PrivateIpAddress": "10.0.3.33", "Tags": [{"Key": "Name", "Value": "sea-n-shore-bootstrap"}]}]}]}
+    if (service, action) == ("pi", "describe-dimension-keys"):
+        group = json.loads(args[args.index("--group-by") + 1])["Group"]
+        if group == "db.host":
+            return {"Keys": [{"Total": 0.2, "Dimensions": {"db.host.name": "10.0.1.11", "db.host.id": "h1"}},
+                             {"Total": 0.05, "Dimensions": {"db.host.name": "10.0.2.22", "db.host.id": "h2"}},
+                             {"Total": 0.01, "Dimensions": {"db.host.name": "10.0.9.99", "db.host.id": "h3"}}]}
+        if group == "db.sql_tokenized":
+            return {"Keys": [{"Total": 0.1, "Dimensions": {"db.sql_tokenized.statement": "select x from t where a = ?"},
+                              "AdditionalMetrics": {"db.sql_tokenized.stats.calls_per_sec.avg": 2.0,
+                                                    "db.sql_tokenized.stats.total_time_per_sec.avg": 50.0,
+                                                    "db.sql_tokenized.stats.avg_latency_per_call.avg": 25.0}}]}
+        if group == "db.session_type":
+            return {"Keys": [{"Total": 0.02, "Dimensions": {"db.session_type.name": "autovacuum worker"}}]}
+        return {"Keys": []}
+    return {}
+r.aws = fake_aws
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_dbwindow()
+text = buf.getvalue()
+for ip in ("10.0.1.11", "10.0.2.22", "10.0.9.99", "10.0.3.33"):
+    assert ip not in text, text
+assert "PI_BY_HOST_KIND load_AAS=0.2000 db_s=600 ecs:web" in text, text
+assert "PI_BY_HOST_KIND load_AAS=0.0500 db_s=150 ecs:worker" in text, text
+assert "not_running_now" in text, text
+assert "PI_BY_PROCESS_KIND load_AAS=0.0200 db_s=60 autovacuum worker" in text, text
+# 50 minutes: 2 calls/s is 6000 calls, 50 ms of execution per second is 150 s.
+assert "WINDOW_SQL_BY_TIME rank=1 db_s=300 share=100% calls=6000 exec_s=150.0 ms_per_call=25.00" in text, text
+assert len(statements) == 3 and all(q.lower().startswith("select") for q in statements)
+assert not any(c in " ".join(statements).lower() for c in ("recipient", "email,", "resend_email_id", "full_name"))
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)

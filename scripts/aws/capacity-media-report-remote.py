@@ -1061,6 +1061,153 @@ def section_db():
         pi_top(resource, "last_7d", NOW - dt.timedelta(days=7) + dt.timedelta(minutes=5), NOW)
 
 
+# ---------------------------------------------------------------- Round DB: one load test window in detail (read-only)
+
+PI_WINDOW_STATS = ["db.sql_tokenized.stats.calls_per_sec.avg", "db.sql_tokenized.stats.total_time_per_sec.avg",
+                   "db.sql_tokenized.stats.avg_latency_per_call.avg", "db.sql_tokenized.stats.rows_per_call.avg"]
+# Performance Insights database counters, per minute: the work behind the CPU (rows scanned and fetched, commits).
+PI_COUNTERS = ["db.Tuples.tup_returned.avg", "db.Tuples.tup_fetched.avg", "db.Transactions.xact_commit.avg",
+               "db.Cache.blks_hit.avg", "db.IO.blks_read.avg"]
+RDS_MINUTE_METRICS = [("CPUUtilization", "Maximum"), ("ServerlessDatabaseCapacity", "Maximum"), ("ACUUtilization", "Maximum"),
+                      ("DBLoad", "Average"), ("DBLoadCPU", "Average"), ("DBLoadNonCPU", "Average"),
+                      ("DatabaseConnections", "Maximum"), ("CommitThroughput", "Average"), ("FreeableMemory", "Minimum")]
+
+
+def db_window():
+    assert DB_RUN_START and DB_RUN_END, "the dbwindow and dbminutes sections need the db window"
+    start, end = parse_minute(DB_RUN_START), parse_minute(DB_RUN_END)
+    assert start < end <= start + dt.timedelta(hours=3), "the load test window must be under 3 hours"
+    return start, end
+
+
+def host_labels():
+    """Private address -> what runs there (an ECS service, the bootstrap host). Addresses are never printed."""
+    labels = {}
+    clusters = aws("ecs", "list-clusters") or {}
+    ecs_cluster = next((a.split("/")[-1] for a in clusters.get("clusterArns", []) if PREFIX in a), None)
+    services = (aws("ecs", "list-services", "--cluster", ecs_cluster) or {}).get("serviceArns", []) if ecs_cluster else []
+    for name in [s.split("/")[-1] for s in services]:
+        tasks = (aws("ecs", "list-tasks", "--cluster", ecs_cluster, "--service-name", name) or {}).get("taskArns", [])
+        for t in (aws("ecs", "describe-tasks", "--cluster", ecs_cluster, "--tasks", *tasks[:100]) or {}).get("tasks", []) if tasks else []:
+            for attachment in t.get("attachments", []):
+                for d in attachment.get("details", []):
+                    if d.get("name") == "privateIPv4Address":
+                        labels[d.get("value")] = "ecs:" + name.replace(PREFIX + "-", "")
+    for r in (aws("ec2", "describe-instances") or {}).get("Reservations", []):
+        for i in r.get("Instances", []):
+            tags = {t["Key"]: t["Value"] for t in i.get("Tags", [])}
+            if i.get("PrivateIpAddress"):
+                labels[i["PrivateIpAddress"]] = "ec2:" + tags.get("Name", "untagged").replace(PREFIX + "-", "")
+    return labels
+
+
+def pi_keys(resource, start, end, group, limit, extra=None):
+    args = ["pi", "describe-dimension-keys", "--service-type", "RDS", "--identifier", resource, "--start-time", iso(start),
+            "--end-time", iso(end), "--metric", "db.load.avg", "--group-by", json.dumps({"Group": group, "Limit": limit})]
+    if extra:
+        args += ["--additional-metrics", *extra]
+    return (aws(*args) or {}).get("Keys", [])
+
+
+def section_dbwindow():
+    out("=== ROUND DB: THE LOAD TEST WINDOW IN DETAIL (statement shapes, roles, process kinds and counts only) ===")
+    start, end = db_window()
+    seconds = (end - start).total_seconds()
+    out("DB_WINDOW", iso(start), iso(end), "minutes=%d" % (seconds // 60))
+    resource = writer_resource()
+    if not resource:
+        out("PI UNAVAILABLE")
+    else:
+        # Who used the database time: client sessions or background processes (autovacuum, checkpointer, ...), which roles,
+        # and which hosts (labelled web, worker or bootstrap; a task stopped since then reads not_running_now).
+        for group, label in (("db.session_type", "PI_BY_PROCESS_KIND"), ("db.user", "PI_BY_ROLE"), ("db.application", "PI_BY_APPLICATION"),
+                             ("db.wait_event", "PI_BY_WAIT")):
+            for k in pi_keys(resource, start, end, group, 12):
+                d = k.get("Dimensions") or {}
+                name = ":".join(str(v) for key, v in sorted(d.items()) if key.endswith(".name") or key.endswith(".type"))
+                out(label, "load_AAS=%.4f" % k.get("Total", 0), "db_s=%.0f" % (k.get("Total", 0) * seconds), one_line(name, 120) or "(none)")
+        labels = host_labels()
+        by_label = Counter()
+        for k in pi_keys(resource, start, end, "db.host", 25):
+            d = k.get("Dimensions") or {}
+            by_label[labels.get(d.get("db.host.name") or "", "not_running_now")] += k.get("Total", 0)
+        for name, load in by_label.most_common():
+            out("PI_BY_HOST_KIND", "load_AAS=%.4f" % load, "db_s=%.0f" % (load * seconds), name)
+        # The statements: PI's top 25 by database time, with calls and execution time over the window; then the same
+        # statements by calls.
+        rows = []
+        for k in pi_keys(resource, start, end, "db.sql_tokenized", 25, PI_WINDOW_STATS):
+            a = k.get("AdditionalMetrics") or {}
+            calls_ps = a.get("db.sql_tokenized.stats.calls_per_sec.avg")
+            time_ps = a.get("db.sql_tokenized.stats.total_time_per_sec.avg")
+            rows.append({"load": k.get("Total", 0), "calls": calls_ps * seconds if isinstance(calls_ps, (int, float)) else None,
+                         "exec_s": time_ps * seconds / 1000 if isinstance(time_ps, (int, float)) else None,
+                         "ms": a.get("db.sql_tokenized.stats.avg_latency_per_call.avg"), "rows": a.get("db.sql_tokenized.stats.rows_per_call.avg"),
+                         "sql": one_line((k.get("Dimensions") or {}).get("db.sql_tokenized.statement", ""), 240)})
+        total = sum(r["load"] for r in rows) or 1
+        fmt = lambda v, f: (f % v) if isinstance(v, (int, float)) else "n/a"
+        for rank, r in enumerate(rows, 1):
+            out("WINDOW_SQL_BY_TIME", "rank=%d" % rank, "db_s=%.0f" % (r["load"] * seconds), "share=%.0f%%" % (100 * r["load"] / total),
+                "calls=%s" % fmt(r["calls"], "%.0f"), "exec_s=%s" % fmt(r["exec_s"], "%.1f"), "ms_per_call=%s" % fmt(r["ms"], "%.2f"),
+                "rows_per_call=%s" % fmt(r["rows"], "%.1f"), "sql=" + r["sql"])
+        by_calls = sorted(range(len(rows)), key=lambda i: -(rows[i]["calls"] or 0))[:10]
+        out("WINDOW_SQL_BY_CALLS", "ranks_by_time=%s" % ",".join(str(i + 1) for i in by_calls),
+            "calls=%s" % ",".join(fmt(rows[i]["calls"], "%.0f") for i in by_calls))
+    # Background work in the window: autovacuum and autoanalyze runs that finished in it, and the final reminder worker's
+    # sends and attempts (counts only).
+    s, e = iso(start), iso(end)
+    statements = [
+        "select relname as tbl, last_autovacuum::text as autovacuum, last_autoanalyze::text as autoanalyze, n_live_tup::bigint as live, "
+        "n_dead_tup::bigint as dead from pg_stat_user_tables where schemaname = 'public' and (last_autovacuum between '%s' and '%s' "
+        "or last_autoanalyze between '%s' and '%s') order by greatest(last_autovacuum, last_autoanalyze)" % (s, e, s, e),
+        "select count(*) filter (where sent_at >= '%s' and sent_at < '%s')::int as sent, "
+        "count(*) filter (where last_attempt_at >= '%s' and last_attempt_at < '%s')::int as attempted, "
+        "count(*) filter (where status = 'queued')::int as queued_now from public.legacy_profile_invite_final_reminders" % (s, e, s, e),
+        "select event_type as kind, count(*)::int as n from public.email_delivery_events where recorded_at >= '%s' and recorded_at < '%s' "
+        "group by 1 order by 2 desc" % (s, e),
+    ]
+    for label, r in zip(("AUTOVACUUM_IN_WINDOW", "FINAL_REMINDER_IN_WINDOW", "EMAIL_EVENTS_IN_WINDOW"), [sql_rows([q])[0] for q in statements]):
+        if r is None:
+            out(label, "UNAVAILABLE")
+            continue
+        out(label, "count=%d" % len(r))
+        for row in r:
+            out(label, json.dumps(row, sort_keys=True)[:300])
+
+
+def section_dbminutes():
+    out("=== ROUND DB: THE LOAD TEST WINDOW MINUTE BY MINUTE (Aurora metrics and counters only) ===")
+    start, end = db_window()
+    series = {}
+    for name, stat in RDS_MINUTE_METRICS:
+        series[name] = dict(metric_points("AWS/RDS", name, {"DBClusterIdentifier": CLUSTER_ID}, stat, 60, start, end))
+    resource = writer_resource()
+    if resource:
+        data = aws("pi", "get-resource-metrics", "--service-type", "RDS", "--identifier", resource, "--start-time", iso(start),
+                   "--end-time", iso(end), "--period-in-seconds", "60",
+                   "--metric-queries", json.dumps([{"Metric": m} for m in PI_COUNTERS])) or {}
+        for m in data.get("MetricList", []):
+            key = m.get("Key", {}).get("Metric", "")
+            series[key] = {dt.datetime.fromisoformat(str(p["Timestamp"]).replace("Z", "+00:00")).replace(second=0, microsecond=0): p["Value"]
+                           for p in m.get("DataPoints", []) if p.get("Value") is not None}
+    short = {"CPUUtilization": "cpu", "ServerlessDatabaseCapacity": "acu", "ACUUtilization": "acu_pct", "DBLoad": "load",
+             "DBLoadCPU": "load_cpu", "DBLoadNonCPU": "load_noncpu", "DatabaseConnections": "conns", "CommitThroughput": "commits_s",
+             "FreeableMemory": "free_mb", "db.Tuples.tup_returned.avg": "rows_scanned_s", "db.Tuples.tup_fetched.avg": "rows_fetched_s",
+             "db.Transactions.xact_commit.avg": "xact_s", "db.Cache.blks_hit.avg": "blks_hit_s", "db.IO.blks_read.avg": "blks_read_s"}
+    t = start
+    while t < end:
+        cells = []
+        for key, values in series.items():
+            v = values.get(t)
+            if v is None:
+                continue
+            if key == "FreeableMemory":
+                v = v / 1048576
+            cells.append("%s=%s" % (short.get(key, key), ("%.0f" % v) if abs(v) >= 100 else ("%.2f" % v)))
+        out("MINUTE", t.strftime("%H:%M"), *cells)
+        t += dt.timedelta(minutes=1)
+
+
 def section_dbstats():
     out("=== ROUND DB PART 1: pg_stat_statements, cumulative since its reset (shapes only) ===")
     pgss_top()
@@ -1258,7 +1405,8 @@ def section_cost():
 def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
-     "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost}[SECTION]()
+     "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
+     "dbwindow": section_dbwindow, "dbminutes": section_dbminutes}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 
