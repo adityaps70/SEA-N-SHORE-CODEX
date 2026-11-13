@@ -24,7 +24,47 @@ const statementsOf = (sql) => sql.split('-- statement-breakpoint')
 const APPROVED = [
 ]
 
-assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.ok(['plan', 'migrate-once', 'convert-once', 'revert-once'].includes(guard))
+
+// P6 conversion (owner-approved 13 Nov): exactly the 3 approved typed "Other" texts, each in both statements of the
+// conversion, touching only jobs, audit_events and the extra-rank links; revert reads the recorded originals.
+const APPROVED_CONVERSIONS = [
+  ['chief engineer', ['chief_engineer']],
+  ['master chief officer', ['master', 'chief_officer']],
+  ['master mariner', ['master']],
+]
+const fixes = {
+  convert: 'infra/aws/database/data-fixes/p6_other_rank_conversion.sql',
+  revert: 'infra/aws/database/data-fixes/p6_other_rank_conversion_revert.sql',
+}
+for (const path of Object.values(fixes)) {
+  assert.ok(script.includes(`"${path}"`), `the runner lists ${path}`)
+  assert.ok(workflow.includes(`- ${path}`), `the workflow watches ${path}`)
+  assert.ok(workflow.slice(workflow.indexOf('RUNNER_FILES:')).split('\n')[0].includes(path), `a change to ${path} runs a plan`)
+  for (const statement of statementsOf(fs.readFileSync(path, 'utf8'))) {
+    const tables = [...statement.matchAll(/\b(?:insert\s+into|update)\s+(public\.[a-z_]+)/gi)].map((m) => m[1])
+    for (const table of tables) assert.ok(['public.jobs', 'public.audit_events', 'public.job_department_extra_ranks'].includes(table), `${path} writes only the P6 tables: ${table}`)
+    assert.doesNotMatch(statement, /\b(delete\s+from|truncate|drop|alter|grant|revoke)\b/i, `${path} deletes, drops and alters nothing`)
+  }
+}
+const convertSql = fs.readFileSync(fixes.convert, 'utf8')
+const tuples = [...convertSql.matchAll(/\('([a-z ]+)', array\[([^\]]*)\]::text\[\]\)/g)].map((m) => [m[1], [...m[2].matchAll(/'([a-z_]+)'/g)].map((k) => k[1])])
+assert.deepEqual(tuples, [...APPROVED_CONVERSIONS, ...APPROVED_CONVERSIONS], 'the conversion holds the 3 approved texts and nothing else, in both statements')
+assert.match(convertSql, /role_other_text_original = j\.role_other_text/, 'the typed text is kept word for word')
+assert.match(convertSql, /j\.role_other_text_original is null/, 'a job is converted at most once')
+assert.match(convertSql, /'p6_other_rank_converted'/, 'each conversion is recorded for the revert')
+assert.match(fs.readFileSync(fixes.revert, 'utf8'), /metadata -> 'original_keys'/, 'the revert restores the recorded ranks')
+assert.match(script, /P6_CONVERSION_MAX_JOBS=3\n/, 'at most the 3 approved jobs may change')
+const convertPath = script.slice(script.indexOf('if [[ "$ACTION" == "convert-once" || "$ACTION" == "revert-once" ]]; then'), script.indexOf('if [[ "${#PENDING[@]}" -eq 0 ]]; then'))
+assert.ok(convertPath.length > 0, 'the conversion path is present')
+assert.match(convertPath, /\[\[ "\$\{#PENDING\[@\]\}" -eq 0 \]\] \|\|/, 'the conversion needs 0103 applied')
+assert.match(convertPath, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/, 'the conversion refuses a moved branch')
+const fixStep = script.slice(script.indexOf('run_data_fix() {'), script.indexOf('if [[ "$ACTION" == "convert-once"'))
+assert.match(fixStep, /pg_advisory_xact_lock/)
+assert.ok(fixStep.indexOf('(( delta <= P6_CONVERSION_MAX_JOBS ))') < fixStep.indexOf('commit-transaction'), 'the job cap is checked before the commit')
+assert.ok(fixStep.indexOf('if [[ "$mode" != commit ]]; then\n    rollback_transaction "$tx"') >= 0, 'a preview always rolls back')
+// Dispatch stays plan / migrate-once: the conversion runs only from an owner-merged arm.
+assert.match(workflow, /options:\n\s+- plan\n\s+- migrate-once\n\s+default: plan/)
 const seenApproved = new Set()
 for (const name of migrations) {
   const path = `infra/aws/database/migrations/${name}.sql`
