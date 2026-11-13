@@ -1,5 +1,6 @@
 'use server'
 
+import { actionScope } from '@/lib/server/action-scope'
 import { redirect } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { homeOrReturnPath } from '@/features/auth/return-path-cookie'
@@ -403,61 +404,64 @@ export async function updateProfile(
   previousState: ProfileActionState,
   submittedForm: FormData,
 ): Promise<ProfileActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) {
-    return failureState(previousState, submittedForm, {
-      error: 'We could not load your profile. Please refresh and try again.',
-    })
-  }
-
-  const appliedRole = applyProfileRoleFields(submittedForm, personaForProfile(profile))
-  if (!appliedRole.ok) return failureState(previousState, submittedForm, { fieldErrors: appliedRole.fieldErrors })
-  const formData = appliedRole.formData
-
-  const rawValues = Object.fromEntries(formData)
-  const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
-  if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
-
-  // A rank left from an earlier profile is saved as typed, or cleared, even for profile types whose schema drops rank.
-  const rankSubmitted = formData.has('rank')
-  const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: rawValues.rank }) : null
-  if (rank && !rank.success) return validationFailure(previousState, formData, rank.error)
-  const input = rank?.success ? { ...parsed.data, rank: rank.data.rank } : parsed.data
-
-  const linked = await linkCurrentOrganization(input, user.id)
-  if (!linked) return failureState(previousState, formData, { error: ORGANIZATION_LOOKUP_FAILED })
-  if (!linked.ok) return failureState(previousState, formData, { fieldErrors: linked.fieldErrors })
-  const data = linked.data
-
-  const moderation = profileModerationAssessment(data)
-  if (moderation.decision === 'block') {
-    return failureState(previousState, formData, { error: moderationBlockMessage() })
-  }
-
-  try {
-    // A cleared organization field clears the saved organization; an absent field leaves it alone.
-    await updateProfileWithAurora(user.id, data, true, {
-      currentCompanySubmitted: formData.has('currentCompany'),
-      rankSubmitted,
-      ...withRole(appliedRole.role),
-    })
-    await flagProfileModeration(user.id, moderation)
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return failureState(previousState, formData, {
-        fieldErrors: { slug: ['That username is already in use.'] },
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) {
+      return failureState(previousState, submittedForm, {
+        error: 'We could not load your profile. Please refresh and try again.',
       })
     }
-    if (isServiceError(error, 'username_change_limit')) {
+  
+    const appliedRole = applyProfileRoleFields(submittedForm, personaForProfile(profile))
+    if (!appliedRole.ok) return failureState(previousState, submittedForm, { fieldErrors: appliedRole.fieldErrors })
+    const formData = appliedRole.formData
+  
+    const rawValues = Object.fromEntries(formData)
+    const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
+    if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
+  
+    // A rank left from an earlier profile is saved as typed, or cleared, even for profile types whose schema drops rank.
+    const rankSubmitted = formData.has('rank')
+    const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: rawValues.rank }) : null
+    if (rank && !rank.success) return validationFailure(previousState, formData, rank.error)
+    const input = rank?.success ? { ...parsed.data, rank: rank.data.rank } : parsed.data
+  
+    const linked = await linkCurrentOrganization(input, user.id)
+    if (!linked) return failureState(previousState, formData, { error: ORGANIZATION_LOOKUP_FAILED })
+    if (!linked.ok) return failureState(previousState, formData, { fieldErrors: linked.fieldErrors })
+    const data = linked.data
+  
+    const moderation = profileModerationAssessment(data)
+    if (moderation.decision === 'block') {
+      return failureState(previousState, formData, { error: moderationBlockMessage() })
+    }
+  
+    try {
+      // A cleared organization field clears the saved organization; an absent field leaves it alone.
+      await updateProfileWithAurora(user.id, data, true, {
+        currentCompanySubmitted: formData.has('currentCompany'),
+        rankSubmitted,
+        ...withRole(appliedRole.role),
+      })
+      await flagProfileModeration(user.id, moderation)
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return failureState(previousState, formData, {
+          fieldErrors: { slug: ['That username is already in use.'] },
+        })
+      }
+      if (isServiceError(error, 'username_change_limit')) {
+        return failureState(previousState, formData, {
+          fieldErrors: { slug: ['You have used both username changes. Your username is now locked.'] },
+        })
+      }
       return failureState(previousState, formData, {
-        fieldErrors: { slug: ['You have used both username changes. Your username is now locked.'] },
+        error: 'We could not save your profile. Your entries are still here; please try again.',
       })
     }
-    return failureState(previousState, formData, {
-      error: 'We could not save your profile. Your entries are still here; please try again.',
-    })
-  }
-
-  redirect('/profile')
+  
+    redirect('/profile')
+  })
 }

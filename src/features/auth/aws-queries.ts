@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { cache } from 'react'
+import { inActionScope, scoped } from '@/lib/server/action-scope'
 import { CognitoApiError, createCognitoApi, type CognitoPrincipal } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { createCognitoPrincipalResolver } from '@/lib/auth/cognito-principal-cache'
@@ -145,13 +146,19 @@ async function getServerCognitoPrincipal(): Promise<CognitoPrincipal | null> {
   return resolveProductionCognitoPrincipal(accessToken)
 }
 
+/** A render memoises with React cache(); a Server Action body inside actionScope() memoises per call (Round CAP). */
+export function actionAwareVerificationCache<T>(loader: () => Promise<T>): () => Promise<T> {
+  const rendered = cache(loader)
+  return () => (inActionScope() ? scoped('auth:aws-verification', loader) : rendered())
+}
+
 const productionQueries = createAwsAuthQueries({
   getPrincipal: getServerCognitoPrincipal,
   resolveProfileId: resolveProfileIdForCognitoSub,
   provisionProfileId: provisionProfileForCognitoPrincipal,
   getProfileAccountStatus,
   resolveProfileWithStatus: resolveProfileWithStatusForCognitoSub,
-  cacheVerifiedUser: (loader) => cache(loader),
+  cacheVerifiedUser: actionAwareVerificationCache,
   checkSession: checkCurrentSession,
 })
 
