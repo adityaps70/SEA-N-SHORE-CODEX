@@ -870,6 +870,25 @@ def section_compare():
         headline("hours_after_split", lambda h: h >= split_hours)
 
 
+# Round CAP (finding 8): the hourly peak of signed-in members online, as the worker records it (counts only).
+def section_online():
+    out("=== ROUND CAP: PEAK SIGNED-IN MEMBERS ONLINE PER UTC HOUR (seen in the last 5 minutes; a floor) ===")
+    windows, _split = compare_windows()
+    start, end = windows[0][1], windows[-1][2]
+    rows = sql_rows(["select day::text as day, substr(metric, 17)::int as hour, value::bigint as members "
+                     "from public.ranking_metrics_daily where metric like 'online.peak_utc_h%%' "
+                     "and day between date '%s' and date '%s' order by day, hour" % (start.date().isoformat(), end.date().isoformat())])[0]
+    if rows is None:
+        out("ONLINE UNAVAILABLE")
+        return
+    for label, a, b in windows:
+        chosen = [r for r in rows if a <= dt.datetime.strptime("%s %02d" % (r["day"], int(r["hour"])), "%Y-%m-%d %H").replace(tzinfo=dt.timezone.utc) < b]
+        values = [int(r["members"]) for r in chosen]
+        out("ONLINE_PEAK", label, "hours_recorded=%d" % len(values), "peak=%s" % (max(values) if values else "n/a"),
+            "avg_hourly_peak=%s" % (("%.1f" % statistics.fmean(values)) if values else "n/a"))
+        out("ONLINE_PEAK_HOURS", label, " ".join("%sT%02d=%s" % (r["day"][5:], int(r["hour"]), r["members"]) for r in chosen) or "none")
+
+
 def section_dbcompare():
     """Round DB (Option A, owner 12 Nov): database cost per request, before and after, the same hours 24 hours apart.
     Requests from the ALB; database time from Performance Insights; Aurora capacity and CPU from CloudWatch. Counts,
@@ -1959,7 +1978,7 @@ def main():
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
-     "dbcompare": section_dbcompare, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "legacysplit": section_legacysplit}[SECTION]()
+     "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "legacysplit": section_legacysplit}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 
