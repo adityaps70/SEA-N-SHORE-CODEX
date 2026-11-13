@@ -381,11 +381,19 @@ describe('job department, accepted ranks and minimum match (round 12)', () => {
     expect(mocks.createJob).not.toHaveBeenCalled()
   })
 
-  it('rejects rank keys that are not in the taxonomy or not in the department', async () => {
+  it('rejects rank keys that are not in the taxonomy, another department\'s Other, or an unknown department', async () => {
     await expect(createHiringJob(createInput({ acceptedRoleKeys: ['sea_wizard'] }))).resolves.toMatchObject({ ok: false })
-    await expect(createHiringJob(createInput({ acceptedRoleKeys: ['cook'] }))).resolves.toMatchObject({ ok: false })
+    await expect(createHiringJob(createInput({ acceptedRoleKeys: ['other_catering'], roleOtherText: 'Galley helper' }))).resolves.toMatchObject({ ok: false })
     await expect(createHiringJob(createInput({ departmentKey: 'starfleet' }))).resolves.toMatchObject({ ok: false })
     expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('P6: saves an existing rank from another department alongside the department\'s own', async () => {
+    await expect(createHiringJob(createInput({ acceptedRoleKeys: ['chief_officer', 'cook'] }))).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenCalledWith('recruiter-1', expect.objectContaining({
+      departmentKey: 'deck_officers',
+      acceptedRoleKeys: ['chief_officer', 'cook'],
+    }))
   })
 
   it('saves several accepted ranks, the department domain and their labels as the old text', async () => {

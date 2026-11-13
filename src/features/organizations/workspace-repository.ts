@@ -7,6 +7,7 @@ import { displayOrganizationType, resolveOrganizationType, type OrganizationType
 import { organizationClaimStatusSql } from './unclaimed-organization-policy'
 import { listableOrganizationSql } from '@/features/profiles/organization-link-repository'
 import type { SUGGESTION_WEIGHTS } from '@/features/ranking/suggestion-weights'
+import { departmentRoleKeys } from '@/features/roles/taxonomy'
 import { parseOrganizationDetails } from './schemas'
 import type { OrganizationDetails } from './types'
 
@@ -670,7 +671,8 @@ export function createOrganizationWorkspaceRepository(input: {
              select 1 from public.jobs j
              where j.company_id = company.id and j.status = 'published' and j.deleted_at is null
                and (j.apply_until is null or j.apply_until >= current_date)
-               and (j.accepted_role_keys && $3::text[] or j.department_key = any($2::text[]))
+               -- P6: a job listing one of the viewer's departments' ranks as an extra counts as in that department.
+               and (j.accepted_role_keys && $3::text[] or j.department_key = any($2::text[]) or j.accepted_role_keys && $16::text[])
            ) as open_jobs,
            ($4::boolean and company.organization_type in ('maritime_training_institute', 'training_provider', 'university_college')) as training,
            coalesce(company.is_verified, false) as verified,
@@ -706,6 +708,7 @@ export function createOrganizationWorkspaceRepository(input: {
         viewerId, [...input.departmentKeys], [...input.rankBandKeys], input.cadet,
         W.currentCompany, W.pastCompany, W.connectionWorksHere, W.connectionWorksHereCap, W.connectionFollows, W.connectionFollowsCap,
         W.openJobsForYou, W.trainingForCadets, W.verified, W.popularity, Math.min(Math.max(Math.trunc(input.limit), 1), 24),
+        departmentRoleKeys(input.departmentKeys),
       ],
     ) as Array<OrganizationCardRow & Record<string, unknown>>
     return rows.map((row) => ({ ...mapCard(row), reason: organizationReason(row) }))

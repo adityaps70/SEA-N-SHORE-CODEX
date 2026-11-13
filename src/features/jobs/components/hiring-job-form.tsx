@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { createHiringJob, updateHiringJob, type HiringActionFailure, type HiringJobSaveIntent } from '../hiring-actions'
 import type { HiringEditableJob, HiringJobInput, HiringJobUpdateInput } from '../hiring-repository'
 import type { HiringPublisherOption } from '../publishers'
-import { AcceptedRolesPicker, type AcceptedRolesValue } from '@/features/roles/components/accepted-roles-picker'
+import { AcceptedRolesPicker, type AcceptedRolesValue, type SharedExtraRanks } from '@/features/roles/components/accepted-roles-picker'
 import { DEFAULT_MIN_MATCH_TO_APPLY } from '@/features/roles/job-role-input'
 import { domainForDepartment, normaliseLegacyRank, roleByKey } from '@/features/roles/taxonomy'
 import {
@@ -43,6 +43,8 @@ type HiringJobFormProps = (
 ) & {
   /** Hotfix P2: the member the local autosave copy belongs to; without it there is no local copy. */
   draftOwnerId?: string | null
+  /** P6: each department's shared extra ranks from other departments (tick boxes, never ticked for the poster). */
+  sharedExtras?: SharedExtraRanks
 }
 
 const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-navy-300 focus:ring-2 focus:ring-navy-100 aria-[invalid=true]:border-red-400'
@@ -595,7 +597,16 @@ function HiringJobFormFields(props: HiringJobFormProps & {
             <FieldIssue id="hiring-job-title-issue" issue={fieldIssue('title')} />
           </div>
 
-          <AcceptedRolesPicker value={roles} onChange={setRoles} labelClassName={labelClass} inputClassName={inputClass} idPrefix="hiring-job" errors={roleErrors()} />
+          <AcceptedRolesPicker
+            value={roles}
+            // P6: the picker's chips and search change state without a native change event, so mark the draft dirty here.
+            onChange={(next) => { setRoles(next); autosave.markDirty() }}
+            labelClassName={labelClass}
+            inputClassName={inputClass}
+            idPrefix="hiring-job"
+            errors={roleErrors()}
+            sharedExtras={props.sharedExtras}
+          />
 
           <div className={labelClass}>
             <label htmlFor="hiring-job-domain">Job type</label>
