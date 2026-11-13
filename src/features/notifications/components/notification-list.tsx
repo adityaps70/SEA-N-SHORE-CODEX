@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { AtSign, Bell, BriefcaseBusiness, CheckCheck, ChevronRight, Ellipsis, GraduationCap, MessageSquareText, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useRef, useState, useTransition } from 'react'

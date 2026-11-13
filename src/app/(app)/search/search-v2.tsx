@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ArrowLeft, BookOpen, BriefcaseBusiness, Building2, CalendarDays, FileText, UsersRound } from 'lucide-react'
 import { MediaImage } from '@/components/ui/media-image'
 import { CommunityCategoryFacet } from '@/features/community/components/category-facet'

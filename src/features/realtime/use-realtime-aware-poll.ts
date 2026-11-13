@@ -15,11 +15,14 @@ export const REALTIME_HINT_DEBOUNCE_MS = 2_000
  *   Coming back from a dropped socket, the check runs once at once (anything missed while it was down).
  * - Otherwise (no socket, socket down, or a check hints cannot fully cover) the timer runs every `intervalMs` while
  *   the tab is visible, as before.
+ * - Round CAP (finding 5): a check hints cover only in part can set `connectedIntervalMs`, a longer timer used while
+ *   the socket is connected (the hints carry the part they cover at once).
  */
 export function useRealtimeAwarePoll(check: () => void, options: {
   intervalMs: number
   hintEventTypes: readonly string[]
   pauseWhileConnected: boolean
+  connectedIntervalMs?: number
   enabled?: boolean
 }) {
   const realtime = useOptionalMessagingRealtime()
@@ -27,6 +30,7 @@ export function useRealtimeAwarePoll(check: () => void, options: {
   const connected = realtime?.status === 'connected'
   const enabled = options.enabled ?? true
   const paused = enabled && options.pauseWhileConnected && connected
+  const intervalMs = connected && options.connectedIntervalMs ? Math.max(options.intervalMs, options.connectedIntervalMs) : options.intervalMs
   const checkRef = useRef(check)
   const wasPausedRef = useRef<boolean | null>(null)
   const everPausedRef = useRef(false)
@@ -50,8 +54,8 @@ export function useRealtimeAwarePoll(check: () => void, options: {
       return
     }
     if (previous === true && visible) checkRef.current()
-    return startVisibleInterval(() => checkRef.current(), options.intervalMs)
-  }, [enabled, paused, options.intervalMs])
+    return startVisibleInterval(() => checkRef.current(), intervalMs)
+  }, [enabled, paused, intervalMs])
 
   // The hints.
   useEffect(() => {

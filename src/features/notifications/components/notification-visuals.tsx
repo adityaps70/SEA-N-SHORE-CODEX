@@ -1,5 +1,5 @@
 import { Bell, Play } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { AuthorAvatarLink } from '@/features/feed/components/author-avatar'
 import type { NetworkNotification } from '../types'
 import { cdnImageUrlForWidth } from '@/lib/media-cdn/cdn-url'

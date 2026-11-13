@@ -1,7 +1,7 @@
 'use client'
 
 import { CheckCircle2, ClipboardCopy, Download, Images, Send, Share2, TriangleAlert } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'

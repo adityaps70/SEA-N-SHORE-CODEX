@@ -1,7 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { MailOpen, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { relativeTimeFrom } from '@/lib/relative-time'

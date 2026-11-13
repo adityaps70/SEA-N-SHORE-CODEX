@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ExternalLink, Search, ShieldCheck, UserCog } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { withAdminAvatarUrls } from '@/features/admin/avatars'

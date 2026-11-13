@@ -2,7 +2,7 @@
 
 import { MediaImage } from '@/components/ui/media-image'
 import { useVideoPreload } from '@/lib/browser/data-saver'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
