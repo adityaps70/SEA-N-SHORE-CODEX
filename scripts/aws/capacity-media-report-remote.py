@@ -1174,6 +1174,162 @@ def section_cap7d():
     out("CAP_7D_BY_CALLS", " | ".join("calls=%.0f ms=%s sql=%s" % (m["calls"], ("%.2f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a", m["sql"][:70]) for m in by_calls))
 
 
+# ---------------------------------------------------------------- Round CAP: the admin final-reminder counts, split
+
+# Owner (13 Nov): split the admin legacy-invites counts at the Round DB Deploy B deploy, with calls and ms per call
+# before and after, and check whether the page refreshes by itself. "legacy <start> <deploy B> <time limit> <end>": the
+# second split is when the app role's 10-second statement limit reached every connection (the Deploy C deploy).
+LEGACY_TABLES = ("legacy_profile_invites", "legacy_profile_invite_reminders", "legacy_profile_invite_final_reminders",
+                 "legacy_profile_claims", "identity_accounts", "email_delivery_events", "email_suppressions",
+                 "newsletter_subscribers")
+
+
+def legacy_ranges():
+    points = [parse_minute(v) for v in os.environ["LEGACY_POINTS"].split(",")]
+    assert len(points) == 4 and points == sorted(points), "the legacy window needs start < deploy B < time limit < end"
+    points[0] = max(points[0], NOW - dt.timedelta(days=7) + dt.timedelta(minutes=5))
+    return [("before_deploy_b", points[0], points[1]), ("deploy_b_no_time_limit", points[1], points[2]),
+            ("with_10s_limit", points[2], points[3])]
+
+
+def legacy_kind(sql):
+    text = sql.lower()
+    if "legacy_profile_invite" not in text and "legacy_profile_claims" not in text:
+        return None
+    if text.startswith("select reason, count(*)"):
+        return "final_counts" if "legacy_profile_invite_final_reminders" in text else "reminder_counts"
+    if text.startswith("with eligible as"):
+        return "final_prepare"
+    return "other_legacy"
+
+
+def without_load_tests(start, end):
+    """[start, end) less the load test windows, as ranges."""
+    ranges, cursor = [], start
+    for a, b in sorted((parse_minute(a + "Z"), parse_minute(b + "Z")) for a, b in CAP_EXCLUDED):
+        if b <= cursor or a >= end:
+            continue
+        if a > cursor:
+            ranges.append((cursor, a))
+        cursor = max(cursor, b)
+    if cursor < end:
+        ranges.append((cursor, end))
+    return ranges
+
+
+def legacy_pi(resource, start, end):
+    """Per statement kind over [start, end): database seconds, calls and ms per call (Performance Insights)."""
+    kinds = defaultdict(lambda: {"db_s": 0.0, "calls": 0.0, "ms_weighted": 0.0, "shapes": set()})
+    for a, b in without_load_tests(start, end):
+        seconds = (b - a).total_seconds()
+        for k in pi_keys(resource, a, b, "db.sql_tokenized", 25, PI_WINDOW_STATS):
+            d = k.get("Dimensions") or {}
+            kind = legacy_kind(d.get("db.sql_tokenized.statement", ""))
+            if not kind:
+                continue
+            m = kinds[kind]
+            m["db_s"] += k.get("Total", 0) * seconds
+            m["shapes"].add(d.get("db.sql_tokenized.id") or "?")
+            add = k.get("AdditionalMetrics") or {}
+            calls_ps, ms = add.get("db.sql_tokenized.stats.calls_per_sec.avg"), add.get("db.sql_tokenized.stats.avg_latency_per_call.avg")
+            if isinstance(calls_ps, (int, float)):
+                m["calls"] += calls_ps * seconds
+                if isinstance(ms, (int, float)):
+                    m["ms_weighted"] += ms * calls_ps * seconds
+    return kinds
+
+
+def section_legacysplit():
+    out("=== ROUND CAP: ADMIN FINAL-REMINDER COUNTS BEFORE AND AFTER DEPLOY B (shapes and counts only) ===")
+    ranges = legacy_ranges()
+    for label, a, b in ranges:
+        out("LEGACY_RANGE", label, iso(a), iso(b), "hours=%.1f" % ((b - a).total_seconds() / 3600))
+    resource = writer_resource()
+    if resource:
+        for label, a, b in ranges:
+            for kind, m in sorted(legacy_pi(resource, a, b).items()):
+                out("LEGACY_PI", label, kind, "db_s=%.0f" % m["db_s"], "calls=%.0f" % m["calls"],
+                    "ms_per_call=%s" % (("%.0f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a"),
+                    "statement_shapes=%d" % len(m["shapes"]))
+        # Per day, so a pattern (one admin session a day, or many) shows.
+        day = ranges[0][1].replace(hour=0, minute=0)
+        while day < ranges[-1][2]:
+            a, b = max(day, ranges[0][1]), min(day + dt.timedelta(days=1), ranges[-1][2])
+            for kind, m in sorted(legacy_pi(resource, a, b).items()):
+                if kind.endswith("_counts"):
+                    out("LEGACY_PI_DAY", a.strftime("%m-%d"), kind, "db_s=%.0f" % m["db_s"], "calls=%.0f" % m["calls"],
+                        "ms_per_call=%s" % (("%.0f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a"))
+            day += dt.timedelta(days=1)
+    else:
+        out("PI UNAVAILABLE")
+    # pg_stat_statements since its reset: completed calls only (a statement cancelled by the time limit is not counted).
+    stats, counts = sql_rows([
+        "select calls::bigint as calls, round(total_exec_time::numeric / 1000, 1) as total_s, round(mean_exec_time::numeric) as mean_ms, "
+        "round(min_exec_time::numeric) as min_ms, round(max_exec_time::numeric) as max_ms, rows::bigint as rows, "
+        "left(regexp_replace(query, '\\s+', ' ', 'g'), 300) as q from pg_stat_statements "
+        "where query ilike '%legacy_profile_invite%' order by total_exec_time desc limit 10",
+        "select " + ", ".join("(select count(*) from public.%s)::bigint as %s" % (t, t) for t in LEGACY_TABLES),
+    ])
+    for row in stats or []:
+        out("LEGACY_STATEMENT", legacy_kind(row.get("q", "")) or "other", "calls=%s" % row["calls"], "total_s=%s" % row["total_s"],
+            "mean_ms=%s" % row["mean_ms"], "min_ms=%s" % row["min_ms"], "max_ms=%s" % row["max_ms"], "rows=%s" % row["rows"])
+    out("LEGACY_ROWS", json.dumps((counts or [{}])[0], sort_keys=True))
+    # The admin page in the load balancer logs: requests by kind, tab and status, server time, and the gaps between
+    # requests (a page that refreshes by itself shows a fixed gap).
+    bot = re.compile(BOT_PATTERN, re.I)
+    kinds = {label: Counter() for label, _a, _b in ranges}
+    times = {label: defaultdict(list) for label, _a, _b in ranges}
+    stamps = []
+    totals, budget = Counter(), {"bytes": 0}
+    day = ranges[0][1].date()
+    while day <= ranges[-1][2].date():
+        for line in alb_day_lines(day, totals, budget):
+            m = LOG_LINE.match(line)
+            if not m or bot.search(m.group(14)):
+                continue
+            request = m.group(13).split(" ")
+            url = request[1] if len(request) > 1 else ""
+            path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0]
+            if path != "/admin/legacy-invites":
+                continue
+            t19 = m.group(2)[:19]
+            t = dt.datetime.strptime(t19, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
+            label = next((l for l, a, b in ranges if a <= t < b), None)
+            if not label:
+                continue
+            query = url.split("?", 1)[1] if "?" in url else ""
+            tab = re.search(r"(?:^|&)mode=(final|reminder)", query)
+            tab = tab.group(1) if tab else "first"
+            kind = "action" if request[0] == "POST" else ("rsc" if "_rsc=" in query else "page")
+            kinds[label]["%s:%s elb=%s target=%s" % (tab, kind, m.group(9), m.group(10))] += 1
+            try:
+                times[label][tab + ":" + kind].append(float(m.group(7)))
+            except ValueError:
+                pass
+            if kind != "action":
+                stamps.append(t)
+        day += dt.timedelta(days=1)
+    for label, _a, _b in ranges:
+        out("LEGACY_ALB", label, " ".join("%s=%d" % kv for kv in sorted(kinds[label].items())) or "none")
+        for key, values in sorted(times[label].items()):
+            values = [v for v in values if v >= 0]
+            if values:
+                out("LEGACY_ALB_SERVER_S", label, key, "n=%d" % len(values), "p50=%.2f" % pct(values, 50),
+                    "p90=%.2f" % pct(values, 90), "max=%.2f" % max(values))
+    stamps.sort()
+    gaps = Counter()
+    for a, b in zip(stamps, stamps[1:]):
+        s = (b - a).total_seconds()
+        gaps["<10s" if s < 10 else "10-60s" if s < 60 else "1-5min" if s < 300 else "5-30min" if s < 1800 else ">30min"] += 1
+    out("LEGACY_ALB_GAPS", "views=%d" % len(stamps), json.dumps(dict(gaps), sort_keys=True))
+    # Statement timeouts in the web task's log, per range (counts only; no message is printed).
+    for label, a, b in ranges:
+        n = aws("logs", "filter-log-events", "--log-group-name", "/ecs/%s/web" % PREFIX,
+                "--start-time", int(a.timestamp() * 1000), "--end-time", int(b.timestamp() * 1000),
+                "--filter-pattern", '"statement timeout"', "--query", "length(events)")
+        out("LEGACY_WEB_STATEMENT_TIMEOUTS", label, "events=%s" % (n if n is not None else "UNAVAILABLE"))
+
+
 # ---------------------------------------------------------------- section: checks
 
 # Round ARCH (Phase 2): read-only pre-check before the deploy arm (window file "checks"), counts and yes/no only.
@@ -1796,7 +1952,7 @@ def main():
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
-     "dbcompare": section_dbcompare, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d}[SECTION]()
+     "dbcompare": section_dbcompare, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "legacysplit": section_legacysplit}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 
