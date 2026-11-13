@@ -407,6 +407,8 @@ logs = [line("2026-11-12T10:05:01.0Z", "GET", "/home", "200"),
         line("2026-11-12T10:05:08.0Z", "GET", "/_next/image?url=x", "200"),
         line("2026-11-12T10:05:09.0Z", "GET", "/_next/static/chunks/a.js", "200"),
         line("2026-11-12T10:05:10.0Z", "GET", "/about", "200"),
+        line("2026-11-12T10:05:11.0Z", "POST", "/api/email/resend/webhook", "200"),
+        line("2026-11-12T10:05:12.0Z", "GET", "/api/health/live", "200"),
         line("2026-11-12T11:30:00.0Z", "GET", "/home", "200"),
         line("2026-11-12T11:31:00.0Z", "GET", "/home", "200", "SeaNShore-LoadTest/1"),
         line("2026-11-12T12:10:00.0Z", "GET", "/home", "200", "Googlebot"),
@@ -428,6 +430,8 @@ for kind, n in (("page_signed_in_route", 1), ("rsc_signed_in_route", 1), ("rsc_h
                 ("impressions", 1), ("realtime_ticket", 1), ("image", 1)):
     assert "CAP_RATE whole_window %s requests=%d" % (kind, n) in text, (kind, text)
 assert '"excluded_load_test_window": 2' in text and '"bot_or_probe": 1' in text, text
+# Webhooks and health checks are counted apart and never per person.
+assert '"non_person": 2' in text and "CAP_RATE whole_window non_person" not in text, text
 for leak in ("asha", "203.0.113", "10.0.1.5", "Mozilla", "example.test"):
     assert leak not in text, (leak, text)
 assert all(s.lstrip().lower().startswith("with") for s in seen) and "is_load_test" in seen[0], seen

@@ -927,6 +927,7 @@ CAP_EXCLUDED = (("2026-11-07T10:45:00", "2026-11-07T11:30:00"), ("2026-11-08T12:
                 ("2026-11-08T13:45:00", "2026-11-08T14:00:00"), ("2026-11-09T11:15:00", "2026-11-09T11:40:00"),
                 ("2026-11-11T09:15:00", "2026-11-11T09:30:00"), ("2026-11-11T10:30:00", "2026-11-11T11:05:00"),
                 ("2026-11-11T19:50:00", "2026-11-11T21:05:00"), ("2026-11-12T11:15:00", "2026-11-12T12:00:00"))
+CAP_NON_PERSON = re.compile(r"^/api/(health(/|$)|.*/webhook$)")
 CAP_API_KINDS = (("/api/feed/impressions", "impressions"), ("/api/metrics/visit", "visit_metric"), ("/api/realtime/ticket", "realtime_ticket"),
                  ("/api/realtime/", "realtime_other"), ("/api/media/", "media_api"), ("/api/feed-media/", "media_api"),
                  ("/api/community-media/", "media_api"), ("/api/learning-media/", "media_api"))
@@ -952,6 +953,9 @@ def cap_request_type(method, path, query, status):
     if "_rsc=" in query:
         return "rsc_hash_redirect" if status == "307" else "rsc"
     if path.startswith("/api/"):
+        # Owner (13 Nov): machine traffic is never counted per person (Resend, payment and payout webhooks, health checks).
+        if CAP_NON_PERSON.search(path):
+            return "non_person"
         for prefix, kind in CAP_API_KINDS:
             if path.startswith(prefix):
                 return kind
@@ -1049,7 +1053,7 @@ def section_capminutes():
         "busiest_minute_people=%d" % max([int(r["peak_minute"]) for r in per_hour] or [0]),
         "hours_with_any=%d" % len(activity), "floor_only=true")
     # Signed-in traffic is what the signed-in people send: everything but public pages, public RSC and static files.
-    signed_in_kinds = sorted({k for c in hourly for k in c} - {"page_public_route", "rsc_public_route", "static"})
+    signed_in_kinds = sorted({k for c in hourly for k in c} - {"page_public_route", "rsc_public_route", "static", "non_person"})
 
     def rates(label, chosen):
         minutes = sum(int(activity[h]["person_minutes"]) for h in chosen if h in activity)
