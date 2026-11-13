@@ -1,5 +1,6 @@
 'use server'
 
+import { actionScope } from '@/lib/server/action-scope'
 import { z } from 'zod'
 import { getOwnProfile } from '@/features/profiles/queries'
 import { getFeedPage, getPostingOrganizations } from './queries'
@@ -26,11 +27,14 @@ const organizationPostsRequestSchema = z.object({
 
 /** Organizations the signed-in member may choose under "Post as". */
 export async function loadPostingOrganizations(): Promise<PostingOrganizationsResult> {
-  try {
-    return { ok: true, organizations: await getPostingOrganizations() }
-  } catch {
-    return { ok: false, error: 'We could not load the organizations you post for. You can still post as yourself.' }
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    try {
+      return { ok: true, organizations: await getPostingOrganizations() }
+    } catch {
+      return { ok: false, error: 'We could not load the organizations you post for. You can still post as yourself.' }
+    }
+  })
 }
 
 /**
@@ -38,33 +42,36 @@ export async function loadPostingOrganizations(): Promise<PostingOrganizationsRe
  * as the organization. The permission is decided here on the server, not by the page.
  */
 export async function loadOrganizationPostsTab(input: { companyId: string; limit?: number; includeComposer?: boolean }): Promise<OrganizationPostsTabResult> {
-  const parsed = organizationPostsRequestSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'This organization could not be found.' }
-  try {
-    const [page, organizations, profile] = await Promise.all([
-      getFeedPage({ companyId: parsed.data.companyId, limit: parsed.data.limit }),
-      parsed.data.includeComposer ? getPostingOrganizations() : Promise.resolve([]),
-      parsed.data.includeComposer ? getOwnProfile() : Promise.resolve(null),
-    ])
-    const organization = organizations.find((entry) => entry.id === parsed.data.companyId)
-    return {
-      ok: true,
-      page,
-      composer: organization && profile
-        ? {
-          profile: {
-            id: profile.id,
-            fullName: profile.fullName,
-            avatarUrl: profile.avatarUrl ?? null,
-            rank: profile.rank,
-            headline: profile.headline,
-          },
-          organization,
-          organizations,
-        }
-        : null,
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const parsed = organizationPostsRequestSchema.safeParse(input)
+    if (!parsed.success) return { ok: false, error: 'This organization could not be found.' }
+    try {
+      const [page, organizations, profile] = await Promise.all([
+        getFeedPage({ companyId: parsed.data.companyId, limit: parsed.data.limit }),
+        parsed.data.includeComposer ? getPostingOrganizations() : Promise.resolve([]),
+        parsed.data.includeComposer ? getOwnProfile() : Promise.resolve(null),
+      ])
+      const organization = organizations.find((entry) => entry.id === parsed.data.companyId)
+      return {
+        ok: true,
+        page,
+        composer: organization && profile
+          ? {
+            profile: {
+              id: profile.id,
+              fullName: profile.fullName,
+              avatarUrl: profile.avatarUrl ?? null,
+              rank: profile.rank,
+              headline: profile.headline,
+            },
+            organization,
+            organizations,
+          }
+          : null,
+      }
+    } catch {
+      return { ok: false, error: 'We could not load this organization’s posts.' }
     }
-  } catch {
-    return { ok: false, error: 'We could not load this organization’s posts.' }
-  }
+  })
 }

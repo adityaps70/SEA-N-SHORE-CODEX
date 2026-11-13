@@ -1,5 +1,6 @@
 'use server'
 
+import { actionScope } from '@/lib/server/action-scope'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -28,11 +29,14 @@ function revalidateNotificationSurfaces() {
 }
 
 export async function loadNotificationChrome(): Promise<NotificationChromeResult> {
-  try {
-    return { ok: true, chrome: await getNotificationChrome() }
-  } catch {
-    return { ok: false, error: 'We could not refresh your notifications. They will update again shortly.' }
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    try {
+      return { ok: true, chrome: await getNotificationChrome() }
+    } catch {
+      return { ok: false, error: 'We could not refresh your notifications. They will update again shortly.' }
+    }
+  })
 }
 
 /** Round 14 (3.9): the closed bell polls only its badge count. */
@@ -45,11 +49,14 @@ export async function loadUnreadNotificationCount(): Promise<UnreadNotificationC
 }
 
 export async function loadNotifications(): Promise<NotificationsResult> {
-  try {
-    return { ok: true, notifications: await getNotifications() }
-  } catch {
-    return { ok: false, error: 'We could not refresh your notifications.' }
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    try {
+      return { ok: true, notifications: await getNotifications() }
+    } catch {
+      return { ok: false, error: 'We could not refresh your notifications.' }
+    }
+  })
 }
 
 export async function markNotificationRead(id: string): Promise<NotificationActionResult> {
