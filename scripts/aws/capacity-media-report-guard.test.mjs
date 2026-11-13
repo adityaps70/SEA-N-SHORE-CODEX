@@ -333,7 +333,7 @@ print("ok")
 // Round DB (Option A, owner 12 Nov): the 24-hour before/after compare also reports the database cost per request.
 test('the compare window reports database seconds and ACU-seconds per 1,000 requests for both windows', () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
-  assert.match(wrapper, /COMPARE \? \['compare', 'dbcompare'\]/)
+  assert.match(wrapper, /COMPARE \? \['compare', 'dbcompare', 'online'\]/)
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util, io, contextlib, datetime as dt
 spec = importlib.util.spec_from_file_location("r", "${remotePath}")
@@ -557,6 +557,33 @@ assert calls == [("logs", "filter-log-events")] * 3, calls
 assert all(s.lower().startswith("select") for s in seen), seen
 for leak in ("asha", "203.0.113", "10.0.1.5", "Mozilla", "example.test", "invite.status"):
     assert leak not in text.lower(), (leak, text)
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Round CAP (finding 8): the compare also prints the worker's hourly peaks of signed-in members online, counts only.
+test('the online section prints each window\'s hourly peaks of members online and nothing about members', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+os.environ["COMPARE_START"], os.environ["COMPARE_END"] = "2026-11-15T00:00:00Z", "2026-11-15T12:00:00Z"
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    return [[{"day": "2026-11-14", "hour": 5, "members": 7}, {"day": "2026-11-15", "hour": 5, "members": 12}, {"day": "2026-11-15", "hour": 6, "members": 20}]]
+r.sql_rows = fake_rows
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_online()
+text = buf.getvalue()
+assert "ONLINE_PEAK before hours_recorded=1 peak=7 avg_hourly_peak=7.0" in text, text
+assert "ONLINE_PEAK after hours_recorded=2 peak=20 avg_hourly_peak=16.0" in text, text
+assert "ONLINE_PEAK_HOURS after 11-15T05=12 11-15T06=20" in text, text
+assert len(seen) == 1 and seen[0].startswith("select") and "online.peak_utc_h" in seen[0], seen
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)
