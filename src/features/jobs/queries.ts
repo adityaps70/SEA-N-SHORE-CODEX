@@ -84,9 +84,13 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
         ...matchesFor(job, profile, false),
       }))
 
-    // "Best match" and For You order by the match score, jobs without a score (null) last.
+    // "Best match" and For You order by the match score, jobs without a score (null) last. Bug fix (13 Nov): jobs
+    // the member is eligible for always come before "Not eligible" ones, as in matching v2.
     if (filters.sort === 'recommended' || filters.sort === 'best' || filters.mode === 'for-you') {
+      const eligible = new Map(items.map((item) => [item.job.id, profile ? scoreJobForMember(item.job, profile).match.eligible !== false : true]))
       items.sort((a, b) => {
+        const eligibleDelta = Number(eligible.get(b.job.id)) - Number(eligible.get(a.job.id))
+        if (eligibleDelta) return eligibleDelta
         const scoreDelta = (b.match?.score ?? -1) - (a.match?.score ?? -1)
         if (scoreDelta !== 0) return scoreDelta
         const aDate = Date.parse(a.job.publishedAt ?? a.job.createdAt)
