@@ -1,5 +1,6 @@
 'use server'
 
+import { actionScope } from '@/lib/server/action-scope'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
@@ -477,10 +478,13 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
 }
 
 export async function loadFeedPage(input: FeedRequest) {
-  const parsed = feedRequestSchema.safeParse(input)
-  if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
-  try { return { ok: true as const, page: await getFeedPage(parsed.data) } }
-  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const parsed = feedRequestSchema.safeParse(input)
+    if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
+    try { return { ok: true as const, page: await getFeedPage(parsed.data) } }
+    catch { return { ok: false as const, error: 'We could not load more posts.' } }
+  })
 }
 
 const topPageSchema = z.object({
@@ -494,18 +498,24 @@ const topPageSchema = z.object({
  * "N new posts" button): a new snapshot that leaves out everything already seen.
  */
 export async function loadTopFeedPage(input: { sessionId?: string; position?: number; debug?: boolean }) {
-  const parsed = topPageSchema.safeParse(input ?? {})
-  if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
-  try { return { ok: true as const, page: await getTopFeedPage(parsed.data) } }
-  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const parsed = topPageSchema.safeParse(input ?? {})
+    if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
+    try { return { ok: true as const, page: await getTopFeedPage(parsed.data) } }
+    catch { return { ok: false as const, error: 'We could not load more posts.' } }
+  })
 }
 
 /** Round G: a page of Recent (newest first, mutes applied, reposts collapsed). */
 export async function loadRecentFeedPage(input: FeedRequest) {
-  const parsed = feedRequestSchema.safeParse(input)
-  if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
-  try { return { ok: true as const, page: await getRecentFeedPage(parsed.data) } }
-  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const parsed = feedRequestSchema.safeParse(input)
+    if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
+    try { return { ok: true as const, page: await getRecentFeedPage(parsed.data) } }
+    catch { return { ok: false as const, error: 'We could not load more posts.' } }
+  })
 }
 
 /** Round G: Top for you or Recent, remembered on the server for every device. */
@@ -525,25 +535,31 @@ export async function setFeedMode(mode: string) {
  * since the snapshot was built. It never builds or returns a page.
  */
 export async function countNewTopPosts(input: { since: string }) {
-  const since = z.string().datetime({ offset: true }).safeParse(input?.since)
-  if (!since.success) return { ok: false as const, count: 0 }
-  try {
-    const user = await requireAwsUser()
-    return { ok: true as const, count: await feedCandidateRepository.countNewPosts(user.id, new Date(since.data)) }
-  } catch {
-    return { ok: false as const, count: 0 }
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const since = z.string().datetime({ offset: true }).safeParse(input?.since)
+    if (!since.success) return { ok: false as const, count: 0 }
+    try {
+      const user = await requireAwsUser()
+      return { ok: true as const, count: await feedCandidateRepository.countNewPosts(user.id, new Date(since.data)) }
+    } catch {
+      return { ok: false as const, count: 0 }
+    }
+  })
 }
 
 /** Round G: every comment of a post, for "View all comments" under a feed card's preview. */
 export async function loadAllPostComments(postId: string) {
-  if (!z.string().uuid().safeParse(postId).success) return { ok: false as const, error: 'Invalid post.' }
-  try {
-    const comments = await getAllPostComments(postId)
-    return comments ? { ok: true as const, comments } : { ok: false as const, error: 'This post is no longer available.' }
-  } catch {
-    return { ok: false as const, error: 'We could not load the comments.' }
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    if (!z.string().uuid().safeParse(postId).success) return { ok: false as const, error: 'Invalid post.' }
+    try {
+      const comments = await getAllPostComments(postId)
+      return comments ? { ok: true as const, comments } : { ok: false as const, error: 'This post is no longer available.' }
+    } catch {
+      return { ok: false as const, error: 'We could not load the comments.' }
+    }
+  })
 }
 
 /** Round 14 (3.7): the next 20 of the member's own posts on My Activities › Posts. */
@@ -595,40 +611,43 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
  * must still post for that organization, and its owners and administrators can edit too.
  */
 export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[]; organizationMentionIds?: string[]; audience?: PostAudience }): Promise<UpdatePostActionResult> {
-  const parsed = updatePostInputSchema.safeParse(input)
-  if (!parsed.success) {
-    const fieldErrors = plainFieldErrors(parsed.error)
-    return { ok: false, error: fieldErrors.body?.[0] ?? fieldErrors.mentionProfileIds?.[0] ?? 'This post could not be found. Refresh the page and try again.' }
-  }
-  const moderation = parsed.data.body ? assessPlatformText([parsed.data.body]) : null
-  if (moderation?.decision === 'block') return { ok: false, error: moderationBlockMessage() }
-  const user = await actionUser()
-  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
-  try {
-    await updatePostWithAurora(user.id, parsed.data.postId, {
-      body: parsed.data.body,
-      mentionProfileIds: parsed.data.mentionProfileIds,
-      organizationMentionIds: parsed.data.organizationMentionIds,
-      ...(parsed.data.audience ? { audience: parsed.data.audience } : {}),
-    })
-  } catch (error) {
-    const code = safeErrorCode(error)
-    if (code === 'feed_post_edit_forbidden') return { ok: false, error: 'You can no longer edit this post. Only its author and the organization admins can change it.' }
-    if (code === 'feed_post_body_required') return { ok: false, error: 'Write something before saving.' }
-    if (code === 'feed_post_body_too_long') return { ok: false, error: `Keep your thoughts to ${REPOST_COMMENTARY_LIMIT_LABEL} characters or fewer.` }
-    if (code === 'feed_interaction_unavailable') return { ok: false, error: 'This post is no longer available. Refresh the page to see the latest feed.' }
-    return { ok: false, error: 'We could not save your changes. Your edits are still here; please try again.' }
-  }
-  if (moderation) await flagAutomatedModeration('post', parsed.data.postId, moderation)
-  revalidatePath('/saved')
-  revalidateSocialFeed()
-  const refreshed = await getPostById(parsed.data.postId).catch(() => null)
-  return {
-    ok: true,
-    post: refreshed
-      ? { id: refreshed.id, body: refreshed.body, mentions: refreshed.mentions ?? [], ...(refreshed.audience ? { audience: refreshed.audience } : {}) }
-      : { id: parsed.data.postId, body: parsed.data.body, mentions: [] },
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const parsed = updatePostInputSchema.safeParse(input)
+    if (!parsed.success) {
+      const fieldErrors = plainFieldErrors(parsed.error)
+      return { ok: false, error: fieldErrors.body?.[0] ?? fieldErrors.mentionProfileIds?.[0] ?? 'This post could not be found. Refresh the page and try again.' }
+    }
+    const moderation = parsed.data.body ? assessPlatformText([parsed.data.body]) : null
+    if (moderation?.decision === 'block') return { ok: false, error: moderationBlockMessage() }
+    const user = await actionUser()
+    if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
+    try {
+      await updatePostWithAurora(user.id, parsed.data.postId, {
+        body: parsed.data.body,
+        mentionProfileIds: parsed.data.mentionProfileIds,
+        organizationMentionIds: parsed.data.organizationMentionIds,
+        ...(parsed.data.audience ? { audience: parsed.data.audience } : {}),
+      })
+    } catch (error) {
+      const code = safeErrorCode(error)
+      if (code === 'feed_post_edit_forbidden') return { ok: false, error: 'You can no longer edit this post. Only its author and the organization admins can change it.' }
+      if (code === 'feed_post_body_required') return { ok: false, error: 'Write something before saving.' }
+      if (code === 'feed_post_body_too_long') return { ok: false, error: `Keep your thoughts to ${REPOST_COMMENTARY_LIMIT_LABEL} characters or fewer.` }
+      if (code === 'feed_interaction_unavailable') return { ok: false, error: 'This post is no longer available. Refresh the page to see the latest feed.' }
+      return { ok: false, error: 'We could not save your changes. Your edits are still here; please try again.' }
+    }
+    if (moderation) await flagAutomatedModeration('post', parsed.data.postId, moderation)
+    revalidatePath('/saved')
+    revalidateSocialFeed()
+    const refreshed = await getPostById(parsed.data.postId).catch(() => null)
+    return {
+      ok: true,
+      post: refreshed
+        ? { id: refreshed.id, body: refreshed.body, mentions: refreshed.mentions ?? [], ...(refreshed.audience ? { audience: refreshed.audience } : {}) }
+        : { id: parsed.data.postId, body: parsed.data.body, mentions: [] },
+    }
+  })
 }
 
 export async function restoreDeletedPost(postId: string): Promise<FeedActionResult> {
@@ -777,99 +796,108 @@ export async function unhidePost(postId: string): Promise<FeedActionResult> {
 }
 
 export async function addComment(_previousState: CommentActionState, formData: FormData): Promise<CommentActionState> {
-  const raw = {
-    postId: formData.get('postId'),
-    body: formData.get('body'),
-    parentCommentId: formData.get('parentCommentId'),
-    mentionProfileIds: mentionIds(formData),
-    organizationMentionIds: organizationMentionIds(formData),
-  }
-  const parsed = commentInputSchema.safeParse(raw)
-  if (!parsed.success) {
-    return {
-      fieldErrors: plainFieldErrors(parsed.error),
-      value: typeof raw.body === 'string' && raw.body.length <= 2000 ? raw.body : undefined,
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const raw = {
+      postId: formData.get('postId'),
+      body: formData.get('body'),
+      parentCommentId: formData.get('parentCommentId'),
+      mentionProfileIds: mentionIds(formData),
+      organizationMentionIds: organizationMentionIds(formData),
     }
-  }
-  const moderation = assessPlatformText([parsed.data.body])
-  if (moderation.decision === 'block') {
-    return { error: moderationBlockMessage(), value: parsed.data.body }
-  }
-  const user = await actionUser()
-  if (!user) return { error: SESSION_CHECK_FAILED, value: parsed.data.body }
-  try {
-    const commentId = await addPostCommentWithAurora(
-      user.id,
-      parsed.data.postId,
-      parsed.data.body,
-      parsed.data.parentCommentId ?? null,
-      parsed.data.mentionProfileIds,
-      parsed.data.organizationMentionIds,
-    )
-    await flagAutomatedModeration('comment', commentId, moderation)
-    const comment = await hydrateComment(parsed.data.postId, commentId)
-    if (!comment) return { error: 'We could not refresh your comment.', value: parsed.data.body }
-    return { ok: true, comment }
-  } catch (error) {
-    return { error: socialQuotaMessage(error) ?? 'We could not add your comment.', value: parsed.data.body }
-  }
+    const parsed = commentInputSchema.safeParse(raw)
+    if (!parsed.success) {
+      return {
+        fieldErrors: plainFieldErrors(parsed.error),
+        value: typeof raw.body === 'string' && raw.body.length <= 2000 ? raw.body : undefined,
+      }
+    }
+    const moderation = assessPlatformText([parsed.data.body])
+    if (moderation.decision === 'block') {
+      return { error: moderationBlockMessage(), value: parsed.data.body }
+    }
+    const user = await actionUser()
+    if (!user) return { error: SESSION_CHECK_FAILED, value: parsed.data.body }
+    try {
+      const commentId = await addPostCommentWithAurora(
+        user.id,
+        parsed.data.postId,
+        parsed.data.body,
+        parsed.data.parentCommentId ?? null,
+        parsed.data.mentionProfileIds,
+        parsed.data.organizationMentionIds,
+      )
+      await flagAutomatedModeration('comment', commentId, moderation)
+      const comment = await hydrateComment(parsed.data.postId, commentId)
+      if (!comment) return { error: 'We could not refresh your comment.', value: parsed.data.body }
+      return { ok: true, comment }
+    } catch (error) {
+      return { error: socialQuotaMessage(error) ?? 'We could not add your comment.', value: parsed.data.body }
+    }
+  })
 }
 
 export async function updateComment(_previousState: CommentActionState, formData: FormData): Promise<CommentActionState> {
-  const rawBody = formData.get('body')
-  const rawValue = typeof rawBody === 'string' && rawBody.length <= 2000 ? rawBody : undefined
-  const parsed = updateCommentInputSchema.safeParse({
-    commentId: formData.get('commentId'),
-    body: rawBody,
-    mentionProfileIds: mentionIds(formData),
-    organizationMentionIds: organizationMentionIds(formData),
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const rawBody = formData.get('body')
+    const rawValue = typeof rawBody === 'string' && rawBody.length <= 2000 ? rawBody : undefined
+    const parsed = updateCommentInputSchema.safeParse({
+      commentId: formData.get('commentId'),
+      body: rawBody,
+      mentionProfileIds: mentionIds(formData),
+      organizationMentionIds: organizationMentionIds(formData),
+    })
+    if (!parsed.success) {
+      return {
+        fieldErrors: plainFieldErrors(parsed.error),
+        value: rawValue,
+      }
+    }
+    const moderation = assessPlatformText([parsed.data.body])
+    if (moderation.decision === 'block') {
+      return { error: moderationBlockMessage(), value: rawValue }
+    }
+    const user = await actionUser()
+    if (!user) return { error: SESSION_CHECK_FAILED, value: rawValue }
+    try {
+      const updated = await updateCommentWithAurora(
+        user.id,
+        parsed.data.commentId,
+        parsed.data.body,
+        parsed.data.mentionProfileIds,
+        parsed.data.organizationMentionIds,
+      )
+      await flagAutomatedModeration('comment', updated.id, moderation)
+      const comment = await hydrateComment(updated.postId, updated.id)
+      if (!comment) return { error: 'We could not refresh your comment.', value: rawValue }
+      return { ok: true, comment }
+    } catch (error) {
+      return {
+        error: error instanceof Error && error.message === 'feed_comment_edit_expired'
+          ? 'Comments can only be edited for 15 minutes after posting.'
+          : 'We could not update this comment.',
+        value: rawValue,
+      }
+    }
   })
-  if (!parsed.success) {
-    return {
-      fieldErrors: plainFieldErrors(parsed.error),
-      value: rawValue,
-    }
-  }
-  const moderation = assessPlatformText([parsed.data.body])
-  if (moderation.decision === 'block') {
-    return { error: moderationBlockMessage(), value: rawValue }
-  }
-  const user = await actionUser()
-  if (!user) return { error: SESSION_CHECK_FAILED, value: rawValue }
-  try {
-    const updated = await updateCommentWithAurora(
-      user.id,
-      parsed.data.commentId,
-      parsed.data.body,
-      parsed.data.mentionProfileIds,
-      parsed.data.organizationMentionIds,
-    )
-    await flagAutomatedModeration('comment', updated.id, moderation)
-    const comment = await hydrateComment(updated.postId, updated.id)
-    if (!comment) return { error: 'We could not refresh your comment.', value: rawValue }
-    return { ok: true, comment }
-  } catch (error) {
-    return {
-      error: error instanceof Error && error.message === 'feed_comment_edit_expired'
-        ? 'Comments can only be edited for 15 minutes after posting.'
-        : 'We could not update this comment.',
-      value: rawValue,
-    }
-  }
 }
 
 export async function deleteComment(commentId: string): Promise<DeleteCommentActionResult> {
-  const parsed = deleteCommentInputSchema.safeParse({ commentId })
-  if (!parsed.success) return { ok: false, error: 'Invalid comment.' }
-  const user = await actionUser()
-  if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
-  try {
-    const deleted = await deleteCommentWithAurora(user.id, parsed.data.commentId)
-    const comment = await hydrateComment(deleted.postId, deleted.id)
-    return { ok: true, commentId: deleted.id, comment }
-  } catch {
-    return { ok: false, error: 'We could not delete this comment.' }
-  }
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const parsed = deleteCommentInputSchema.safeParse({ commentId })
+    if (!parsed.success) return { ok: false, error: 'Invalid comment.' }
+    const user = await actionUser()
+    if (!user) return { ok: false, error: SESSION_CHECK_FAILED }
+    try {
+      const deleted = await deleteCommentWithAurora(user.id, parsed.data.commentId)
+      const comment = await hydrateComment(deleted.postId, deleted.id)
+      return { ok: true, commentId: deleted.id, comment }
+    } catch {
+      return { ok: false, error: 'We could not delete this comment.' }
+    }
+  })
 }
 
 export async function setPollVote(postId: string, optionId: string): Promise<FeedActionResult> {
