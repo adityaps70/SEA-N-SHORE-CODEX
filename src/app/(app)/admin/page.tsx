@@ -87,9 +87,13 @@ export default async function AdminPage() {
       </dl>
 
       <AdminPanel>
-        <div className="border-b border-mist-100 px-5 py-3">
-          <h3 className="text-sm font-bold text-navy-950">Other ranks / roles</h3>
-          <p className="mt-0.5 text-xs text-muted">Typed for “Other (type your own)” in the last 90 days. Common ones can be added to the rank lists.</p>
+        <div className="flex items-start justify-between gap-3 border-b border-mist-100 px-5 py-3">
+          <div>
+            <h3 className="text-sm font-bold text-navy-950">Other ranks / roles</h3>
+            <p className="mt-0.5 text-xs text-muted">Typed for “Other (type your own)” in the last 90 days. Common ones can be added to the rank lists.</p>
+          </div>
+          {/* P6: ranks posters added from other departments to a department's jobs. */}
+          <Link href="/admin/jobs/ranks" className="shrink-0 text-sm font-semibold text-ocean-700 hover:underline">Job extra ranks</Link>
         </div>
         {otherRoles.length ? (
           <table className="w-full text-sm">

@@ -80,12 +80,74 @@ describe('HiringJobForm department, accepted ranks and minimum match (round 12)'
     expect(mocks.createHiringJob.mock.calls[0]![0]).toMatchObject({ domain: 'shore', minMatchToApply: 0, acceptedRoleKeys: ['technical_superintendent'] })
   })
 
-  it('shows a text box for "Other (type your own)"', () => {
+  it('P6: no longer offers "Other (type your own)" for a new job; ranks from other departments come from the list', () => {
     render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
     fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'catering' } })
+    expect(screen.queryByRole('checkbox', { name: /Other/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Type the rank / role' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Other (type your own)' }))
-    expect(screen.getByRole('textbox', { name: 'Type the rank / role' })).toBeRequired()
+    expect(screen.getByRole('combobox', { name: 'Add ranks from other departments' })).toBeInTheDocument()
+  })
+
+  it('P6: adds Master and Chief Officer to an HSEQ & Vetting job from the searchable list and saves all three', async () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'hseq_vetting' } })
+    const search = screen.getByRole('combobox', { name: 'Add ranks from other departments' })
+    fireEvent.change(search, { target: { value: 'master' } })
+    expect(search).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.mouseDown(screen.getByRole('option', { name: /^Master \/ Captain, Deck officers/ }))
+    fireEvent.change(search, { target: { value: 'chief officer' } })
+    fireEvent.keyDown(search, { key: 'Enter' })
+    const chips = within(screen.getByRole('list', { name: 'Ranks added from other departments' }))
+    expect(chips.getByText('Master / Captain')).toBeInTheDocument()
+    expect(chips.getByText('Chief Officer')).toBeInTheDocument()
+
+    fillBasics()
+    fireEvent.click(screen.getByRole('button', { name: 'Save as draft' }))
+    await waitFor(() => expect(mocks.createHiringJob).toHaveBeenCalledTimes(1))
+    const sent = mocks.createHiringJob.mock.calls[0]![0] as { departmentKey: string; acceptedRoleKeys: string[] }
+    expect(sent.departmentKey).toBe('hseq_vetting')
+    expect(sent.acceptedRoleKeys).toEqual(expect.arrayContaining(['master', 'chief_officer']))
+  })
+
+  it('P6: a form error keeps the ranks chosen from other departments', async () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'hseq_vetting' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'HSEQ Manager' }))
+    const search = screen.getByRole('combobox', { name: 'Add ranks from other departments' })
+    fireEvent.change(search, { target: { value: 'chief officer' } })
+    fireEvent.keyDown(search, { key: 'Enter' })
+    fillBasics()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), { target: { value: 'Too short.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Publish job' }))
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/at least 120 characters/))
+    expect(mocks.createHiringJob).not.toHaveBeenCalled()
+    expect(screen.getByRole('checkbox', { name: 'HSEQ Manager' })).toBeChecked()
+    expect(within(screen.getByRole('list', { name: 'Ranks added from other departments' })).getByText('Chief Officer')).toBeInTheDocument()
+    expect(document.querySelector('input[type="hidden"][name="acceptedRoleKeys"][value="chief_officer"]')).not.toBeNull()
+  })
+
+  it('P6: shows other posters\' extras for the department as tick boxes, not ticked, and not under another department', () => {
+    render(<HiringJobForm mode="create" publisherOptions={[publisher]} sharedExtras={{ hseq_vetting: [{ roleKey: 'chief_officer', timesUsed: 3 }, { roleKey: 'master', timesUsed: 1 }] }} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'hseq_vetting' } })
+    const shared = within(screen.getByRole('group', { name: /Also added for this department by other posters/ }))
+    const boxes = shared.getAllByRole('checkbox')
+    expect(boxes.map((box) => box.getAttribute('value'))).toEqual(['chief_officer', 'master'])
+    for (const box of boxes) expect(box).not.toBeChecked()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Department' }), { target: { value: 'catering' } })
+    expect(screen.queryByRole('group', { name: /Also added for this department by other posters/ })).not.toBeInTheDocument()
+  })
+
+  it('P6: keeps an older job\'s typed Other rank on show', () => {
+    const initial = {
+      id: 'job-9', companyId: null, status: 'published', title: 'Galley help', domain: 'sea', department: 'Catering', rank: 'Galley helper',
+      vesselTypes: [], location: null, regions: [], summary: 's', description: 'd', requirements: null, experienceMinYears: null,
+      experienceMaxYears: null, joiningFrom: null, joiningUntil: null, salaryMin: null, salaryMax: null, salaryCurrency: null,
+      salaryPeriod: null, urgent: false, easyApply: true, applyUntil: null, certificates: [], visas: [],
+      departmentKey: 'catering', acceptedRoleKeys: ['other_catering'], roleOtherText: 'Galley helper', minMatchToApply: 0,
+    } satisfies HiringEditableJob
+    render(<HiringJobForm mode="edit" jobId="job-9" initial={initial} />)
+    expect(screen.getByRole('textbox', { name: 'Rank / role typed on this older job' })).toHaveValue('Galley helper')
   })
 
   it('pre-selects the rank an older job’s text is recognised as, and keeps its saved minimum', () => {

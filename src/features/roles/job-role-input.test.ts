@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { draftJobRoles, validateJobRoles } from './job-role-input'
+import { draftJobRoles, extraRoleKeys, validateJobRoles } from './job-role-input'
 
 describe('job department, accepted ranks and minimum match', () => {
   it('requires a department and at least one accepted rank for new jobs', () => {
@@ -35,10 +35,24 @@ describe('job department, accepted ranks and minimum match', () => {
     expect(validateJobRoles({ ...base, minMatchToApply: 55.5 }, { domain: 'shore', requireDepartment: true }).ok).toBe(false)
   })
 
-  it('rejects unknown keys and ranks from another department', () => {
+  it('rejects unknown keys, another department\'s "Other" and an unknown department', () => {
     expect(validateJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: ['grand_admiral'] }, { domain: 'sea', requireDepartment: true }).ok).toBe(false)
-    expect(validateJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: ['cook'] }, { domain: 'sea', requireDepartment: true }).ok).toBe(false)
+    expect(validateJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: ['master', 'other_catering'], roleOtherText: 'Baker' }, { domain: 'sea', requireDepartment: true }).ok).toBe(false)
     expect(validateJobRoles({ departmentKey: 'space_fleet', acceptedRoleKeys: ['master'] }, { domain: 'sea', requireDepartment: true }).ok).toBe(false)
+  })
+
+  it('P6: accepts existing ranks from other departments and keeps them in order after the department\'s own', () => {
+    const result = validateJobRoles(
+      { departmentKey: 'hseq_vetting', acceptedRoleKeys: ['hseq_manager', 'master', 'chief_officer'] },
+      { domain: 'shore', requireDepartment: true },
+    )
+    expect(result).toMatchObject({ ok: true, data: { departmentKey: 'hseq_vetting', acceptedRoleKeys: ['hseq_manager', 'master', 'chief_officer'], domain: 'shore' } })
+    // Ranks from other departments alone are enough for "at least one accepted rank".
+    expect(validateJobRoles({ departmentKey: 'hseq_vetting', acceptedRoleKeys: ['master'] }, { domain: 'shore', requireDepartment: true }).ok).toBe(true)
+    expect(extraRoleKeys('hseq_vetting', ['hseq_manager', 'master', 'chief_officer', 'other_hseq_vetting'])).toEqual(['master', 'chief_officer'])
+    expect(extraRoleKeys(null, ['master'])).toEqual([])
+    // A draft keeps them too.
+    expect(draftJobRoles({ departmentKey: 'hseq_vetting', acceptedRoleKeys: ['master', 'other_catering'] }, { domain: 'shore' }).acceptedRoleKeys).toEqual(['master'])
   })
 
   it('needs the typed text for "Other"', () => {
@@ -58,8 +72,9 @@ describe('draftJobRoles (hotfix P2)', () => {
     expect(draftJobRoles({ departmentKey: 'deck_officers', acceptedRoleKeys: [] }, { domain: 'shore' })).toMatchObject({
       departmentKey: 'deck_officers', acceptedRoleKeys: [], domain: 'sea', departmentLabel: expect.any(String), rankLabel: null,
     })
+    // P6: another department's existing rank (Master on a Catering job) is kept; "Other" waits for its text.
     expect(draftJobRoles({ departmentKey: 'catering', acceptedRoleKeys: ['other_catering', 'master'], roleOtherText: '' }, { domain: 'sea' }))
-      .toMatchObject({ departmentKey: 'catering', acceptedRoleKeys: ['other_catering'], roleOtherText: null })
+      .toMatchObject({ departmentKey: 'catering', acceptedRoleKeys: ['other_catering', 'master'], roleOtherText: null })
     expect(draftJobRoles({ departmentKey: 'not_a_department', acceptedRoleKeys: ['master'], minMatchToApply: 140 }, { domain: 'sea' }))
       .toMatchObject({ departmentKey: null, acceptedRoleKeys: [], minMatchToApply: 70 })
   })

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { loadSharedExtraRanks } from '@/features/jobs/extra-ranks-repository'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { CreateRequirementsBanner } from '@/components/creator/create-requirements-banner'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -49,7 +50,7 @@ export default async function NewHiringJobPage() {
         </p>
       </div>
       <div className="max-md:hidden"><HiringSubnav active="jobs" /></div>
-      <HiringJobForm mode="create" publisherOptions={publisherOptions} draftOwnerId={user.id} />
+      <HiringJobForm mode="create" publisherOptions={publisherOptions} draftOwnerId={user.id} sharedExtras={await loadSharedExtraRanks()} />
     </div>
   )
 }
