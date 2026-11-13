@@ -1,3 +1,4 @@
+import { createSharedCache } from '@/lib/server/shared-cache'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { siteSettingsRepository } from './repository'
@@ -45,7 +46,16 @@ const MEMBER_NUMBER_LABELS: Record<MemberNumber['key'], { one: string; many: str
  * members = active profiles that finished onboarding; organizations = verified organization pages;
  * courses = live published courses (not removed, not a revision draft).
  */
-export async function getMemberNumbers(choice: MemberNumbersChoice, query: Query = (text, values) => databaseQuery<QueryResultRow>(text, values)): Promise<MemberNumber[]> {
+// Round CAP (shared cache): the About page's live member numbers, the same for every viewer.
+const memberNumbersCache = createSharedCache<MemberNumber[]>({ name: 'member_numbers', ttlMs: 30_000, maxEntries: 16 })
+
+export async function getMemberNumbers(choice: MemberNumbersChoice, query?: Query): Promise<MemberNumber[]> {
+  if (query) return readMemberNumbers(choice, query)
+  const key = [choice.enabled, choice.members, choice.organizations, choice.courses].map((value) => (value ? 1 : 0)).join('')
+  return [...await memberNumbersCache.get(key, () => readMemberNumbers(choice, (text, values) => databaseQuery<QueryResultRow>(text, values)))]
+}
+
+async function readMemberNumbers(choice: MemberNumbersChoice, query: Query): Promise<MemberNumber[]> {
   if (!choice.enabled || !(choice.members || choice.organizations || choice.courses)) return []
   try {
     const rows = await query(

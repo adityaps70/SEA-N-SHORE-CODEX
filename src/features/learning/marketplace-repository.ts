@@ -1,3 +1,4 @@
+import { createSharedCache } from '@/lib/server/shared-cache'
 import type { QueryResultRow } from 'pg'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { query as databaseQuery } from '@/lib/db/client'
@@ -381,4 +382,13 @@ limit 1`,
   }
 }
 
-export const marketplaceRepository = createMarketplaceRepository()
+const baseMarketplaceRepository = createMarketplaceRepository()
+// Round CAP (shared cache): the public course catalogue by category and search, the same for every viewer.
+const publishedCoursesCache = createSharedCache<MarketplaceCourse[]>({ name: 'published_courses', ttlMs: 30_000, maxEntries: 200 })
+export const marketplaceRepository = {
+  ...baseMarketplaceRepository,
+  listPublishedCourses: async (filters: MarketplaceCourseFilters = {}) => {
+    const key = `${filters.category?.trim() || ''}|${filters.search?.trim().toLowerCase() || ''}`
+    return [...await publishedCoursesCache.get(key, () => baseMarketplaceRepository.listPublishedCourses(filters))]
+  },
+}

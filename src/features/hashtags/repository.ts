@@ -1,3 +1,4 @@
+import { createSharedCache } from '@/lib/server/shared-cache'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { hashtagBodySearchPattern, isStorableHashtag, normaliseHashtag } from './parse'
@@ -146,4 +147,11 @@ export function createHashtagRepository(input: { query?: HashtagQuery } = {}) {
 
 export type HashtagRepository = ReturnType<typeof createHashtagRepository>
 
-export const hashtagRepository = createHashtagRepository()
+const baseHashtagRepository = createHashtagRepository()
+// Round CAP (shared cache): the composer's "#" suggestions ask on every keystroke; the same answer for everyone.
+const hashtagSuggestionCache = createSharedCache<HashtagSuggestion[]>({ name: 'hashtag_suggestions', ttlMs: 30_000, maxEntries: 500 })
+export const hashtagRepository = {
+  ...baseHashtagRepository,
+  searchHashtags: async (query: string, limit = HASHTAG_SUGGESTIONS_LIMIT) =>
+    [...await hashtagSuggestionCache.get(`${normaliseHashtag(query).slice(0, 64)}|${limit}`, () => baseHashtagRepository.searchHashtags(query, limit))],
+}
