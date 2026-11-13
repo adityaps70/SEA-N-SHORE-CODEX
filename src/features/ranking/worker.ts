@@ -1,6 +1,7 @@
 import { query } from '@/lib/db/client'
 import { runTaxonomyBackfill } from '@/features/taxonomy/backfill'
 import { purgeExpiredSignals } from '@/features/signals/retention'
+import { createOnlinePeakSweep } from './online-peak-sweep'
 import { createPeopleSweep } from './people-sweep'
 import { createJobAlertSweep } from './job-alerts'
 import { createRankingEmailSweep } from './ranking-email-sending'
@@ -51,6 +52,8 @@ export function createRankingSweeps(input: {
     createJobAlertSweep(),
     createWeeklyDigestSweep(),
     createRankingEmailSweep(),
+    // Round CAP (finding 8): the hourly peak of signed-in members online, once a minute.
+    createOnlinePeakSweep(),
   ]
   const nextAt = new Map<string, number>()
   const schemaReady = input.schemaReady ?? roundGSchemaReady

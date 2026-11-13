@@ -1,7 +1,7 @@
 'use client'
 
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { MessageCircleMore } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'

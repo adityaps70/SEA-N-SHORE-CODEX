@@ -90,4 +90,27 @@ describe('useRealtimeAwarePoll', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(INTERVAL) })
     expect(signedOut).toHaveBeenCalledTimes(1)
   })
+
+  it('stretches the timer while connected for a check the hints cover only in part (Round CAP finding 5)', async () => {
+    const check = vi.fn()
+    function Stretch() {
+      useRealtimeAwarePoll(check, { intervalMs: INTERVAL, connectedIntervalMs: INTERVAL * 5, hintEventTypes: ['feed.post_created'], pauseWhileConnected: false })
+      return null
+    }
+    realtime.status = 'connected'
+    const view = render(<Stretch />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(INTERVAL * 4) })
+    expect(check).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(INTERVAL) })
+    expect(check).toHaveBeenCalledTimes(1)
+    // Hints still check at once.
+    hint('feed.post_created')
+    await act(async () => { await vi.advanceTimersByTimeAsync(REALTIME_HINT_DEBOUNCE_MS) })
+    expect(check).toHaveBeenCalledTimes(2)
+    // Socket down: back to the normal timer.
+    realtime.status = 'backoff'
+    view.rerender(<Stretch />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(INTERVAL) })
+    expect(check).toHaveBeenCalledTimes(3)
+  })
 })

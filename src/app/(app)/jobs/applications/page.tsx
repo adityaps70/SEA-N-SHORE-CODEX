@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { CheckCircle2, Circle, ClipboardCheck, MapPin } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canWithdrawApplication } from '@/features/jobs/application-status'

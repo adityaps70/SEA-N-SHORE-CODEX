@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { avatarPx, avatarSizes } from '@/lib/images/media-image-source'
 import { MediaImage } from '@/components/ui/media-image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { usePathname } from 'next/navigation'
 import {
   ArrowLeft,

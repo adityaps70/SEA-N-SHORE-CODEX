@@ -12,7 +12,7 @@ import { usePostImpressions } from '../impressions/use-post-impressions'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
 import { buttonClass } from '@/components/ui/interactive-styles'
-import { FEED_FRESH_POSTS_POLL_MS } from '@/lib/browser/visible-interval'
+import { FEED_FRESH_POSTS_CONNECTED_POLL_MS, FEED_FRESH_POSTS_POLL_MS } from '@/lib/browser/visible-interval'
 import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import { cn } from '@/lib/cn'
 import { handleStaleDeployment } from '@/features/app-update/stale-deployment'
@@ -153,6 +153,8 @@ export function FeedList({
     intervalMs: FEED_FRESH_POSTS_POLL_MS,
     hintEventTypes: ['feed.post_created', 'feed.post_reposted'],
     pauseWhileConnected: Boolean(groupId),
+    // Round CAP (finding 5): hints reach only the author's network, so the timer stays, at 5 minutes while connected.
+    connectedIntervalMs: FEED_FRESH_POSTS_CONNECTED_POLL_MS,
   })
 
   function showFreshPosts() {

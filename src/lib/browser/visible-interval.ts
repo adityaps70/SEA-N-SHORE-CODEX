@@ -27,3 +27,8 @@ export function startVisibleInterval(callback: () => void, intervalMs: number): 
 export const NOTIFICATION_POLL_MS = 60_000
 /** How often a feed checks whether newer posts are waiting above the first one. */
 export const FEED_FRESH_POSTS_POLL_MS = 90_000
+/**
+ * Round CAP (finding 5): the same check while the realtime socket is connected. New posts from the member's network
+ * arrive as hints within seconds; the timer only catches posts from outside it.
+ */
+export const FEED_FRESH_POSTS_CONNECTED_POLL_MS = 5 * 60_000

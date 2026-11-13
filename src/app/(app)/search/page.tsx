@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Hash, Search, UsersRound } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { requireAwsUser } from '@/features/auth/aws-queries'
