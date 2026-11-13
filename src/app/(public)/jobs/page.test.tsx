@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JobListing } from '@/features/jobs/types'
 import { parseJobSearchParams } from '@/features/jobs/search'
@@ -140,5 +140,32 @@ describe('jobs list signed in', () => {
     expect(screen.getByRole('navigation', { name: 'Jobs workspace' })).toBeInTheDocument()
     expect(screen.getByText('Top picks for you')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Save/ }).length).toBeGreaterThan(0)
+  })
+
+  it('labels Recently Posted "Newest first" (not Recommended), and its chips keep the search and filters (bug fix, 13 Nov)', async () => {
+    vi.clearAllMocks()
+    mocks.getVerifiedUser.mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333' })
+    const params = { mode: 'recent', q: 'engineer', department: 'engine_officers' }
+    mocks.getJobsDiscovery.mockResolvedValue({
+      filters: parseJobSearchParams(params),
+      items: [{ job, isSaved: false, alreadyApplied: false, match: null }],
+      profileReady: true,
+      version: 2,
+      page: 1,
+      hasMore: false,
+      applied: [],
+    })
+    render(await JobsPage({ searchParams: Promise.resolve(params) }))
+
+    expect(screen.getByText('Recently posted')).toBeInTheDocument()
+    expect(screen.queryByText('Jobs for you')).not.toBeInTheDocument()
+    expect(screen.getByText('Sort by: Newest first')).toBeInTheDocument()
+    expect(screen.queryByText(/Sort by: Recommended/)).not.toBeInTheDocument()
+    // The desktop chip row (the phone row reads the URL in the browser).
+    const urgent = screen.getAllByRole('link', { name: 'Urgent Joining' }).map((link) => link.getAttribute('href'))
+    expect(urgent).toContain('/jobs?mode=urgent&q=engineer&department=engine_officers')
+    const current = screen.getAllByRole('link', { name: 'Recently Posted' }).filter((link) => link.getAttribute('aria-current') === 'page')
+    expect(current.length).toBeGreaterThan(0)
+    expect(within(document.body).queryAllByRole('button', { name: 'Not interested' })).toHaveLength(0)
   })
 })

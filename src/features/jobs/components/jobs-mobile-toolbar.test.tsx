@@ -22,6 +22,13 @@ function renderToolbar(params: Record<string, string> = { mode: 'for-you', rank:
 describe('JobsMobileToolbar (phones)', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('keeps the search, filters and sort on the discovery chips, and marks the current one (bug fix, 13 Nov)', () => {
+    renderToolbar({ mode: 'recent', q: 'tanker', department: 'deck_officers', page: '2' })
+    const views = screen.getByRole('navigation', { name: 'Job views' })
+    expect(within(views).getByRole('link', { name: 'Urgent Joining' })).toHaveAttribute('href', '/jobs?mode=urgent&q=tanker&department=deck_officers')
+    expect(within(views).getByRole('link', { name: 'Recently Posted' })).toHaveAttribute('aria-current', 'page')
+  })
+
   it('shows a compact search and one chip row with My jobs, every discovery mode and All filters with its count', () => {
     renderToolbar()
 
@@ -52,7 +59,7 @@ describe('JobsMobileToolbar (phones)', () => {
     for (const heading of ['Sort by', 'Department and rank', 'Vessel type', 'Joining within', 'Experience and salary', 'Certificates', 'Employer and apply']) {
       expect(within(sheet).getByRole('heading', { name: heading })).toBeInTheDocument()
     }
-    for (const sort of ['Recommended', 'Newest', 'Joining soonest', 'Highest salary']) {
+    for (const sort of ['Recommended', 'Newest first', 'Joining soonest', 'Highest salary']) {
       expect(within(sheet).getByRole('button', { name: sort })).toBeInTheDocument()
     }
     expect(within(sheet).getByRole('combobox', { name: 'Rank / position' })).toHaveValue('chief_officer')
@@ -79,7 +86,7 @@ describe('JobsMobileToolbar (phones)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'All filters' }))
     const sheet = screen.getByRole('dialog', { name: 'All filters' })
 
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Newest' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Newest first' }))
     expect(mocks.replace).toHaveBeenLastCalledWith('/jobs?mode=sea&sort=recent', { scroll: false })
     fireEvent.click(within(sheet).getByRole('button', { name: '14 days' }))
     expect(mocks.replace).toHaveBeenLastCalledWith('/jobs?mode=sea&joining=14', { scroll: false })
