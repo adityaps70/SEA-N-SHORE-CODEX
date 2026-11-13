@@ -470,6 +470,8 @@ with contextlib.redirect_stdout(buf):
 text = buf.getvalue()
 # The 7 days less the load tests in them: one range before, between and after each cut.
 assert len(calls) == 9, calls
+# Inside the cap window, and inside the 7 days Performance Insights keeps.
+assert calls[0][0] == r.parse_minute("2026-11-06T09:05:00Z") and calls[-1][1] == r.parse_minute("2026-11-13T00:00:00Z"), calls
 for a, b in calls:
     for x, y in r.CAP_EXCLUDED:
         x, y = r.parse_minute(x + "Z"), r.parse_minute(y + "Z")

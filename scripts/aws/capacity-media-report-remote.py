@@ -1133,8 +1133,9 @@ def section_cap7d():
     if not resource:
         out("PI UNAVAILABLE")
         return
-    end = NOW
-    start = end - dt.timedelta(days=7) + dt.timedelta(minutes=5)
+    # The cap window, inside the 7 days Performance Insights keeps.
+    window_start, end = cap_window()
+    start = max(window_start, NOW - dt.timedelta(days=7) + dt.timedelta(minutes=5))
     # Real-traffic ranges: the 7 days minus the load test windows.
     cuts = sorted((parse_minute(a + "Z"), parse_minute(b + "Z")) for a, b in CAP_EXCLUDED)
     ranges, cursor = [], start
