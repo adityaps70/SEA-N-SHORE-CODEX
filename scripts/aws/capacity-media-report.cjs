@@ -80,10 +80,10 @@ assert.ok(PROBE_ORG_NAME && PROBE_ORG_NAME.length <= 120 && !/["\\]/.test(PROBE_
 const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbhealth', 'cost']
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d']
-const SECTIONS = COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+const SECTIONS = COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
   (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
-  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare'].includes(s)))), 'unknown report section')
+  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
