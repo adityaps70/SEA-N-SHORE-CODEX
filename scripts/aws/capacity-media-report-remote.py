@@ -917,8 +917,13 @@ def section_dbcompare():
 CAP_PROTECTED_PREFIXES = ("/activities", "/admin", "/community", "/events", "/hashtags", "/help/requests", "/hiring", "/home",
                           "/jobs", "/learn", "/messages", "/network", "/notifications", "/onboarding", "/profile", "/saved",
                           "/search")
-# Real-traffic windows only: the load tests are left out of every Step 0 figure.
-CAP_EXCLUDED = (("2026-11-11T19:55:00", "2026-11-11T20:45:00"), ("2026-11-12T11:15:00", "2026-11-12T12:00:00"))
+# Real-traffic windows only: the load tests are left out of every Step 0 figure. Their requests carry the load test's
+# agent and their members are load-test profiles, but Performance Insights cannot tell them apart, so every load test
+# run longer than three minutes since 7 Nov (aws-load-test.yml) is cut out, five minutes either side.
+CAP_EXCLUDED = (("2026-11-07T10:45:00", "2026-11-07T11:30:00"), ("2026-11-08T12:05:00", "2026-11-08T12:20:00"),
+                ("2026-11-08T13:45:00", "2026-11-08T14:00:00"), ("2026-11-09T11:15:00", "2026-11-09T11:40:00"),
+                ("2026-11-11T09:15:00", "2026-11-11T09:30:00"), ("2026-11-11T10:30:00", "2026-11-11T11:05:00"),
+                ("2026-11-11T19:50:00", "2026-11-11T21:05:00"), ("2026-11-12T11:15:00", "2026-11-12T12:00:00"))
 CAP_API_KINDS = (("/api/feed/impressions", "impressions"), ("/api/metrics/visit", "visit_metric"), ("/api/realtime/ticket", "realtime_ticket"),
                  ("/api/realtime/", "realtime_other"), ("/api/media/", "media_api"), ("/api/feed-media/", "media_api"),
                  ("/api/community-media/", "media_api"), ("/api/learning-media/", "media_api"))

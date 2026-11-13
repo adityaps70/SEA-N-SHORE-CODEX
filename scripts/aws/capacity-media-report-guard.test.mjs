@@ -453,7 +453,7 @@ text = buf.getvalue()
 assert "CAP_WRITES post_impressions_new rows=70 per_day=10" in text, text
 assert "CAP_WRITE_STATEMENT rank=1 calls=700 per_day=100" in text, text
 assert all(s.lower().startswith("select") for s in seen), seen
-assert all("2026-11-11T19:55:00Z" in s and "2026-11-12T11:15:00Z" in s for s in seen if "count(*)" in s), seen
+assert all("2026-11-11T19:50:00Z" in s and "2026-11-12T11:15:00Z" in s for s in seen if "count(*)" in s), seen
 
 r.NOW = dt.datetime(2026, 11, 13, 9, 0, tzinfo=dt.timezone.utc)
 r.writer_resource = lambda: "db-X"
@@ -468,8 +468,8 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     r.section_cap7d()
 text = buf.getvalue()
-# Three ranges: before the night test, between the two tests, after the day test.
-assert len(calls) == 3, calls
+# The 7 days less the load tests in them: one range before, between and after each cut.
+assert len(calls) == 9, calls
 for a, b in calls:
     for x, y in r.CAP_EXCLUDED:
         x, y = r.parse_minute(x + "Z"), r.parse_minute(y + "Z")
