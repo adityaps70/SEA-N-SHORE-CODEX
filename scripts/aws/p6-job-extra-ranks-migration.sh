@@ -9,6 +9,13 @@
 #   nothing pending  -> P6_JOB_EXTRA_RANKS_MIGRATION_ALREADY_APPLIED=true
 #   plan             -> P6_JOB_EXTRA_RANKS_MIGRATION_PLAN_VERIFIED=true, then P6_JOB_EXTRA_RANKS_MIGRATION_PLAN_ONLY_NO_APPLY
 #   migrate-once     -> P6_JOB_EXTRA_RANKS_MIGRATION_APPLY_VERIFIED=true
+#   convert-once / revert-once (P6, owner-approved 13 Nov) -> P6_JOB_EXTRA_RANKS_MIGRATION_APPLY_VERIFIED=true
+#
+# convert-once runs infra/aws/database/data-fixes/p6_other_rank_conversion.sql (the 3 approved typed "Other" texts
+# become existing ranks, the text kept word for word); revert-once runs p6_other_rank_conversion_revert.sql. Each
+# needs 0103 applied and the branch still at the approved commit, runs in one transaction under an advisory lock,
+# and refuses (rolled back) if more than 3 jobs would change. Plan runs preview the conversion in a rolled-back
+# transaction. Counts only: no job rows, titles or texts are printed.
 #
 # Concurrent-index step (Round DB): a file listed in CONCURRENT_INDEX_MIGRATIONS holds exactly one
 # "create index concurrently if not exists <name> on public.<table> (...)" and nothing else. It runs outside any
@@ -29,6 +36,12 @@ MIGRATIONS=(
 )
 # Files the plan run previews in a rolled-back transaction. Leave out a file whose new enum values a later file in
 # the same preview uses (Postgres refuses a new enum value inside the transaction that added it).
+DATA_FIXES=(
+  "infra/aws/database/data-fixes/p6_other_rank_conversion.sql"
+  "infra/aws/database/data-fixes/p6_other_rank_conversion_revert.sql"
+)
+# The owner approved converting exactly 3 jobs; a run that would change more refuses.
+P6_CONVERSION_MAX_JOBS=3
 PREVIEW_MIGRATIONS=(
   "infra/aws/database/migrations/0103_p6_job_extra_ranks.sql"
 )
@@ -44,7 +57,7 @@ is_concurrent_index() { local file; for file in "${CONCURRENT_INDEX_MIGRATIONS[@
 }
 [[ "$(git rev-parse HEAD)" == "$P6_JOB_EXTRA_RANKS_MIGRATION_EXPECTED_SHA" ]] || { echo "Checkout is not the expected commit; refusing migration." >&2; exit 1; }
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]] || { echo "Checkout is not the Sea N Shore repository; refusing migration." >&2; exit 1; }
-git diff --quiet HEAD -- "${MIGRATIONS[@]}" "$0" "$ACTION_FILE" || { echo "Migration files differ from the commit; refusing migration." >&2; exit 1; }
+git diff --quiet HEAD -- "${MIGRATIONS[@]}" "${DATA_FIXES[@]}" "$0" "$ACTION_FILE" || { echo "Migration files differ from the commit; refusing migration." >&2; exit 1; }
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]] || { echo "Unexpected AWS account; refusing migration." >&2; exit 1; }
 
 ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
@@ -54,7 +67,7 @@ if [[ -n "${P6_JOB_EXTRA_RANKS_MIGRATION_ACTION:-}" ]]; then
   ACTION="$(tr -d '[:space:]' <<<"$P6_JOB_EXTRA_RANKS_MIGRATION_ACTION")"
 fi
 case "$ACTION" in
-  plan|migrate-once) ;;
+  plan|migrate-once|convert-once|revert-once) ;;
   *) echo "Unsupported job extra ranks migration action: $ACTION" >&2; exit 1 ;;
 esac
 
@@ -100,6 +113,10 @@ print(f'P6_JOB_EXTRA_RANKS_MIGRATION_SQL_GUARD=ADDITIVE file={path} statements={
 PY
 }
 
+for fix in "${DATA_FIXES[@]}"; do
+  [[ -f "$fix" ]] || { echo "Missing data fix $fix" >&2; exit 1; }
+  echo "P6_JOB_EXTRA_RANKS_MIGRATION_SHA256 $(basename "$fix")=$(sha256sum "$fix" | cut -d' ' -f1)"
+done
 for migration in "${MIGRATIONS[@]}"; do
   [[ -f "$migration" ]] || { echo "Missing migration $migration" >&2; exit 1; }
   if is_concurrent_index "$migration"; then validate_sql "$migration" concurrent; else validate_sql "$migration" plain; fi
@@ -174,7 +191,62 @@ P6_OTHER_ROWS="$(data_api --sql "SELECT count(*)::bigint AS n, role_other_text A
 printf '%s\n' "$P6_OTHER_ROWS" | python3 -I scripts/aws/p6-other-ranks-preview.py
 unset P6_OTHER_ROWS
 
+# P6 conversion: counts inside a transaction (converted = jobs with the kept text set; never job rows or texts).
+tx_count() { data_api --transaction-id "$1" --sql "$2" --output json | jq -r '.records[0][0].longValue'; }
+conversion_counts() {
+  local tx="$1"
+  printf 'converted_jobs=%s typed_other_jobs=%s used_extra_links=%s' \
+    "$(tx_count "$tx" "SELECT count(*)::bigint FROM public.jobs WHERE role_other_text_original IS NOT NULL AND deleted_at IS NULL")" \
+    "$(tx_count "$tx" "SELECT count(*)::bigint FROM public.jobs WHERE role_other_text IS NOT NULL AND deleted_at IS NULL")" \
+    "$(tx_count "$tx" "SELECT count(*)::bigint FROM public.job_department_extra_ranks WHERE times_used > 0")"
+}
+# Runs one data fix in a transaction under the advisory lock; commits only when $2 is commit and at most
+# P6_CONVERSION_MAX_JOBS jobs changed their kept-text column, else rolls back. Prints <label> before=... after=....
+run_data_fix() {
+  local fix="$1" mode="$2" label="$3" tx before after changed_before changed_after delta
+  mapfile -t FIX_B64 < <(statements_b64 "$fix")
+  [[ "${#FIX_B64[@]}" -ge 1 ]]
+  tx="$(begin_transaction)"
+  [[ -n "$tx" ]]
+  trap 'rollback_transaction "$tx"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+  data_api --transaction-id "$tx" --sql "SELECT pg_advisory_xact_lock(hashtext('sea-n-shore-p6-other-rank-conversion')::bigint)" >/dev/null
+  before="$(conversion_counts "$tx")"
+  changed_before="$(tx_count "$tx" "SELECT count(*)::bigint FROM public.jobs WHERE role_other_text_original IS NOT NULL")"
+  for encoded in "${FIX_B64[@]}"; do
+    data_api --transaction-id "$tx" --sql "$(printf '%s' "$encoded" | base64 --decode)" >/dev/null
+  done
+  after="$(conversion_counts "$tx")"
+  changed_after="$(tx_count "$tx" "SELECT count(*)::bigint FROM public.jobs WHERE role_other_text_original IS NOT NULL")"
+  delta=$(( changed_after > changed_before ? changed_after - changed_before : changed_before - changed_after ))
+  echo "$label before: $before"
+  echo "$label after: $after (jobs_changed=$delta)"
+  if [[ "$mode" != commit ]]; then
+    rollback_transaction "$tx"; trap - EXIT
+    return 0
+  fi
+  (( delta <= P6_CONVERSION_MAX_JOBS )) || { echo "$delta jobs would change, more than the $P6_CONVERSION_MAX_JOBS approved; rolled back, refusing." >&2; exit 1; }
+  aws rds-data commit-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --transaction-id "$tx" >/dev/null
+  trap - EXIT
+}
+
+if [[ "$ACTION" == "convert-once" || "$ACTION" == "revert-once" ]]; then
+  [[ "${#PENDING[@]}" -eq 0 ]] || { echo "Migration 0103 is not applied yet; refusing the conversion." >&2; exit 1; }
+  HEAD_NOW="$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+  [[ "$HEAD_NOW" == "$P6_JOB_EXTRA_RANKS_MIGRATION_EXPECTED_SHA" ]] || { echo "The feature branch has moved past the approved commit; refusing the conversion." >&2; exit 1; }
+  if [[ "$ACTION" == "convert-once" ]]; then
+    run_data_fix "${DATA_FIXES[0]}" commit P6_OTHER_RANK_CONVERTED
+  else
+    run_data_fix "${DATA_FIXES[1]}" commit P6_OTHER_RANK_REVERTED
+  fi
+  echo "P6_JOB_EXTRA_RANKS_MIGRATION_APPLY_VERIFIED=true"
+  exit 0
+fi
+
 if [[ "${#PENDING[@]}" -eq 0 ]]; then
+  # A plan run previews the approved conversion in a transaction that is always rolled back.
+  if [[ "$ACTION" == plan ]]; then
+    run_data_fix "${DATA_FIXES[0]}" preview P6_OTHER_RANK_CONVERSION_PREVIEW
+  fi
   echo "P6_JOB_EXTRA_RANKS_MIGRATION_ALREADY_APPLIED=true"
   exit 0
 fi
