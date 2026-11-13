@@ -48,6 +48,15 @@ function compareWindow() {
       new Date(cap[2]) - new Date(cap[1]) <= 14 * 24 * 3600_000, 'the cap window must be "cap <start> <end>", at most 14 days, in whole UTC minutes')
     return { cap: true, capStart: cap[1], capEnd: cap[2] }
   }
+  // Round CAP (owner 13 Nov): the admin final-reminder counts split at the Deploy B deploy and at the 10-second limit:
+  // "legacy <start> <deploy B> <time limit> <end>", at most 8 days, in whole UTC minutes.
+  const legacy = line.match(/^legacy (\S+) (\S+) (\S+) (\S+)$/)
+  if (legacy) {
+    const points = legacy.slice(1)
+    assert.ok(points.every((p) => MINUTE.test(p)) && points.every((p, i) => i === 0 || new Date(p) > new Date(points[i - 1])) &&
+      new Date(points[3]) - new Date(points[0]) <= 8 * 24 * 3600_000, 'the legacy window must be "legacy <start> <split> <split> <end>", in order, at most 8 days')
+    return { legacy: true, legacyPoints: points.join(',') }
+  }
   const m = line.match(/^compare (\S+) (\S+)(?: split (\S+))?$/)
   assert.ok(m && MINUTE.test(m[1]) && (m[2] === 'now' || MINUTE.test(m[2])) && (!m[3] || MINUTE.test(m[3])),
     'the window file must read "none" or "compare <start> <end|now> [split <time>]" in whole UTC minutes')
@@ -68,9 +77,10 @@ assert.ok(PROBE_ORG_NAME && PROBE_ORG_NAME.length <= 120 && !/["\\]/.test(PROBE_
 const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d']
-const SECTIONS = COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+const SECTIONS = COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
-  (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE && !COMPARE.db && !COMPARE.cap && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare'].includes(s)))), 'unknown report section')
+  (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
+  (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
@@ -101,6 +111,7 @@ export DB_RUN_START=${quote(COMPARE?.runStart ?? '')}
 export DB_RUN_END=${quote(COMPARE?.runEnd ?? '')}
 export CAP_START=${quote(COMPARE?.capStart ?? '')}
 export CAP_END=${quote(COMPARE?.capEnd ?? '')}
+export LEGACY_POINTS=${quote(COMPARE?.legacyPoints ?? '')}
 export REPORT_PROBE_ORG_NAME=${quote(PROBE_ORG_NAME)}
 export LOAD_TEST_STEP_RPM=${quote(/^[0-9,]*$/.test(process.env.LOAD_TEST_STEP_RPM || '') ? process.env.LOAD_TEST_STEP_RPM || '' : '')}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }

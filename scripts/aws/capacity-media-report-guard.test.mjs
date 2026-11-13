@@ -48,7 +48,7 @@ test('the SSM wrapper only sends the report and reads its result', async () => {
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
   const line = readFileSync(windowPath, 'utf8').trim()
   const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
-  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|db ${minute} ${minute}|cap ${minute} ${minute})$`))
+  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute})$`))
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
   assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
@@ -78,7 +78,9 @@ test('every AWS call in the remote script describes, gets or lists (or reads thr
   const calls = [...remote.matchAll(/aws\("([a-z0-9-]+)", "([a-z-]+)"/g)].map((m) => [m[1], m[2]])
   assert.ok(calls.length > 30, 'the report makes its AWS calls through aws()')
   for (const [service, action] of calls) {
-    const allowed = READ_ONLY_ACTION.test(action) || (service === 'rds-data' && DATA_API_READ.has(action))
+    // logs filter-log-events reads the web task's log; the legacy split prints only how many events matched.
+    const allowed = READ_ONLY_ACTION.test(action) || (service === 'rds-data' && DATA_API_READ.has(action)) ||
+      (service === 'logs' && action === 'filter-log-events')
     assert.ok(allowed, `${service} ${action} is not a read-only call`)
   }
   assert.doesNotMatch(remote, /commit-transaction/)
@@ -478,6 +480,75 @@ for a, b in calls:
         assert b <= x or a >= y, (a, b)
 assert "rank=1" in text and "share=83%" in text and "ms_per_call=4.00" in text, text
 assert "CAP_7D_TOP5_SHARE 100%" in text, text
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Round CAP (owner 13 Nov): the admin final-reminder counts split at Deploy B and at the 10-second statement limit.
+test('the legacy split reads one log group for a count, labels statement kinds and prints no paths, addresses or messages', () => {
+  const remote = readFileSync(remotePath, 'utf8')
+  const filters = [...remote.matchAll(/aws\("logs", "filter-log-events",([^\n]*)/g)].map((m) => m[1])
+  assert.equal(filters.length, 1)
+  assert.match(filters[0], /"\/ecs\/%s\/web" % PREFIX/)
+  assert.match(remote, /"--filter-pattern", '"statement timeout"', "--query", "length\(events\)"/)
+  const wrapper = readFileSync(wrapperPath, 'utf8')
+  assert.match(wrapper, /COMPARE\?\.legacy \? \['legacysplit'\]/)
+  assert.match(wrapper, /8 \* 24 \* 3600_000/)
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os, datetime as dt
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+r.NOW = dt.datetime(2026, 11, 13, 12, 0, tzinfo=dt.timezone.utc)
+os.environ["LEGACY_POINTS"] = "2026-11-06T09:50:00Z,2026-11-11T15:40:00Z,2026-11-11T19:25:00Z,2026-11-13T12:00:00Z"
+r.writer_resource = lambda: "db-X"
+FINAL = "select reason, count(*) as count from ( select case when invite.status <> ? from public.legacy_profile_invites invite left join public.legacy_profile_invite_final_reminders final"
+def fake_pi(resource, start, end, group, limit, extra=None):
+    ms = 15000.0 if end <= r.parse_minute("2026-11-11T19:25:00Z") else 10000.0
+    return [{"Total": 0.01, "Dimensions": {"db.sql_tokenized.id": "F", "db.sql_tokenized.statement": FINAL},
+             "AdditionalMetrics": {"db.sql_tokenized.stats.calls_per_sec.avg": 0.0001, "db.sql_tokenized.stats.avg_latency_per_call.avg": ms}},
+            {"Total": 0.5, "Dimensions": {"db.sql_tokenized.id": "P", "db.sql_tokenized.statement": "select * from public.posts"}}]
+r.pi_keys = fake_pi
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    return [[{"calls": 12, "total_s": 182.8, "mean_ms": 15237, "min_ms": 14000, "max_ms": 16000, "rows": 96, "q": FINAL}], [{"legacy_profile_invites": 9000}]]
+r.sql_rows = fake_rows
+line = lambda t, method, url, target_s, elb, target: ('h2 %s app/sea-n-shore-staging-alb/1 203.0.113.9:443 10.0.1.5:3000 0.000 %s 0.000 %s %s 10 20 '
+                                   '"%s https://example.test:443%s HTTP/2.0" "Mozilla/5.0 Asha"' % (t, target_s, elb, target, method, url))
+logs = [line("2026-11-11T10:00:00.0Z", "GET", "/admin/legacy-invites?mode=final", "15.200", "200", "200"),
+        line("2026-11-12T10:00:00.0Z", "GET", "/admin/legacy-invites?mode=final", "10.050", "500", "500"),
+        line("2026-11-12T10:00:30.0Z", "POST", "/admin/legacy-invites?mode=final", "10.010", "200", "200"),
+        line("2026-11-12T10:01:00.0Z", "GET", "/in/asha-singh", "0.100", "200", "200")]
+days = []
+def fake_days(day, totals, budget):
+    days.append(day)
+    return iter(logs) if len(days) == 1 else iter([])
+r.alb_day_lines = fake_days
+calls = []
+def fake_aws(service, action, *args, **kw):
+    calls.append((service, action))
+    return 3
+r.aws = fake_aws
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_legacysplit()
+text = buf.getvalue()
+assert "LEGACY_RANGE before_deploy_b 2026-11-06T12:05:00Z 2026-11-11T15:40:00Z" in text, text
+assert "LEGACY_PI before_deploy_b final_counts" in text and "ms_per_call=15000" in text, text
+assert "LEGACY_PI with_10s_limit final_counts" in text and "ms_per_call=10000" in text, text
+assert "posts" not in text, text
+assert "LEGACY_STATEMENT final_counts calls=12" in text, text
+assert "LEGACY_ALB before_deploy_b final:page elb=200 target=200=1" in text, text
+assert "LEGACY_ALB with_10s_limit final:action elb=200 target=200=1 final:page elb=500 target=500=1" in text, text
+assert "LEGACY_ALB_SERVER_S with_10s_limit final:page n=1 p50=10.05" in text, text
+assert "LEGACY_WEB_STATEMENT_TIMEOUTS with_10s_limit events=3" in text, text
+assert calls == [("logs", "filter-log-events")] * 3, calls
+assert all(s.lower().startswith("select") for s in seen), seen
+for leak in ("asha", "203.0.113", "10.0.1.5", "Mozilla", "example.test", "invite.status"):
+    assert leak not in text.lower(), (leak, text)
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)
