@@ -910,6 +910,264 @@ def section_dbcompare():
         "acu_s_per_1k_requests", ratio_of(acu_b, acu_a))
 
 
+# ---------------------------------------------------------------- Round CAP Step 0 (owner 13 Nov): read-only evidence
+
+# The signed-in-only page prefixes, as in src/lib/auth/cognito-proxy.ts PROTECTED_PREFIXES (a contract test keeps them
+# equal).
+CAP_PROTECTED_PREFIXES = ("/activities", "/admin", "/community", "/events", "/hashtags", "/help/requests", "/hiring", "/home",
+                          "/jobs", "/learn", "/messages", "/network", "/notifications", "/onboarding", "/profile", "/saved",
+                          "/search")
+# Real-traffic windows only: the load tests are left out of every Step 0 figure.
+CAP_EXCLUDED = (("2026-11-11T19:55:00", "2026-11-11T20:45:00"), ("2026-11-12T11:15:00", "2026-11-12T12:00:00"))
+CAP_API_KINDS = (("/api/feed/impressions", "impressions"), ("/api/metrics/visit", "visit_metric"), ("/api/realtime/ticket", "realtime_ticket"),
+                 ("/api/realtime/", "realtime_other"), ("/api/media/", "media_api"), ("/api/feed-media/", "media_api"),
+                 ("/api/community-media/", "media_api"), ("/api/learning-media/", "media_api"))
+
+
+def cap_window():
+    start, end = parse_minute(os.environ["CAP_START"]), parse_minute(os.environ["CAP_END"])
+    assert start < end <= start + dt.timedelta(days=14), "the cap window must be at most 14 days"
+    return start, end
+
+
+def cap_excluded(t19):
+    return any(a <= t19 < b for a, b in CAP_EXCLUDED)
+
+
+def cap_request_type(method, path, query, status):
+    """One request's type for the per-person rates: page, rsc (navigation or prefetch), rsc_hash_redirect (307 to the
+    right _rsc), action, the named API kinds, other_api, image, static."""
+    if STATIC.search(path):
+        return "static"
+    if path.startswith("/_next/image"):
+        return "image"
+    if "_rsc=" in query:
+        return "rsc_hash_redirect" if status == "307" else "rsc"
+    if path.startswith("/api/"):
+        for prefix, kind in CAP_API_KINDS:
+            if path.startswith(prefix):
+                return kind
+        return "other_api"
+    if method == "POST":
+        return "action"
+    return "page"
+
+
+def cap_protected(path):
+    return any(path == p or path.startswith(p + "/") for p in CAP_PROTECTED_PREFIXES)
+
+
+# Signed-in activity a member leaves in the database, as (table, member column, time column). The load balancer only
+# sees CloudFront's addresses (the origin is locked to CloudFront), so its logs cannot tell one browser from another;
+# a member counts as active in a minute when one of these rows was written in that minute. That misses minutes spent
+# only reading, so the person-minutes are a floor and the requests per person-minute an upper bound.
+CAP_ACTIVITY = [
+    ("public.post_impressions", "viewer_id", "first_seen_at"),
+    ("public.post_impressions", "viewer_id", "last_seen_at"),
+    ("public.post_reactions", "user_id", "created_at"),
+    ("public.post_comments", "author_id", "created_at"),
+    ("public.comment_reactions", "user_id", "created_at"),
+    ("public.messages", "sender_profile_id", "created_at"),
+    ("public.conversation_participants", "profile_id", "last_read_at"),
+    ("public.notifications", "recipient_id", "read_at"),
+    ("public.saved_posts", "user_id", "created_at"),
+    ("public.search_queries", "viewer_id", "created_at"),
+    ("public.follows", "follower_id", "created_at"),
+]
+
+
+def cap_activity_sql(start, end):
+    """Per hour of the window: signed-in person-minutes (distinct member and minute), the busiest minute and distinct
+    members, real members only. Counts only."""
+    excluded = lambda col: " ".join("and not (%s >= timestamptz '%sZ' and %s < timestamptz '%sZ')" % (col, a, col, b) for a, b in CAP_EXCLUDED)
+    parts = ["select %s as member, date_trunc('minute', %s) as minute from %s where %s >= timestamptz '%s' and %s < timestamptz '%s' %s"
+             % (member, col, table, col, iso(start), col, iso(end), excluded(col)) for table, member, col in CAP_ACTIVITY]
+    return ("with activity as (" + " union ".join(parts) + "), real as (select a.member, a.minute from activity a "
+            "join public.profiles p on p.id = a.member where not p.is_load_test), per_minute as (select minute, "
+            "count(*)::int as people from real group by minute) select floor(extract(epoch from (minute - timestamptz '%s')) / 3600)::int as h, "
+            "sum(people)::int as person_minutes, max(people)::int as peak_minute, count(*)::int as minutes_with_any "
+            "from per_minute group by 1 order by 1" % iso(start),
+            "with activity as (" + " union ".join(parts) + ") select count(distinct a.member)::int as members from activity a "
+            "join public.profiles p on p.id = a.member where not p.is_load_test")
+
+
+def section_capminutes():
+    out("=== ROUND CAP STEP 0: REQUESTS PER ACTIVE SIGNED-IN PERSON-MINUTE BY TYPE (counts only) ===")
+    start, end = cap_window()
+    hours = int((end - start).total_seconds() // 3600) + 1
+    out("CAP_WINDOW", iso(start), iso(end), "excluded_load_tests=%s" % ",".join("%s..%s" % w for w in CAP_EXCLUDED))
+    bot = re.compile(BOT_PATTERN, re.I)
+    totals, budget = Counter(), {"bytes": 0}
+    hourly = [Counter() for _ in range(hours)]
+    routes = defaultdict(Counter)
+    day = start.date()
+    while day <= end.date():
+        for line in alb_day_lines(day, totals, budget):
+            m = LOG_LINE.match(line)
+            if not m:
+                continue
+            t19 = m.group(2)[:19]
+            if not (iso(start)[:19] <= t19 < iso(end)[:19]):
+                continue
+            if cap_excluded(t19):
+                totals["excluded_load_test_window"] += 1
+                continue
+            if bot.search(m.group(14)):
+                totals["bot_or_probe"] += 1
+                continue
+            request = m.group(13).split(" ")
+            method = request[0] if request else "-"
+            url = request[1] if len(request) > 1 else ""
+            path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0] or "/"
+            query = url.split("?", 1)[1] if "?" in url else ""
+            kind = cap_request_type(method, path, query, m.group(9))
+            # Pages and RSC payloads split by whether the route needs a signed-in member.
+            if kind in ("page", "rsc"):
+                kind += "_signed_in_route" if cap_protected(path) else "_public_route"
+            t = dt.datetime.strptime(t19, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
+            hourly[int((t - start).total_seconds() // 3600)][kind] += 1
+            totals[kind] += 1
+            if kind in ("action", "other_api") or kind.startswith("rsc_"):
+                routes[kind][route_shape(path)] += 1
+        day += dt.timedelta(days=1)
+    out("CAP_ALB_LOGS", "scannedMB=%s" % mb(budget["bytes"]), json.dumps(dict(totals), sort_keys=True))
+    per_hour, members = sql_rows(list(cap_activity_sql(start, end)))
+    if per_hour is None:
+        out("CAP_PERSON_MINUTES UNAVAILABLE")
+        return
+    activity = {int(r["h"]): r for r in per_hour}
+    person_minutes = sum(int(r["person_minutes"]) for r in per_hour)
+    out("CAP_PERSON_MINUTES", "total=%d" % person_minutes, "distinct_members=%s" % (members or [{}])[0].get("members"),
+        "busiest_minute_people=%d" % max([int(r["peak_minute"]) for r in per_hour] or [0]),
+        "hours_with_any=%d" % len(activity), "floor_only=true")
+    # Signed-in traffic is what the signed-in people send: everything but public pages, public RSC and static files.
+    signed_in_kinds = sorted({k for c in hourly for k in c} - {"page_public_route", "rsc_public_route", "static"})
+
+    def rates(label, chosen):
+        minutes = sum(int(activity[h]["person_minutes"]) for h in chosen if h in activity)
+        sums = Counter()
+        for h in chosen:
+            sums.update({k: v for k, v in hourly[h].items() if k in signed_in_kinds})
+        total = sum(sums.values())
+        out("CAP_RATE_TOTAL", label, "person_minutes=%d" % minutes, "signed_in_requests=%d" % total,
+            "per_person_minute=%s" % (("%.2f" % (total / minutes)) if minutes else "n/a"))
+        for kind in signed_in_kinds:
+            out("CAP_RATE", label, kind, "requests=%d" % sums[kind],
+                "per_person_minute=%s" % (("%.3f" % (sums[kind] / minutes)) if minutes else "n/a"))
+
+    rates("whole_window", range(hours))
+    # The busiest hours (by person-minutes) are nearest to "many people online at once".
+    busiest = sorted(activity, key=lambda h: -int(activity[h]["person_minutes"]))[:24]
+    rates("busiest_24_hours", busiest)
+    for h in sorted(busiest, key=lambda h: -int(activity[h]["person_minutes"]))[:10]:
+        a, c = activity[h], hourly[h]
+        out("CAP_BUSY_HOUR", (start + dt.timedelta(hours=h)).strftime("%dT%H:00"), "person_minutes=%s" % a["person_minutes"],
+            "peak_minute_people=%s" % a["peak_minute"], "signed_in_requests=%d" % sum(v for k, v in c.items() if k in signed_in_kinds),
+            " ".join("%s=%d" % (k, c[k]) for k in signed_in_kinds if c[k]))
+    for kind in ("action", "other_api", "rsc_signed_in_route", "rsc_public_route"):
+        out("CAP_TOP_ROUTES", kind, " ".join("%s=%d" % kv for kv in routes[kind].most_common(15)) or "none")
+
+
+# Writes: rows written in the window per table (counts), and the write statements by calls since the statistics reset.
+CAP_WRITE_COUNTS = [
+    ("post_impressions_new", "public.post_impressions", "first_seen_at"),
+    ("post_impressions_seen_again", "public.post_impressions", "last_seen_at"),
+    ("feed_sessions", "public.feed_sessions", "created_at"),
+    ("post_reactions", "public.post_reactions", "created_at"),
+    ("post_comments", "public.post_comments", "created_at"),
+    ("posts", "public.posts", "created_at"),
+    ("messages", "public.messages", "created_at"),
+    ("notifications_created", "public.notifications", "created_at"),
+    ("notifications_read", "public.notifications", "read_at"),
+    ("follows", "public.follows", "created_at"),
+    ("connections", "public.connections", "updated_at"),
+    ("social_action_events", "public.social_action_events", "created_at"),
+    ("auth_sessions_seen", "public.auth_sessions", "last_seen_at"),
+    ("saved_posts", "public.saved_posts", "created_at"),
+    ("comment_reactions", "public.comment_reactions", "created_at"),
+    ("message_reactions", "public.message_reactions", "created_at"),
+    ("conversations_read", "public.conversation_participants", "last_read_at"),
+    ("post_stats_updated", "public.post_stats", "updated_at"),
+    ("people_suggestions_computed", "public.people_suggestions", "computed_at"),
+    ("search_queries", "public.search_queries", "created_at"),
+]
+# Rows whose newest write fell in the window (a row written twice counts once): a floor for the writes, not every write.
+
+
+def section_capwrites():
+    out("=== ROUND CAP STEP 0: WRITES IN THE WINDOW (counts only) ===")
+    start, end = cap_window()
+    days = (end - start).total_seconds() / 86400
+    for label, table, column in CAP_WRITE_COUNTS:
+        excluded = " ".join("and not (%s >= timestamptz '%sZ' and %s < timestamptz '%sZ')" % (column, a, column, b) for a, b in CAP_EXCLUDED)
+        rows = sql_rows(["select count(*)::bigint as n from %s where %s >= timestamptz '%s' and %s < timestamptz '%s' %s"
+                         % (table, column, iso(start), column, iso(end), excluded)])[0]
+        if rows is None:
+            out("CAP_WRITES", label, "UNAVAILABLE")
+            continue
+        n = int(rows[0]["n"])
+        out("CAP_WRITES", label, "rows=%d" % n, "per_day=%.0f" % (n / days if days else 0))
+    since, writes = sql_rows([
+        "select stats_reset::text as since, extract(epoch from (now() - stats_reset))::bigint as seconds from pg_stat_statements_info",
+        "select queryid::text as id, calls::bigint as calls, round(total_exec_time::numeric / 1000, 1) as total_s, "
+        "round(mean_exec_time::numeric, 2) as mean_ms, left(regexp_replace(query, '\\s+', ' ', 'g'), 200) as q from pg_stat_statements "
+        "where query ~* '^\\s*(insert|update|delete)\\y' order by calls desc limit 20",
+    ])
+    seconds = int((since or [{}])[0].get("seconds") or 0)
+    out("CAP_WRITE_STATEMENTS_SINCE", (since or [{}])[0].get("since"), "days=%.1f" % (seconds / 86400))
+    for rank, row in enumerate(writes or [], 1):
+        q = row.pop("q", "")
+        out("CAP_WRITE_STATEMENT", "rank=%d" % rank, "calls=%s" % row["calls"],
+            "per_day=%.0f" % (int(row["calls"]) / (seconds / 86400)) if seconds else "per_day=n/a",
+            "total_s=%s" % row["total_s"], "mean_ms=%s" % row["mean_ms"], "sql=" + one_line(q, 200))
+
+
+def section_cap7d():
+    out("=== ROUND CAP STEP 0: TOP STATEMENTS OVER THE LAST 7 DAYS OF REAL TRAFFIC (load tests left out) ===")
+    resource = writer_resource()
+    if not resource:
+        out("PI UNAVAILABLE")
+        return
+    end = NOW
+    start = end - dt.timedelta(days=7) + dt.timedelta(minutes=5)
+    # Real-traffic ranges: the 7 days minus the load test windows.
+    cuts = sorted((parse_minute(a + "Z"), parse_minute(b + "Z")) for a, b in CAP_EXCLUDED)
+    ranges, cursor = [], start
+    for a, b in cuts:
+        if b <= cursor or a >= end:
+            continue
+        if a > cursor:
+            ranges.append((cursor, a))
+        cursor = max(cursor, b)
+    if cursor < end:
+        ranges.append((cursor, end))
+    total_s = sum((b - a).total_seconds() for a, b in ranges)
+    out("CAP_7D_RANGES", " ".join("%s..%s" % (iso(a), iso(b)) for a, b in ranges), "hours=%.1f" % (total_s / 3600))
+    merged = {}
+    for a, b in ranges:
+        seconds = (b - a).total_seconds()
+        for k in pi_keys(resource, a, b, "db.sql_tokenized", 25, PI_WINDOW_STATS):
+            d = k.get("Dimensions") or {}
+            sql_id = d.get("db.sql_tokenized.id") or d.get("db.sql_tokenized.statement", "")[:80]
+            m = merged.setdefault(sql_id, {"db_s": 0.0, "calls": 0.0, "ms_weighted": 0.0, "sql": one_line(d.get("db.sql_tokenized.statement", ""), 200)})
+            m["db_s"] += k.get("Total", 0) * seconds
+            add = k.get("AdditionalMetrics") or {}
+            calls_ps, ms = add.get("db.sql_tokenized.stats.calls_per_sec.avg"), add.get("db.sql_tokenized.stats.avg_latency_per_call.avg")
+            if isinstance(calls_ps, (int, float)):
+                m["calls"] += calls_ps * seconds
+                if isinstance(ms, (int, float)):
+                    m["ms_weighted"] += ms * calls_ps * seconds
+    ranked = sorted(merged.values(), key=lambda m: -m["db_s"])
+    total_db = sum(m["db_s"] for m in ranked) or 1
+    out("CAP_7D_TOP5_SHARE", "%.0f%%" % (100 * sum(m["db_s"] for m in ranked[:5]) / total_db), "of_listed_db_s=%.0f" % total_db)
+    for rank, m in enumerate(ranked[:25], 1):
+        out("CAP_7D_SQL", "rank=%d" % rank, "db_s=%.0f" % m["db_s"], "share=%.0f%%" % (100 * m["db_s"] / total_db),
+            "calls=%.0f" % m["calls"], "ms_per_call=%s" % (("%.2f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a"),
+            "sql=" + m["sql"])
+    by_calls = sorted(ranked, key=lambda m: -m["calls"])[:10]
+    out("CAP_7D_BY_CALLS", " | ".join("calls=%.0f ms=%s sql=%s" % (m["calls"], ("%.2f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a", m["sql"][:70]) for m in by_calls))
+
+
 # ---------------------------------------------------------------- section: checks
 
 # Round ARCH (Phase 2): read-only pre-check before the deploy arm (window file "checks"), counts and yes/no only.
@@ -1532,7 +1790,7 @@ def main():
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
-     "dbcompare": section_dbcompare}[SECTION]()
+     "dbcompare": section_dbcompare, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

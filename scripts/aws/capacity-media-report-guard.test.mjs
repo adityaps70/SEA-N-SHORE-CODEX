@@ -48,7 +48,7 @@ test('the SSM wrapper only sends the report and reads its result', async () => {
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
   const line = readFileSync(windowPath, 'utf8').trim()
   const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
-  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|db ${minute} ${minute})$`))
+  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|db ${minute} ${minute}|cap ${minute} ${minute})$`))
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
   assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
@@ -360,6 +360,122 @@ assert "COMPARE_DB before requests=80000 db_s=720 db_s_per_1k_requests=9.00 acu_
 assert "COMPARE_DB after requests=100000 db_s=360 db_s_per_1k_requests=3.60 acu_hours=2.0 acu_s_per_1k_requests=72.00" in text, text
 assert "COMPARE_DB_CHANGE requests +25% db_s_per_1k_requests -60% acu_s_per_1k_requests -60%" in text, text
 assert "COMPARE_DB_SQL after rank=1 db_s=72 calls=7200 ms_per_call=2.50 sql=select x from t where a = ?" in text, text
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Round CAP Step 0 (owner 13 Nov): requests per active signed-in person-minute by type, writes in the window and the
+// 7-day top statements, real traffic only. Read-only, counts only; the load tests are left out.
+test('the cap window runs the three read-only Step 0 sections over at most 14 days', () => {
+  const wrapper = readFileSync(wrapperPath, 'utf8')
+  assert.match(wrapper, /const CAP_SECTIONS = \['capminutes', 'capwrites', 'cap7d'\]/)
+  assert.match(wrapper, /14 \* 24 \* 3600_000/)
+  assert.match(wrapper, /export CAP_START=/)
+  const remote = readFileSync(remotePath, 'utf8')
+  for (const name of ['capminutes', 'capwrites', 'cap7d']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  // The signed-in route list mirrors the app's own.
+  const proxy = readFileSync('src/lib/auth/cognito-proxy.ts', 'utf8')
+  const appList = [...proxy.match(/const PROTECTED_PREFIXES = \[([\s\S]*?)\] as const/)[1].replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1])
+  const reportList = [...remote.match(/CAP_PROTECTED_PREFIXES = \(([\s\S]*?)\)\n/)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
+  assert.deepEqual(reportList, appList)
+})
+
+test('the person-minute rates count real signed-in traffic by type and never print paths, addresses or agents', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+os.environ["CAP_START"], os.environ["CAP_END"] = "2026-11-12T10:00:00Z", "2026-11-12T13:00:00Z"
+line = lambda t, method, url, status, ua="Mozilla/5.0": ('h2 %s app/sea-n-shore-staging-alb/1 203.0.113.9:443 10.0.1.5:3000 0.000 0.010 0.000 %s %s 10 20 '
+                                   '"%s https://example.test:443%s HTTP/2.0" "%s"' % (t, status, status, method, url, ua))
+logs = [line("2026-11-12T10:05:01.0Z", "GET", "/home", "200"),
+        line("2026-11-12T10:05:02.0Z", "GET", "/in/asha-singh?_rsc=abc", "200"),
+        line("2026-11-12T10:05:03.0Z", "GET", "/messages?_rsc=abc", "200"),
+        line("2026-11-12T10:05:04.0Z", "GET", "/messages?_rsc=abc", "307"),
+        line("2026-11-12T10:05:05.0Z", "POST", "/home", "200"),
+        line("2026-11-12T10:05:06.0Z", "POST", "/api/feed/impressions", "204"),
+        line("2026-11-12T10:05:07.0Z", "GET", "/api/realtime/ticket", "200"),
+        line("2026-11-12T10:05:08.0Z", "GET", "/_next/image?url=x", "200"),
+        line("2026-11-12T10:05:09.0Z", "GET", "/_next/static/chunks/a.js", "200"),
+        line("2026-11-12T10:05:10.0Z", "GET", "/about", "200"),
+        line("2026-11-12T11:30:00.0Z", "GET", "/home", "200"),
+        line("2026-11-12T11:31:00.0Z", "GET", "/home", "200", "SeaNShore-LoadTest/1"),
+        line("2026-11-12T12:10:00.0Z", "GET", "/home", "200", "Googlebot"),
+        line("2026-11-12T13:10:00.0Z", "GET", "/home", "200")]
+r.alb_day_lines = lambda day, totals, budget: iter(logs)
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    return [[{"h": 0, "person_minutes": 4, "peak_minute": 2, "minutes_with_any": 2}], [{"members": 3}]]
+r.sql_rows = fake_rows
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_capminutes()
+text = buf.getvalue()
+assert "CAP_PERSON_MINUTES total=4 distinct_members=3 busiest_minute_people=2" in text, text
+# Hour 0: 7 signed-in requests (the public page, public RSC and static file are left out) over 4 person-minutes.
+assert "CAP_RATE_TOTAL whole_window person_minutes=4 signed_in_requests=7 per_person_minute=1.75" in text, text
+for kind, n in (("page_signed_in_route", 1), ("rsc_signed_in_route", 1), ("rsc_hash_redirect", 1), ("action", 1),
+                ("impressions", 1), ("realtime_ticket", 1), ("image", 1)):
+    assert "CAP_RATE whole_window %s requests=%d" % (kind, n) in text, (kind, text)
+assert '"excluded_load_test_window": 2' in text and '"bot_or_probe": 1' in text, text
+for leak in ("asha", "203.0.113", "10.0.1.5", "Mozilla", "example.test"):
+    assert leak not in text, (leak, text)
+assert all(s.lstrip().lower().startswith("with") for s in seen) and "is_load_test" in seen[0], seen
+assert "2026-11-12T11:15:00Z" in seen[0], "the load test window is left out of the person-minutes"
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+test('the writes and 7-day statements leave the load tests out and print counts and shapes only', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os, datetime as dt
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+os.environ["CAP_START"], os.environ["CAP_END"] = "2026-11-06T00:00:00Z", "2026-11-13T00:00:00Z"
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    if statements[0].startswith("select stats_reset"):
+        return [[{"since": "2026-11-06", "seconds": 7 * 86400}], [{"id": "1", "calls": 700, "total_s": 3.5, "mean_ms": 5, "q": "insert into public.post_impressions values ($1, $2)"}]]
+    return [[{"n": 70}]]
+r.sql_rows = fake_rows
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_capwrites()
+text = buf.getvalue()
+assert "CAP_WRITES post_impressions_new rows=70 per_day=10" in text, text
+assert "CAP_WRITE_STATEMENT rank=1 calls=700 per_day=100" in text, text
+assert all(s.lower().startswith("select") for s in seen), seen
+assert all("2026-11-11T19:55:00Z" in s and "2026-11-12T11:15:00Z" in s for s in seen if "count(*)" in s), seen
+
+r.NOW = dt.datetime(2026, 11, 13, 9, 0, tzinfo=dt.timezone.utc)
+r.writer_resource = lambda: "db-X"
+calls = []
+def fake_pi(resource, start, end, group, limit, extra=None):
+    calls.append((start, end))
+    return [{"Total": 0.1, "Dimensions": {"db.sql_tokenized.id": "A", "db.sql_tokenized.statement": "select * from public.posts where id = ?"},
+             "AdditionalMetrics": {"db.sql_tokenized.stats.calls_per_sec.avg": 2.0, "db.sql_tokenized.stats.avg_latency_per_call.avg": 4.0}},
+            {"Total": 0.02, "Dimensions": {"db.sql_tokenized.id": "B", "db.sql_tokenized.statement": "select 1"}, "AdditionalMetrics": {}}]
+r.pi_keys = fake_pi
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_cap7d()
+text = buf.getvalue()
+# Three ranges: before the night test, between the two tests, after the day test.
+assert len(calls) == 3, calls
+for a, b in calls:
+    for x, y in r.CAP_EXCLUDED:
+        x, y = r.parse_minute(x + "Z"), r.parse_minute(y + "Z")
+        assert b <= x or a >= y, (a, b)
+assert "rank=1" in text and "share=83%" in text and "ms_per_call=4.00" in text, text
+assert "CAP_7D_TOP5_SHARE 100%" in text, text
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)
