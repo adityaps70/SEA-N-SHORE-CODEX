@@ -40,6 +40,14 @@ function compareWindow() {
       new Date(db[2]) - new Date(db[1]) <= 3 * 3600_000, 'the db window must be "db <start> <end>", under 3 hours, in whole UTC minutes')
     return { db: true, runStart: db[1], runEnd: db[2] }
   }
+  // Round CAP Step 0 (owner 13 Nov): requests per active signed-in person-minute by type, writes in the window and
+  // the 7-day top statements, real traffic only (the load tests are left out): "cap <start> <end>", at most 14 days.
+  const cap = line.match(/^cap (\S+) (\S+)$/)
+  if (cap) {
+    assert.ok(MINUTE.test(cap[1]) && MINUTE.test(cap[2]) && new Date(cap[2]) > new Date(cap[1]) &&
+      new Date(cap[2]) - new Date(cap[1]) <= 14 * 24 * 3600_000, 'the cap window must be "cap <start> <end>", at most 14 days, in whole UTC minutes')
+    return { cap: true, capStart: cap[1], capEnd: cap[2] }
+  }
   const m = line.match(/^compare (\S+) (\S+)(?: split (\S+))?$/)
   assert.ok(m && MINUTE.test(m[1]) && (m[2] === 'now' || MINUTE.test(m[2])) && (!m[3] || MINUTE.test(m[3])),
     'the window file must read "none" or "compare <start> <end|now> [split <time>]" in whole UTC minutes')
@@ -59,9 +67,10 @@ assert.ok(PROBE_ORG_NAME && PROBE_ORG_NAME.length <= 120 && !/["\\]/.test(PROBE_
 
 const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
-const SECTIONS = COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d']
+const SECTIONS = COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
-  (COMPARE && !COMPARE.db && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare'].includes(s)))), 'unknown report section')
+  (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE && !COMPARE.db && !COMPARE.cap && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
@@ -90,6 +99,8 @@ export COMPARE_END=${quote(COMPARE?.end ?? '')}
 export COMPARE_SPLIT=${quote(COMPARE?.split ?? '')}
 export DB_RUN_START=${quote(COMPARE?.runStart ?? '')}
 export DB_RUN_END=${quote(COMPARE?.runEnd ?? '')}
+export CAP_START=${quote(COMPARE?.capStart ?? '')}
+export CAP_END=${quote(COMPARE?.capEnd ?? '')}
 export REPORT_PROBE_ORG_NAME=${quote(PROBE_ORG_NAME)}
 export LOAD_TEST_STEP_RPM=${quote(/^[0-9,]*$/.test(process.env.LOAD_TEST_STEP_RPM || '') ? process.env.LOAD_TEST_STEP_RPM || '' : '')}
 command -v python3 >/dev/null || { echo 'python3 is missing on the bootstrap host' >&2; exit 1; }
