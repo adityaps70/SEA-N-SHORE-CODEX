@@ -9,6 +9,11 @@
 -- inserts rows that do not exist yet. Creating each trigger takes a short lock on its table, so no write lands
 -- between the trigger and the backfill (the tables are small: hundreds of rows). The ranking worker's nightly
 -- reconcile corrects any drift and logs how many counters it fixed.
+--
+-- A counter must never fail a member's like, vote, comment or delete: every bump runs inside its own exception
+-- block, so an error there (a deadlock, or anything unforeseen) is logged as a warning and the member's write goes
+-- ahead; the nightly reconcile then repairs that counter. A vote change bumps its two options in a fixed order (by
+-- id), so two members changing votes in opposite directions cannot deadlock on them.
 -- Reversible: drop the three triggers, the three *_on_* functions, the three *_bump functions and the three tables.
 -- statement-breakpoint
 create table if not exists public.post_reaction_counts (
@@ -89,14 +94,19 @@ create or replace function public.post_reaction_counts_on_reaction() returns tri
 language plpgsql
 as $$
 begin
-  if tg_op = 'INSERT' then
-    perform public.post_reaction_counts_bump(new.post_id, new.reaction_type, 1);
-  elsif tg_op = 'DELETE' then
-    perform public.post_reaction_counts_bump(old.post_id, old.reaction_type, -1);
-  elsif old.post_id is distinct from new.post_id or old.reaction_type is distinct from new.reaction_type then
-    perform public.post_reaction_counts_bump(old.post_id, old.reaction_type, -1);
-    perform public.post_reaction_counts_bump(new.post_id, new.reaction_type, 1);
-  end if;
+  begin
+    if tg_op = 'INSERT' then
+      perform public.post_reaction_counts_bump(new.post_id, new.reaction_type, 1);
+    elsif tg_op = 'DELETE' then
+      perform public.post_reaction_counts_bump(old.post_id, old.reaction_type, -1);
+    elsif old.post_id is distinct from new.post_id or old.reaction_type is distinct from new.reaction_type then
+      perform public.post_reaction_counts_bump(old.post_id, old.reaction_type, -1);
+      perform public.post_reaction_counts_bump(new.post_id, new.reaction_type, 1);
+    end if;
+  exception when others then
+    -- Never fail the member's write; the nightly reconcile repairs the counter.
+    raise warning 'engagement_counter_bump_failed table=post_reactions sqlstate=%', sqlstate;
+  end;
   return null;
 end
 $$;
@@ -109,14 +119,18 @@ create or replace function public.comment_reaction_counts_on_reaction() returns 
 language plpgsql
 as $$
 begin
-  if tg_op = 'INSERT' then
-    perform public.comment_reaction_counts_bump(new.comment_id, new.reaction_type, 1);
-  elsif tg_op = 'DELETE' then
-    perform public.comment_reaction_counts_bump(old.comment_id, old.reaction_type, -1);
-  elsif old.comment_id is distinct from new.comment_id or old.reaction_type is distinct from new.reaction_type then
-    perform public.comment_reaction_counts_bump(old.comment_id, old.reaction_type, -1);
-    perform public.comment_reaction_counts_bump(new.comment_id, new.reaction_type, 1);
-  end if;
+  begin
+    if tg_op = 'INSERT' then
+      perform public.comment_reaction_counts_bump(new.comment_id, new.reaction_type, 1);
+    elsif tg_op = 'DELETE' then
+      perform public.comment_reaction_counts_bump(old.comment_id, old.reaction_type, -1);
+    elsif old.comment_id is distinct from new.comment_id or old.reaction_type is distinct from new.reaction_type then
+      perform public.comment_reaction_counts_bump(old.comment_id, old.reaction_type, -1);
+      perform public.comment_reaction_counts_bump(new.comment_id, new.reaction_type, 1);
+    end if;
+  exception when others then
+    raise warning 'engagement_counter_bump_failed table=comment_reactions sqlstate=%', sqlstate;
+  end;
   return null;
 end
 $$;
@@ -129,14 +143,24 @@ create or replace function public.post_poll_option_counts_on_vote() returns trig
 language plpgsql
 as $$
 begin
-  if tg_op = 'INSERT' then
-    perform public.post_poll_option_counts_bump(new.option_id, 1);
-  elsif tg_op = 'DELETE' then
-    perform public.post_poll_option_counts_bump(old.option_id, -1);
-  elsif old.option_id is distinct from new.option_id then
-    perform public.post_poll_option_counts_bump(old.option_id, -1);
-    perform public.post_poll_option_counts_bump(new.option_id, 1);
-  end if;
+  begin
+    if tg_op = 'INSERT' then
+      perform public.post_poll_option_counts_bump(new.option_id, 1);
+    elsif tg_op = 'DELETE' then
+      perform public.post_poll_option_counts_bump(old.option_id, -1);
+    elsif old.option_id is distinct from new.option_id then
+      -- Lower id first, so two opposite vote changes lock the two counters in the same order.
+      if old.option_id < new.option_id then
+        perform public.post_poll_option_counts_bump(old.option_id, -1);
+        perform public.post_poll_option_counts_bump(new.option_id, 1);
+      else
+        perform public.post_poll_option_counts_bump(new.option_id, 1);
+        perform public.post_poll_option_counts_bump(old.option_id, -1);
+      end if;
+    end if;
+  exception when others then
+    raise warning 'engagement_counter_bump_failed table=post_poll_votes sqlstate=%', sqlstate;
+  end;
   return null;
 end
 $$;

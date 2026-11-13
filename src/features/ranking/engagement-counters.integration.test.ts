@@ -183,6 +183,32 @@ describe('engagement counters (Round CAP, migration 0102)', () => {
     await expectCountersMatchPrevious()
   })
 
+  it('never fails a member\'s like, vote, comment reaction or delete when a counter bump errors', async () => {
+    // Break all three bump functions on purpose (a deadlock or anything unforeseen would raise the same way).
+    const broken = (name: string, args: string) => `create or replace function public.${name}(${args}) returns void language plpgsql as $$
+      begin raise exception 'simulated counter failure'; end $$`
+    await db.query(broken('post_reaction_counts_bump', 'target uuid, kind public.post_reaction_type, delta integer'))
+    await db.query(broken('comment_reaction_counts_bump', 'target uuid, kind public.post_reaction_type, delta integer'))
+    await db.query(broken('post_poll_option_counts_bump', 'target uuid, delta integer'))
+    const who = await member()
+    const before = await query(`select count(*)::int as n from public.post_reactions`)
+    await repo.setPostReaction(who, posts[3]!, 'support')
+    await repo.setPostReaction(who, posts[3]!, 'respect')
+    await repo.setCommentReaction(who, comments[5]!, 'like')
+    await repo.setPollVote(who, polls[2]!.id, polls[2]!.options[0]!)
+    await repo.setPollVote(who, polls[2]!.id, polls[2]!.options[1]!)
+    await repo.setPostReaction(who, posts[3]!, null)
+    // Every member write landed.
+    expect((await query(`select count(*)::int as n from public.post_reactions`))[0]!.n).toBe(Number(before[0]!.n))
+    expect((await query(`select count(*)::int as n from public.comment_reactions where user_id = $1`, [who]))[0]!.n).toBe(1)
+    expect((await query(`select option_id::text as option from public.post_poll_votes where user_id = $1`, [who]))[0]!.option).toBe(polls[2]!.options[1])
+    // Restore the real functions (re-apply them from the migration) for the reconcile test that follows.
+    const migration = readFileSync('infra/aws/database/migrations/0102_round_cap_engagement_counters.sql', 'utf8')
+    for (const part of migration.split('-- statement-breakpoint').map((piece) => piece.trim())) {
+      if (/^(--[^\n]*\n)*create or replace function public\.[a-z_]+_bump/.test(part)) await db.query(part)
+    }
+  })
+
   it('drift is repaired by the nightly reconcile, in batches, with counts of what it fixed', async () => {
     await db.query(`insert into public.post_reaction_counts (post_id, like_count) values ($1, 3)
       on conflict (post_id) do update set like_count = public.post_reaction_counts.like_count + 3`, [posts[2]])
@@ -198,9 +224,12 @@ describe('engagement counters (Round CAP, migration 0102)', () => {
     let summary: Record<string, { scanned: number; fixed: number }> | undefined
     for (let pass = 0; pass < 100 && !summary; pass += 1) summary = await sweep.run() as typeof summary
     expect(summary).toBeDefined()
+    // Fixed: the post counter corrupted here (its reaction bumps during the failure test cancelled out); the two
+    // removed comment counters plus the comment reaction missed while the bumps were failing; the option counter
+    // corrupted here plus the vote missed during the failure test.
     expect(summary!.post_reactions!.fixed).toBe(1)
-    expect(summary!.comment_reactions!.fixed).toBeGreaterThanOrEqual(1)
-    expect(summary!.poll_votes!.fixed).toBe(1)
+    expect(summary!.comment_reactions!.fixed).toBeGreaterThanOrEqual(2)
+    expect(summary!.poll_votes!.fixed).toBe(2)
     expect(summary!.post_reactions!.scanned).toBe(Number((await query(`select count(*)::int as n from public.posts`))[0]!.n))
     await expectCountersMatchPrevious()
     // A second run the next night finds nothing to fix.
