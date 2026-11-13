@@ -27,7 +27,7 @@ vi.mock('@/features/realtime/provider', () => ({
 vi.mock('./post-card', () => ({ PostCard: ({ post }: { post: FeedPost }) => <article>{post.body}</article> }))
 vi.mock('./feed-people-row', () => ({ FeedPeopleRow: () => null, peopleRowPositions: () => new Set<number>() }))
 vi.mock('@/features/network/components/suggestion-deck', () => ({ useSuggestionDeck: () => ({ profiles: [] }) }))
-vi.mock('../impressions/use-post-impressions', () => ({ usePostImpressions: () => () => {} }))
+vi.mock('../impressions/use-post-impressions', () => ({ usePostImpressions: () => () => {}, flushPendingImpressions: async () => {} }))
 vi.mock('@/components/navigation/intent-link', () => ({ default: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
 
 const { HomeFeed, NEW_POSTS_HINT_DEBOUNCE_MS, NEW_POSTS_POLL_MS } = await import('./home-feed')
