@@ -126,4 +126,51 @@ describe('weekly digest (round G)', () => {
     expect(await digest('everyone', build).run()).toMatchObject({ due: 1 })
     expect((await db.query(`select recipient_id from public.ranking_emails`)).map((row) => row.recipient_id)).toEqual([on])
   })
+
+  it('picks the same members as the previous per-pass zone lookup, and reads the zone list once a day (Round CAP finding 6)', async () => {
+    // Valid, invalid, missing and far-away zones: invalid and missing count as IST; Los Angeles is still Sunday night.
+    const zones = ['Asia/Kolkata', 'Mars/Olympus', null, 'America/Los_Angeles', 'Asia/Dubai', 'Europe/London', 'asia/kolkata']
+    for (const zone of zones) {
+      const id = await member()
+      await db.query(`update public.profiles set time_zone = $2 where id = $1`, [id, zone])
+    }
+    const texts: string[] = []
+    let candidateCall: { text: string; values: readonly unknown[] } | null = null
+    const counting = (text: string, values?: readonly unknown[]) => {
+      texts.push(text)
+      if (text.includes('with members as')) candidateCall = { text, values: values ?? [] }
+      return query(text, values)
+    }
+    let clock = monday
+    const build = async () => ({ weekKey: '2026-W43', posts: [], jobs: [], people: [], events: [], courses: [] })
+    const job = createWeeklyDigest({ query: counting, modeFor: async () => 'everyone', now: () => clock, build })
+    await job.run()
+    const call = candidateCall as { text: string; values: readonly unknown[] } | null
+    expect(call).not.toBeNull()
+    const previous = `with zones as (select name from pg_catalog.pg_timezone_names),
+       members as (
+         select p.id, coalesce(z.name, 'Asia/Kolkata') as zone
+         from public.profiles p
+         left join zones z on z.name = p.time_zone
+         where p.account_status = 'active' and p.onboarding_completed_at is not null
+       )` + call!.text.slice(call!.text.indexOf(')\n       select m.id') + 1)
+    const before = await query(previous, call!.values.slice(0, 3))
+    // Every member already has a digest queued now, so compare on a fresh database state: clear and re-ask both.
+    await db.query(`delete from public.ranking_emails`)
+    const now = await query(call!.text, call!.values)
+    const again = await query(previous, call!.values.slice(0, 3))
+    expect(now.map((row) => [row.id, row.time_zone])).toEqual(again.map((row) => [row.id, row.time_zone]))
+    expect(before.length).toBe(0)
+    // Due at 10:30 IST on Monday: the IST members (valid, invalid, missing, wrong-case) and Dubai; not London (05:00) or Los Angeles (Sunday).
+    expect(now.length).toBe(5)
+    // One zone-list read for passes within a day; a new one after 24 hours.
+    const reads = () => texts.filter((text) => text.includes('pg_timezone_names')).length
+    expect(reads()).toBe(1)
+    clock = new Date(monday.getTime() + 60_000)
+    await job.run()
+    expect(reads()).toBe(1)
+    clock = new Date(monday.getTime() + 24 * 60 * 60 * 1000)
+    await job.run()
+    expect(reads()).toBe(2)
+  })
 })

@@ -71,6 +71,9 @@ export function localWeekTime(at: Date, timeZone: string) {
 }
 
 
+/** How long the list of valid time-zone names is reused before it is read again. */
+export const ZONE_LIST_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
 export function createWeeklyDigest(input: {
   query?: Query
   modeFor?: () => Promise<'off' | 'admins' | 'everyone'>
@@ -82,6 +85,16 @@ export function createWeeklyDigest(input: {
   const modeFor = input.modeFor ?? (async () => (await rankingSwitches.listModes()).weekly_digest)
   const now = input.now ?? (() => new Date())
   const batchSize = input.batchSize ?? 100
+  // Round CAP (finding 6): pg_timezone_names reads every zone file (about 0.4 s a call), so the list of valid zone
+  // names is read once a day per process and passed in, instead of on every pass. Same zones, same answers.
+  let zoneCache: { names: string[]; readAt: number } | null = null
+  async function validZones(at: Date) {
+    if (!zoneCache || at.getTime() - zoneCache.readAt >= ZONE_LIST_MAX_AGE_MS || at.getTime() < zoneCache.readAt) {
+      const rows = await queryRows(`select name from pg_catalog.pg_timezone_names`)
+      zoneCache = { names: rows.map((row) => String(row.name)), readAt: at.getTime() }
+    }
+    return zoneCache.names
+  }
 
   /**
    * Members due now: Monday in their time zone (IST when unknown or invalid), at or after 08:00
@@ -90,11 +103,9 @@ export function createWeeklyDigest(input: {
    */
   async function candidates(mode: 'admins' | 'everyone', at: Date) {
     return queryRows(
-      `with zones as (select name from pg_catalog.pg_timezone_names),
-       members as (
-         select p.id, coalesce(z.name, 'Asia/Kolkata') as zone
+      `with members as (
+         select p.id, coalesce(case when p.time_zone = any($4::text[]) then p.time_zone end, 'Asia/Kolkata') as zone
          from public.profiles p
-         left join zones z on z.name = p.time_zone
          where p.account_status = 'active' and p.onboarding_completed_at is not null
        )
        select m.id, m.zone as time_zone
@@ -113,7 +124,7 @@ export function createWeeklyDigest(input: {
          and ($1::text = 'everyone' or exists (select 1 from public.user_roles r where r.user_id = p.id and r.role::text = 'administrator'))
        order by p.id
        limit $2`,
-      [mode, batchSize, at.toISOString()],
+      [mode, batchSize, at.toISOString(), await validZones(at)],
     )
   }
 

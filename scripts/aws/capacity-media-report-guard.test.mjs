@@ -48,7 +48,7 @@ test('the SSM wrapper only sends the report and reads its result', async () => {
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
   const line = readFileSync(windowPath, 'utf8').trim()
   const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
-  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute})$`))
+  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|plans|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute})$`))
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
   assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
@@ -94,6 +94,7 @@ test('every AWS call in the remote script describes, gets or lists (or reads thr
 test('SQL runs read-only and is rolled back; output carries shapes and counts, not member data', () => {
   const remote = readFileSync(remotePath, 'utf8')
   assert.match(remote, /SET TRANSACTION READ ONLY/)
+  assert.match(remote, /SET LOCAL statement_timeout = '30s'/)
   assert.match(remote, /assert re\.match\(r"\^\\s\*\(select\|show\|with\)\\b", statement, re\.I\) or statement\.startswith\(EXPLAIN_PREFIX\)/)
   // Round DB: EXPLAIN only plans (GENERIC_PLAN, never ANALYZE), so nothing it explains is ever run.
   assert.match(remote, /^EXPLAIN_PREFIX = "explain \(generic_plan, costs, format json\) "$/m)
@@ -132,7 +133,10 @@ print("ok")
 // Round DB (Part 1 and Part 3): the db window runs five read-only sections; plans and statements print shapes only.
 test('the db window runs the read-only Round DB sections over one load test window', () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
-  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost'\]/)
+  assert.match(wrapper, /const DB_SECTIONS = \['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbhealth', 'cost'\]/)
+  // Round CAP (finding 2): the EXPLAIN step runs only in its own "plans" window.
+  assert.match(wrapper, /if \(line === 'plans'\) return \{ plans: true \}/)
+  assert.match(wrapper, /COMPARE\?\.plans \? \['dbplans'\]/)
   assert.match(wrapper, /3 \* 3600_000/)
   const remote = readFileSync(remotePath, 'utf8')
   for (const name of ['db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))

@@ -139,6 +139,9 @@ def sql_rows(statements):
     results = []
     try:
         aws("rds-data", "execute-statement", *base, "--transaction-id", txid, "--sql", "SET TRANSACTION READ ONLY")
+        # Round CAP (finding 2): no report statement may hold the database for long; this one transaction stops any
+        # statement after 30 seconds.
+        aws("rds-data", "execute-statement", *base, "--transaction-id", txid, "--sql", "SET LOCAL statement_timeout = '30s'")
         for statement in statements:
             # Round DB: EXPLAIN only with GENERIC_PLAN and without ANALYZE, so the statement is planned, never run.
             assert re.match(r"^\s*(select|show|with)\b", statement, re.I) or statement.startswith(EXPLAIN_PREFIX), "read-only statements only"
