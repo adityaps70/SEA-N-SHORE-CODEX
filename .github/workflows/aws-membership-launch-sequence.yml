@@ -71,7 +71,7 @@ jobs:
   apply-approval:
     needs: preflight
     if: inputs.mode == 'execute'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     environment: staging-apply
     timeout-minutes: 10
     steps:

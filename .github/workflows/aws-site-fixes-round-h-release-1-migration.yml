@@ -41,7 +41,8 @@ concurrency:
 jobs:
   apply-gate:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
-    runs-on: ubuntu-latest
+    # Cost cut 7: a gate-only job on the 1-vCPU ubuntu-slim runner (a third of the ubuntu-latest rate).
+    runs-on: ubuntu-slim
     permissions:
       contents: read
       pull-requests: read
@@ -50,6 +51,16 @@ jobs:
       skip: ${{ steps.plan_scope.outputs.skip }}
     timeout-minutes: 10
     steps:
+      # Cost cut 7 (owner-approved 14 Nov; proved in run 43619379498): the tools this gate uses must be on ubuntu-slim;
+      # a missing one fails the gate (it refuses).
+      - name: Check the gate's tools (ubuntu-slim)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in bash curl jq python3 git; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool is missing on this runner"; exit 1; }
+          done
+          echo "CUT7_TOOLS bash=${BASH_VERSION} curl=$(curl --version | head -1 | cut -d' ' -f2) $(jq --version) python3=$(python3 -c 'import platform; print(platform.python_version())') $(git --version)"
       - name: Checkout the guard file
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -87,6 +98,7 @@ jobs:
       - name: Skip a plan run when none of this runner's scripts changed
         id: plan_scope
         env:
+          GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/site-fixes-round-h-release-1-migration-action.txt
           RUNNER_FILES: "infra/aws/database/migrations/0087_site_fixes_round_h_release_1.sql scripts/aws/site-fixes-round-h-release-1-migration.sh scripts/aws/site-fixes-round-h-release-1-migration.test.mjs"
         shell: bash
@@ -96,14 +108,30 @@ jobs:
           ACTION="$(cut -d' ' -f1 < "$GUARD_FILE" | tr -d '[:space:]')"
           if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then
             SKIP="$(python3 -c '
-          import fnmatch, json, os, sys
+          import fnmatch, json, os, sys, urllib.request
           event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
-          commits = event.get("commits") or []
-          files = {f for c in commits for k in ("added", "modified", "removed") for f in (c.get(k) or [])}
           watched = os.environ["RUNNER_FILES"].split()
-          # Only a complete, non-empty list of changed files can show that nothing of this runner changed.
-          complete = bool(commits) and len(commits) < 2048 and bool(files)
-          print("true" if complete and not any(fnmatch.fnmatch(f, p) for f in files for p in watched) else "false")
+          before, after = event.get("before") or "", event.get("after") or ""
+          files = None
+          # Cost cut 7 (14 Nov): the files this push changed, from the compare API. It is exact for any push, a pull
+          # request merge included (the event's own commit list is not). Under 300 files only; any doubt runs the plan.
+          if len(before) == 40 and before.strip("0") and len(after) == 40:
+              try:
+                  url = "%s/repos/%s/compare/%s...%s" % (os.environ["GITHUB_API_URL"], os.environ["GITHUB_REPOSITORY"], before, after)
+                  request = urllib.request.Request(url, headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+                  data = json.load(urllib.request.urlopen(request, timeout=20))
+                  changed = data.get("files") or []
+                  if data.get("status") == "ahead" and 0 < len(changed) < 300:
+                      files = {f["filename"] for f in changed} | {f["previous_filename"] for f in changed if f.get("previous_filename")}
+              except Exception:
+                  files = None
+          if files is None:
+              commits = event.get("commits") or []
+              listed = {f for c in commits for k in ("added", "modified", "removed") for f in (c.get(k) or [])}
+              # Only a complete, non-empty list of changed files can show that nothing of this runner changed.
+              complete = bool(commits) and len(commits) < 2048 and bool(listed)
+              files = listed if complete else None
+          print("true" if files is not None and not any(fnmatch.fnmatch(f, p) for f in files for p in watched) else "false")
           ')"
           fi
           echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
@@ -112,7 +140,7 @@ jobs:
   apply-approval:
     needs: apply-gate
     if: needs.apply-gate.outputs.approval == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     environment: staging-apply
     timeout-minutes: 10
     steps:
