@@ -1,13 +1,29 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import { IMPRESSION_RETRY_MAX_MS, IMPRESSION_VISIBLE_RATIO, ImpressionTracker, browserImpressionTransport } from './impression-tracker'
+import { IMPRESSION_DRAIN_WAIT_MS, IMPRESSION_RETRY_MAX_MS, IMPRESSION_VISIBLE_RATIO, ImpressionTracker, browserImpressionTransport } from './impression-tracker'
 
 /**
  * Round H (H1): shared by every feed on the page and across client navigations. When a tracker
  * gives up (signed out, refused, or failing), the next feed waits instead of starting over.
  */
 let pausedUntil = 0
+/** Round CAP: the live trackers, so a new feed visit can drain them first. */
+const liveTrackers = new Set<ImpressionTracker>()
+
+/**
+ * Round CAP (batched impressions): send what every feed on the page has queued and wait (at most
+ * IMPRESSION_DRAIN_WAIT_MS) before a new visit asks for posts, so "no repeats" sees everything just seen.
+ */
+export async function flushPendingImpressions(waitMs = IMPRESSION_DRAIN_WAIT_MS) {
+  if (!liveTrackers.size) return
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    Promise.all([...liveTrackers].map((tracker) => tracker.drain())),
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, waitMs) }),
+  ])
+  if (timer !== undefined) clearTimeout(timer)
+}
 
 export function impressionsPaused(now = Date.now()) {
   return now < pausedUntil
@@ -19,7 +35,7 @@ export function resetImpressionPauseForTests() {
 
 /**
  * Round G: gives each feed post a ref callback; the post counts as seen after ≥50% of it is
- * visible for ≥1 s. Queued ids are flushed every ~5 s and always on pagehide / tab hidden.
+ * visible for ≥1 s. Queued ids are flushed every 15-30 s (Round CAP) and always on pagehide / tab hidden.
  */
 export function usePostImpressions(enabled = true) {
   const trackerRef = useRef<ImpressionTracker | null>(null)
@@ -31,8 +47,9 @@ export function usePostImpressions(enabled = true) {
     if (!enabled || typeof IntersectionObserver === 'undefined' || impressionsPaused()) return
     const tracker = new ImpressionTracker(browserImpressionTransport(), undefined, (reason) => {
       pausedUntil = Date.now() + (reason === 'refused' ? 60 * 60_000 : IMPRESSION_RETRY_MAX_MS)
-    })
+    }, () => document.visibilityState === 'hidden')
     trackerRef.current = tracker
+    liveTrackers.add(tracker)
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         const postId = (entry.target as HTMLElement).dataset.impressionPostId
@@ -55,6 +72,7 @@ export function usePostImpressions(enabled = true) {
       window.removeEventListener('pagehide', onHide)
       document.removeEventListener('visibilitychange', onVisibility)
       tracker.flushWithBeacon()
+      liveTrackers.delete(tracker)
       observer.disconnect()
       tracker.dispose()
       observerRef.current = null

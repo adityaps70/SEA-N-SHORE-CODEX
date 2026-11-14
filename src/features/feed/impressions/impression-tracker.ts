@@ -13,13 +13,19 @@
  *   IMPRESSION_MAX_FAILURES failures in a row, or on 401/403, the tracker stops for this page.
  *   It never retries on a short fixed timer.
  *
+ * - Round CAP: a post that finishes its dwell while the tab is hidden is not counted, and drain() sends
+ *   everything queued at once (a new feed visit calls it first, so the server knows what was seen).
+ *
  * Plain class with injected timers and transport, so it can be tested without a browser.
  */
 export const IMPRESSION_ENDPOINT = '/api/feed/impressions'
 export const IMPRESSION_VISIBLE_RATIO = 0.5
 export const IMPRESSION_DWELL_MS = 1000
-export const IMPRESSION_FLUSH_MS = 5000
-export const IMPRESSION_MAX_WAIT_MS = 15_000
+// Round CAP (batched impressions, owner-approved 13 Nov): one call per 15-30 s of scrolling instead of 5-15 s.
+export const IMPRESSION_FLUSH_MS = 15_000
+export const IMPRESSION_MAX_WAIT_MS = 30_000
+/** Round CAP: how long a new feed visit waits for the queued ids to reach the server before it asks for posts. */
+export const IMPRESSION_DRAIN_WAIT_MS = 1500
 export const IMPRESSION_BATCH_LIMIT = 50
 export const IMPRESSION_RETRY_BASE_MS = 10_000
 export const IMPRESSION_RETRY_MAX_MS = 5 * 60_000
@@ -60,6 +66,7 @@ export class ImpressionTracker {
   private maxWaitTimer: unknown = null
   private retryTimer: unknown = null
   private sending = false
+  private sendingDone: Promise<void> | null = null
   private failures = 0
   private stopped = false
 
@@ -68,12 +75,14 @@ export class ImpressionTracker {
     private readonly timers: Timers = { setTimeout: (callback, ms) => globalThis.setTimeout(callback, ms), clearTimeout: (handle) => globalThis.clearTimeout(handle as number) },
     /** Told once when the tracker gives up, so the next page does not start hammering again. */
     private readonly onStop?: (reason: 'refused' | 'failing') => void,
+    /** Round CAP: true while the tab is hidden; nothing seen then is counted. */
+    private readonly isHidden: () => boolean = () => false,
   ) {}
 
   /** Called with each post's current visible ratio (from an IntersectionObserver). */
   visibility(postId: string, ratio: number) {
     if (this.stopped || this.sent.has(postId) || this.queued.has(postId)) return
-    if (ratio >= IMPRESSION_VISIBLE_RATIO) {
+    if (ratio >= IMPRESSION_VISIBLE_RATIO && !this.isHidden()) {
       if (this.dwellTimers.has(postId)) return
       this.dwellTimers.set(postId, this.timers.setTimeout(() => {
         this.dwellTimers.delete(postId)
@@ -104,6 +113,8 @@ export class ImpressionTracker {
     if (this.stopped || this.sending || this.retryTimer !== null || !this.queued.size) return
     const ids = [...this.queued].slice(0, IMPRESSION_BATCH_LIMIT)
     this.sending = true
+    let done: () => void = () => {}
+    this.sendingDone = new Promise<void>((resolve) => { done = resolve })
     for (const id of ids) this.queued.delete(id)
     let result: ImpressionSendResult
     try {
@@ -112,6 +123,8 @@ export class ImpressionTracker {
       result = { outcome: 'retry' }
     }
     this.sending = false
+    this.sendingDone = null
+    done()
 
     if (result.outcome === 'sent' || result.outcome === 'drop') {
       this.failures = 0
@@ -135,6 +148,21 @@ export class ImpressionTracker {
       this.retryTimer = null
       void this.flush()
     }, impressionRetryDelay(this.failures, result.outcome === 'retry' ? result.retryAfterMs : undefined))
+  }
+
+  /**
+   * Round CAP: send everything queued now and wait for the server (a new feed visit, which must not show what was
+   * just seen). Gives up quietly while backing off or stopped; the queued ids then go with the retry.
+   */
+  async drain() {
+    for (let round = 0; round < 10; round += 1) {
+      if (this.sendingDone) {
+        await this.sendingDone
+        continue
+      }
+      if (this.stopped || this.retryTimer !== null || !this.queued.size) return
+      await this.flush()
+    }
   }
 
   /** pagehide / visibilitychange → hidden: everything queued goes now, without waiting. */
@@ -169,7 +197,8 @@ export class ImpressionTracker {
   }
 
   private markSeen(postId: string) {
-    if (this.stopped || this.sent.has(postId)) return
+    // Round CAP: a dwell that ends while the tab is hidden does not count (nobody was looking).
+    if (this.stopped || this.sent.has(postId) || this.isHidden()) return
     this.queued.add(postId)
     // Backing off: the queued id goes with the retry.
     if (this.retryTimer !== null) return

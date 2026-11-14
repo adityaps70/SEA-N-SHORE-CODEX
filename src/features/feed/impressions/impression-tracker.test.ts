@@ -280,3 +280,73 @@ describe('impression responses', () => {
     expect(impressionRetryDelay(1, 90_000)).toBe(90_000)
   })
 })
+
+describe('ImpressionTracker, Round CAP batching', () => {
+  it('sends once per 15-30 s of scrolling', () => {
+    expect(IMPRESSION_FLUSH_MS).toBe(15_000)
+    expect(IMPRESSION_MAX_WAIT_MS).toBe(30_000)
+  })
+
+  it('does not count a post whose dwell starts or ends while the tab is hidden', async () => {
+    const clock = fakeTimers()
+    const { value, sent } = transport()
+    let hidden = false
+    const tracker = new ImpressionTracker(value, clock.timers, undefined, () => hidden)
+    tracker.visibility('a', 1)
+    hidden = true
+    clock.advance(IMPRESSION_DWELL_MS) // the dwell ends while hidden
+    tracker.visibility('b', 1) // and a dwell cannot start while hidden
+    clock.advance(IMPRESSION_DWELL_MS)
+    hidden = false
+    see(tracker, clock, 'c')
+    clock.advance(IMPRESSION_FLUSH_MS)
+    await settle()
+    expect(sent).toEqual([['c']])
+  })
+
+  it('drain() sends everything queued at once and waits for the server, including a send already running', async () => {
+    const clock = fakeTimers()
+    let release: () => void = () => {}
+    const sent: string[][] = []
+    const value: ImpressionTransport = {
+      send: vi.fn((ids: string[]) => {
+        sent.push(ids)
+        return new Promise<ImpressionSendResult>((resolve) => { release = () => resolve({ outcome: 'sent' }) })
+      }),
+      beacon: vi.fn(() => true),
+    }
+    const tracker = new ImpressionTracker(value, clock.timers)
+    see(tracker, clock, ...Array.from({ length: IMPRESSION_BATCH_LIMIT + 3 }, (_, n) => `p${n}`))
+    // A full batch went at once and is in flight; drain waits for it, then sends the rest.
+    let drained = false
+    const draining = tracker.drain().then(() => { drained = true })
+    await settle()
+    expect(sent).toHaveLength(1)
+    expect(drained).toBe(false)
+    release()
+    await settle()
+    expect(sent).toHaveLength(2)
+    expect(sent[1]).toEqual(['p50', 'p51', 'p52'])
+    release()
+    await draining
+    expect(drained).toBe(true)
+    expect(tracker.pendingIds()).toEqual([])
+    // Nothing waits behind it: no timers left.
+    expect(clock.pending()).toBe(0)
+  })
+
+  it('drain() gives up quietly while backing off; the ids go with the retry', async () => {
+    const clock = fakeTimers()
+    const { value, sent } = transport([{ outcome: 'retry' }, { outcome: 'sent' }])
+    const tracker = new ImpressionTracker(value, clock.timers)
+    see(tracker, clock, 'a')
+    clock.advance(IMPRESSION_FLUSH_MS)
+    await settle()
+    see(tracker, clock, 'b')
+    await tracker.drain()
+    expect(sent).toEqual([['a']])
+    clock.advance(IMPRESSION_RETRY_BASE_MS)
+    await settle()
+    expect(sent[1]?.sort()).toEqual(['a', 'b'])
+  })
+})
