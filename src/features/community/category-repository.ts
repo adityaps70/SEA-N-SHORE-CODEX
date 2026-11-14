@@ -1,3 +1,4 @@
+import { createSharedCache } from '@/lib/server/shared-cache'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { groupSlugFromName, uniqueGroupSlug } from './slug'
@@ -301,4 +302,11 @@ export function createCommunityCategoryRepository(input: { query?: Query; transa
 
 export type CommunityCategoryRepository = ReturnType<typeof createCommunityCategoryRepository>
 
-export const communityCategoryRepository = createCommunityCategoryRepository()
+const baseCommunityCategoryRepository = createCommunityCategoryRepository()
+// Round CAP (shared cache): the community directory's category chips, the same for every viewer. Cleared on this
+// task by revalidateCategoryPages() after an admin change; other tasks within 30 s.
+export const communityDirectoryChipsCache = createSharedCache<CommunityCategoryChip[]>({ name: 'community_directory_chips', ttlMs: 30_000, maxEntries: 1 })
+export const communityCategoryRepository = {
+  ...baseCommunityCategoryRepository,
+  listDirectoryChips: async () => [...await communityDirectoryChipsCache.get('all', () => baseCommunityCategoryRepository.listDirectoryChips())],
+}

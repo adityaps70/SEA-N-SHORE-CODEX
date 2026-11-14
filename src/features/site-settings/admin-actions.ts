@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
+import { shareSettingsCache } from './share-settings'
 import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { createMediaUploadUrl } from '@/lib/aws/storage'
@@ -49,6 +50,8 @@ function fieldErrorsFrom(error: z.ZodError) {
 }
 
 function refreshPublicPages() {
+  // Round CAP: the shared share-image settings cache on this task (other tasks within 30 s).
+  shareSettingsCache.clear()
   revalidatePath('/admin/settings')
   revalidatePath('/contact')
   revalidatePath('/about')
@@ -106,6 +109,7 @@ export async function saveSocialHandlesAction(
   }
   try {
     const saved = await siteSettingsRepository.set('social_handles', parsed.data, adminId)
+    shareSettingsCache.clear()
     revalidatePath('/admin/settings')
     return { status: 'success', message: 'Saved. New job share images show these handles.', values: saved }
   } catch (error) {
