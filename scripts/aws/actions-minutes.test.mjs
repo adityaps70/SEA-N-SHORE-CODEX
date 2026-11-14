@@ -59,11 +59,33 @@ test('Infra CI: superseded runs cancel; heavy jobs follow the change scope; cont
   assert.match(text, /concurrency:\n  group: aws-infra-ci-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true/)
   assert.match(text, /fetch-depth: 2\n/)
   assert.match(text, /run: bash scripts\/aws\/infra-ci-scope\.sh/)
-  for (const job of ['application', 'terraform', 'guard', 'container']) {
-    assert.match(text, new RegExp(`^  ${job}:\\n    name: .*\\n    needs: scope\\n    if: needs\\.scope\\.outputs\\.${job} == 'true'\\n`, 'm'), job)
+  // Cost cut 2 (owner-approved 14 Nov): no separate scope job; the always-on contract job decides the scope first.
+  assert.doesNotMatch(text, /^  scope:\n/m, 'no separate scope job')
+  for (const job of ['application', 'terraform', 'container']) {
+    assert.match(text, new RegExp(`^  ${job}:\\n    name: .*\\n    needs: remote-execution-contract\\n    if: needs\\.remote-execution-contract\\.outputs\\.${job} == 'true'\\n`, 'm'), job)
   }
   const contract = jobBlocks(text).find((job) => job.startsWith('  remote-execution-contract:'))
   assert.doesNotMatch(contract, /needs:|^    if:/m)
+  for (const output of ['application', 'terraform', 'guard', 'container']) {
+    assert.match(contract, new RegExp(`^      ${output}: \\$\\{\\{ steps\\.scope\\.outputs\\.${output} \\}\\}$`, 'm'), `contract job outputs ${output}`)
+  }
+  assert.ok(contract.indexOf('id: scope') > 0 && contract.indexOf('id: scope') < contract.indexOf('Verify edge recovery plan guard'), 'the scope is decided before the contract tests')
+  // Cost cut 4: Application verify runs the plan guard tests when they are in scope; the guard job then runs only
+  // when Application verify does not, so the same tests always run exactly once.
+  const application = jobBlocks(text).find((job) => job.startsWith('  application:'))
+  const guard = jobBlocks(text).find((job) => job.startsWith('  guard:'))
+  assert.match(guard, /^    needs: remote-execution-contract\n(    #.*\n)?    if: needs\.remote-execution-contract\.outputs\.guard == 'true' && needs\.remote-execution-contract\.outputs\.application != 'true'\n/m)
+  const runs = (block, from) => [...block.slice(block.indexOf(from)).matchAll(/^        run: (.+)$/gm)].map((m) => m[1])
+  const guardRuns = runs(guard, '- name: Run guard tests')
+  assert.ok(guardRuns.length >= 6, 'the guard job runs its tests')
+  assert.deepEqual(runs(application, '- name: Run guard tests'), guardRuns, 'Application verify runs the same guard tests')
+  const gatedSteps = application.slice(application.indexOf('- name: Run guard tests')).split('      - name: ').filter(Boolean)
+  for (const step of gatedSteps) assert.match(step, /\n        if: needs\.remote-execution-contract\.outputs\.guard == 'true'\n/, step.split('\n')[0])
+  // Cost cut 3: ~/.npm cached in both jobs that install, keyed on package.json and this workflow (it pins npm).
+  for (const block of [application, guard]) {
+    assert.match(block, /          cache: npm\n          cache-dependency-path: \|\n            package\.json\n            \.github\/workflows\/aws-infra-ci\.yml\n/)
+    assert.match(block, /run: npx -y npm@11\.6\.0 install --include=dev --no-audit --no-fund --package-lock=false\n/, 'same install command')
+  }
   assert.match(contract, /node --test scripts\/aws\/apply-approval-gate\.test\.mjs/)
   assert.match(contract, /node --test scripts\/aws\/actions-minutes\.test\.mjs/)
 })

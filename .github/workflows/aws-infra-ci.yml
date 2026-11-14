@@ -55,13 +55,13 @@ concurrency:
 jobs:
   # Actions minutes: a heavy job below is skipped only when every file it reads is byte-identical to a
   # commit whose Infra CI passed (a merge of an up-to-date PR branch, a rearm, a workflow-only change);
-  # see scripts/aws/infra-ci-scope.sh. The SSM execution contract job (guard and runner contract
-  # tests) always runs. A pull request is scoped against its base branch tip; a manual run, or any doubt, runs
-  # everything.
-  scope:
-    name: Change scope
+  # see scripts/aws/infra-ci-scope.sh. This job (guard and runner contract tests) always runs, and decides the scope
+  # first (cost cut 2, owner-approved 14 Nov: no separate scope job, so no extra rounded-up job minute per run). A
+  # pull request is scoped against its base branch tip; a manual run, or any doubt, runs everything.
+  remote-execution-contract:
+    name: GitHub SSM execution contract
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
       actions: read
@@ -81,14 +81,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
         run: bash scripts/aws/infra-ci-scope.sh
-
-  remote-execution-contract:
-    name: GitHub SSM execution contract
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Verify edge recovery plan guard
         run: python3 scripts/aws/check-edge-plan.test.py
       - name: Verify edge recovery distribution inventory contract
@@ -288,8 +280,8 @@ jobs:
 
   application:
     name: Application verify
-    needs: scope
-    if: needs.scope.outputs.application == 'true'
+    needs: remote-execution-contract
+    if: needs.remote-execution-contract.outputs.application == 'true'
     runs-on: ubuntu-latest
     # The full unit suite (7,000+ tests) takes 15-22 minutes on a hosted runner; 25 cut a passing run.
     timeout-minutes: 40
@@ -302,6 +294,11 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
+          # Cost cut 3: cache ~/.npm, keyed on package.json and this workflow (it pins the npm version below).
+          cache: npm
+          cache-dependency-path: |
+            package.json
+            .github/workflows/aws-infra-ci.yml
       - name: Install dependencies with known-good npm
         run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
       - name: Lint
@@ -312,11 +309,30 @@ jobs:
         run: npm test
       - name: Verify worker imports load without the web environment
         run: node --test scripts/workers/worker-imports.test.mjs
+      # Cost cut 4: the Terraform plan guard tests, here when this job runs (same tests as the guard job below).
+      - name: Run guard tests
+        if: needs.remote-execution-contract.outputs.guard == 'true'
+        run: npm test -- scripts/aws/check-terraform-plan.test.mjs
+      - name: Verify realtime authorizer origin allowlist
+        if: needs.remote-execution-contract.outputs.guard == 'true'
+        run: node --test scripts/aws/realtime-authorizer-origins.test.mjs
+      - name: Verify realtime typing token check in the connection Lambda
+        if: needs.remote-execution-contract.outputs.guard == 'true'
+        run: node --test scripts/aws/realtime-typing-lambda.test.mjs
+      - name: Verify the app database secret rotation Lambda
+        if: needs.remote-execution-contract.outputs.guard == 'true'
+        run: node --test scripts/aws/aurora-app-secret-rotation.test.mjs
+      - name: Verify disposable email block in the pre-sign-up Lambda
+        if: needs.remote-execution-contract.outputs.guard == 'true'
+        run: node --test scripts/aws/cognito-pre-sign-up-disposable.test.mjs
+      - name: Verify live Google auth probe contract
+        if: needs.remote-execution-contract.outputs.guard == 'true'
+        run: node --test scripts/aws/google-auth-live-probe.test.mjs
 
   terraform:
     name: Terraform validate
-    needs: scope
-    if: needs.scope.outputs.terraform == 'true'
+    needs: remote-execution-contract
+    if: needs.remote-execution-contract.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -343,8 +359,9 @@ jobs:
 
   guard:
     name: Terraform plan guard tests
-    needs: scope
-    if: needs.scope.outputs.guard == 'true'
+    needs: remote-execution-contract
+    # Cost cut 4: when Application verify runs, it runs these same guard tests; this job then has nothing to do.
+    if: needs.remote-execution-contract.outputs.guard == 'true' && needs.remote-execution-contract.outputs.application != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -354,6 +371,11 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
+          # Cost cut 3: cache ~/.npm, keyed on package.json and this workflow (it pins the npm version below).
+          cache: npm
+          cache-dependency-path: |
+            package.json
+            .github/workflows/aws-infra-ci.yml
       - name: Install dependencies with known-good npm
         run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
       - name: Run guard tests
@@ -371,8 +393,8 @@ jobs:
 
   container:
     name: Docker build
-    needs: scope
-    if: needs.scope.outputs.container == 'true'
+    needs: remote-execution-contract
+    if: needs.remote-execution-contract.outputs.container == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
