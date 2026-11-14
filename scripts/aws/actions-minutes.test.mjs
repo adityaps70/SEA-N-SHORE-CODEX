@@ -33,7 +33,11 @@ test('a plan (or discover) run is skipped when the push changed none of the runn
     assert.match(text, /id: plan_scope\n/, name)
     // Only push events with a read-only guard value can skip; armed runs and dispatches never do.
     assert.ok(text.includes('if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then'), name)
-    assert.ok(text.includes('complete = bool(commits) and len(commits) < 2048 and bool(files)'), name)
+    // Cost cut 7 (14 Nov): the changed files come from the compare API (exact for a pull request merge too); the
+    // event's commit list is only the fallback, and any doubt runs the plan.
+    assert.ok(text.includes('url = "%s/repos/%s/compare/%s...%s"'), name)
+    assert.ok(text.includes('complete = bool(commits) and len(commits) < 2048 and bool(listed)'), name)
+    assert.match(text, /id: plan_scope\n        env:\n          GH_TOKEN: \$\{\{ github\.token \}\}\n/, `${name}: the compare call has the token`)
     // Every job that waits on apply-gate honours the skip.
     const dependants = jobBlocks(text).filter((job) => job.includes("needs.apply-gate.result == 'success'"))
     assert.ok(dependants.length >= 1, name)
@@ -238,16 +242,78 @@ test('Application CI: superseded runs cancel and ~/.npm is cached', () => {
   assert.match(text, /run: npm install\n/, 'same install command')
 })
 
-// Cost cut 7 (owner-approved 14 Nov): proved first on ONE guarded workflow's gate job before any other switches.
-test('cut 7 proof: the P6 runner gate runs on ubuntu-slim and checks its tools first', () => {
+// Cost cut 7 (owner-approved 14 Nov; proved on the P6 runner in run 43619379498, all tools present): every gate-only
+// job runs on the 1-vCPU ubuntu-slim runner. Each apply-gate checks its tools first; all stay under the 15-minute limit.
+test('cut 7: every apply-gate and apply-approval job runs on ubuntu-slim; each gate checks its tools first', () => {
+  let gates = 0
+  let approvals = 0
+  for (const { name, text } of workflows) {
+    for (const job of jobBlocks(text)) {
+      if (job.startsWith('  apply-gate:')) {
+        gates += 1
+        assert.match(job, /^    runs-on: ubuntu-slim$/m, `${name}: apply-gate`)
+        const steps = job.split('      - name: ').slice(1)
+        assert.ok(steps[0].startsWith("Check the gate's tools (ubuntu-slim)"), `${name}: the tool check is the first step`)
+        assert.match(steps[0], /for tool in bash curl jq python3 git; do/, name)
+        assert.match(job, /^    timeout-minutes: (?:[1-9]|1[0-4])$/m, `${name}: under the 15-minute ubuntu-slim limit`)
+      } else if (job.startsWith('  apply-approval:')) {
+        approvals += 1
+        assert.match(job, /^    runs-on: ubuntu-slim$/m, `${name}: apply-approval`)
+        assert.match(job, /^    timeout-minutes: (?:[1-9]|1[0-4])$/m, `${name}: under the 15-minute ubuntu-slim limit`)
+      } else {
+        assert.doesNotMatch(job, /runs-on: ubuntu-slim/, `${name}: ${job.split('\n')[0].trim()} is not a gate-only job`)
+      }
+    }
+  }
+  assert.ok(gates >= 78 && approvals >= 79, `gates=${gates} approvals=${approvals}`)
+})
+
+// Cost cut 7 (14 Nov): the plan-skip check itself, run against a stubbed GitHub API. A pull request merge that only
+// touched this workflow skips (the event's commit list could not show that); a runner file, any doubt, or an API
+// failure with no usable commit list runs the plan.
+test('plan skip: decided from the compare API, and any doubt runs the plan', () => {
   const text = byName['aws-p6-job-extra-ranks-migration.yml']
-  const gate = jobBlocks(text).find((job) => job.startsWith('  apply-gate:'))
-  assert.match(gate, /^    runs-on: ubuntu-slim$/m)
-  const steps = gate.split('      - name: ').slice(1)
-  assert.ok(steps[0].startsWith("Check the gate's tools (ubuntu-slim)"), 'the tool check is the first step')
-  assert.match(steps[0], /for tool in bash curl jq python3 git; do/)
-  assert.match(gate, /^    timeout-minutes: (?:[1-9]|1[0-4])$/m, 'under the 15-minute ubuntu-slim limit')
-  const slim = workflows.filter(({ text: t }) => /runs-on: ubuntu-slim/.test(t)).map(({ name }) => name)
-  assert.deepEqual(slim, ['aws-p6-job-extra-ranks-migration.yml'], 'only the proof workflow uses ubuntu-slim until the proof run passes')
+  const code = text.slice(text.indexOf("SKIP=\"$(python3 -c '") + "SKIP=\"$(python3 -c '".length, text.indexOf("\n          ')\"", text.indexOf("SKIP=\"$(python3 -c '")))
+    .split('\n').map((line) => line.slice(10)).join('\n')
+  const runner = 'scripts/aws/p6-job-extra-ranks-migration.sh'
+  const own = '.github/workflows/aws-p6-job-extra-ranks-migration.yml'
+  const dir = mkdtempSync(join(tmpdir(), 'plan-skip-'))
+  try {
+    const decide = ({ compare, commits = [], before = 'a'.repeat(40) }) => {
+      const event = join(dir, 'event.json')
+      writeFileSync(event, JSON.stringify({ before, after: 'b'.repeat(40), commits }))
+      const prelude = `import io, json, urllib.request
+compare = json.loads(${JSON.stringify(JSON.stringify(compare ?? null))})
+def fake(request, timeout=None):
+    assert "/compare/" in request.full_url and request.headers.get("Authorization") == "Bearer t"
+    if compare is None:
+        raise OSError("api down")
+    return io.BytesIO(json.dumps(compare).encode())
+urllib.request.urlopen = fake
+`
+      const script = join(dir, 'skip.py')
+      writeFileSync(script, prelude + code)
+      return execSync(`python3 -I ${script}`, { encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: event, GH_TOKEN: 't',
+        GITHUB_API_URL: 'https://api.github.test', GITHUB_REPOSITORY: 'o/r', RUNNER_FILES: /RUNNER_FILES: "([^"]*)"/.exec(text)[1] } }).trim()
+    }
+    const files = (...names) => names.map((filename) => ({ filename }))
+    // A pull request merge that changed only this workflow and a test: skip (the proof push of #492, 14 Nov).
+    assert.equal(decide({ compare: { status: 'ahead', files: files(own, 'scripts/aws/actions-minutes.test.mjs') } }), 'true')
+    // One of the runner's own files changed: run.
+    assert.equal(decide({ compare: { status: 'ahead', files: files(own, runner) } }), 'false')
+    // A renamed runner file counts under its old name too.
+    assert.equal(decide({ compare: { status: 'ahead', files: [{ filename: 'x.sh', previous_filename: runner }] } }), 'false')
+    // 300 files (the compare list may be cut), a force push (diverged) or an API failure fall back to the commit list.
+    const many = Array.from({ length: 300 }, (_, i) => ({ filename: `docs/f${i}.md` }))
+    assert.equal(decide({ compare: { status: 'ahead', files: many } }), 'false')
+    assert.equal(decide({ compare: { status: 'diverged', files: files(own) } }), 'false')
+    assert.equal(decide({ compare: null }), 'false', 'API down and no commit list: run')
+    assert.equal(decide({ compare: null, commits: [{ modified: [own] }] }), 'true', 'API down: the commit list still decides')
+    assert.equal(decide({ compare: null, commits: [{ modified: [runner] }] }), 'false')
+    // A first push to a branch (no "before") never uses the compare API.
+    assert.equal(decide({ before: '0'.repeat(40), compare: { status: 'ahead', files: files(own) } }), 'false')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
