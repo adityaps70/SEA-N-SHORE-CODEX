@@ -229,3 +229,17 @@ test('live checks run once per deploy, not on every push; read-only checks cance
   assert.match(job.slice(start), /if: env\.DEPLOY_TO_ECS == 'true'/)
   assert.match(job.slice(start), /for workflow in aws-remote-verify\.yml aws-google-auth-live-verify\.yml aws-logo-browser-verify\.yml; do/)
 })
+
+// Cost cut 7 (owner-approved 14 Nov): proved first on ONE guarded workflow's gate job before any other switches.
+test('cut 7 proof: the P6 runner gate runs on ubuntu-slim and checks its tools first', () => {
+  const text = byName['aws-p6-job-extra-ranks-migration.yml']
+  const gate = jobBlocks(text).find((job) => job.startsWith('  apply-gate:'))
+  assert.match(gate, /^    runs-on: ubuntu-slim$/m)
+  const steps = gate.split('      - name: ').slice(1)
+  assert.ok(steps[0].startsWith("Check the gate's tools (ubuntu-slim)"), 'the tool check is the first step')
+  assert.match(steps[0], /for tool in bash curl jq python3 git; do/)
+  assert.match(gate, /^    timeout-minutes: (?:[1-9]|1[0-4])$/m, 'under the 15-minute ubuntu-slim limit')
+  const slim = workflows.filter(({ text: t }) => /runs-on: ubuntu-slim/.test(t)).map(({ name }) => name)
+  assert.deepEqual(slim, ['aws-p6-job-extra-ranks-migration.yml'], 'only the proof workflow uses ubuntu-slim until the proof run passes')
+})
+
