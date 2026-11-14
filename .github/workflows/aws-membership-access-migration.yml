@@ -116,7 +116,7 @@ jobs:
           before, after = event.get("before") or "", event.get("after") or ""
           files = None
           # Cost cut 7 (14 Nov): the files this push changed, from the compare API. It is exact for any push, a pull
-          # request merge included (the event's own commit list is not). Under 300 files only; any doubt runs the plan.
+          # request merge included (the commit list in the event is not). Under 300 files only; any doubt runs the plan.
           if len(before) == 40 and before.strip("0") and len(after) == 40:
               try:
                   url = "%s/repos/%s/compare/%s...%s" % (os.environ["GITHUB_API_URL"], os.environ["GITHUB_REPOSITORY"], before, after)

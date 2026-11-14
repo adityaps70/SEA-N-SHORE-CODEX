@@ -317,3 +317,45 @@ urllib.request.urlopen = fake
   }
 })
 
+
+// Cost cut 7 follow-up (14 Nov): each workflow's real plan-skip step, run through bash exactly as GitHub runs it. The
+// python sits inside a single-quoted bash string, so a stray apostrophe breaks every gate (as it did once: run
+// 43623542128). The compare API is unreachable here, so the event's commit list decides.
+test('plan skip: every gated workflow\'s step runs under bash and decides from the commit list when the API is down', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'plan-skip-bash-'))
+  try {
+    let checked = 0
+    for (const { name, text } of workflows) {
+      const at = text.indexOf('id: plan_scope')
+      if (at < 0) continue
+      // The step runs to the next step or the next job, whichever comes first.
+      const ends = [text.indexOf('\n      - name: ', at), text.slice(at).search(/\n  [a-z0-9-]+:\n/) + at].filter((i) => i > at)
+      const step = text.slice(at, Math.min(...ends))
+      const run = step.slice(step.indexOf('        run: |\n') + '        run: |\n'.length)
+        .split('\n').map((line) => line.slice(10)).join('\n')
+      const script = join(dir, 'step.sh')
+      writeFileSync(script, run)
+      const guard = /GUARD_FILE: (\S+)/.exec(step)[1]
+      const runnerFiles = /RUNNER_FILES: "([^"]*)"/.exec(step)[1]
+      mkdirSync(join(dir, dirname(guard)), { recursive: true })
+      writeFileSync(join(dir, guard), 'plan\n')
+      const decide = (files) => {
+        const event = join(dir, 'event.json')
+        const output = join(dir, 'output')
+        writeFileSync(event, JSON.stringify({ before: 'a'.repeat(40), after: 'b'.repeat(40), commits: [{ modified: files }] }))
+        writeFileSync(output, '')
+        execSync(`bash -e -o pipefail ${script}`, { cwd: dir, encoding: 'utf8', env: { ...process.env,
+          GITHUB_EVENT_NAME: 'push', GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output, GUARD_FILE: guard, RUNNER_FILES: runnerFiles,
+          GH_TOKEN: 't', GITHUB_API_URL: 'http://127.0.0.1:9', GITHUB_REPOSITORY: 'o/r' } })
+        return readFileSync(output, 'utf8').trim()
+      }
+      assert.equal(decide([`.github/workflows/${name}`]), 'skip=true', `${name}: only this workflow changed`)
+      const own = runnerFiles.split(' ').filter(Boolean).find((p) => !p.includes('*'))
+      if (own) assert.equal(decide([own]), 'skip=false', `${name}: one of its own files changed`)
+      checked += 1
+    }
+    assert.ok(checked >= 78, `checked ${checked}`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
