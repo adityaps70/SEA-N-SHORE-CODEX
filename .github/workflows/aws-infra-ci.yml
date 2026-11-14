@@ -26,6 +26,8 @@ on:
       - .github/workflows/aws-*.yml
   pull_request:
     branches: [main, feat/aws-native-phase-0-1]
+    # Cost cut 1 (owner-approved 14 Nov): a draft runs only the cheap jobs; "Ready for review" starts the full run.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - Dockerfile
       - .dockerignore
@@ -81,6 +83,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
         run: bash scripts/aws/infra-ci-scope.sh
+      # Cost cut 1: say plainly on a draft that the full application tests have not run yet.
+      - name: Draft pull request (Application verify waits for Ready for review)
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft
+        run: |
+          echo "::notice title=Draft pull request::Application verify is skipped on drafts. Mark the pull request Ready for review to run it; merge only after it shows green (not skipped) on the final commit."
+          echo "### Draft pull request: Application verify skipped. Mark Ready for review to run it; merge only after it is green on the final commit." >> "$GITHUB_STEP_SUMMARY"
       - name: Verify edge recovery plan guard
         run: python3 scripts/aws/check-edge-plan.test.py
       - name: Verify edge recovery distribution inventory contract
@@ -281,7 +289,8 @@ jobs:
   application:
     name: Application verify
     needs: remote-execution-contract
-    if: needs.remote-execution-contract.outputs.application == 'true'
+    # Cost cut 1: not on a draft pull request; it runs on "Ready for review" and on every push after that.
+    if: needs.remote-execution-contract.outputs.application == 'true' && !(github.event_name == 'pull_request' && github.event.pull_request.draft)
     runs-on: ubuntu-latest
     # The full unit suite (7,000+ tests) takes 15-22 minutes on a hosted runner; 25 cut a passing run.
     timeout-minutes: 40
@@ -361,7 +370,8 @@ jobs:
     name: Terraform plan guard tests
     needs: remote-execution-contract
     # Cost cut 4: when Application verify runs, it runs these same guard tests; this job then has nothing to do.
-    if: needs.remote-execution-contract.outputs.guard == 'true' && needs.remote-execution-contract.outputs.application != 'true'
+    # On a draft (cost cut 1) Application verify does not run, so this job runs the guard tests instead.
+    if: needs.remote-execution-contract.outputs.guard == 'true' && (needs.remote-execution-contract.outputs.application != 'true' || (github.event_name == 'pull_request' && github.event.pull_request.draft))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

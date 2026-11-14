@@ -31,6 +31,9 @@ all() {
 ci_passed() {
   # Round DB (Actions minutes): a PR branch is checked by its pull_request run (no push run any more), so either event
   # counts. The newest such run on that exact commit decides.
+  # Cost cut 1 (14 Nov): a draft's run passes without Application verify. It never stands in for a full run: a draft
+  # cannot be merged, and "Ready for review" starts a new run on the same commit, which is then the newest; until that
+  # run has passed, this reads in_progress, cancelled or failure, and everything runs.
   local api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$1&per_page=100"
   curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$api" \
     | jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI" and (.event == "push" or .event == "pull_request"))][0].conclusion // "missing"' \
