@@ -230,6 +230,14 @@ test('live checks run once per deploy, not on every push; read-only checks cance
   assert.match(job.slice(start), /for workflow in aws-remote-verify\.yml aws-google-auth-live-verify\.yml aws-logo-browser-verify\.yml; do/)
 })
 
+// Cost cut 8 (owner-approved 14 Nov): Application CI cancels superseded runs and caches ~/.npm; same install command.
+test('Application CI: superseded runs cancel and ~/.npm is cached', () => {
+  const text = byName['ci.yml']
+  assert.match(text, /^concurrency:\n  group: application-ci-\$\{\{ github\.ref \}\}\n  cancel-in-progress: true$/m)
+  assert.match(text, /          cache: npm\n          cache-dependency-path: \|\n            package\.json\n            package-lock\.json\n            \.github\/workflows\/ci\.yml\n/)
+  assert.match(text, /run: npm install\n/, 'same install command')
+})
+
 // Cost cut 7 (owner-approved 14 Nov): proved first on ONE guarded workflow's gate job before any other switches.
 test('cut 7 proof: the P6 runner gate runs on ubuntu-slim and checks its tools first', () => {
   const text = byName['aws-p6-job-extra-ranks-migration.yml']
