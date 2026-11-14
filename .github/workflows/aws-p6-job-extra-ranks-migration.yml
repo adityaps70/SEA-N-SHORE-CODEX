@@ -43,7 +43,9 @@ concurrency:
 jobs:
   apply-gate:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
-    runs-on: ubuntu-latest
+    # Cost cut 7 proof (owner-approved 14 Nov): this gate-only job on the 1-vCPU ubuntu-slim runner ($0.002/min, a
+    # third of ubuntu-latest; 15-minute job limit). Every other workflow switches only if this run shows its tools.
+    runs-on: ubuntu-slim
     permissions:
       contents: read
       pull-requests: read
@@ -52,6 +54,15 @@ jobs:
       skip: ${{ steps.plan_scope.outputs.skip }}
     timeout-minutes: 10
     steps:
+      # Cost cut 7 proof: the tools this gate uses must be on ubuntu-slim; a missing one fails the gate (it refuses).
+      - name: Check the gate's tools (ubuntu-slim)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in bash curl jq python3 git; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool is missing on this runner"; exit 1; }
+          done
+          echo "CUT7_TOOLS bash=${BASH_VERSION} curl=$(curl --version | head -1 | cut -d' ' -f2) $(jq --version) python3=$(python3 -c 'import platform; print(platform.python_version())') $(git --version)"
       - name: Checkout the guard file
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
