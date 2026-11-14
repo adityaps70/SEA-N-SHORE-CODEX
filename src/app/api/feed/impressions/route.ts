@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
-import { MAX_IMPRESSIONS_PER_REQUEST, incrementRankingMetric, signalsRepository } from '@/features/signals/repository'
+import { impressionsMetric } from '@/features/signals/buffered-metric'
+import { MAX_IMPRESSIONS_PER_REQUEST, signalsRepository } from '@/features/signals/repository'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
 import { isSameSiteRequest } from '@/lib/http/same-origin'
 
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' }
 
-/** The client batches about every 5 s and flushes on pagehide, so 60 requests a minute is generous. */
+/** The client batches every 15-30 s and flushes on pagehide, so 60 requests a minute is generous. */
 const allow = createPublicPageRateLimiter({ windowMs: 60_000, maxPerWindow: 60 })
 
 const bodySchema = z.object({
@@ -38,7 +39,8 @@ export async function POST(request: Request) {
     const user = await requireAwsUser()
     if (!allow(user.id)) return new Response(null, { status: 429, headers: { ...NO_STORE, 'Retry-After': '30' } })
     const written = await signalsRepository.recordImpressions(user.id, parsed.data.postIds)
-    void incrementRankingMetric('feed.impressions', written)
+    // Round CAP: summed in memory and written once a minute (signals/buffered-metric.ts).
+    impressionsMetric.add(written)
     return new Response(null, { status: 204, headers: NO_STORE })
   } catch (error) {
     if (error instanceof AwsAuthenticationRequiredError) return new Response(null, { status: 401, headers: NO_STORE })

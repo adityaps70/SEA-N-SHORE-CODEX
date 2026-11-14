@@ -7,7 +7,7 @@ import type { NetworkProfile } from '@/features/network/types'
 import { useSuggestionDeck } from '@/features/network/components/suggestion-deck'
 import { useRealtimeAwarePoll } from '@/features/realtime/use-realtime-aware-poll'
 import { countNewTopPosts, loadRecentFeedPage, loadTopFeedPage, setFeedMode } from '../actions'
-import { usePostImpressions } from '../impressions/use-post-impressions'
+import { flushPendingImpressions, usePostImpressions } from '../impressions/use-post-impressions'
 import { postLoadingPriority } from '../post-loading-priority'
 import type { FeedCursor, FeedMode, FeedPage, FeedPost, PostCategory, TopFeedState } from '../types'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
@@ -264,7 +264,8 @@ export function HomeFeed({
   function showNewPosts() {
     setNewCount(0)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    void (mode === 'top' ? loadTop(true) : loadRecent(true))
+    // Round CAP: a new visit starts after what was just seen has reached the server, so it is not shown again.
+    void (mode === 'top' ? flushPendingImpressions().then(() => loadTop(true)) : loadRecent(true))
   }
 
   function changeMode(next: FeedMode) {
@@ -278,7 +279,7 @@ export function HomeFeed({
     startSwitching(async () => {
       await setFeedMode(next)
     })
-    void (next === 'top' ? loadTop(true) : loadRecent(true))
+    void (next === 'top' ? flushPendingImpressions().then(() => loadTop(true)) : loadRecent(true))
   }
 
   const peoplePositions = peopleRowPositions(posts.length)
