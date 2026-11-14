@@ -79,7 +79,8 @@ assert.ok(PROBE_ORG_NAME && PROBE_ORG_NAME.length <= 120 && !/["\\]/.test(PROBE_
 
 const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbhealth', 'cost']
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
-const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d']
+// Owner (14 Nov): the home feed's share needs the people-online counts over the same window (caponline).
+const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d', 'caponline']
 const SECTIONS = COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
   (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
