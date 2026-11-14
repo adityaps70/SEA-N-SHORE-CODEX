@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { loadSharedExtraRanks } from '@/features/jobs/extra-ranks-repository'
 import Link from 'next/link'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
@@ -82,6 +83,7 @@ export default async function EditHiringJobPage({
         initial={job}
         publishLabel={publishLabel}
         draftOwnerId={user.id}
+        sharedExtras={await loadSharedExtraRanks()}
         notice={query.notice === 'draft' && job.status === 'draft' ? 'draft' : null}
       />
     </div>

@@ -24,6 +24,26 @@ export type JobRoleSelection = {
 export type JobRoleResult = { ok: true; data: JobRoleSelection } | { ok: false; error: string }
 
 /**
+ * P6: an accepted rank may come from any department ("Add ranks from other departments"), as long as it is an
+ * existing rank. "Other" is only ever the job's own department's (an older job keeps its typed text); new jobs can
+ * no longer type a rank.
+ */
+export function isAcceptableJobRoleKey(departmentKey: string, key: string): boolean {
+  const role = roleByKey(key)
+  if (!role) return false
+  return role.other ? role.department === departmentKey : true
+}
+
+/** P6: the accepted ranks that come from other departments than the job's (its shared "extras"). */
+export function extraRoleKeys(departmentKey: string | null | undefined, keys: readonly string[]): string[] {
+  if (!departmentKey) return []
+  return keys.filter((key) => {
+    const role = roleByKey(key)
+    return Boolean(role && !role.other && role.department !== departmentKey)
+  })
+}
+
+/**
  * Checks a job's department, accepted ranks / roles and minimum match against the taxonomy
  * (round 12). New jobs need a department and at least one accepted rank; an older job being edited
  * may still have none and keeps its old text until a department is picked.
@@ -56,9 +76,8 @@ export function validateJobRoles(
   if (!keys.length) return { ok: false, error: 'Choose at least one accepted rank / role.' }
   if (keys.length > 20) return { ok: false, error: 'Choose no more than 20 accepted ranks / roles.' }
   for (const key of keys) {
-    const role = roleByKey(key)
-    if (!role || role.department !== departmentKey) {
-      return { ok: false, error: 'Choose accepted ranks / roles from the list for this department.' }
+    if (!isAcceptableJobRoleKey(departmentKey, key)) {
+      return { ok: false, error: 'Choose accepted ranks / roles from the list.' }
     }
   }
 
@@ -96,7 +115,7 @@ export function draftJobRoles(fields: JobRoleFields, context: { domain: RoleDoma
   const department = key && jobDepartments().some((entry) => entry.key === key) ? departmentByKey(key) ?? null : null
   const acceptedRoleKeys = department
     ? [...new Set((fields.acceptedRoleKeys ?? []).map((entry) => entry.trim()))]
-      .filter((entry) => roleByKey(entry)?.department === department.key)
+      .filter((entry) => isAcceptableJobRoleKey(department.key, entry))
       .slice(0, 20)
     : []
   const otherText = fields.roleOtherText?.trim().replace(/\s+/g, ' ') || null

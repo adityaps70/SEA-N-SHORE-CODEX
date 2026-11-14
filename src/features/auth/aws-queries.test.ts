@@ -146,6 +146,28 @@ describe('AWS auth queries', () => {
     expect(provisionProfileId).not.toHaveBeenCalled()
   })
 
+  it('resolves the member once per Server Action call inside actionScope, and again in the next call (Round CAP)', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+    const { createAwsAuthQueries, actionAwareVerificationCache } = await import('./aws-queries')
+    const { actionScope } = await import('@/lib/server/action-scope')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus, cacheVerifiedUser: actionAwareVerificationCache })
+
+    // One action whose helpers each ask for the member (as loadFeedPage and addComment did twice, share four times).
+    await actionScope(async () => {
+      await queries.requireAwsUser()
+      await queries.getAwsVerifiedUser()
+      await Promise.all([queries.requireAwsUser(), queries.requireAwsUser()])
+    })
+    expect(getPrincipal).toHaveBeenCalledTimes(1)
+    expect(resolveProfileId).toHaveBeenCalledTimes(1)
+    // A second action call resolves afresh: nothing is kept between calls.
+    await actionScope(async () => { await queries.requireAwsUser() })
+    expect(getPrincipal).toHaveBeenCalledTimes(2)
+  })
+
   it('rejects suspended and deleted profiles even when their Cognito access token is still valid', async () => {
     const getPrincipal = vi.fn(async () => principal)
     const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')

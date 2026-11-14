@@ -7,7 +7,7 @@ import { useState, useTransition, type ReactNode } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
 import { JOB_DISCOVERY_MODES, MARITIME_CERTIFICATES, VESSEL_TYPES } from '../catalog'
 import { jobDepartments, roleByKey, rolesFor } from '@/features/roles/taxonomy'
-import { JOB_JOINING_WINDOWS, JOB_SORT_OPTIONS, activeJobFilters } from '../filter-state'
+import { JOB_JOINING_WINDOWS, JOB_SORT_OPTIONS, activeJobFilters, jobModeHref } from '../filter-state'
 import type { JobSearchFilters } from '../types'
 import { CHIP_ROW_CLASS, PHONE_OUTLINE_BUTTON, PHONE_PRIMARY_BUTTON, chipClass } from './mobile-chip'
 import { SheetPortal } from './sheet-portal'
@@ -182,7 +182,7 @@ export function JobsMobileToolbar({ filters, resultCount, signedOut = false }: J
         {JOB_DISCOVERY_MODES.map((mode) => (
           <Link
             key={mode.value}
-            href={`/jobs?mode=${mode.value}`}
+            href={jobModeHref(searchParams.toString(), mode.value)}
             aria-current={filters.mode === mode.value ? 'page' : undefined}
             className={chipClass(filters.mode === mode.value)}
           >

@@ -27,9 +27,21 @@ export function activeJobFilters(filters: JobSearchFilters): ActiveJobFilter[] {
 export const JOB_SORT_OPTIONS = [
   { value: 'recommended', label: 'Recommended' },
   { value: 'best', label: 'Best match' },
-  { value: 'recent', label: 'Newest' },
+  { value: 'recent', label: 'Newest first' },
   { value: 'joining', label: 'Joining soonest' },
   { value: 'salary', label: 'Highest salary' },
 ] as const
 
 export const JOB_JOINING_WINDOWS = [7, 14, 30, 60] as const
+
+/**
+ * Bug fix (13 Nov): the href of a discovery chip (For You, Sea Jobs, Urgent Joining, Recently Posted…). It keeps
+ * the current search words, filters and sort, so a chip combines with them, and starts again at page 1. A link
+ * (not a replace), so Back returns to the chip before.
+ */
+export function jobModeHref(current: URLSearchParams | string, mode: string) {
+  const params = new URLSearchParams(typeof current === 'string' ? current : current.toString())
+  params.delete('page')
+  params.set('mode', mode)
+  return `/jobs?${params.toString()}`
+}

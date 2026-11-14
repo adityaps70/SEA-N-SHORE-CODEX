@@ -70,6 +70,25 @@ describe('jobs search filters', () => {
     expect(parseJobSearchParams({ mode: 'urgent' })).toMatchObject({ mode: 'urgent', urgentOnly: true })
     expect(parseJobSearchParams({ mode: 'recent' })).toMatchObject({ mode: 'recent', postedWithinDays: 7 })
   })
+
+  it('sorts Recently Posted newest first even when the sort says Recommended or Best match (bug fix, 13 Nov)', () => {
+    expect(parseJobSearchParams({ mode: 'recent' }).sort).toBe('recent')
+    expect(parseJobSearchParams({ mode: 'recent', sort: 'recommended' }).sort).toBe('recent')
+    expect(parseJobSearchParams({ mode: 'recent', sort: 'best' }).sort).toBe('recent')
+    // A sort the member chose on purpose still applies; other chips keep the default.
+    expect(parseJobSearchParams({ mode: 'recent', sort: 'salary' }).sort).toBe('salary')
+    expect(parseJobSearchParams({ mode: 'urgent' }).sort).toBe('recommended')
+    expect(parseJobSearchParams({ mode: 'urgent', sort: 'recent' })).toMatchObject({ urgentOnly: true, sort: 'recent' })
+  })
+})
+
+describe('discovery chip links (bug fix, 13 Nov)', () => {
+  it('keep the search words, filters and sort, set the chip and start again at page 1', async () => {
+    const { jobModeHref } = await import('./filter-state')
+    expect(jobModeHref('mode=for-you&q=tanker&department=deck_officers&sort=salary&page=3', 'urgent')).toBe('/jobs?mode=urgent&q=tanker&department=deck_officers&sort=salary')
+    expect(jobModeHref(new URLSearchParams(''), 'recent')).toBe('/jobs?mode=recent')
+    expect(jobModeHref('rank=master&rank=chief_officer', 'sea')).toBe('/jobs?rank=master&rank=chief_officer&mode=sea')
+  })
 })
 
 describe('department and rank filters (round 12)', () => {

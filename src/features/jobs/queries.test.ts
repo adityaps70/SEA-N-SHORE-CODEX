@@ -140,6 +140,32 @@ describe('jobs for you v2 (round G, behind the jobs switch)', () => {
     expect(pages.map((page) => page.hasMore)).toEqual([true, false, false])
   })
 
+  it('lists Recently Posted strictly newest first from SQL, own and applied jobs included (bug fix, 13 Nov)', async () => {
+    const { repository, queries } = v2Queries(['job-01'])
+    // The member's own posted job, published a minute ago, is first: SQL orders by publish time.
+    const own = { ...job, id: 'own-job', publishedAt: new Date(Date.now() - 60_000).toISOString(), acceptedRoleKeys: ['master'] }
+    repository.searchJobs.mockResolvedValue([own, ...many.slice(0, 5)])
+    const result = await queries.getJobsDiscovery({ mode: 'recent' })
+    expect(repository.searchJobs).toHaveBeenCalledWith(expect.objectContaining({ mode: 'recent', sort: 'recent', postedWithinDays: 7 }), 21, 0)
+    expect(result.filters.sort).toBe('recent')
+    expect(result.items.map((item) => item.job.id)).toEqual(['own-job', 'job-00', 'job-01', 'job-02', 'job-03', 'job-04'])
+  })
+
+  it('under Recommended (any chip), never puts a not-eligible job above an eligible one; newer first at equal relevance', async () => {
+    const { queries } = v2Queries()
+    const pages = await Promise.all(['1', '2', '3'].map((page) => queries.getJobsDiscovery({ mode: 'sea', sort: 'recommended', page })))
+    const items = pages.flatMap((page) => page.items)
+    expect(items).toHaveLength(45)
+    const firstIneligible = items.findIndex((item) => item.match?.eligible === false)
+    expect(firstIneligible).toBeGreaterThan(0)
+    expect(items.slice(firstIneligible).every((item) => item.match?.eligible === false)).toBe(true)
+    const eligible = items.filter((item) => item.match?.eligible !== false)
+    const sameScore = eligible.filter((item) => item.match?.score === eligible[0]!.match?.score)
+    expect(sameScore.length).toBeGreaterThan(1)
+    const dates = sameScore.map((item) => Date.parse(item.job.publishedAt!))
+    expect(dates).toEqual([...dates].sort((a, b) => b - a))
+  })
+
   it('pages other sorts in SQL', async () => {
     const { repository, queries } = v2Queries()
     await queries.getJobsDiscovery({ mode: 'sea', sort: 'recent', page: '2' })
@@ -160,6 +186,21 @@ describe('jobs for you without the ranking switch (Round H, H2)', () => {
     const search = await queries.getJobsDiscovery({ mode: 'for-you', q: 'officer' })
     expect(forYou.items.map((item) => item.job.id)).toEqual([])
     expect(search.items.map((item) => item.job.id)).toEqual(['sea-job'])
+  })
+
+  it('puts eligible jobs above not-eligible ones under Recommended without the switch too (bug fix, 13 Nov)', async () => {
+    const repository = makeRepository()
+    repository.getCandidateProfile.mockResolvedValue({ ...profile, persona: 'seafarer', roleKey: 'chief_officer' })
+    // The not-eligible job (a Third Officer one) is newer and would otherwise sort first on an equal score.
+    repository.searchJobs.mockResolvedValue([
+      { ...job, id: 'not-eligible', acceptedRoleKeys: ['third_officer'], publishedAt: '2026-09-12T10:00:00.000Z' },
+      { ...job, id: 'eligible', acceptedRoleKeys: ['chief_officer'], publishedAt: '2026-09-01T10:00:00.000Z' },
+    ])
+    repository.getSavedJobIds.mockResolvedValue([])
+    repository.getAppliedJobIds.mockResolvedValue([])
+    const queries = createJobsQueries({ requireUser: async () => ({ id: 'viewer-1' } as never), repository: repository as never, ranking: { isEnabled: async () => false } })
+    const result = await queries.getJobsDiscovery({ mode: 'sea', q: 'officer' })
+    expect(result.items.map((item) => item.job.id)).toEqual(['eligible', 'not-eligible'])
   })
 
   it('gives signed-out visitors live jobs by newest, without a match or member state (round H, H5)', async () => {

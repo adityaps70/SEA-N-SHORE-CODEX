@@ -280,3 +280,54 @@ describe('match display bands (round 12)', () => {
     expect(jobMatchDisplay(result(40))?.showInList).toBe(true)
   })
 })
+
+describe('P6: ranks from other departments on a job', () => {
+  // An HSEQ & Vetting (shore) job that also accepts Master and Chief Officer, each judged on its own deck ladder.
+  const hseqJob = (overrides: Partial<JobListing> = {}) => seaJob({
+    title: 'Marine Assurance Superintendent',
+    department: 'HSEQ & Vetting',
+    rank: 'Vetting Manager / Inspector, Master / Captain, Chief Officer',
+    departmentKey: 'hseq_vetting',
+    domain: 'shore',
+    acceptedRoleKeys: ['vetting_manager', 'master', 'chief_officer'],
+    ...overrides,
+  })
+
+  it('gives a Chief Officer and a Master full rank credit, and a Second Officer only the one-level-below cap', () => {
+    for (const roleKey of ['chief_officer', 'master']) {
+      const result = scoreJobMatch(hseqJob(), seafarer({ roleKey }), today)
+      expect(result.reasons.join(' '), roleKey).toMatch(/is one this job accepts/)
+      expect(result.missingRequirements, roleKey).toEqual([])
+    }
+    const second = scoreJobMatch(hseqJob(), seafarer({ roleKey: 'second_officer' }), today)
+    expect(second.score).toBeLessThanOrEqual(60)
+    expect(second.missingRequirements).toContain('Chief Officer')
+    expect(second.reasons.join(' ')).not.toMatch(/this job accepts|fits the ranks/)
+  })
+
+  it('never compares across ladders: a Chief Engineer gets no rank credit from the deck extras', () => {
+    const result = scoreJobMatch(hseqJob(), seafarer({ roleKey: 'chief_engineer' }), today)
+    expect(result.score).toBeLessThanOrEqual(20)
+  })
+
+  it('leaves matching for jobs without extras exactly as before (5-job snapshot)', () => {
+    const jobs: Array<[string, JobListing]> = [
+      ['master', seaJob()],
+      ['chief officer, oil tanker', seaJob({ acceptedRoleKeys: ['chief_officer'], rank: 'Chief Officer', vesselTypes: ['Oil Tanker'] })],
+      ['second engineer', seaJob({ departmentKey: 'engine_officers', department: 'Engine officers', acceptedRoleKeys: ['second_engineer'], rank: 'Second Engineer' })],
+      ['cook', seaJob({ departmentKey: 'catering', department: 'Catering', acceptedRoleKeys: ['cook'], rank: 'Cook' })],
+      ['older text-only job', seaJob({ departmentKey: null, department: 'Deck', acceptedRoleKeys: [], rank: 'Chief Officer' })],
+    ]
+    const people = ['master', 'chief_officer', 'second_officer', 'second_engineer', 'cook']
+    const table = jobs.map(([name, listing]) => `${name}: ${people.map((roleKey) => `${roleKey}=${scoreJobMatch(listing, seafarer({ roleKey, vesselTypes: ['Oil Tanker'] }), today).score}`).join(' ')}`)
+    expect(table).toMatchInlineSnapshot(`
+      [
+        "master: master=100 chief_officer=50 second_officer=0 second_engineer=0 cook=0",
+        "chief officer, oil tanker: master=100 chief_officer=100 second_officer=60 second_engineer=20 cook=20",
+        "second engineer: master=0 chief_officer=0 second_officer=0 second_engineer=100 cook=0",
+        "cook: master=0 chief_officer=0 second_officer=0 second_engineer=0 cook=100",
+        "older text-only job: master=100 chief_officer=100 second_officer=50 second_engineer=0 cook=0",
+      ]
+    `)
+  })
+})

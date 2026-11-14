@@ -8,6 +8,8 @@ import { scoreJobV2 } from '@/features/ranking/job-scorer'
 import { PERSONAS, type Persona } from '@/features/profiles/persona'
 import { jobDepartmentDisplay, jobRankDisplay, roleDisplayLabel } from '@/features/roles/taxonomy'
 import { matchPersonaSql } from '@/features/roles/sql'
+import { extraRoleKeys } from '@/features/roles/job-role-input'
+import { refreshDepartmentExtraRanks } from './extra-ranks-repository'
 import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
 import type { JobLifecycleSnapshot } from './job-lifecycle'
@@ -1300,6 +1302,8 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       )
       const jobId = typeof rows[0]?.id === 'string' ? rows[0].id : null
       if (!jobId) throw new Error('job_create_failed')
+      // P6: ranks from other departments become shared tick boxes under this department for every poster.
+      await refreshDepartmentExtraRanks(txQuery as never, job.departmentKey ?? null, extraRoleKeys(job.departmentKey, job.acceptedRoleKeys ?? []))
 
       for (const certificate of cleanRequirements(job.certificates)) {
         await txQuery(
@@ -1323,7 +1327,8 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   async function requireAuthorizedJob(query: HiringQuery, userId: string, jobId: string) {
     const rows = await query(
-      `select j.id, j.company_id, j.created_by_user_id, j.status::text as status, j.urgent
+      `select j.id, j.company_id, j.created_by_user_id, j.status::text as status, j.urgent,
+              j.department_key, j.accepted_role_keys
        from public.jobs j
        left join public.company_members cm
          on cm.company_id = j.company_id and cm.user_id = $2
@@ -1415,6 +1420,15 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
         ],
       )
       if (!updated[0]) throw new Error('job_state_changed')
+      if (job.departmentKey !== undefined || job.acceptedRoleKeys !== undefined) {
+        // P6: recount the department's shared extras for what this edit added and what it removed.
+        const previousDepartment = typeof current.department_key === 'string' ? current.department_key : null
+        const previousKeys = Array.isArray(current.accepted_role_keys) ? current.accepted_role_keys.map(String) : []
+        await refreshDepartmentExtraRanks(txQuery as never, job.departmentKey ?? null, extraRoleKeys(job.departmentKey, job.acceptedRoleKeys ?? []), {
+          departmentKey: previousDepartment,
+          extras: extraRoleKeys(previousDepartment, previousKeys),
+        })
+      }
       await replaceJobRequirements(txQuery, jobId, job.certificates, job.visas)
     })
   }
@@ -1487,11 +1501,15 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
            and status = $3::public.job_listing_status
            and status <> 'published'::public.job_listing_status
            and deleted_at is null
-         returning id`,
+         returning id, department_key, accepted_role_keys`,
         [jobId, userId, expectedStatus],
       )
       if (!deleted[0]) throw new Error('job_state_changed')
       await txQuery('delete from public.job_saves where job_id = $1', [jobId])
+      // P6: a deleted job no longer counts towards its department's shared extra ranks.
+      const gone = deleted[0] as { department_key?: string | null; accepted_role_keys?: string[] | null }
+      const goneDepartment = gone.department_key ?? null
+      await refreshDepartmentExtraRanks(txQuery as never, goneDepartment, [], { departmentKey: goneDepartment, extras: extraRoleKeys(goneDepartment, gone.accepted_role_keys ?? []) })
     })
   }
 

@@ -11,6 +11,7 @@ import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { NotInterestedItem } from '@/features/jobs/components/not-interested'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { JOB_DISCOVERY_MODES } from '@/features/jobs/catalog'
+import { jobModeHref } from '@/features/jobs/filter-state'
 import { jobsIndexMetadata } from '@/features/jobs/job-seo'
 import { getJobsDiscovery, getSignedOutJobsDiscovery, type JobDiscoveryItem } from '@/features/jobs/queries'
 import { authHrefWithReturn } from '@/lib/auth/return-path'
@@ -77,7 +78,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     : filters.sort === 'best'
       ? 'Best match'
       : filters.sort === 'recent'
-      ? 'Newest'
+      ? 'Newest first'
       : filters.sort === 'joining'
         ? 'Joining soonest'
         : 'Highest salary'
@@ -116,7 +117,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       {signedOut ? null : <JobsSubnav active="discover" className="max-md:hidden" />}
 
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1 max-md:hidden">
-        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{signedOut && mode.value === 'for-you' ? 'All jobs' : mode.label}</Link>)}
+        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={jobModeHref(serialize(rawParams), mode.value)} aria-current={filters.mode === mode.value ? 'page' : undefined} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{signedOut && mode.value === 'for-you' ? 'All jobs' : mode.label}</Link>)}
       </div>
 
       {!profileReady && !signedOut ? <div className="mt-4 rounded-2xl max-md:mt-2 border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
@@ -127,7 +128,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 max-md:mb-0 max-md:-mx-4 max-md:flex-nowrap max-md:border-t max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:pt-4">
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-navy-950 md:hidden">{signedOut ? 'Latest jobs' : filters.mode === 'for-you' ? 'Top picks for you' : 'Jobs for you'}</h2>
+              <h2 className="text-lg font-bold text-navy-950 md:hidden">{signedOut ? 'Latest jobs' : filters.mode === 'for-you' ? 'Top picks for you' : filters.mode === 'recent' ? 'Recently posted' : 'Jobs for you'}</h2>
               <p className="text-sm font-semibold text-navy-950 max-md:text-[13px] max-md:font-normal max-md:text-muted">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}<span className="md:hidden"> · {sortLabel}</span></p>
               <p className="mt-0.5 text-xs font-semibold text-navy-700 max-md:hidden">Sort by: {sortLabel}</p>
               <p className="mt-0.5 text-xs text-muted max-md:hidden">{sortCaption}</p>

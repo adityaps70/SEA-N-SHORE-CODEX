@@ -1,5 +1,6 @@
 'use server'
 
+import { actionScope } from '@/lib/server/action-scope'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -176,63 +177,66 @@ export async function updateProfileIdentitySection(
   previousState: ProfileInlineActionState,
   submittedForm: FormData,
 ): Promise<ProfileInlineActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-
-  // Round 12: Department → Rank / Role pickers; the rank text follows the picked rank.
-  const applied = applyProfileRoleFields(submittedForm, submittedPersona(profile, submittedForm))
-  if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
-  const formData = applied.formData
-
-  const parsed = profileIdentitySectionSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return validationFailure(previousState, parsed.error)
-
-  const organisationAccount = profile.identityRoot === 'organisation'
-  let preferences: ProfileCardPreferences | undefined
-  if (!organisationAccount && formData.has('persona')) {
-    const read = readCardPreferences(profile, formData, savedIntents(profile))
-    if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
-    preferences = read.preferences
-  }
-
-  let identity = parsed.data
-  try {
-    const linked = await resolveCurrentOrganizationLink(parsed.data, organizationLinkRepository, { userId: user.id })
-    if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
-    identity = linked.data
-  } catch {
-    return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
-  }
-
-  const moderation = assessProfileSection({ ...identity, ...preferences?.data, ...preferences?.retained })
-  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
-
-  const persona = preferences?.data.persona ?? profile.persona
-  try {
-    await updateProfileIdentitySectionWithAurora(
-      user.id,
-      identity,
-      // Round 10: a saved organization stays editable even when the persona does not ask for one.
-      (persona ? personaUsesProfessionalCompany(persona) : true) || formData.has('currentCompany'),
-      preferences
-        ? { rankSubmitted: formData.has('rank'), preferences, ...withRole(applied.role) }
-        : { rankSubmitted: formData.has('rank'), ...withRole(applied.role) },
-    )
-    await flagProfileModeration(user.id, moderation)
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return nextFailure(previousState, { fieldErrors: { slug: ['That username is already in use.'] } })
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+  
+    // Round 12: Department → Rank / Role pickers; the rank text follows the picked rank.
+    const applied = applyProfileRoleFields(submittedForm, submittedPersona(profile, submittedForm))
+    if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
+    const formData = applied.formData
+  
+    const parsed = profileIdentitySectionSchema.safeParse(Object.fromEntries(formData))
+    if (!parsed.success) return validationFailure(previousState, parsed.error)
+  
+    const organisationAccount = profile.identityRoot === 'organisation'
+    let preferences: ProfileCardPreferences | undefined
+    if (!organisationAccount && formData.has('persona')) {
+      const read = readCardPreferences(profile, formData, savedIntents(profile))
+      if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
+      preferences = read.preferences
     }
-    if (isServiceError(error, 'username_change_limit')) {
-      return nextFailure(previousState, { fieldErrors: { slug: ['You have used both username changes. Your username is now locked.'] } })
+  
+    let identity = parsed.data
+    try {
+      const linked = await resolveCurrentOrganizationLink(parsed.data, organizationLinkRepository, { userId: user.id })
+      if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
+      identity = linked.data
+    } catch {
+      return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
     }
-    return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
-  }
-
-  revalidateProfilePaths(profile.slug)
-  if (parsed.data.slug !== profile.slug) revalidatePath(`/people/${parsed.data.slug}`)
-  return successState(previousState)
+  
+    const moderation = assessProfileSection({ ...identity, ...preferences?.data, ...preferences?.retained })
+    if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+  
+    const persona = preferences?.data.persona ?? profile.persona
+    try {
+      await updateProfileIdentitySectionWithAurora(
+        user.id,
+        identity,
+        // Round 10: a saved organization stays editable even when the persona does not ask for one.
+        (persona ? personaUsesProfessionalCompany(persona) : true) || formData.has('currentCompany'),
+        preferences
+          ? { rankSubmitted: formData.has('rank'), preferences, ...withRole(applied.role) }
+          : { rankSubmitted: formData.has('rank'), ...withRole(applied.role) },
+      )
+      await flagProfileModeration(user.id, moderation)
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return nextFailure(previousState, { fieldErrors: { slug: ['That username is already in use.'] } })
+      }
+      if (isServiceError(error, 'username_change_limit')) {
+        return nextFailure(previousState, { fieldErrors: { slug: ['You have used both username changes. Your username is now locked.'] } })
+      }
+      return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
+    }
+  
+    revalidateProfilePaths(profile.slug)
+    if (parsed.data.slug !== profile.slug) revalidatePath(`/people/${parsed.data.slug}`)
+    return successState(previousState)
+  })
 }
 
 /**
@@ -243,65 +247,68 @@ export async function updateProfileGoalsSection(
   previousState: ProfileInlineActionState,
   submittedForm: FormData,
 ): Promise<ProfileInlineActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-
-  const applied = applyProfileRoleFields(submittedForm, submittedPersona(profile, submittedForm))
-  if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
-  const formData = applied.formData
-
-  const intents = formData.get('profileIntents')
-  const read = readCardPreferences(profile, formData, typeof intents === 'string' ? intents : '')
-  if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
-  const preferences = read.preferences
-  if (!preferences) {
-    // An older profile that kept its profile type can still pick its rank / role.
-    if (applied.role) {
-      try {
-        await updateProfileGoalsSectionWithAurora(user.id, null, { role: applied.role })
-      } catch {
-        return nextFailure(previousState, { error: 'We could not save your profile type and goals. Please try again.' })
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+  
+    const applied = applyProfileRoleFields(submittedForm, submittedPersona(profile, submittedForm))
+    if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
+    const formData = applied.formData
+  
+    const intents = formData.get('profileIntents')
+    const read = readCardPreferences(profile, formData, typeof intents === 'string' ? intents : '')
+    if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
+    const preferences = read.preferences
+    if (!preferences) {
+      // An older profile that kept its profile type can still pick its rank / role.
+      if (applied.role) {
+        try {
+          await updateProfileGoalsSectionWithAurora(user.id, null, { role: applied.role })
+        } catch {
+          return nextFailure(previousState, { error: 'We could not save your profile type and goals. Please try again.' })
+        }
+        revalidateProfilePaths(profile.slug)
       }
-      revalidateProfilePaths(profile.slug)
+      return successState(previousState)
     }
-    return successState(previousState)
-  }
-
-  const rankSubmitted = formData.has('rank')
-  const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: formData.get('rank') }) : null
-  if (rank && !rank.success) return validationFailure(previousState, rank.error)
-
-  let organization: { currentCompany?: string; currentCompanyId?: string } | undefined
-  if (formData.has('currentCompany') && profile.identityRoot !== 'organisation') {
-    const submitted = organizationFieldsSchema.safeParse(Object.fromEntries(formData))
-    if (!submitted.success) return validationFailure(previousState, submitted.error)
+  
+    const rankSubmitted = formData.has('rank')
+    const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: formData.get('rank') }) : null
+    if (rank && !rank.success) return validationFailure(previousState, rank.error)
+  
+    let organization: { currentCompany?: string; currentCompanyId?: string } | undefined
+    if (formData.has('currentCompany') && profile.identityRoot !== 'organisation') {
+      const submitted = organizationFieldsSchema.safeParse(Object.fromEntries(formData))
+      if (!submitted.success) return validationFailure(previousState, submitted.error)
+      try {
+        const linked = await resolveCurrentOrganizationLink(submitted.data, organizationLinkRepository, { userId: user.id })
+        if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
+        organization = linked.data
+      } catch {
+        return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
+      }
+    }
+  
+    const moderation = assessProfileSection({ ...preferences.data, ...preferences.retained, ...organization, rank: rank?.data?.rank })
+    if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+  
     try {
-      const linked = await resolveCurrentOrganizationLink(submitted.data, organizationLinkRepository, { userId: user.id })
-      if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
-      organization = linked.data
+      await updateProfileGoalsSectionWithAurora(user.id, preferences, {
+        organization,
+        rankSubmitted,
+        rank: rank?.success ? rank.data.rank : undefined,
+        ...withRole(applied.role),
+      })
+      await flagProfileModeration(user.id, moderation)
     } catch {
-      return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
+      return nextFailure(previousState, { error: 'We could not save your profile type and goals. Please try again.' })
     }
-  }
-
-  const moderation = assessProfileSection({ ...preferences.data, ...preferences.retained, ...organization, rank: rank?.data?.rank })
-  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
-
-  try {
-    await updateProfileGoalsSectionWithAurora(user.id, preferences, {
-      organization,
-      rankSubmitted,
-      rank: rank?.success ? rank.data.rank : undefined,
-      ...withRole(applied.role),
-    })
-    await flagProfileModeration(user.id, moderation)
-  } catch {
-    return nextFailure(previousState, { error: 'We could not save your profile type and goals. Please try again.' })
-  }
-
-  revalidateProfilePaths(profile.slug)
-  return successState(previousState)
+  
+    revalidateProfilePaths(profile.slug)
+    return successState(previousState)
+  })
 }
 
 const organizationFieldsSchema = z.object({
@@ -321,105 +328,114 @@ export async function updateProfileCurrentOrganization(
   previousState: ProfileInlineActionState,
   formData: FormData,
 ): Promise<ProfileInlineActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-  if (profile.identityRoot === 'organisation') {
-    return nextFailure(previousState, { error: 'Organisation accounts do not show a current organization.' })
-  }
-
-  const choice = formData.get('currentOrganization')
-  if (choice === 'keep') return successState(previousState)
-
-  let organization: { currentCompany?: string; currentCompanyId?: string }
-  if (choice === 'none') {
-    organization = {}
-  } else {
-    const id = optionalOrganizationIdSchema.safeParse(choice)
-    if (!id.success || !id.data) {
-      return nextFailure(previousState, { fieldErrors: { currentOrganization: ['Choose one of your organizations, or none.'] } })
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+    if (profile.identityRoot === 'organisation') {
+      return nextFailure(previousState, { error: 'Organisation accounts do not show a current organization.' })
     }
-    try {
-      const memberships = await organizationLinkRepository.listProfileOrganizations(user.id, 50)
-      const membership = memberships.find((entry) => entry.id === id.data)
-      if (!membership) {
-        return nextFailure(previousState, { fieldErrors: { currentOrganization: ['You can only choose an organization you belong to.'] } })
+  
+    const choice = formData.get('currentOrganization')
+    if (choice === 'keep') return successState(previousState)
+  
+    let organization: { currentCompany?: string; currentCompanyId?: string }
+    if (choice === 'none') {
+      organization = {}
+    } else {
+      const id = optionalOrganizationIdSchema.safeParse(choice)
+      if (!id.success || !id.data) {
+        return nextFailure(previousState, { fieldErrors: { currentOrganization: ['Choose one of your organizations, or none.'] } })
       }
-      organization = { currentCompany: membership.name, currentCompanyId: membership.id }
-    } catch {
-      return nextFailure(previousState, { error: 'We could not check your organizations. Please try again.' })
+      try {
+        const memberships = await organizationLinkRepository.listProfileOrganizations(user.id, 50)
+        const membership = memberships.find((entry) => entry.id === id.data)
+        if (!membership) {
+          return nextFailure(previousState, { fieldErrors: { currentOrganization: ['You can only choose an organization you belong to.'] } })
+        }
+        organization = { currentCompany: membership.name, currentCompanyId: membership.id }
+      } catch {
+        return nextFailure(previousState, { error: 'We could not check your organizations. Please try again.' })
+      }
     }
-  }
-
-  try {
-    await setProfileCurrentOrganizationWithAurora(user.id, organization)
-  } catch {
-    return nextFailure(previousState, { error: 'We could not save your current organization. Please try again.' })
-  }
-
-  revalidateProfilePaths(profile.slug)
-  return successState(previousState)
+  
+    try {
+      await setProfileCurrentOrganizationWithAurora(user.id, organization)
+    } catch {
+      return nextFailure(previousState, { error: 'We could not save your current organization. Please try again.' })
+    }
+  
+    revalidateProfilePaths(profile.slug)
+    return successState(previousState)
+  })
 }
 
 export async function updateProfileAboutSection(
   previousState: ProfileInlineActionState,
   formData: FormData,
 ): Promise<ProfileInlineActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-
-  const parsed = profileAboutSectionSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return validationFailure(previousState, parsed.error)
-  const moderation = assessProfileSection(parsed.data)
-  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
-
-  try {
-    await updateProfileAboutSectionWithAurora(user.id, parsed.data)
-    await flagProfileModeration(user.id, moderation)
-  } catch {
-    return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
-  }
-
-  // Round G (G2): rank and company drive People you may know.
-  await refreshPeopleSuggestionsQuietly(user.id)
-  revalidateProfilePaths(profile.slug)
-  return successState(previousState)
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+  
+    const parsed = profileAboutSectionSchema.safeParse(Object.fromEntries(formData))
+    if (!parsed.success) return validationFailure(previousState, parsed.error)
+    const moderation = assessProfileSection(parsed.data)
+    if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+  
+    try {
+      await updateProfileAboutSectionWithAurora(user.id, parsed.data)
+      await flagProfileModeration(user.id, moderation)
+    } catch {
+      return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
+    }
+  
+    // Round G (G2): rank and company drive People you may know.
+    await refreshPeopleSuggestionsQuietly(user.id)
+    revalidateProfilePaths(profile.slug)
+    return successState(previousState)
+  })
 }
 
 export async function updateProfileProfessionalSection(
   previousState: ProfileInlineActionState,
   submittedForm: FormData,
 ): Promise<ProfileInlineActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-  const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
-  if (!isSeafarer) {
-    return nextFailure(previousState, { error: 'Maritime experience is available only for Seafarer profiles.' })
-  }
-  const applied = applyProfileRoleFields(submittedForm, 'seafarer')
-  if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
-  const formData = applied.formData
-
-  const parsed = profileProfessionalSectionSchema.safeParse({
-    ...Object.fromEntries(formData),
-    profileType: profile.profileType,
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+    const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
+    if (!isSeafarer) {
+      return nextFailure(previousState, { error: 'Maritime experience is available only for Seafarer profiles.' })
+    }
+    const applied = applyProfileRoleFields(submittedForm, 'seafarer')
+    if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
+    const formData = applied.formData
+  
+    const parsed = profileProfessionalSectionSchema.safeParse({
+      ...Object.fromEntries(formData),
+      profileType: profile.profileType,
+    })
+    if (!parsed.success) return validationFailure(previousState, parsed.error)
+    const moderation = assessProfileSection(parsed.data)
+    if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+  
+    try {
+      if (applied.role) await updateProfileProfessionalSectionWithAurora(user.id, parsed.data, applied.role)
+      else await updateProfileProfessionalSectionWithAurora(user.id, parsed.data)
+      await flagProfileModeration(user.id, moderation)
+    } catch {
+      return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
+    }
+  
+    revalidateProfilePaths(profile.slug)
+    return successState(previousState)
   })
-  if (!parsed.success) return validationFailure(previousState, parsed.error)
-  const moderation = assessProfileSection(parsed.data)
-  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
-
-  try {
-    if (applied.role) await updateProfileProfessionalSectionWithAurora(user.id, parsed.data, applied.role)
-    else await updateProfileProfessionalSectionWithAurora(user.id, parsed.data)
-    await flagProfileModeration(user.id, moderation)
-  } catch {
-    return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
-  }
-
-  revalidateProfilePaths(profile.slug)
-  return successState(previousState)
 }
 
 /**
@@ -430,26 +446,29 @@ export async function updateProfileRoleSection(
   previousState: ProfileInlineActionState,
   formData: FormData,
 ): Promise<ProfileInlineActionState> {
-  const user = await requireAwsUser()
-  const profile = await getAwsOwnProfile()
-  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-  if (!profileRoleFieldsSubmitted(formData)) return nextFailure(previousState, { error: 'Choose your rank from the list.' })
-
-  const persona = personaForProfile(profile)
-  const parsed = parseProfileRoleFields(Object.fromEntries(formData), persona)
-  if (!parsed.ok) return nextFailure(previousState, { fieldErrors: parsed.fieldErrors })
-  const moderation = assessProfileSection({ other: parsed.data.roleOtherText ?? '' })
-  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
-
-  try {
-    await updateProfileRoleWithAurora(user.id, parsed.data, persona === 'seafarer' ? parsed.rankText : null)
-    await flagProfileModeration(user.id, moderation)
-  } catch {
-    return nextFailure(previousState, { error: 'We could not save your rank. Please try again.' })
-  }
-  await refreshPeopleSuggestionsQuietly(user.id)
-
-  revalidateProfilePaths(profile.slug)
-  revalidatePath('/jobs')
-  return successState(previousState)
+  // Round CAP: one auth and access read per call.
+  return actionScope(async () => {
+    const user = await requireAwsUser()
+    const profile = await getAwsOwnProfile()
+    if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+    if (!profileRoleFieldsSubmitted(formData)) return nextFailure(previousState, { error: 'Choose your rank from the list.' })
+  
+    const persona = personaForProfile(profile)
+    const parsed = parseProfileRoleFields(Object.fromEntries(formData), persona)
+    if (!parsed.ok) return nextFailure(previousState, { fieldErrors: parsed.fieldErrors })
+    const moderation = assessProfileSection({ other: parsed.data.roleOtherText ?? '' })
+    if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+  
+    try {
+      await updateProfileRoleWithAurora(user.id, parsed.data, persona === 'seafarer' ? parsed.rankText : null)
+      await flagProfileModeration(user.id, moderation)
+    } catch {
+      return nextFailure(previousState, { error: 'We could not save your rank. Please try again.' })
+    }
+    await refreshPeopleSuggestionsQuietly(user.id)
+  
+    revalidateProfilePaths(profile.slug)
+    revalidatePath('/jobs')
+    return successState(previousState)
+  })
 }

@@ -4,7 +4,7 @@ import { query as databaseQuery } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import type { JobApplicationCvReference } from './application-media'
 import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
-import { jobDepartmentDisplay, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
+import { departmentRoleKeys, jobDepartmentDisplay, jobDepartmentKeys, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { PERSONAS } from '@/features/profiles/persona'
 import { matchPersonaSql } from '@/features/roles/sql'
 import { urgentActiveSql } from './urgent'
@@ -506,7 +506,9 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       // Round 12: the department key, or for an older job without one its department or rank text.
       const departmentParam = bind(filters.department)
       const legacyParam = bind(legacyRankTexts(rolesFor(filters.department).map((role) => role.key)))
-      where.push(`(j.department_key = ${departmentParam} or (j.department_key is null and lower(j.rank) = any(${legacyParam}::text[])))`)
+      // P6: a job that accepts one of this department's ranks as an extra counts under it too.
+      const departmentRolesParam = bind(departmentRoleKeys([filters.department]))
+      where.push(`(j.department_key = ${departmentParam} or j.accepted_role_keys && ${departmentRolesParam}::text[] or (j.department_key is null and lower(j.rank) = any(${legacyParam}::text[])))`)
     }
     if (filters.ranks.length) {
       const keysParam = bind(filters.ranks)
@@ -555,7 +557,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     }
 
     const orderBy = pool
-      ? `(j.department_key = any(${bind(pool.departmentKeys)}::text[])) desc nulls last,
+      ? `(j.department_key = any(${bind(pool.departmentKeys)}::text[]) or j.accepted_role_keys && ${bind(departmentRoleKeys(pool.departmentKeys))}::text[]) desc nulls last,
          (j.accepted_role_keys && ${bind(pool.rankBandKeys)}::text[]) desc nulls last,
          (coalesce(j.vessel_type_codes, '{}'::text[]) && ${bind(pool.vesselCodes)}::text[]) desc,
          coalesce(j.published_at, j.created_at) desc, j.id desc`
@@ -661,6 +663,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
                 (cardinality($2::text[]) > 0 and coalesce(j.accepted_role_keys, '{}'::text[]) && $2::text[])
                   or coalesce(lower(j.rank) = lower($3::text), false) as same_role,
                 coalesce(j.department_key = $4::text, false)
+                  or coalesce(j.department_key = any($8::text[]), false)
+                  or coalesce(j.accepted_role_keys && $9::text[], false)
                   or coalesce(lower(j.department) = lower($5::text), false) as same_department,
                 coalesce(j.vessel_types, '{}'::text[]) && $6::text[] as same_vessel
          from public.jobs j
@@ -681,6 +685,9 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         job.department?.trim() || null,
         job.vesselTypes,
         Math.min(Math.max(Math.trunc(limit), 1), 12),
+        // P6: the job's department and the departments of its extra ranks; and its department's ranks as extras elsewhere.
+        jobDepartmentKeys(job),
+        job.departmentKey ? departmentRoleKeys([job.departmentKey]) : [],
       ],
     ) as JobRow[]
     return rows.map(mapJob)

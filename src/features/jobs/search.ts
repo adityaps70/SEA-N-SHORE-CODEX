@@ -66,6 +66,10 @@ export function parseJobSearchParams(params: JobSearchParams): JobSearchFilters 
 
   if (mode === 'urgent') filters.urgentOnly = true
   if (mode === 'recent' && filters.postedWithinDays === null) filters.postedWithinDays = 7
+  // Bug fix (13 Nov): "Recently Posted" is strictly newest first by publish time. Recommended and Best match (the
+  // default) would rank by match instead, so they become Newest first here; Joining soonest and Highest salary,
+  // when chosen, still apply.
+  if (mode === 'recent' && (filters.sort === 'recommended' || filters.sort === 'best')) filters.sort = 'recent'
 
   return filters
 }

@@ -302,6 +302,28 @@ export function rolesFor(departmentKey: string | null | undefined): RoleEntry[] 
   return ROLES.filter((role) => role.department === departmentKey)
 }
 
+/** P6: every existing rank a job can accept from any department, in department then ladder order ("Other" left out). */
+export function allRolesForPicker(): RoleEntry[] {
+  return ROLE_DEPARTMENTS.flatMap((department) => ROLES.filter((role) => role.department === department.key && !role.other))
+}
+
+/** P6: the existing ranks (no "Other") of these departments, for "a job that accepts one of them counts under it". */
+export function departmentRoleKeys(departmentKeys: readonly string[]): string[] {
+  const wanted = new Set(departmentKeys)
+  return ROLES.filter((role) => wanted.has(role.department) && !role.other).map((role) => role.key)
+}
+
+/** P6: a job's department plus the departments of the ranks it accepts from other departments. */
+export function jobDepartmentKeys(job: { departmentKey?: string | null; acceptedRoleKeys?: readonly string[] | null }): string[] {
+  const keys = new Set<string>()
+  if (job.departmentKey) keys.add(job.departmentKey)
+  for (const key of job.acceptedRoleKeys ?? []) {
+    const role = roleByKeyMap.get(key)
+    if (role && !role.other) keys.add(role.department)
+  }
+  return [...keys]
+}
+
 export function roleByKey(key: string | null | undefined): RoleEntry | undefined {
   return key ? roleByKeyMap.get(key) : undefined
 }
@@ -378,6 +400,11 @@ const legacyLookup = (() => {
   }
   return lookup
 })()
+
+/** P6: the normalised text → rank key lookup normaliseLegacyRank uses (for the runner's preview, which mirrors it). */
+export function legacyRankLookupEntries(): Array<[string, string]> {
+  return [...legacyLookup.entries()]
+}
 
 /** Converts an old free-text rank ("Captain", "C/O", "2nd Engineer") to a key, or null when it is not recognised. */
 export function normaliseLegacyRank(text: string | null | undefined): string | null {
