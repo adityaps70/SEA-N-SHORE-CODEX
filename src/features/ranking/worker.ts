@@ -1,6 +1,7 @@
 import { query } from '@/lib/db/client'
 import { runTaxonomyBackfill } from '@/features/taxonomy/backfill'
 import { purgeExpiredSignals } from '@/features/signals/retention'
+import { createCounterReconcileSweep } from './engagement-counters-reconcile'
 import { createOnlinePeakSweep } from './online-peak-sweep'
 import { createPeopleSweep } from './people-sweep'
 import { createJobAlertSweep } from './job-alerts'
@@ -54,6 +55,8 @@ export function createRankingSweeps(input: {
     createRankingEmailSweep(),
     // Round CAP (finding 8): the hourly peak of signed-in members online, once a minute.
     createOnlinePeakSweep(),
+    // Round CAP (feed counters): nightly recount of the migration 0102 counters, 500 rows per pass.
+    createCounterReconcileSweep(),
   ]
   const nextAt = new Map<string, number>()
   const schemaReady = input.schemaReady ?? roundGSchemaReady

@@ -178,7 +178,8 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
             'label', option_row.label,
             'position', option_row.position,
             'post_poll_votes', json_build_object(
-              'count', (select count(*)::int from public.post_poll_votes vote where vote.option_id = option_row.id)
+              -- Round CAP: kept on write (post_poll_option_counts, migration 0102) instead of counted per read.
+              'count', coalesce((select oc.votes from public.post_poll_option_counts oc where oc.option_id = option_row.id), 0)
             )
           ) order by option_row.position asc
         )
@@ -186,16 +187,17 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
         where option_row.post_id = p.id
       ), '[]'::json)
     ) else null end as post_polls,
-    -- Round 14 (3.4): one pass over the post's reactions instead of four.
+    -- Round CAP: the post's reactions by type, kept on write (post_reaction_counts, migration 0102): one row read
+    -- instead of counting every reaction.
     (
       select json_build_object(
-        'like', (count(*) filter (where reaction.reaction_type = 'like'))::int,
-        'support', (count(*) filter (where reaction.reaction_type = 'support'))::int,
-        'respect', (count(*) filter (where reaction.reaction_type = 'respect'))::int,
-        'on_point', (count(*) filter (where reaction.reaction_type = 'on_point'))::int
+        'like', coalesce(max(rc.like_count), 0)::int,
+        'support', coalesce(max(rc.support_count), 0)::int,
+        'respect', coalesce(max(rc.respect_count), 0)::int,
+        'on_point', coalesce(max(rc.on_point_count), 0)::int
       )
-      from public.post_reactions reaction
-      where reaction.post_id = p.id
+      from public.post_reaction_counts rc
+      where rc.post_id = p.id
     ) as post_reactions,
     coalesce((
       select json_agg(json_build_object(
@@ -843,7 +845,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       `select id from (
          select c.id, row_number() over (
            partition by c.post_id
-           order by (select count(*) from public.comment_reactions cr where cr.comment_id = c.id) desc, c.created_at desc, c.id desc
+           order by coalesce((select crc.like_count + crc.support_count + crc.respect_count + crc.on_point_count
+                              from public.comment_reaction_counts crc where crc.comment_id = c.id), 0) desc, c.created_at desc, c.id desc
          ) as position
          from public.post_comments c
          where c.post_id = any($1::uuid[]) and c.parent_comment_id is null and c.deleted_at is null
@@ -948,13 +951,13 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
          ) as profiles,
          case when c.deleted_at is null then (
            select json_build_object(
-             'like', (count(*) filter (where cr.reaction_type = 'like'))::int,
-             'support', (count(*) filter (where cr.reaction_type = 'support'))::int,
-             'respect', (count(*) filter (where cr.reaction_type = 'respect'))::int,
-             'on_point', (count(*) filter (where cr.reaction_type = 'on_point'))::int
+             'like', coalesce(max(crc.like_count), 0)::int,
+             'support', coalesce(max(crc.support_count), 0)::int,
+             'respect', coalesce(max(crc.respect_count), 0)::int,
+             'on_point', coalesce(max(crc.on_point_count), 0)::int
            )
-           from public.comment_reactions cr
-           where cr.comment_id = c.id
+           from public.comment_reaction_counts crc
+           where crc.comment_id = c.id
          ) else json_build_object('like', 0, 'support', 0, 'respect', 0, 'on_point', 0) end as reaction_summary,
          ${viewerSql} as viewer_reaction,
          ${ownershipSql},
