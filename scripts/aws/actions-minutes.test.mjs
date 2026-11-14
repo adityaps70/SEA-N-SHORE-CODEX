@@ -61,9 +61,13 @@ test('Infra CI: superseded runs cancel; heavy jobs follow the change scope; cont
   assert.match(text, /run: bash scripts\/aws\/infra-ci-scope\.sh/)
   // Cost cut 2 (owner-approved 14 Nov): no separate scope job; the always-on contract job decides the scope first.
   assert.doesNotMatch(text, /^  scope:\n/m, 'no separate scope job')
-  for (const job of ['application', 'terraform', 'container']) {
+  for (const job of ['terraform', 'container']) {
     assert.match(text, new RegExp(`^  ${job}:\\n    name: .*\\n    needs: remote-execution-contract\\n    if: needs\\.remote-execution-contract\\.outputs\\.${job} == 'true'\\n`, 'm'), job)
   }
+  // Cost cut 1 (owner-approved 14 Nov): a draft pull request runs only the cheap jobs; Application verify runs on
+  // "Ready for review" and every push after that, and the guard job covers the guard tests on a draft.
+  assert.match(text, /^  pull_request:\n    branches: \[main, feat\/aws-native-phase-0-1\]\n(    #.*\n)?    types: \[opened, synchronize, reopened, ready_for_review\]\n/m)
+  assert.match(text, /^  application:\n    name: Application verify\n    needs: remote-execution-contract\n(    #.*\n)?    if: needs\.remote-execution-contract\.outputs\.application == 'true' && !\(github\.event_name == 'pull_request' && github\.event\.pull_request\.draft\)\n/m)
   const contract = jobBlocks(text).find((job) => job.startsWith('  remote-execution-contract:'))
   assert.doesNotMatch(contract, /needs:|^    if:/m)
   for (const output of ['application', 'terraform', 'guard', 'container']) {
@@ -74,7 +78,9 @@ test('Infra CI: superseded runs cancel; heavy jobs follow the change scope; cont
   // when Application verify does not, so the same tests always run exactly once.
   const application = jobBlocks(text).find((job) => job.startsWith('  application:'))
   const guard = jobBlocks(text).find((job) => job.startsWith('  guard:'))
-  assert.match(guard, /^    needs: remote-execution-contract\n(    #.*\n)?    if: needs\.remote-execution-contract\.outputs\.guard == 'true' && needs\.remote-execution-contract\.outputs\.application != 'true'\n/m)
+  assert.match(guard, /^    needs: remote-execution-contract\n(    #.*\n)*    if: needs\.remote-execution-contract\.outputs\.guard == 'true' && \(needs\.remote-execution-contract\.outputs\.application != 'true' \|\| \(github\.event_name == 'pull_request' && github\.event\.pull_request\.draft\)\)\n/m)
+  // A draft says so in its checks: Application verify is skipped until Ready for review.
+  assert.match(contract, /- name: Draft pull request \(Application verify waits for Ready for review\)\n        if: github\.event_name == 'pull_request' && github\.event\.pull_request\.draft\n/)
   const runs = (block, from) => [...block.slice(block.indexOf(from)).matchAll(/^        run: (.+)$/gm)].map((m) => m[1])
   const guardRuns = runs(guard, '- name: Run guard tests')
   assert.ok(guardRuns.length >= 6, 'the guard job runs its tests')
@@ -142,7 +148,7 @@ test('scope: rearms, workflow-only changes and merges of verified trees skip the
 test('Infra CI triggers: pushes to the feature branch and main, pull requests into them', () => {
   const text = byName['aws-infra-ci.yml']
   assert.match(text, /^  push:\n    branches:\n      - feat\/aws-native-phase-0-1\n      - main\n    paths:\n/m)
-  assert.match(text, /^  pull_request:\n    branches: \[main, feat\/aws-native-phase-0-1\]\n    paths:\n/m)
+  assert.match(text, /^  pull_request:\n    branches: \[main, feat\/aws-native-phase-0-1\]\n(    #.*\n)?    types: \[[^\]]+\]\n    paths:\n/m)
   assert.match(text, /^  workflow_dispatch:\n/m)
   // The same files trigger both.
   const paths = (block) => [...block.matchAll(/^      - (.+)$/gm)].map((m) => m[1])
