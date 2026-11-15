@@ -8,6 +8,7 @@ import { addMasterRank, setMasterRankHidden } from '@/features/roles/admin-ranks
 import { ADDED_RANK_LABEL_MAX, adminRanksRepository } from '@/features/roles/admin-ranks-repository'
 import { ensureRoleCatalog } from '@/features/roles/catalog-runtime'
 import { allRoles, jobDepartments, ladderStep, roleByKey, type RoleEntry } from '@/features/roles/taxonomy'
+import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Ranks' }
@@ -114,7 +115,7 @@ export default async function RanksAdminPage({ searchParams }: { searchParams: S
             <input name="synonyms" maxLength={400} className="min-h-10 rounded-lg border border-mist-200 px-3 font-normal" />
           </label>
           <div className="sm:col-span-2">
-            <button type="submit" className="min-h-10 rounded-lg bg-ocean-700 px-4 text-sm font-semibold text-white hover:bg-ocean-800">Add rank</button>
+            <button type="submit" className={primaryButtonClass}>Add rank</button>
           </div>
         </form>
       </AdminPanel>

@@ -111,7 +111,7 @@ export function createAdminRanksRepository(input: { query?: Query; transaction?:
       const clash = await tx(
         `select 1 from public.maritime_ranks r
          where btrim(regexp_replace(replace(lower(r.name), '&', ' and '), '[^a-z0-9]+', ' ', 'g')) = any($1::text[])
-            or exists (select 1 from unnest(r.synonyms) s where btrim(regexp_replace(replace(lower(s), '&', ' and '), '[^a-z0-9]+', ' ', 'g')) = any($1::text[]))
+            or exists (select 1 from unnest(r.synonyms) synonym where btrim(regexp_replace(replace(lower(synonym), '&', ' and '), '[^a-z0-9]+', ' ', 'g')) = any($1::text[]))
          limit 1`,
         [names],
       )
