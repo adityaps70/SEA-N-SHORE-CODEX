@@ -44,7 +44,33 @@ git diff --quiet HEAD -- \
 source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
-case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported web resilience infrastructure action." >&2; exit 1 ;; esac
+case "$ACTION" in plan|apply-once|resubscribe-once) ;; *) echo "Unsupported web resilience infrastructure action." >&2; exit 1 ;; esac
+
+# Owner (15 Nov): send info@beaufortmarine.in a fresh confirmation for the alerts topic (the 12 Nov link has expired).
+# Only while that address is not confirmed; it changes nothing else (no Terraform, no other subscription). The same
+# email endpoint, so a later Terraform plan sees the subscription it already manages.
+OPERATIONS_INBOX="info@beaufortmarine.in"
+ALERTS_TOPIC_ARN="arn:aws:sns:$AWS_REGION:$EXPECTED_ACCOUNT:sea-n-shore-staging-alerts"
+alert_subscription_status() {
+  aws sns list-subscriptions-by-topic --region "$AWS_REGION" --topic-arn "$ALERTS_TOPIC_ARN" --output json |
+    jq -r --arg inbox "$OPERATIONS_INBOX" '[.Subscriptions[] | select(.Protocol == "email" and .Endpoint == $inbox) | if (.SubscriptionArn | startswith("arn:")) then "confirmed" else .SubscriptionArn end] | first // "absent"'
+}
+if [[ "$ACTION" == "resubscribe-once" ]]; then
+  [[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$WEB_RESILIENCE_INFRA_EXPECTED_SHA" ]]
+  BEFORE="$(alert_subscription_status)"
+  echo "OPERATIONS_ALERT_SUBSCRIPTION_BEFORE=$BEFORE"
+  if [[ "$BEFORE" == "confirmed" ]]; then
+    echo "OPERATIONS_ALERT_CONFIRMATION_NOT_NEEDED=true"
+  else
+    SENT="$(aws sns subscribe --region "$AWS_REGION" --topic-arn "$ALERTS_TOPIC_ARN" --protocol email \
+      --notification-endpoint "$OPERATIONS_INBOX" --query SubscriptionArn --output text)"
+    [[ "$SENT" == "pending confirmation" ]] || { echo "Unexpected subscribe answer (not pending)." >&2; exit 1; }
+    echo "OPERATIONS_ALERT_CONFIRMATION_SENT=true at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  fi
+  echo "OPERATIONS_ALERT_SUBSCRIPTION_AFTER=$(alert_subscription_status)"
+  echo "WEB_RESILIENCE_RESUBSCRIBE_VERIFIED=true"
+  exit 0
+fi
 
 WORK_DIR="$(mktemp -d "$PWD/.web-resilience-infra.XXXXXXXX")"
 trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
@@ -217,6 +243,7 @@ echo "WEB_RESILIENCE_PLAN_VERIFIED=true"
 echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/resilience.tfplan" | cut -d' ' -f1)"
 
 if [[ "$ACTION" == "plan" ]]; then
+  echo "OPERATIONS_ALERT_SUBSCRIPTION=$(alert_subscription_status)"
   echo "WEB_RESILIENCE_PLAN_ONLY_NO_APPLY"
   exit 0
 fi
