@@ -48,7 +48,7 @@ test('the SSM wrapper only sends the report and reads its result', async () => {
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
   const line = readFileSync(windowPath, 'utf8').trim()
   const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
-  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|plans|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute})$`))
+  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|plans|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute}|sessions ${minute} ${minute})$`))
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
   assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
@@ -500,9 +500,13 @@ print("ok")
 test('the legacy split reads one log group for a count, labels statement kinds and prints no paths, addresses or messages', () => {
   const remote = readFileSync(remotePath, 'utf8')
   const filters = [...remote.matchAll(/aws\("logs", "filter-log-events",([^\n]*)/g)].map((m) => m[1])
-  assert.equal(filters.length, 1)
-  assert.match(filters[0], /"\/ecs\/%s\/web" % PREFIX/)
+  // The legacy split's statement timeouts and (owner 15 Nov) the sessions window's ledger failures: both read the web
+  // task's log for a count only.
+  assert.equal(filters.length, 2)
+  for (const filter of filters) assert.match(filter, /"\/ecs\/%s\/web" % PREFIX/)
   assert.match(remote, /"--filter-pattern", '"statement timeout"', "--query", "length\(events\)"/)
+  assert.match(remote, /"--filter-pattern", '"auth_refresh_ledger_unavailable"', "--query", "length\(events\)"/)
+  assert.equal((remote.match(/"--query", "length\(events\)"/g) ?? []).length, 2)
   const wrapper = readFileSync(wrapperPath, 'utf8')
   assert.match(wrapper, /COMPARE\?\.legacy \? \['legacysplit'\]/)
   assert.match(wrapper, /8 \* 24 \* 3600_000/)
@@ -622,6 +626,79 @@ text = buf.getvalue()
 assert "CAP_ONLINE hours_recorded=2 peak=7 avg_hourly_peak=5.5" in text, text
 assert "CAP_ONLINE_DAY 2026-11-14 hours=1 peak=4 avg=4.0" in text and "CAP_ONLINE_DAY 2026-11-15 hours=1 peak=7 avg=7.0" in text, text
 assert all(s.lower().startswith("select") for s in seen), seen
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Owner (15 Nov): an administrator is signed out when moving between a phone and a laptop. The sessions window counts
+// sign-ins across a member's devices, read-only, administrators apart, and prints no member data.
+test('the sessions window runs two read-only sections over at most 14 days and prints counts only', () => {
+  const wrapper = readFileSync(wrapperPath, 'utf8')
+  assert.match(wrapper, /const SESSION_SECTIONS = \['sessdb', 'sessmetric'\]/)
+  assert.match(wrapper, /const SECTIONS = COMPARE\?\.sessions \? SESSION_SECTIONS :/)
+  assert.match(wrapper, /at most 14 days, in whole UTC minutes'\)\n    return \{ sessions: true, sessStart: sessions\[1\], sessEnd: sessions\[2\] \}/)
+  assert.match(wrapper, /export SESS_START=\$\{quote\(COMPARE\?\.sessStart \?\? ''\)\}\nexport SESS_END=\$\{quote\(COMPARE\?\.sessEnd \?\? ''\)\}/)
+  const remote = readFileSync(remotePath, 'utf8')
+  for (const name of ['sessdb', 'sessmetric']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+os.environ["SESS_START"], os.environ["SESS_END"] = "2026-11-01T00:00:00Z", "2026-11-16T00:00:00Z"
+try:
+    r.sessions_window()
+    raise SystemExit("a window over 14 days must be refused")
+except AssertionError:
+    pass
+os.environ["SESS_START"] = "2026-11-08T00:00:00Z"
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    return [
+        [{"kind": "started", "day": "2026-11-13", "is_admin": True, "detail": "google", "n": 3},
+         {"kind": "reuse_ended", "day": "2026-11-13", "is_admin": False, "detail": "password", "n": 2}],
+        [{"day": "2026-11-13", "is_admin": True, "reason": "reuse", "ended": 2, "other_device_active_near": 2, "signed_in_again_30min": 1, "had_parallel_renewal": 2}],
+        [{"day": "2026-11-13", "is_admin": True, "sign_ins": 3, "replaced_unended": 1, "replaced_after_other_device": 1}],
+        [{"day": "2026-11-13", "is_admin": False, "renewals": 40, "sign_ins": 9, "renewals_in_parallel": 12, "never_used_again": 5}],
+        [{"kind": "step_up_ok", "day": "2026-11-13", "n": 4}],
+        [{"admins": 2}],
+    ]
+r.sql_rows = fake_rows
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_sessdb()
+text = buf.getvalue()
+assert "SESS_ADMINS count=2" in text, text
+assert "SESS_DAY 2026-11-13 started admin google n=3" in text and "SESS_DAY 2026-11-13 reuse_ended member password n=2" in text, text
+assert "SESS_END 2026-11-13 admin reuse ended=2 other_device_active_near=2 signed_in_again_30min=1 had_parallel_renewal=2" in text, text
+assert "SESS_RESTART 2026-11-13 admin sign_ins=3 replaced_unended=1 replaced_after_other_device=1" in text, text
+assert "SESS_RENEW 2026-11-13 member renewals=40 sign_ins=9 renewals_in_parallel=12 never_used_again=5" in text, text
+assert "SESS_SECTION" not in text and "SESS_SECURITY 2026-11-13 step_up_ok n=4" in text, text
+assert len(seen) == 6 and all(s.lower().startswith(("select", "with")) for s in seen), seen
+import re
+def drop_calls(sql, names):
+    # Removes count(...) and filter (...) with their balanced brackets: a count prints a number, never what it counts.
+    for name in names:
+        while name in sql:
+            i = sql.index(name)
+            j, depth = i + len(name), 1
+            while depth:
+                depth += {"(": 1, ")": -1}.get(sql[j], 0)
+                j += 1
+            sql = sql[:i] + "n" + sql[j:]
+    return sql
+for s in seen:
+    # Only counts, days, reasons and the administrator flag leave the database: the outer select list names no id,
+    # hash, device, place or address (the flag reads profile_id only inside "in (select user_id from admins)").
+    outer = s.lower().replace("s.profile_id in (select user_id from admins)", "is_admin_flag")
+    outer = drop_calls(outer, ("count(", "filter ("))
+    outer = outer.split(" from ")[0] if outer.startswith("select") else re.split(r"\\) select ", outer)[-1].split(" from ")[0]
+    for column in ("token_hash", "origin_hash", "user_agent_summary", "ip_hash", "approx_city", "email", "profile_id", ".id"):
+        assert column not in outer, (column, outer)
+assert "2026-11-08T00:00:00Z" in seen[0] and "2026-11-16T00:00:00Z" in seen[0], seen[0]
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)
