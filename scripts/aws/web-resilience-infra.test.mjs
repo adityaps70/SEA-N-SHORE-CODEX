@@ -12,10 +12,10 @@ const terraform = await read('../../infra/aws/app/web-resilience.tf')
 const main = await read('../../infra/aws/app/main.tf')
 
 test('web resilience runner is guarded, targeted and refuses anything outside its resources', () => {
-  assert.ok(['plan', 'apply-once'].includes(action))
+  assert.ok(['plan', 'apply-once', 'resubscribe-once'].includes(action))
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
   assert.match(script, /WEB_RESILIENCE_INFRA_EXPECTED_SHA/)
-  assert.match(script, /case "\$ACTION" in plan\|apply-once\)/)
+  assert.match(script, /case "\$ACTION" in plan\|apply-once\|resubscribe-once\)/)
   assert.match(script, /unexpected web resilience change refused/)
   assert.match(script, /scaling target change outside min\/max refused/)
   assert.match(script, /'aws_appautoscaling_policy\.memory': \{\('create',\)\}/)
@@ -141,3 +141,23 @@ test('Round P3: the operations inbox moves from operations@ to info@beaufortmari
   assert.match(script, /OPERATIONS_ALERT_INBOX_VERIFIED=info@beaufortmarine\.in/)
 })
 
+
+// Owner (15 Nov): resend the info@ confirmation for the alerts topic. Only the alerts topic and that one email address,
+// only while it is not confirmed, only from an owner-merged arm, and it never runs Terraform.
+test('resubscribe-once sends info@ one fresh confirmation and touches nothing else', () => {
+  const block = script.slice(script.indexOf('if [[ "$ACTION" == "resubscribe-once" ]]; then'), script.indexOf('WORK_DIR="$(mktemp -d'))
+  assert.ok(block.length > 200, 'the resubscribe block comes before any Terraform work')
+  assert.match(script, /OPERATIONS_INBOX="info@beaufortmarine\.in"/)
+  assert.match(script, /ALERTS_TOPIC_ARN="arn:aws:sns:\$AWS_REGION:\$EXPECTED_ACCOUNT:sea-n-shore-staging-alerts"/)
+  assert.match(block, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(block, /if \[\[ "\$BEFORE" == "confirmed" \]\]; then\n\s+echo "OPERATIONS_ALERT_CONFIRMATION_NOT_NEEDED=true"/)
+  assert.match(block, /aws sns subscribe --region "\$AWS_REGION" --topic-arn "\$ALERTS_TOPIC_ARN" --protocol email \\\n\s+--notification-endpoint "\$OPERATIONS_INBOX"/)
+  assert.equal((block.match(/aws sns subscribe/g) ?? []).length, 1)
+  assert.doesNotMatch(block, /terraform|unsubscribe|delete|set-subscription-attributes|confirm-subscription/)
+  assert.match(block, /WEB_RESILIENCE_RESUBSCRIBE_VERIFIED=true"\n\s+exit 0/)
+  assert.equal((script.match(/aws sns subscribe/g) ?? []).length, 1, 'subscribe runs only in the resubscribe block')
+  // The workflow: only from an owner-merged push (approval asked for anything but plan), with its own evidence line.
+  assert.match(workflow, /case "\$ACTION" in plan\|apply-once\|resubscribe-once\)/)
+  assert.match(workflow, /if \[\[ "\$ACTION" != "plan" && "\$GITHUB_EVENT_NAME" != "push" \]\]; then/)
+  assert.match(workflow, /grep -q 'WEB_RESILIENCE_RESUBSCRIBE_VERIFIED=true'/)
+})
