@@ -93,7 +93,11 @@ export default async function AdminPage() {
             <p className="mt-0.5 text-xs text-muted">Typed for “Other (type your own)” in the last 90 days. Common ones can be added to the rank lists.</p>
           </div>
           {/* P6: ranks posters added from other departments to a department's jobs. */}
-          <Link href="/admin/jobs/ranks" className="shrink-0 text-sm font-semibold text-ocean-700 hover:underline">Job extra ranks</Link>
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            {/* P6b: the master rank list; administrators add missing ranks there. */}
+            <Link href="/admin/ranks" className="text-sm font-semibold text-ocean-700 hover:underline">Ranks</Link>
+            <Link href="/admin/jobs/ranks" className="text-sm font-semibold text-ocean-700 hover:underline">Job extra ranks</Link>
+          </div>
         </div>
         {otherRoles.length ? (
           <table className="w-full text-sm">

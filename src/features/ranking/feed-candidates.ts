@@ -96,8 +96,8 @@ export type CandidateOptions = {
 
 const RANK_BAND_SQL = `(
   select coalesce(array_agg(r.code), '{}'::text[])
-  from public.maritime_ranks vr
-  join public.maritime_ranks r on r.ladder = vr.ladder and r.department_key = vr.department_key and abs(r.ladder_level - vr.ladder_level) <= 1
+  from public.maritime_rank_steps vr
+  join public.maritime_rank_steps r on r.ladder = vr.ladder and r.department_key = vr.department_key and abs(r.step - vr.step) <= 1
   where vr.code = (select role_key from public.profiles where id = $1)
 )`
 
