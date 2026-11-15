@@ -39,6 +39,8 @@ const ALLOWED: Record<string, string> = {
   // Inner reading measure: the centred intro heading (and, on pricing, a notice) inside a page-wide plans box.
   'src/app/(app)/plans/page.tsx::max-w-3xl': 'centred intro inside the page-wide box',
   'src/app/(marketing)/pricing/page.tsx::max-w-3xl': 'centred intro and notice inside the page-wide box',
+  // Owner (15 Nov): a community's Posts tab uses the home feed's column width inside the page-wide box.
+  'src/app/(app)/community/[slug]/page.tsx::max-w-feed': 'posts column inside the page-wide box (home feed width)',
 }
 
 // An outer box: `mx-auto`, optionally followed by layout-only classes, then a max width. Paragraph measures such as

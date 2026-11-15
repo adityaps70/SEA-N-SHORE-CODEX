@@ -75,6 +75,7 @@ export const PARTNERS: PartnerLogo[] = [
   { ...logo('p_divulge.webp', 'Divulge', 200, 66), role: 'Corporate gifting' },
 ]
 
+// Owner (15 Nov): KCS Quality Inspection and MCSS are no longer shown.
 export const GLOBAL_PARTNERS: LandingLogo[] = [
   logo('g_cconsultant.webp', 'CConsultant Shipping Service', 165, 47, false, 'https://www.cconsultant.eu/'),
   logo('g_cleanship.webp', 'Cleanship', 304, 83, false, 'https://cleanship.co/'),
@@ -82,8 +83,6 @@ export const GLOBAL_PARTNERS: LandingLogo[] = [
   logo('g_gmg.webp', 'GMG Maritime Services', 88, 100, false, 'https://www.gmgmaritimeservices.com/'),
   logo('g_hawk.webp', 'Hawk Marine Inspection & Consultancy', 241, 180, false, 'https://hawkmarineinspection.com/'),
   logo('g_ibhar.webp', 'ibhar', 140, 54),
-  logo('g_kcs.webp', 'KCS Quality Inspection', 100, 100, false, 'https://www.kcsgroup.co/'),
-  logo('g_mcss.webp', 'MCSS — Master Class Ship Services', 200, 100, false, 'https://mcss.ph/'),
 ]
 
 export const PARENT_GROUP_LOGO = logo('p_beaufort_marine.webp', 'Beaufort Marine Services LLP', 290, 77, false, 'https://www.beaufortmarine.in/')

@@ -299,11 +299,15 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
       <AuthorAvatarLink author={comment.author} className={`relative z-[1] ${avatarSize}`} />
       <div className="min-w-0 flex-1">
         <div className={`relative rounded-2xl px-3 py-2.5 ${isReply ? 'bg-mist-50/70 ring-1 ring-mist-100' : 'bg-mist-50'}`}>
-          <div className="flex flex-wrap items-baseline gap-x-2 pr-7 max-md:pr-9">
-            <Link href={profileHref(comment.author.slug)} className="text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
-            {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
-            <span className="min-w-0 truncate text-meta text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
-            <div className="ml-auto inline-flex items-center gap-1 text-meta text-muted"><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
+          {/* Owner (15 Nov): the time ("just now", "5m", "Edited") never wraps or drops under the name on a phone; the
+              name, badge and rank wrap and shorten beside it instead. */}
+          <div className="flex items-baseline gap-x-2 pr-7 max-md:pr-9">
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+              <Link href={profileHref(comment.author.slug)} className="min-w-0 break-words text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
+              {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
+              <span className="min-w-0 max-w-full truncate text-meta text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
+            </div>
+            <div className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-meta text-muted" data-testid={`comment-time-${comment.id}`}><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
           </div>
           {replyTarget ? (
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted" data-testid={`reply-target-${comment.id}`}>
