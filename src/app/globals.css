@@ -96,6 +96,9 @@
      PAGE_WIDE / PAGE_NARROW classes in src/components/layout/page-width.ts) on a page's outer content box. */
   --container-page-wide: 80rem;
   --container-page-narrow: 56rem;
+  /* Owner (15 Nov): the home feed's middle column at full desktop width (80rem page, 280px and 300px rails, 24px
+     gaps). Feeds outside Home (community posts) use max-w-feed so posts and their media look the same everywhere. */
+  --container-feed: 38.75rem;
 }
 
 * { box-sizing: border-box; }

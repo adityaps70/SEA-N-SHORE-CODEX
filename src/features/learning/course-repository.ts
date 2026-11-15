@@ -1,3 +1,4 @@
+import { COURSE_SLUG_MAX, firstFreeSlug } from './course-slug'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canMentorEditCourse, canTransitionCourseStatus, type CourseStatus } from './course-workflow'
@@ -1143,7 +1144,21 @@ export function createCourseRepository(input: {
     })
   }
 
+  /**
+   * Owner (15 Nov): the first free slug for a new course: `base`, else base-2, base-3, … Every course counts (drafts,
+   * revisions and archived ones too), because the database keeps slugs unique across them all.
+   */
+  async function availableSlug(base: string): Promise<string> {
+    if (!base) return base
+    const rows = await queryRows(
+      `select slug from public.learning_courses where slug = $1 or slug like $2`,
+      [base, `${base.slice(0, COURSE_SLUG_MAX - 2)}-%`],
+    ) as Array<{ slug: string }>
+    return firstFreeSlug(base, new Set(rows.map((row) => String(row.slug))))
+  }
+
   return {
+    availableSlug,
     createCourse,
     listOwnedCourses,
     getOwnedCourse,

@@ -24,4 +24,12 @@ describe('landing logos', () => {
       expect(byName(name)?.href, name).toBeUndefined()
     }
   })
+
+  it('shows the global partners in their order, without KCS and MCSS (owner, 15 Nov)', () => {
+    expect(GLOBAL_PARTNERS.map((logo) => logo.name)).toEqual([
+      'CConsultant Shipping Service', 'Cleanship', 'Horizon Security Solutions', 'GMG Maritime Services',
+      'Hawk Marine Inspection & Consultancy', 'ibhar',
+    ])
+    expect(all.some((logo) => /KCS|MCSS/.test(logo.name) || /kcs|mcss/.test(logo.file))).toBe(false)
+  })
 })

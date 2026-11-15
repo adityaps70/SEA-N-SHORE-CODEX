@@ -5,6 +5,7 @@ import type { CourseDraftInput } from '../course-repository'
 const mocks = vi.hoisted(() => ({
   createCourseDraft: vi.fn(),
   updateCourseDraft: vi.fn(),
+  suggestCourseSlug: vi.fn(),
   push: vi.fn(),
 }))
 
@@ -15,6 +16,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('../course-actions', () => ({
   createCourseDraft: mocks.createCourseDraft,
   updateCourseDraft: mocks.updateCourseDraft,
+  suggestCourseSlug: mocks.suggestCourseSlug,
 }))
 
 import { CourseForm } from './course-form'
@@ -208,5 +210,67 @@ describe('CourseForm', () => {
 
     expect(await screen.findByText('A course with this URL slug already exists.')).toBeInTheDocument()
     expect(screen.getByLabelText('Course title')).toHaveValue('My revised tanker course')
+  })
+
+  describe('course URL slug from the title (owner, 15 Nov)', () => {
+    const blank: CourseDraftInput = { ...initial, slug: '', title: '' }
+
+    it('follows the title as you type (lowercase, hyphens, no special characters) and takes the first free slug', async () => {
+      vi.useFakeTimers()
+      try {
+        mocks.suggestCourseSlug.mockResolvedValue({ slug: 'sire-2-0-readiness-tanker-officers-2' })
+        render(<CourseForm initialValue={blank} />)
+        const title = screen.getByLabelText('Course title')
+        const slug = screen.getByLabelText('Course URL slug')
+        fireEvent.change(title, { target: { value: 'SIRE 2.0' } })
+        expect(slug).toHaveValue('sire-2-0')
+        fireEvent.change(title, { target: { value: 'SIRE 2.0 Readiness: Tanker Officers!' } })
+        expect(slug).toHaveValue('sire-2-0-readiness-tanker-officers')
+        expect(screen.getByText(/Made from the title as you type/)).toBeInTheDocument()
+        await act(async () => { await vi.advanceTimersByTimeAsync(450) })
+        // One request for the latest title only; another course has the plain slug, so -2.
+        expect(mocks.suggestCourseSlug).toHaveBeenCalledTimes(1)
+        expect(mocks.suggestCourseSlug).toHaveBeenCalledWith('SIRE 2.0 Readiness: Tanker Officers!')
+        expect(slug).toHaveValue('sire-2-0-readiness-tanker-officers-2')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('stops following once the slug is edited by hand, and a late answer never overwrites it', async () => {
+      vi.useFakeTimers()
+      try {
+        let answer: (value: { slug: string }) => void = () => undefined
+        mocks.suggestCourseSlug.mockImplementation(() => new Promise((resolve) => { answer = resolve }))
+        render(<CourseForm initialValue={blank} />)
+        const title = screen.getByLabelText('Course title')
+        const slug = screen.getByLabelText('Course URL slug')
+        fireEvent.change(title, { target: { value: 'Ballast Water Basics' } })
+        await act(async () => { await vi.advanceTimersByTimeAsync(450) })
+        fireEvent.change(slug, { target: { value: 'bwm-basics' } })
+        await act(async () => { answer({ slug: 'ballast-water-basics-2' }) })
+        expect(slug).toHaveValue('bwm-basics')
+        fireEvent.change(title, { target: { value: 'Ballast Water Management Basics' } })
+        expect(slug).toHaveValue('bwm-basics')
+        expect(screen.queryByText(/Made from the title as you type/)).toBeNull()
+        // Clearing the slug starts following the title again.
+        fireEvent.change(slug, { target: { value: '' } })
+        fireEvent.change(title, { target: { value: 'Ballast Water' } })
+        expect(slug).toHaveValue('ballast-water')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('leaves the slug of an existing course, or one already given, alone', () => {
+      render(<CourseEditSession initialDetailsRevision={1}><CourseForm initialValue={initial} courseId={courseId} /></CourseEditSession>)
+      fireEvent.change(screen.getByLabelText('Course title'), { target: { value: 'A New Title' } })
+      expect(screen.getByLabelText('Course URL slug')).toHaveValue(initial.slug)
+      cleanup()
+      render(<CourseForm initialValue={initial} />)
+      fireEvent.change(screen.getByLabelText('Course title'), { target: { value: 'Another Title' } })
+      expect(screen.getByLabelText('Course URL slug')).toHaveValue(initial.slug)
+      expect(mocks.suggestCourseSlug).not.toHaveBeenCalled()
+    })
   })
 })

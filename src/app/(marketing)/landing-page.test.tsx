@@ -326,7 +326,8 @@ describe('landing page on phones (below 768px)', () => {
     expect(wallem).toHaveAttribute('rel', 'noopener noreferrer')
     expect(wallem.querySelector('img')).toHaveAttribute('src', '/landing/logos/c_wallem.svg')
 
-    const seeAll = within(partners).getByRole('link', { name: /See all 40\+ partners/ })
+    // Owner (15 Nov): KCS and MCSS removed, so exactly 40 partners now (it read "40+" with 42).
+    const seeAll = within(partners).getByRole('link', { name: /See all 40 partners/ })
     expect(seeAll).toHaveClass('pall-open')
     expect(seeAll).toHaveAttribute('href', '#partners-all')
 

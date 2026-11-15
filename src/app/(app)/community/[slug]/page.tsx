@@ -219,7 +219,8 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
           !canSee ? (
             <PageSection id="posts-heading" title="Posts"><JoinToSee what="posts" group={group} /></PageSection>
           ) : (
-            <div className="space-y-4 max-md:space-y-2">
+            // Owner (15 Nov): posts sit in the home feed's column width (max-w-feed), with the same cards and media.
+            <div className="mx-auto w-full max-w-feed space-y-4 max-md:space-y-2" data-testid="community-posts-column">
               {showWelcomePrompt ? <WelcomePostPrompt group={{ id: group.id, name: group.name, description: group.description }} /> : null}
               {isMember && profile ? (
                 <PostComposer profile={profile} group={{ id: group.id, name: group.name }} />

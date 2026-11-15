@@ -15,6 +15,7 @@ import {
 } from './course-repository'
 import { CourseRevisionError, courseRevisionRepository } from './course-revision-repository'
 import { courseEditLockedCopy } from './course-workflow'
+import { slugifyCourseTitle } from './course-slug'
 import { verifyLearningMediaObject } from './media'
 import { learningMediaRepository } from './media-repository'
 import { firstPlainIssue } from '@/lib/validation/plain-messages'
@@ -208,6 +209,22 @@ function refreshReviewQueues(courseId: string) {
   refreshStudio()
   revalidatePath(`/learn/studio/courses/${courseId}/edit`)
   revalidatePath('/admin/learning/courses')
+}
+
+/**
+ * Owner (15 Nov): the URL slug a new course would get from its title: lowercase, hyphens, no special characters, and
+ * -2, -3, … when another course already has it. Signed-in trainers only; it reveals no more than "taken or not".
+ */
+export async function suggestCourseSlug(title: string): Promise<{ slug: string }> {
+  const base = slugifyCourseTitle(typeof title === 'string' ? title.slice(0, 300) : '')
+  if (!base) return { slug: '' }
+  try {
+    await requireAwsUser()
+    return { slug: await courseRepository.availableSlug(base) }
+  } catch {
+    // Signed out or the database is busy: the plain slug from the title (a clash still shows on save).
+    return { slug: base }
+  }
 }
 
 export async function createCourseDraft(input: CourseDraftInput | CourseCreateInput): Promise<CourseCreateActionResult> {

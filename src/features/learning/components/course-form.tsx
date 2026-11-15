@@ -1,11 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { PAYMENT_CURRENCIES } from '@/features/payments/types'
-import { createCourseDraft, updateCourseDraft } from '../course-actions'
+import { createCourseDraft, suggestCourseSlug, updateCourseDraft } from '../course-actions'
+import { slugifyCourseTitle } from '../course-slug'
 import type { CourseDraftInput } from '../course-repository'
 import { coursePrice, courseSellerNet, formatCourseAmount, formatFeePercent, type SellerFeeTerms } from '../course-pricing'
 import type { CoursePublisherOption } from '../publishers'
@@ -201,6 +202,38 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
     setForm((current) => ({ ...current, [key]: value }))
   }
 
+  // Owner (15 Nov): a new course's slug follows its title until the trainer edits the slug by hand (clearing it
+  // starts following again). The server then swaps in the first free one (-2, -3, …). Existing courses keep theirs.
+  const [slugFollowsTitle, setSlugFollowsTitle] = useState(() => !courseId && !readOnly && !slugLocked && !initial.slug.trim())
+  const slugRequest = useRef(0)
+  const slugTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (slugTimer.current) clearTimeout(slugTimer.current) }, [])
+
+  function updateTitle(title: string) {
+    update('title', title)
+    if (!slugFollowsTitle) return
+    const base = slugifyCourseTitle(title)
+    update('slug', base)
+    const request = ++slugRequest.current
+    if (slugTimer.current) clearTimeout(slugTimer.current)
+    if (!base) return
+    slugTimer.current = setTimeout(() => {
+      void suggestCourseSlug(title).then((suggested) => {
+        // Only the latest title's answer, and only while the slug still follows the title.
+        if (request !== slugRequest.current || !suggested.slug) return
+        setForm((current) => (current.slug === base ? { ...current, slug: suggested.slug } : current))
+      }).catch(() => undefined)
+    }, 400)
+  }
+
+  function updateSlug(slug: string) {
+    update('slug', slug)
+    const follows = !courseId && !slug.trim()
+    setSlugFollowsTitle(follows)
+    // A slug typed by hand wins over any answer still on its way.
+    slugRequest.current += 1
+  }
+
   async function saveDetails(): Promise<SaveOutcome> {
     // A save is already running (e.g. Save, then Submit straight away): wait for it
     // so the next save uses the revision it produced instead of a stale one.
@@ -365,11 +398,12 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-semibold text-navy-950">Course title
-            <input aria-label="Course title" className={inputClassName()} value={form.title} onChange={(event) => update('title', event.target.value)} />
+            <input aria-label="Course title" className={inputClassName()} value={form.title} onChange={(event) => updateTitle(event.target.value)} />
           </label>
           <label className="text-sm font-semibold text-navy-950">Course URL slug
-            <input aria-label="Course URL slug" className={`${inputClassName()} read-only:bg-mist-50 read-only:text-muted`} value={form.slug} readOnly={slugLocked} aria-describedby={slugLocked ? 'course-slug-locked' : undefined} onChange={(event) => update('slug', event.target.value)} placeholder="sire-2-readiness" />
+            <input aria-label="Course URL slug" className={`${inputClassName()} read-only:bg-mist-50 read-only:text-muted`} value={form.slug} readOnly={slugLocked} aria-describedby={slugLocked ? 'course-slug-locked' : undefined} onChange={(event) => updateSlug(event.target.value)} placeholder="sire-2-readiness" />
             {slugLocked ? <span id="course-slug-locked" className="mt-1 block text-xs font-normal text-muted">A published course keeps its address, so links learners have shared keep working.</span> : null}
+            {slugFollowsTitle ? <span className="mt-1 block text-xs font-normal text-muted">Made from the title as you type. Edit it to choose your own.</span> : null}
           </label>
         </div>
 

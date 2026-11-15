@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, CheckCircle2, CircleDot, Loader2 } from 'lucide-react'
 import { internalDestination, isPlainLeftClick } from '@/hooks/use-unsaved-changes-warning'
+import { installScrollKeeper } from './scroll-keeper'
 
 /**
  * Keeps every editor on the course edit page (details form, curriculum,
@@ -110,6 +111,8 @@ export function CourseEditSession({
   const [unsaved, setUnsaved] = useState<Array<{ label: string; canSave: boolean }>>([])
   const revisionRef = useRef<number | null>(initialDetailsRevision)
   const [pendingHref, setPendingHref] = useState<string | null>(null)
+  // Owner (15 Nov): typing and saving never move the page (see scroll-keeper.ts).
+  useEffect(() => installScrollKeeper(window), [])
   const [leaveError, setLeaveError] = useState<string | null>(null)
   const [leaving, setLeaving] = useState(false)
   const stayButtonRef = useRef<HTMLButtonElement | null>(null)
