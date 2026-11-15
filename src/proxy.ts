@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server'
 import { ADMIN_RETURN_PATH_HEADER, adminReturnPathForRequest } from '@/lib/auth/admin-mfa-paths'
 import { afterSignOutRedirect } from '@/lib/auth/after-sign-out'
-import { setRefreshTokenLedger, updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
+import { setRefreshRenewal, setRefreshTokenLedger, updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
+import { createRefreshSingleFlight } from '@/lib/auth/refresh-single-flight'
+import { accountSecurityKey } from '@/features/account-security/keys'
+import { createRefreshRenewalStore } from '@/features/account-security/refresh-renewals'
 import { createRefreshTokenLedger } from '@/features/account-security/refresh-token-ledger'
 import { query } from '@/lib/db/client'
 import { arrivedAtReturnPath, RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
@@ -17,6 +20,11 @@ import {
 
 // Round I (I3): refresh token reuse detection (Node.js runtime, the default for Proxy in Next 16).
 setRefreshTokenLedger(createRefreshTokenLedger({ query: (text, values) => query(text, values) }))
+// Owner-approved 15 Nov: requests carrying the same refresh token share one renewal, on this server and (through
+// public.auth_refresh_renewals, sealed, 60 seconds at most) on the others. Without the key or table: as before.
+setRefreshRenewal(createRefreshSingleFlight({
+  shared: createRefreshRenewalStore({ query: (text, values) => query(text, values), key: accountSecurityKey('refresh-renewal') }),
+}))
 
 export async function proxy(incoming: NextRequest) {
   // Round 14 (2.4): page loads carry a Report-Only CSP with a per-request nonce. Only body-less

@@ -2,15 +2,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ updateCognitoRouteSession: vi.fn(), setRefreshTokenLedger: vi.fn() }))
+const mocks = vi.hoisted(() => ({ updateCognitoRouteSession: vi.fn(), setRefreshTokenLedger: vi.fn(), setRefreshRenewal: vi.fn() }))
 vi.mock('@/lib/auth/cognito-proxy', () => ({
   updateCognitoRouteSession: mocks.updateCognitoRouteSession,
   setRefreshTokenLedger: mocks.setRefreshTokenLedger,
+  setRefreshRenewal: mocks.setRefreshRenewal,
 }))
 vi.mock('@/lib/db/client', () => ({ query: vi.fn(async () => ({ rows: [] })) }))
 
 import { API_CONTENT_SECURITY_POLICY } from '@/lib/security/content-security-policy'
 import { proxy } from './proxy'
+
+// Read before beforeEach clears the mocks: proxy.ts installs these once, when it loads.
+const installed = { ledger: mocks.setRefreshTokenLedger.mock.calls.length, renewal: mocks.setRefreshRenewal.mock.calls.slice() }
+
+describe('proxy renewal wiring (owner 15 Nov)', () => {
+  it('installs the refresh token ledger and one shared renewal per refresh token when it loads', () => {
+    expect(installed.ledger).toBe(1)
+    expect(installed.renewal).toHaveLength(1)
+    expect(typeof installed.renewal[0]?.[0]).toBe('function')
+  })
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
