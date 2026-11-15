@@ -911,6 +911,168 @@ def section_caponline():
         out("CAP_ONLINE_DAY", day, "hours=%d" % len(v), "peak=%d" % max(v), "avg=%.1f" % statistics.fmean(v))
 
 
+# ---------------------------------------------------------------- sections: sessions (owner 15 Nov, read-only)
+
+# Owner (15 Nov): an administrator using a phone and a laptop is signed out when moving between them. Window file
+# "sessions <start> <end>" (at most 14 days): sign-ins started and ended per UTC day and why, ends near the same
+# member's activity on another device, sign-ins started again without a recorded end, renewals made in parallel
+# within the 60-second rotation grace, the admin step-up, and the reused-token count. Administrators are counted
+# apart from members. Counts only: no ids, names, emails, devices, places or addresses.
+SESSION_ADMINS_SQL = "admins as (select distinct user_id from public.user_roles where role::text = 'administrator')"
+# A renewal is a refresh token Cognito issued (the ledger's row for it). The sign-in's own first token is written
+# already exchanged (created_at = superseded_at), so it is not counted.
+SESSION_MINTED_SQL = ("minted as (select t.token_hash, t.origin_hash, t.created_at, t.superseded_at from public.auth_refresh_tokens t "
+                      "where t.superseded_at is null or t.superseded_at > t.created_at)")
+
+
+def sessions_window():
+    start, end = parse_minute(os.environ["SESS_START"]), parse_minute(os.environ["SESS_END"])
+    assert start < end <= start + dt.timedelta(days=14), "the sessions window must be at most 14 days"
+    return start, end
+
+
+def session_statements(start, end):
+    a, b = "timestamptz '%s'" % iso(start), "timestamptz '%s'" % iso(end)
+
+    def day(col):
+        return "(%s at time zone 'UTC')::date::text" % col
+
+    def inside(col):
+        return "%s >= %s and %s < %s" % (col, a, col, b)
+
+    def near(col, at, before="5 minutes", after="1 minute"):
+        return "%s between %s - interval '%s' and %s + interval '%s'" % (col, at, before, at, after)
+
+    admin = "s.profile_id in (select user_id from admins)"
+    started_ended = (
+        "with %s select kind, day, is_admin, detail, count(*)::int as n from ("
+        "select 'started' as kind, %s as day, %s as is_admin, s.sign_in_method as detail from public.auth_sessions s where %s "
+        "union all select 'signed_out', %s, %s, s.revoke_reason from public.auth_sessions s where %s "
+        "union all select 'reuse_ended', %s, %s, s.sign_in_method from public.auth_sessions s where %s"
+        ") x group by 1, 2, 3, 4 order by 2, 1, 3, 4"
+    ) % (SESSION_ADMINS_SQL, day("s.created_at"), admin, inside("s.created_at"), day("s.revoked_at"), admin,
+         inside("s.revoked_at"), day("s.reuse_detected_at"), admin, inside("s.reuse_detected_at"))
+    other_active = (
+        "exists (select 1 from public.auth_sessions o where o.profile_id = e.profile_id and o.id <> e.id and (%s or %s or %s "
+        "or exists (select 1 from minted m where m.origin_hash = o.token_origin_hash and %s)))"
+    ) % (near("o.created_at", "e.end_at"), near("o.admin_step_up_at", "e.end_at"), near("o.last_seen_at", "e.end_at"),
+         near("m.created_at", "e.end_at"))
+    parallel_before_end = (
+        "exists (select 1 from minted m1 join minted m2 on m2.origin_hash = m1.origin_hash and m2.token_hash <> m1.token_hash "
+        "and m2.created_at >= m1.created_at and m2.created_at <= m1.created_at + interval '60 seconds' "
+        "where m1.origin_hash = e.token_origin_hash and m2.created_at < e.end_at)")
+    ends = (
+        "with %s, %s, e as (select s.id, s.profile_id, s.token_origin_hash, coalesce(s.reuse_detected_at, s.revoked_at) as end_at, "
+        "case when s.reuse_detected_at is not null then 'reuse' else s.revoke_reason end as reason, %s as is_admin "
+        "from public.auth_sessions s where %s) "
+        "select %s as day, e.is_admin, e.reason, count(*)::int as ended, "
+        "count(*) filter (where %s)::int as other_device_active_near, "
+        "count(*) filter (where exists (select 1 from public.auth_sessions o where o.profile_id = e.profile_id and o.id <> e.id "
+        "and o.created_at > e.end_at and o.created_at <= e.end_at + interval '30 minutes'))::int as signed_in_again_30min, "
+        "count(*) filter (where %s)::int as had_parallel_renewal "
+        "from e group by 1, 2, 3 order by 1, 2, 3"
+    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside("coalesce(s.reuse_detected_at, s.revoked_at)"),
+         day("e.end_at"), other_active, parallel_before_end)
+    # A sign-in started while an older one on the same kind of device (browser and system, the user agent summary)
+    # never ended and was not used after it: the device lost its sign-in without our record of it ending.
+    replaced = (
+        "exists (select 1 from public.auth_sessions p where p.profile_id = n.profile_id and p.id <> n.id "
+        "and p.user_agent_summary = n.user_agent_summary and p.created_at < n.created_at and p.revoked_at is null "
+        "and p.reuse_detected_at is null and p.last_seen_at > n.created_at - interval '30 days' "
+        "and p.last_seen_at <= n.created_at + interval '5 minutes')")
+    other_before = (
+        "exists (select 1 from public.auth_sessions o where o.profile_id = n.profile_id and o.id <> n.id "
+        "and o.user_agent_summary is distinct from n.user_agent_summary and (%s "
+        "or exists (select 1 from minted m where m.origin_hash = o.token_origin_hash and %s)))"
+    ) % (near("o.last_seen_at", "n.created_at", "30 minutes", "0 minutes"), near("m.created_at", "n.created_at", "30 minutes", "0 minutes"))
+    restarted = (
+        "with %s, %s, n as (select s.id, s.profile_id, s.user_agent_summary, s.created_at, %s as is_admin "
+        "from public.auth_sessions s where %s and s.user_agent_summary is not null) "
+        "select %s as day, n.is_admin, count(*)::int as sign_ins, count(*) filter (where %s)::int as replaced_unended, "
+        "count(*) filter (where %s and %s)::int as replaced_after_other_device "
+        "from n group by 1, 2 order by 1, 2"
+    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside("s.created_at"), day("n.created_at"), replaced, replaced, other_before)
+    renewals = (
+        "with %s, m as (select t.token_hash, t.origin_hash, t.created_at, t.superseded_at from public.auth_refresh_tokens t "
+        "where (t.superseded_at is null or t.superseded_at > t.created_at) and t.created_at >= %s - interval '1 minute' and t.created_at < %s) "
+        "select %s as day, s.profile_id in (select user_id from admins) as is_admin, count(*)::int as renewals, "
+        "count(distinct m.origin_hash)::int as sign_ins, "
+        "count(*) filter (where exists (select 1 from m m2 where m2.origin_hash = m.origin_hash and m2.token_hash <> m.token_hash "
+        "and m2.created_at between m.created_at - interval '60 seconds' and m.created_at + interval '60 seconds'))::int as renewals_in_parallel, "
+        "count(*) filter (where m.superseded_at is null and exists (select 1 from m m2 where m2.origin_hash = m.origin_hash "
+        "and m2.created_at > m.created_at))::int as never_used_again "
+        "from m join public.auth_sessions s on s.token_origin_hash = m.origin_hash where %s group by 1, 2 order by 1, 2"
+    ) % (SESSION_ADMINS_SQL, a, b, day("m.created_at"), inside("m.created_at"))
+    step_up = (
+        "select kind, day, count(*)::int as n from ("
+        "select case when succeeded then 'step_up_ok' else 'step_up_failed' end as kind, %s as day from public.admin_step_up_attempts where %s "
+        "union all select action, %s from public.audit_events where action in ('account.mfa_reset', 'account.mfa_backup_code_used', "
+        "'account.sessions_signed_out', 'account.password_changed') and %s"
+        ") x group by 1, 2 order by 2, 1"
+    ) % (day("created_at"), inside("created_at"), day("created_at"), inside("created_at"))
+    admins = "with %s select count(*)::int as admins from admins" % SESSION_ADMINS_SQL
+    return [started_ended, ends, restarted, renewals, step_up, admins]
+
+
+def who(row):
+    return "admin" if row.get("is_admin") in (True, "true", "t", 1) else "member"
+
+
+def section_sessdb():
+    out("=== SIGN-INS ACROSS DEVICES (owner 15 Nov): counts per UTC day, administrators apart; no member data ===")
+    start, end = sessions_window()
+    out("SESS_WINDOW", iso(start), iso(end))
+    started_ended, ends, restarted, renewals, step_up, admins = sql_rows(session_statements(start, end))
+    if admins is None:
+        out("SESS UNAVAILABLE")
+        return
+    out("SESS_ADMINS", "count=%d" % int(admins[0]["admins"]))
+    for r in started_ended or []:
+        out("SESS_DAY", r["day"], r["kind"], who(r), r["detail"] or "none", "n=%d" % int(r["n"]))
+    for r in ends or []:
+        out("SESS_END", r["day"], who(r), r["reason"] or "none", "ended=%d" % int(r["ended"]),
+            "other_device_active_near=%d" % int(r["other_device_active_near"]),
+            "signed_in_again_30min=%d" % int(r["signed_in_again_30min"]), "had_parallel_renewal=%d" % int(r["had_parallel_renewal"]))
+    for r in restarted or []:
+        out("SESS_RESTART", r["day"], who(r), "sign_ins=%d" % int(r["sign_ins"]), "replaced_unended=%d" % int(r["replaced_unended"]),
+            "replaced_after_other_device=%d" % int(r["replaced_after_other_device"]))
+    for r in renewals or []:
+        out("SESS_RENEW", r["day"], who(r), "renewals=%d" % int(r["renewals"]), "sign_ins=%d" % int(r["sign_ins"]),
+            "renewals_in_parallel=%d" % int(r["renewals_in_parallel"]), "never_used_again=%d" % int(r["never_used_again"]))
+    for r in step_up or []:
+        out("SESS_SECURITY", r["day"], r["kind"], "n=%d" % int(r["n"]))
+
+
+def section_sessmetric():
+    out("=== REUSED SIGN-IN TOKENS PER UTC DAY (SeaNShore/App RefreshTokenReuse, by where it was caught; counts only) ===")
+    start, end = sessions_window()
+    first = start.replace(hour=0, minute=0)
+    for source in ("cognito", "ledger"):
+        q = [{"Id": "m", "MetricStat": {"Metric": {"Namespace": "SeaNShore/App", "MetricName": "RefreshTokenReuse",
+              "Dimensions": [{"Name": "Area", "Value": "auth"}, {"Name": "Source", "Value": source}]},
+              "Period": 86400, "Stat": "Sum"}, "ReturnData": True}]
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(q, f)
+            path = f.name
+        try:
+            data = aws("cloudwatch", "get-metric-data", "--start-time", iso(first), "--end-time", iso(end),
+                       "--metric-data-queries", "file://" + path, "--scan-by", "TimestampAscending")
+        finally:
+            os.unlink(path)
+        result = ((data or {}).get("MetricDataResults") or [{}])[0]
+        pairs = list(zip(result.get("Timestamps", []), result.get("Values", [])))
+        out("SESS_REUSE_METRIC", source, " ".join("%s=%d" % (t[:10], int(v)) for t, v in pairs) or "none")
+    # The ledger cannot reach the database (logged by tag only), per day: a refresh then goes ahead unrecorded.
+    day = first
+    while day < end:
+        nxt = day + dt.timedelta(days=1)
+        n = aws("logs", "filter-log-events", "--log-group-name", "/ecs/%s/web" % PREFIX,
+                "--start-time", int(day.timestamp() * 1000), "--end-time", int(min(nxt, end).timestamp() * 1000),
+                "--filter-pattern", '"auth_refresh_ledger_unavailable"', "--query", "length(events)")
+        out("SESS_LEDGER_UNAVAILABLE", day.date().isoformat(), "events=%s" % (n if n is not None else "UNAVAILABLE"))
+        day = nxt
+
+
 def section_dbcompare():
     """Round DB (Option A, owner 12 Nov): database cost per request, before and after, the same hours 24 hours apart.
     Requests from the ALB; database time from Performance Insights; Aurora capacity and CPU from CloudWatch. Counts,
@@ -2041,7 +2203,8 @@ def main():
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
-     "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit}[SECTION]()
+     "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit,
+     "sessdb": section_sessdb, "sessmetric": section_sessmetric}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

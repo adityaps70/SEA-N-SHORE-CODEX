@@ -51,6 +51,15 @@ function compareWindow() {
       new Date(cap[2]) - new Date(cap[1]) <= 14 * 24 * 3600_000, 'the cap window must be "cap <start> <end>", at most 14 days, in whole UTC minutes')
     return { cap: true, capStart: cap[1], capEnd: cap[2] }
   }
+  // Owner (15 Nov): sign-ins across a member's devices (signed out when moving from one device to another): sign-ins
+  // started and ended per day and why, ends near activity on another device, renewals in parallel and the reused-token
+  // count, read-only and counts only: "sessions <start> <end>", at most 14 days, in whole UTC minutes.
+  const sessions = line.match(/^sessions (\S+) (\S+)$/)
+  if (sessions) {
+    assert.ok(MINUTE.test(sessions[1]) && MINUTE.test(sessions[2]) && new Date(sessions[2]) > new Date(sessions[1]) &&
+      new Date(sessions[2]) - new Date(sessions[1]) <= 14 * 24 * 3600_000, 'the sessions window must be "sessions <start> <end>", at most 14 days, in whole UTC minutes')
+    return { sessions: true, sessStart: sessions[1], sessEnd: sessions[2] }
+  }
   // Round CAP (owner 13 Nov): the admin final-reminder counts split at the Deploy B deploy and at the 10-second limit:
   // "legacy <start> <deploy B> <time limit> <end>", at most 8 days, in whole UTC minutes.
   const legacy = line.match(/^legacy (\S+) (\S+) (\S+) (\S+)$/)
@@ -81,10 +90,12 @@ const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'db
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
 // Owner (14 Nov): the home feed's share needs the people-online counts over the same window (caponline).
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d', 'caponline']
-const SECTIONS = COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+const SESSION_SECTIONS = ['sessdb', 'sessmetric']
+const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
+  (COMPARE?.sessions && SESSION_SECTIONS.includes(s)) ||
   (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
-  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
+  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
@@ -115,6 +126,8 @@ export DB_RUN_START=${quote(COMPARE?.runStart ?? '')}
 export DB_RUN_END=${quote(COMPARE?.runEnd ?? '')}
 export CAP_START=${quote(COMPARE?.capStart ?? '')}
 export CAP_END=${quote(COMPARE?.capEnd ?? '')}
+export SESS_START=${quote(COMPARE?.sessStart ?? '')}
+export SESS_END=${quote(COMPARE?.sessEnd ?? '')}
 export LEGACY_POINTS=${quote(COMPARE?.legacyPoints ?? '')}
 export REPORT_PROBE_ORG_NAME=${quote(PROBE_ORG_NAME)}
 export LOAD_TEST_STEP_RPM=${quote(/^[0-9,]*$/.test(process.env.LOAD_TEST_STEP_RPM || '') ? process.env.LOAD_TEST_STEP_RPM || '' : '')}
