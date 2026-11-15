@@ -376,11 +376,11 @@ print("ok")
 // 7-day top statements, real traffic only. Read-only, counts only; the load tests are left out.
 test('the cap window runs the three read-only Step 0 sections over at most 14 days', () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
-  assert.match(wrapper, /const CAP_SECTIONS = \['capminutes', 'capwrites', 'cap7d'\]/)
+  assert.match(wrapper, /const CAP_SECTIONS = \['capminutes', 'capwrites', 'cap7d', 'caponline'\]/)
   assert.match(wrapper, /14 \* 24 \* 3600_000/)
   assert.match(wrapper, /export CAP_START=/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['capminutes', 'capwrites', 'cap7d']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['capminutes', 'capwrites', 'cap7d', 'caponline']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
   // The signed-in route list mirrors the app's own.
   const proxy = readFileSync('src/lib/auth/cognito-proxy.ts', 'utf8')
   const appList = [...proxy.match(/const PROTECTED_PREFIXES = \[([\s\S]*?)\] as const/)[1].replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1])
@@ -426,9 +426,11 @@ text = buf.getvalue()
 assert "CAP_PERSON_MINUTES total=4 distinct_members=3 busiest_minute_people=2" in text, text
 # Hour 0: 7 signed-in requests (the public page, public RSC and static file are left out) over 4 person-minutes.
 assert "CAP_RATE_TOTAL whole_window person_minutes=4 signed_in_requests=7 per_person_minute=1.75" in text, text
-for kind, n in (("page_signed_in_route", 1), ("rsc_signed_in_route", 1), ("rsc_hash_redirect", 1), ("action", 1),
+# Owner (14 Nov): /home pages and its Server Actions are the home feed's own types.
+for kind, n in (("home_page", 1), ("rsc_signed_in_route", 1), ("rsc_hash_redirect", 1), ("home_action", 1),
                 ("impressions", 1), ("realtime_ticket", 1), ("image", 1)):
     assert "CAP_RATE whole_window %s requests=%d" % (kind, n) in text, (kind, text)
+assert "CAP_HOME_SHARE home_requests=2 signed_in_requests=7 share=29% home_action=1 home_page=1" in text, text
 assert '"excluded_load_test_window": 2' in text and '"bot_or_probe": 1' in text, text
 # Webhooks and health checks are counted apart and never per person.
 assert '"non_person": 2' in text and "CAP_RATE whole_window non_person" not in text, text
@@ -584,6 +586,42 @@ assert "ONLINE_PEAK before hours_recorded=1 peak=7 avg_hourly_peak=7.0" in text,
 assert "ONLINE_PEAK after hours_recorded=2 peak=20 avg_hourly_peak=16.0" in text, text
 assert "ONLINE_PEAK_HOURS after 11-15T05=12 11-15T06=20" in text, text
 assert len(seen) == 1 and seen[0].startswith("select") and "online.peak_utc_h" in seen[0], seen
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr)
+  assert.match(run.stdout, /^ok$/m)
+})
+
+// Owner (14 Nov): each top statement's area (the home feed's share of database time) and the people online over the
+// cap window. Read-only, counts only.
+test('statements are grouped by area and the cap window prints the people-online peaks per day', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+area = r.cap_area
+assert area("insert into public.post_impressions (viewer_id, post_id) values ($1, $2)") == "home_feed"
+assert area("select p.id from public.posts p left join public.post_hides h on h.post_id = p.id") == "home_feed"
+assert area("select * from public.posts where id = $1") == "posts_other"
+assert area("select count(*) from public.notifications where recipient_id = $1") == "notifications"
+assert area("select * from public.jobs j where j.status = $1") == "jobs"
+assert area("select 1") == "other"
+os.environ["CAP_START"], os.environ["CAP_END"] = "2026-11-14T11:00:00Z", "2026-11-17T11:00:00Z"
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    return [[{"day": "2026-11-14", "hour": 10, "members": 99}, {"day": "2026-11-14", "hour": 12, "members": 4},
+             {"day": "2026-11-15", "hour": 9, "members": 7}, {"day": "2026-11-17", "hour": 11, "members": 50}]]
+r.sql_rows = fake_rows
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_caponline()
+text = buf.getvalue()
+# Hours before the window (10:00 on the 14th) and at its end (11:00 on the 17th) are left out.
+assert "CAP_ONLINE hours_recorded=2 peak=7 avg_hourly_peak=5.5" in text, text
+assert "CAP_ONLINE_DAY 2026-11-14 hours=1 peak=4 avg=4.0" in text and "CAP_ONLINE_DAY 2026-11-15 hours=1 peak=7 avg=7.0" in text, text
+assert all(s.lower().startswith("select") for s in seen), seen
 print("ok")
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr)

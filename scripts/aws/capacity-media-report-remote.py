@@ -889,6 +889,28 @@ def section_online():
         out("ONLINE_PEAK_HOURS", label, " ".join("%sT%02d=%s" % (r["day"][5:], int(r["hour"]), r["members"]) for r in chosen) or "none")
 
 
+# Owner (14 Nov): the people-online counts over the cap window, per UTC day (the worker's hourly peaks; a floor).
+def section_caponline():
+    out("=== ROUND CAP: PEAK SIGNED-IN MEMBERS ONLINE OVER THE CAP WINDOW (hourly peaks; counts only) ===")
+    start, end = cap_window()
+    rows = sql_rows(["select day::text as day, substr(metric, 17)::int as hour, value::bigint as members "
+                     "from public.ranking_metrics_daily where metric like 'online.peak_utc_h%%' "
+                     "and day between date '%s' and date '%s' order by day, hour" % (start.date().isoformat(), end.date().isoformat())])[0]
+    if rows is None:
+        out("CAP_ONLINE UNAVAILABLE")
+        return
+    inside = [r for r in rows if start <= dt.datetime.strptime("%s %02d" % (r["day"], int(r["hour"])), "%Y-%m-%d %H").replace(tzinfo=dt.timezone.utc) < end]
+    values = [int(r["members"]) for r in inside]
+    out("CAP_ONLINE", "hours_recorded=%d" % len(values), "peak=%s" % (max(values) if values else "n/a"),
+        "avg_hourly_peak=%s" % (("%.1f" % statistics.fmean(values)) if values else "n/a"),
+        "p90_hourly_peak=%s" % (sorted(values)[int(0.9 * (len(values) - 1))] if values else "n/a"))
+    by_day = defaultdict(list)
+    for r in inside:
+        by_day[r["day"]].append(int(r["members"]))
+    for day, v in sorted(by_day.items()):
+        out("CAP_ONLINE_DAY", day, "hours=%d" % len(v), "peak=%d" % max(v), "avg=%.1f" % statistics.fmean(v))
+
+
 def section_dbcompare():
     """Round DB (Option A, owner 12 Nov): database cost per request, before and after, the same hours 24 hours apart.
     Requests from the ALB; database time from Performance Insights; Aurora capacity and CPU from CloudWatch. Counts,
@@ -946,6 +968,7 @@ CAP_EXCLUDED = (("2026-11-07T10:45:00", "2026-11-07T11:30:00"), ("2026-11-08T12:
                 ("2026-11-08T13:45:00", "2026-11-08T14:00:00"), ("2026-11-09T11:15:00", "2026-11-09T11:40:00"),
                 ("2026-11-11T09:15:00", "2026-11-11T09:30:00"), ("2026-11-11T10:30:00", "2026-11-11T11:05:00"),
                 ("2026-11-11T19:50:00", "2026-11-11T21:05:00"), ("2026-11-12T11:15:00", "2026-11-12T12:00:00"))
+CAP_HOME_PATH = "/home"
 CAP_NON_PERSON = re.compile(r"^/api/(health(/|$)|.*/webhook$)")
 CAP_API_KINDS = (("/api/feed/impressions", "impressions"), ("/api/metrics/visit", "visit_metric"), ("/api/realtime/ticket", "realtime_ticket"),
                  ("/api/realtime/", "realtime_other"), ("/api/media/", "media_api"), ("/api/feed-media/", "media_api"),
@@ -1052,8 +1075,12 @@ def section_capminutes():
             path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0] or "/"
             query = url.split("?", 1)[1] if "?" in url else ""
             kind = cap_request_type(method, path, query, m.group(9))
+            # Owner (14 Nov): the home feed (/home pages, navigations and its Server Actions, such as "load more") is
+            # its own type, so its share of signed-in requests shows next to everything else.
+            if path == CAP_HOME_PATH and kind in ("page", "rsc", "action"):
+                kind = "home_" + kind
             # Pages and RSC payloads split by whether the route needs a signed-in member.
-            if kind in ("page", "rsc"):
+            elif kind in ("page", "rsc"):
                 kind += "_signed_in_route" if cap_protected(path) else "_public_route"
             t = dt.datetime.strptime(t19, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=dt.timezone.utc)
             hourly[int((t - start).total_seconds() // 3600)][kind] += 1
@@ -1095,6 +1122,11 @@ def section_capminutes():
         out("CAP_BUSY_HOUR", (start + dt.timedelta(hours=h)).strftime("%dT%H:00"), "person_minutes=%s" % a["person_minutes"],
             "peak_minute_people=%s" % a["peak_minute"], "signed_in_requests=%d" % sum(v for k, v in c.items() if k in signed_in_kinds),
             " ".join("%s=%d" % (k, c[k]) for k in signed_in_kinds if c[k]))
+    home = [k for k in signed_in_kinds if k.startswith("home_")]
+    all_signed_in = sum(totals[k] for k in signed_in_kinds)
+    out("CAP_HOME_SHARE", "home_requests=%d" % sum(totals[k] for k in home), "signed_in_requests=%d" % all_signed_in,
+        "share=%s" % (("%.0f%%" % (100 * sum(totals[k] for k in home) / all_signed_in)) if all_signed_in else "n/a"),
+        " ".join("%s=%d" % (k, totals[k]) for k in home) or "none")
     for kind in ("action", "other_api", "rsc_signed_in_route", "rsc_public_route"):
         out("CAP_TOP_ROUTES", kind, " ".join("%s=%d" % kv for kv in routes[kind].most_common(15)) or "none")
 
@@ -1153,6 +1185,30 @@ def section_capwrites():
             "total_s=%s" % row["total_s"], "mean_ms=%s" % row["mean_ms"], "sql=" + one_line(q, 200))
 
 
+# Owner (14 Nov): which part of the product each top statement serves, from the tables it names (first rule that
+# matches). The home feed is the candidate, ranking and impression work; other post reads (a post page, a profile's
+# posts, a community) are "posts_other".
+CAP_AREAS = (
+    ("home_feed", ("post_impressions", "feed_sessions", "feed_feedback", "post_hides", "post_engagement_counters", "post_stats")),
+    ("notifications", ("public.notifications", "notification_")),
+    ("messages", ("public.messages", "conversation_participants", "public.conversations")),
+    ("jobs", ("public.jobs", "job_applications", "job_saves", "job_department_extra_ranks")),
+    ("people", ("public.connections", "public.follows", "suggestion_dismissals", "people_")),
+    ("posts_other", ("public.posts", "post_comments", "post_reactions")),
+    ("communities", ("community_",)),
+    ("learning", ("learning_", "public.courses")),
+    ("auth_session", ("identity_", "device_sessions", "auth_", "sessions")),
+)
+
+
+def cap_area(sql):
+    text = sql.lower()
+    for area, needles in CAP_AREAS:
+        if any(n in text for n in needles):
+            return area
+    return "other"
+
+
 def section_cap7d():
     out("=== ROUND CAP STEP 0: TOP STATEMENTS OVER THE LAST 7 DAYS OF REAL TRAFFIC (load tests left out) ===")
     resource = writer_resource()
@@ -1181,7 +1237,8 @@ def section_cap7d():
         for k in pi_keys(resource, a, b, "db.sql_tokenized", 25, PI_WINDOW_STATS):
             d = k.get("Dimensions") or {}
             sql_id = d.get("db.sql_tokenized.id") or d.get("db.sql_tokenized.statement", "")[:80]
-            m = merged.setdefault(sql_id, {"db_s": 0.0, "calls": 0.0, "ms_weighted": 0.0, "sql": one_line(d.get("db.sql_tokenized.statement", ""), 200)})
+            m = merged.setdefault(sql_id, {"db_s": 0.0, "calls": 0.0, "ms_weighted": 0.0, "sql": one_line(d.get("db.sql_tokenized.statement", ""), 200),
+                                           "area": cap_area(d.get("db.sql_tokenized.statement", ""))})
             m["db_s"] += k.get("Total", 0) * seconds
             add = k.get("AdditionalMetrics") or {}
             calls_ps, ms = add.get("db.sql_tokenized.stats.calls_per_sec.avg"), add.get("db.sql_tokenized.stats.avg_latency_per_call.avg")
@@ -1195,7 +1252,13 @@ def section_cap7d():
     for rank, m in enumerate(ranked[:25], 1):
         out("CAP_7D_SQL", "rank=%d" % rank, "db_s=%.0f" % m["db_s"], "share=%.0f%%" % (100 * m["db_s"] / total_db),
             "calls=%.0f" % m["calls"], "ms_per_call=%s" % (("%.2f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a"),
-            "sql=" + m["sql"])
+            "area=" + m["area"], "sql=" + m["sql"])
+    areas = defaultdict(lambda: {"db_s": 0.0, "calls": 0.0})
+    for m in ranked:
+        areas[m["area"]]["db_s"] += m["db_s"]
+        areas[m["area"]]["calls"] += m["calls"]
+    for area, a in sorted(areas.items(), key=lambda kv: -kv[1]["db_s"]):
+        out("CAP_7D_AREA", area, "db_s=%.0f" % a["db_s"], "share=%.0f%%" % (100 * a["db_s"] / total_db), "calls=%.0f" % a["calls"])
     by_calls = sorted(ranked, key=lambda m: -m["calls"])[:10]
     out("CAP_7D_BY_CALLS", " | ".join("calls=%.0f ms=%s sql=%s" % (m["calls"], ("%.2f" % (m["ms_weighted"] / m["calls"])) if m["calls"] else "n/a", m["sql"][:70]) for m in by_calls))
 
@@ -1978,7 +2041,7 @@ def main():
     {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
-     "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "legacysplit": section_legacysplit}[SECTION]()
+     "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 
