@@ -290,8 +290,8 @@ export function similarToSql() {
   return `with ${excludedPeopleCte()},
        subject as (
          select p.id, p.role_key, coalesce(mp.vessel_type_codes, '{}') as vessel_codes, mp.current_company_id,
-                (select coalesce(array_agg(r.code), '{}'::text[]) from public.maritime_ranks sr
-                 join public.maritime_ranks r on r.ladder = sr.ladder and r.department_key = sr.department_key and abs(r.ladder_level - sr.ladder_level) <= 1
+                (select coalesce(array_agg(r.code), '{}'::text[]) from public.maritime_rank_steps sr
+                 join public.maritime_rank_steps r on r.ladder = sr.ladder and r.department_key = sr.department_key and abs(r.step - sr.step) <= 1
                  where sr.code = p.role_key) as rank_band,
                 (select coalesce(array_agg(distinct vt.vessel_group), '{}'::text[]) from public.vessel_types vt where vt.code = any(coalesce(mp.vessel_type_codes, '{}'))) as vessel_groups
          from public.profiles p left join public.maritime_profiles mp on mp.user_id = p.id

@@ -2,7 +2,7 @@ import { jobsRepository } from '@/features/jobs/repository'
 import { candidatePersona, candidateRoleKeys } from '@/features/jobs/matching'
 import type { JobCandidateProfile } from '@/features/jobs/types'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
-import { ROLES, ladderDistance, roleByKey } from '@/features/roles/taxonomy'
+import { allRoles, ladderDistance, roleByKey } from '@/features/roles/taxonomy'
 import { CERTIFICATE_TYPE_SEEDS, matchCertificateType, normaliseTaxonomyText, rankDepartmentGroup } from '@/features/taxonomy/maritime-taxonomy'
 import { jobPoolOptions } from './job-pool'
 import { COURSE_CATEGORY_DEPARTMENTS, SUGGESTION_WEIGHTS } from './suggestion-weights'
@@ -55,11 +55,11 @@ export function scoreCourses(candidates: readonly CourseCandidate[], profile: Jo
   const persona = profile ? candidatePersona(profile) : null
   const memberKeys = profile && persona ? candidateRoleKeys(profile, persona) : []
   const department = rankDepartmentGroup(memberKeys[0] ?? null)
-  const bandKeys = ROLES.filter((role) => !role.other && memberKeys.some((key) => {
+  const bandKeys = allRoles().filter((role) => !role.other && memberKeys.some((key) => {
     const distance = ladderDistance(key, role.key)
     return distance !== null && Math.abs(distance) <= 1
   })).map((role) => role.key)
-  const nextKeys = ROLES.filter((role) => !role.other && memberKeys.some((key) => ladderDistance(key, role.key) === -1)).map((role) => role.key)
+  const nextKeys = allRoles().filter((role) => !role.other && memberKeys.some((key) => ladderDistance(key, role.key) === -1)).map((role) => role.key)
   // ladderDistance(member, target) is negative when the target is more senior.
   const bandPhrases = bandKeys.flatMap(rolePhrases)
   const expiring = profile ? expiringCertificates(profile, today) : []

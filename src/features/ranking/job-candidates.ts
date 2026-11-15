@@ -4,7 +4,7 @@ import type { JobListing, JobMatchResult } from '@/features/jobs/types'
 import type { RelationshipState } from '@/features/network/types'
 import { messagePermissionFrom, type MessagePermission } from '@/features/profiles/privacy-choices'
 import { jobAcceptedRoleKeys } from '@/features/jobs/matching'
-import { ROLES } from '@/features/roles/taxonomy'
+import { allRoles } from '@/features/roles/taxonomy'
 import { RANK_BAND_STEPS, rankDistance } from '@/features/taxonomy/maritime-taxonomy'
 import { scoreJobForMember } from './job-match'
 import { JOB_WEIGHTS } from './job-weights'
@@ -54,7 +54,7 @@ export function createJobCandidateSuggestions(input: { query?: Query } = {}) {
 
   async function list(recruiterId: string, job: JobListing, limit: number = JOB_WEIGHTS.recruiters.suggestedCandidates): Promise<SuggestedCandidate[]> {
     const accepted = jobAcceptedRoleKeys(job)
-    const bandKeys = ROLES.filter((role) => !role.other && accepted.some((key) => {
+    const bandKeys = allRoles().filter((role) => !role.other && accepted.some((key) => {
       const distance = rankDistance(key, role.key)
       return distance !== null && distance <= RANK_BAND_STEPS
     })).map((role) => role.key)

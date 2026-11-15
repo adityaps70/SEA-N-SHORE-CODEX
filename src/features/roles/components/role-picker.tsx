@@ -69,7 +69,7 @@ export function RolePicker({
   const departmentId = `${id}-department`
   const roleId = `${id}-role`
   const otherId = `${id}-other`
-  const roles = rolesFor(value.departmentKey)
+  const roles = rolesFor(value.departmentKey, [value.roleKey])
   const selectedRole = roles.find((role) => role.key === value.roleKey)
   const showOther = Boolean(selectedRole?.other)
   const roleDescription = errors?.role ?? hint

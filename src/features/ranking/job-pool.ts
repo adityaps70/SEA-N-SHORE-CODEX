@@ -1,7 +1,7 @@
 import { candidatePersona, candidateRoleKeys } from '@/features/jobs/matching'
 import type { JobCandidateProfile } from '@/features/jobs/types'
 import type { JobPoolOptions } from '@/features/jobs/repository'
-import { ROLES, roleByKey } from '@/features/roles/taxonomy'
+import { allRoles, roleByKey } from '@/features/roles/taxonomy'
 import { RANK_BAND_STEPS, VESSEL_TYPE_SEEDS, rankDistance, vesselGroupsOf, vesselTypeCodes } from '@/features/taxonomy/maritime-taxonomy'
 
 /**
@@ -17,7 +17,7 @@ export function jobPoolOptions(viewerId: string, profile: JobCandidateProfile | 
     const department = roleByKey(key)?.department
     return department ? [department] : []
   }))]
-  const rankBandKeys = ROLES
+  const rankBandKeys = allRoles()
     .filter((role) => !role.other && memberKeys.some((key) => {
       const distance = rankDistance(key, role.key)
       return distance !== null && distance <= RANK_BAND_STEPS

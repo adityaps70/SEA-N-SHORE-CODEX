@@ -56,7 +56,7 @@ export function AcceptedRolesPicker({
     ? <span id={issueId(field)} className="block text-xs font-medium text-red-700">{errors[field]}</span>
     : null
   const departments = jobDepartments()
-  const ownRoles = rolesFor(value.departmentKey)
+  const ownRoles = rolesFor(value.departmentKey, value.acceptedRoleKeys)
   // "Other (type your own)" is no longer offered; an older job that already has it keeps it (and its text).
   const listedOwn = ownRoles.filter((role) => !role.other || value.acceptedRoleKeys.includes(role.key))
   const otherSelected = ownRoles.some((role) => role.other && value.acceptedRoleKeys.includes(role.key))

@@ -30,6 +30,16 @@ export type RoleEntry = {
   sameAs?: string
   /** "Other (type your own)": stores a short text and never scores. */
   other?: boolean
+  /**
+   * P6b: a rank an administrator added (public.maritime_ranks, source 'admin'). Its place on the ladder is `position`
+   * (between its neighbours' levels); it is shown next to `anchorKey` in lists.
+   */
+  added?: boolean
+  position?: number
+  anchorKey?: string
+  anchorRelation?: 'above' | 'same' | 'below'
+  /** P6b: an added rank hidden from pickers. Jobs and profiles that have it keep it, and it still matches. */
+  hidden?: boolean
 }
 
 type RoleSeed = [key: string, label: string, ladder: string, level: number, synonyms?: readonly string[], sameAs?: string]
@@ -248,7 +258,91 @@ export const ROLES: readonly RoleEntry[] = ROLE_DEPARTMENTS.flatMap((department)
 ])
 
 const departmentByKeyMap = new Map(ROLE_DEPARTMENTS.map((department) => [department.key, department]))
-const roleByKeyMap = new Map(ROLES.map((role) => [role.key, role]))
+
+/**
+ * P6b: the live rank list is the code list above plus the ranks administrators added (public.maritime_ranks, source
+ * 'admin'). The server loads those (features/roles/catalog-server, refreshed every 30 seconds and at once where a rank
+ * is added) and the browser gets them from the page (RoleCatalogSync). Everything below reads the live list.
+ */
+let addedRoles: readonly RoleEntry[] = []
+let liveRoles: readonly RoleEntry[] = ROLES
+let roleByKeyMap = new Map(ROLES.map((role) => [role.key, role]))
+let ladderSteps = computeLadderSteps(ROLES)
+let catalogVersion = 0
+
+/** Places an added rank next to its anchor: before it ("above"), else after it and after earlier ranks placed there. */
+function withAddedRoles(base: readonly RoleEntry[], added: readonly RoleEntry[]): RoleEntry[] {
+  const list = [...base]
+  const pending = [...added]
+  // Anchors can be other added ranks; place in passes until nothing more can be placed.
+  for (let pass = 0; pass < 4 && pending.length; pass += 1) {
+    for (let i = 0; i < pending.length; ) {
+      const role = pending[i]!
+      const at = list.findIndex((entry) => entry.key === role.anchorKey)
+      if (at < 0) { i += 1; continue }
+      let insert = at
+      if (role.anchorRelation !== 'above') {
+        insert = at + 1
+        while (insert < list.length && list[insert]!.added && list[insert]!.anchorKey === role.anchorKey && list[insert]!.anchorRelation !== 'above') insert += 1
+      }
+      list.splice(insert, 0, role)
+      pending.splice(i, 1)
+    }
+  }
+  // An added rank whose anchor is unknown goes before its department's "Other".
+  for (const role of pending) {
+    const other = list.findIndex((entry) => entry.other && entry.department === role.department)
+    list.splice(other < 0 ? list.length : other, 0, role)
+  }
+  return list
+}
+
+/**
+ * Each rank's step on its ladder: 1 for the most senior, ranks at the same place share a step (dense rank). For the
+ * code list alone a step difference equals the level difference for every pair of ranks (taxonomy.test.ts checks it),
+ * so distances only change when an added rank sits between two others.
+ */
+function computeLadderSteps(roles: readonly RoleEntry[]) {
+  const placeOf = (role: RoleEntry) => role.position ?? role.level
+  const ladders = new Map<string, number[]>()
+  for (const role of roles) {
+    if (role.other) continue
+    const key = `${role.department}|${role.ladder}`
+    ladders.set(key, [...(ladders.get(key) ?? []), placeOf(role)])
+  }
+  const sorted = new Map([...ladders].map(([key, places]) => [key, [...new Set(places)].sort((a, b) => a - b)]))
+  const steps = new Map<string, number>()
+  for (const role of roles) {
+    if (role.other) continue
+    steps.set(role.key, sorted.get(`${role.department}|${role.ladder}`)!.indexOf(placeOf(role)) + 1)
+  }
+  return steps
+}
+
+/** P6b: replaces the added ranks (all of them, hidden ones included). Safe to call with the same list again. */
+export function setAddedRoles(entries: readonly RoleEntry[]) {
+  addedRoles = entries.map((entry) => ({ ...entry, added: true }))
+  liveRoles = withAddedRoles(ROLES, addedRoles)
+  roleByKeyMap = new Map(liveRoles.map((role) => [role.key, role]))
+  ladderSteps = computeLadderSteps(liveRoles)
+  legacyLookup = buildLegacyLookup(liveRoles)
+  catalogVersion += 1
+}
+
+/** P6b: the ranks administrators added (hidden ones included), as last loaded. */
+export function addedRoleEntries(): readonly RoleEntry[] {
+  return addedRoles
+}
+
+/** P6b: changes each time the added ranks are replaced. */
+export function roleCatalogVersion() {
+  return catalogVersion
+}
+
+/** P6b: every rank, the code list plus the added ones, in list order. */
+export function allRoles(): readonly RoleEntry[] {
+  return liveRoles
+}
 
 const SEA_DEPARTMENT_KEYS = SEA_DEPARTMENTS.map((entry) => entry.key) as string[]
 const SHORE_DEPARTMENT_KEYS = SHORE_DEPARTMENTS.map((entry) => entry.key) as string[]
@@ -297,20 +391,24 @@ export function departmentByKey(key: string | null | undefined): RoleDepartment 
   return key ? departmentByKeyMap.get(key) : undefined
 }
 
-export function rolesFor(departmentKey: string | null | undefined): RoleEntry[] {
+/**
+ * The ranks offered for a department (P6b: added ranks included, hidden ones left out unless listed in `keep`, the
+ * ranks a form already holds, so an older job or profile still shows its own rank).
+ */
+export function rolesFor(departmentKey: string | null | undefined, keep: readonly (string | null | undefined)[] = []): RoleEntry[] {
   if (!departmentKey) return []
-  return ROLES.filter((role) => role.department === departmentKey)
+  return liveRoles.filter((role) => role.department === departmentKey && (!role.hidden || keep.includes(role.key)))
 }
 
 /** P6: every existing rank a job can accept from any department, in department then ladder order ("Other" left out). */
 export function allRolesForPicker(): RoleEntry[] {
-  return ROLE_DEPARTMENTS.flatMap((department) => ROLES.filter((role) => role.department === department.key && !role.other))
+  return ROLE_DEPARTMENTS.flatMap((department) => liveRoles.filter((role) => role.department === department.key && !role.other && !role.hidden))
 }
 
 /** P6: the existing ranks (no "Other") of these departments, for "a job that accepts one of them counts under it". */
 export function departmentRoleKeys(departmentKeys: readonly string[]): string[] {
   const wanted = new Set(departmentKeys)
-  return ROLES.filter((role) => wanted.has(role.department) && !role.other).map((role) => role.key)
+  return liveRoles.filter((role) => wanted.has(role.department) && !role.other).map((role) => role.key)
 }
 
 /** P6: a job's department plus the departments of the ranks it accepts from other departments. */
@@ -369,7 +467,15 @@ export function ladderDistance(candidateKey: string | null | undefined, targetKe
   const right = canonicalRole(target)
   if (left.key === right.key) return 0
   if (left.department !== right.department || left.ladder !== right.ladder) return null
-  return left.level - right.level
+  // P6b: steps on the ladder (an added rank between two ranks moves the ones below it down by one).
+  return (ladderSteps.get(left.key) ?? left.level) - (ladderSteps.get(right.key) ?? right.level)
+}
+
+/** P6b: a rank's step on its ladder (1 = most senior), or null for an unknown or "Other" rank. */
+export function ladderStep(key: string | null | undefined): number | null {
+  const role = roleByKey(key)
+  if (!role || role.other) return null
+  return ladderSteps.get(canonicalRole(role).key) ?? canonicalRole(role).level
 }
 
 /** Case, space and punctuation-insensitive form used to compare free text with labels and synonyms. */
@@ -382,24 +488,25 @@ export function normaliseRoleText(text: string): string {
     .replace(/\s+/g, ' ')
 }
 
-const legacyLookup = (() => {
+function buildLegacyLookup(roles: readonly RoleEntry[]) {
   const lookup = new Map<string, string>()
   const add = (text: string, key: string) => {
     const normalised = normaliseRoleText(text)
     if (normalised && !lookup.has(normalised)) lookup.set(normalised, key)
   }
-  // Labels first, so an exact label always wins over another entry's synonym.
-  for (const role of ROLES) {
+  // Labels first, so an exact label always wins over another entry's synonym. P6b: the code list before added ranks.
+  for (const role of roles) {
     if (role.other || role.sameAs) continue
     add(role.label, role.key)
     add(role.label.replace(/\s*\([^)]*\)\s*/g, ' '), role.key)
   }
-  for (const role of ROLES) {
+  for (const role of roles) {
     if (role.other || role.sameAs) continue
     for (const synonym of role.synonyms) add(synonym, role.key)
   }
   return lookup
-})()
+}
+let legacyLookup = buildLegacyLookup(ROLES)
 
 /** P6: the normalised text → rank key lookup normaliseLegacyRank uses (for the runner's preview, which mirrors it). */
 export function legacyRankLookupEntries(): Array<[string, string]> {

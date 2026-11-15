@@ -5,6 +5,8 @@ import { connection } from 'next/server'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import { DisplayModeMarker } from '@/components/pwa/display-mode-marker'
 import { AppUpdateBar } from '@/features/app-update/app-update-bar'
+import { RoleCatalogSync } from '@/features/roles/components/role-catalog-sync'
+import { addedRolesForPage } from '@/features/roles/catalog-runtime'
 import { CONTENT_SECURITY_POLICY_HEADER } from '@/lib/security/content-security-policy'
 import { CSP_REPORTER_SCRIPT, nonceFromContentSecurityPolicy } from '@/lib/security/csp-reporter-script'
 import './globals.css'
@@ -107,12 +109,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   await connection()
   // Round P3: the CSP reporter runs first, so it sees every violation and sends each unique one once per page load.
   const nonce = nonceFromContentSecurityPolicy((await headers()).get(CONTENT_SECURITY_POLICY_HEADER))
+  // P6b: ranks administrators added (reloaded every 30 seconds, never a query per page) reach the browser's rank list.
+  const addedRoles = await addedRolesForPage()
   return (
     <html lang="en" className={fontVariables}>
       <head>
         {nonce ? <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: CSP_REPORTER_SCRIPT }} /> : null}
       </head>
       <body>
+        <RoleCatalogSync entries={addedRoles} />
         {children}
         <DisplayModeMarker />
         <AppUpdateBar />

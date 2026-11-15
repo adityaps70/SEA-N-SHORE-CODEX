@@ -1,5 +1,6 @@
 import { query } from '@/lib/db/client'
 import { runTaxonomyBackfill } from '@/features/taxonomy/backfill'
+import { ensureRoleCatalog } from '@/features/roles/catalog-runtime'
 import { purgeExpiredSignals } from '@/features/signals/retention'
 import { createCounterReconcileSweep } from './engagement-counters-reconcile'
 import { createOnlinePeakSweep } from './online-peak-sweep'
@@ -41,6 +42,8 @@ export function createRankingSweeps(input: {
   log?: (tag: string, data: unknown) => void
   schemaReady?: () => Promise<boolean>
   tableReady?: (table: string) => Promise<boolean>
+  /** P6b: the ranks administrators added, loaded before the sweeps that match or label ranks run. */
+  ensureCatalog?: () => Promise<void>
 } = {}) {
   const now = input.now ?? Date.now
   const log = input.log ?? ((tag, data) => console.info(tag, data))
@@ -58,6 +61,7 @@ export function createRankingSweeps(input: {
     // Round CAP (feed counters): nightly recount of the migration 0102 counters, 500 rows per pass.
     createCounterReconcileSweep(),
   ]
+  const ensureCatalog = input.ensureCatalog ?? (input.sweeps ? async () => undefined : ensureRoleCatalog)
   const nextAt = new Map<string, number>()
   const schemaReady = input.schemaReady ?? roundGSchemaReady
   const tableReady = input.tableReady ?? tableExists
@@ -80,6 +84,7 @@ export function createRankingSweeps(input: {
       ready = await schemaReady().catch(() => false)
     }
     if (!ready) return
+    await ensureCatalog().catch(() => undefined)
     for (const sweep of sweeps) {
       const current = now()
       if (current < (nextAt.get(sweep.name) ?? 0)) continue
