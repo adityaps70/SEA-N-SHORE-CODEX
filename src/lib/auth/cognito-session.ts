@@ -1,5 +1,6 @@
 import { CognitoApiError, type CognitoAuthenticationResult, type CognitoPrincipal } from './cognito-api'
 import { COGNITO_COOKIE_NAMES, createCognitoCookieManager } from './cognito-cookies'
+import type { RefreshRenewal } from './refresh-single-flight'
 
 type CookieStore = {
   get(name: string): { name: string; value: string } | undefined
@@ -63,6 +64,11 @@ export function createCognitoSessionManager(input: {
   ledger?: RefreshTokenLedger
   /** Round ARCH: counted (a metric, no member data) each time a reused refresh token is caught. */
   onRefreshReuse?: (source: RefreshReuseSource) => void
+  /**
+   * Owner-approved 15 Nov: one renewal per refresh token (refresh-single-flight). Requests that carry the same refresh
+   * token share one Cognito renewal, so every response sets the same new tokens. Without it, each request renews.
+   */
+  renew?: RefreshRenewal
 }) {
   function reportReuse(source: RefreshReuseSource) {
     try {
@@ -105,7 +111,9 @@ export function createCognitoSessionManager(input: {
       }
 
       try {
-        const authentication = await input.api.refresh(refreshToken)
+        const authentication = input.renew
+          ? await input.renew(refreshToken, () => input.api.refresh(refreshToken))
+          : await input.api.refresh(refreshToken)
         // Round I (I3): the refresh cookie is written again on every refresh, with a fresh 30-day Max-Age, so the
         // sign-in lasts until 30 days pass without the site being opened. With rotation on, Cognito returns a new
         // refresh token; without it the same token is kept.

@@ -210,6 +210,32 @@ describe('Cognito server session verification', () => {
     expect(api.refresh).not.toHaveBeenCalled()
   })
 
+  it('renews through the shared single renewal when one is given, so parallel requests set the same tokens (owner 15 Nov)', async () => {
+    const api = createFakeApi({ refresh: async () => ({ accessToken: 'shared-access', refreshToken: 'shared-refresh', expiresIn: 3600 }) })
+    const renew = vi.fn(async (_token: string, refresh: () => Promise<{ accessToken: string; refreshToken?: string; expiresIn: number }>) => refresh())
+    const jars = [0, 1].map(() => createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'old-refresh' }))
+    const results = await Promise.all(jars.map((jar) => createCognitoSessionManager({ cookieStore: jar.store, api, siteUrl: 'https://staging.example.com', renew }).refreshSession()))
+    expect(results).toEqual([true, true])
+    expect(renew).toHaveBeenCalledTimes(2)
+    expect(renew.mock.calls.map((call) => call[0])).toEqual(['old-refresh', 'old-refresh'])
+    for (const jar of jars) expect(jar.values.get(COGNITO_COOKIE_NAMES.refresh)).toBe('shared-refresh')
+  })
+
+  it('handles a refusal that comes through the shared renewal like one from Cognito', async () => {
+    const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'refused-refresh' })
+    const onRefreshReuse = vi.fn()
+    const sessions = createCognitoSessionManager({
+      cookieStore: fake.store,
+      api: createFakeApi(),
+      siteUrl: 'https://staging.example.com',
+      onRefreshReuse,
+      renew: async () => { throw new CognitoApiError('RefreshTokenReuseException') },
+    })
+    await expect(sessions.refreshSession()).resolves.toBe(false)
+    expect(onRefreshReuse).toHaveBeenCalledWith('cognito')
+    expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+  })
+
   it('still throws other Cognito errors (a transport failure is not a signed-out visitor)', async () => {
     const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'refresh-token' })
     const api = createFakeApi({ refresh: async () => { throw new CognitoApiError('TransportError') } })

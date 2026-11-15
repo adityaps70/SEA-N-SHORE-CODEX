@@ -3,6 +3,7 @@ import { CognitoApiError, createCognitoApi } from './cognito-api'
 import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
 import { createCognitoSessionManager, type RefreshTokenLedger } from './cognito-session'
 import { createCognitoPrincipalResolver } from './cognito-principal-cache'
+import { createRefreshSingleFlight, type RefreshRenewal } from './refresh-single-flight'
 import { getCognitoEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
@@ -186,6 +187,15 @@ export function setRefreshTokenLedger(ledger: RefreshTokenLedger) {
   refreshTokenLedger = ledger
 }
 
+/**
+ * Owner-approved 15 Nov: one renewal per refresh token for this server. In memory only until src/proxy.ts sets the
+ * shared one (with the cross-server store), so this module stays free of database imports.
+ */
+let refreshRenewal: RefreshRenewal = createRefreshSingleFlight()
+export function setRefreshRenewal(renewal: RefreshRenewal) {
+  refreshRenewal = renewal
+}
+
 export async function updateCognitoRouteSession(request: NextRequest) {
   const routed = isCognitoProtectedRoute(request.nextUrl.pathname) || isSoftAuthRoute(request.nextUrl.pathname)
     || isRealtimeTicketRoute(request.nextUrl.pathname)
@@ -225,6 +235,7 @@ export async function updateCognitoRouteSession(request: NextRequest) {
     },
     siteUrl: request.nextUrl.origin,
     ledger: refreshTokenLedger,
+    renew: refreshRenewal,
     // Round ARCH: a count per reused refresh token (namespace SeaNShore/App, Area=auth), so a spike shows.
     onRefreshReuse: (source) => emitMetric({ dimensions: { Area: 'auth', Source: source }, metrics: { RefreshTokenReuse: { value: 1 } } }),
   })
