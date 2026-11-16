@@ -345,6 +345,8 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     sendTyping,
     subscribe,
     getStatus: () => status,
+    /** Finding 4: a reconnect is already scheduled on the backoff (a dropped socket), as opposed to idle after a refusal. */
+    retryScheduled: () => Boolean(active && reconnectTimer),
   }
 }
 

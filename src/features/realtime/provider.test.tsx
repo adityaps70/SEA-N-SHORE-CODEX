@@ -298,6 +298,71 @@ describe('MessagingRealtimeProvider', () => {
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
   })
 
+  describe('finding 4: tickets only when a socket is needed', () => {
+    const viewer = '22222222-2222-4222-8222-222222222222'
+    let visibility: DocumentVisibilityState = 'visible'
+    let now = Date.parse('2026-11-16T09:00:00.000Z')
+    const tickets = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input) === '/api/realtime/ticket').length
+    const setVisibility = (next: DocumentVisibilityState) => {
+      visibility = next
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    }
+
+    beforeEach(() => {
+      visibility = 'visible'
+      now = Date.parse('2026-11-16T09:00:00.000Z')
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
+      vi.spyOn(Date, 'now').mockImplementation(() => now)
+    })
+
+    afterEach(() => {
+      visibility = 'visible'
+      vi.mocked(Date.now).mockRestore()
+    })
+
+    it('a tab that loads hidden asks for no ticket until it is first shown', async () => {
+      const { MessagingRealtimeProvider } = await import('./provider')
+      visibility = 'hidden'
+      render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Home</div></MessagingRealtimeProvider>)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(tickets()).toBe(0)
+      expect(FakeWebSocket.instances).toHaveLength(0)
+
+      now += 5 * 60_000
+      setVisibility('visible')
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+      expect(tickets()).toBe(1)
+    })
+
+    it('a quick switch away and back leaves a dropped socket to its backoff retry instead of forcing a new ticket', async () => {
+      const { MessagingRealtimeProvider } = await import('./provider')
+      render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Home</div></MessagingRealtimeProvider>)
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+      act(() => FakeWebSocket.instances[0]?.open())
+
+      setVisibility('hidden')
+      act(() => FakeWebSocket.instances[0]?.close())
+      now += 10_000
+      setVisibility('visible')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(tickets()).toBe(1)
+    })
+
+    it('back after more than a minute away, a dropped socket reconnects at once', async () => {
+      const { MessagingRealtimeProvider, REALTIME_QUICK_RETURN_MS } = await import('./provider')
+      render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Home</div></MessagingRealtimeProvider>)
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+      act(() => FakeWebSocket.instances[0]?.open())
+
+      setVisibility('hidden')
+      act(() => FakeWebSocket.instances[0]?.close())
+      now += REALTIME_QUICK_RETURN_MS + 1_000
+      setVisibility('visible')
+      await waitFor(() => expect(tickets()).toBe(2))
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2))
+    })
+  })
+
   it('keeps one socket, one ticket and one state fetch when navigation moves to another layout (Round H, H1)', async () => {
     const { MessagingRealtimeProvider, resetSharedRealtimeForTests } = await import('./provider')
     resetSharedRealtimeForTests(30_000)
