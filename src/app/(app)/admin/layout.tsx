@@ -5,6 +5,7 @@ import {
   Building2,
   CreditCard,
   Film,
+  Globe2,
   GraduationCap,
   KeyRound,
   LayoutDashboard,
@@ -35,6 +36,8 @@ const sections: Section[] = [
   { href: '/admin', label: 'Overview', icon: LayoutDashboard },
   { href: '/admin/moderation', label: 'Moderation', icon: ShieldAlert, count: (m) => m.openReports + m.reviewingReports },
   { href: '/admin/users', label: 'Users', icon: UsersRound },
+  // Round GP: registered members, organizations and jobs per country.
+  { href: '/admin/countries', label: 'Members by country', icon: Globe2 },
   { href: '/admin/organizations', label: 'Organizations', icon: Building2, count: (m) => m.pendingOrganizations },
   { href: '/admin/communities', label: 'Communities', icon: UsersRound },
   { href: '/admin/verifications', label: 'Verifications', icon: BadgeCheck },

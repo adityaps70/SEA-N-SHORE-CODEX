@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ProfileEditForm } from '@/features/profiles/components/profile-edit-form'
 import { ProfilePreferencesForm } from '@/features/profiles/components/profile-preferences-form'
+import { ProfileCountrySection } from '@/features/countries/components/profile-country-sections'
 import { getOwnProfile, getOwnRegisteredOrganization } from '@/features/profiles/queries'
 
 export const metadata: Metadata = { title: 'Edit profile' }
@@ -30,6 +31,8 @@ export default async function EditProfilePage({
 
       <ProfilePreferencesForm profile={profile} />
       <ProfileEditForm profile={profile} registeredOrganization={registeredOrganization} />
+      {/* Round GP: country of residence and nationality, saved on their own. */}
+      <ProfileCountrySection profileId={profile.id} />
     </section>
   )
 }

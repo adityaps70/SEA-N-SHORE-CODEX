@@ -346,10 +346,16 @@ export function createIdentityRepository(
       return knownAccountStatus(rows[0]?.account_status)
     },
 
-    async provisionProfileForCognitoPrincipal(principal: CognitoPrincipal): Promise<string> {
+    /**
+     * Round GP: `signupCountry` is the CloudFront viewer country (two-letter code only) of the request that creates a
+     * new profile. It is written once, after the profile exists, and only for a profile this call created; a failure
+     * to write it never stops the sign-up.
+     */
+    async provisionProfileForCognitoPrincipal(principal: CognitoPrincipal, options: { signupCountry?: string | null } = {}): Promise<string> {
       if (!principal.sub.trim()) throw new IdentityMappingError()
 
-      return runTransaction(async (client) => {
+      let createdProfileId: string | null = null
+      const profileId = await runTransaction(async (client) => {
         await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
           `cognito:${principal.sub}`,
         ])
@@ -435,13 +441,25 @@ export function createIdentityRepository(
            returning id as profile_id`,
           [normalizedProvisioningName(principal)],
         )
-        const profileId = profileResult.rows[0]?.profile_id
-        if (!profileId) throw new IdentityMappingError()
+        const newProfileId = profileResult.rows[0]?.profile_id
+        if (!newProfileId) throw new IdentityMappingError()
 
-        await insertIdentityMapping(client, profileId, principal)
+        await insertIdentityMapping(client, newProfileId, principal)
+        createdProfileId = newProfileId
 
-        return profileId
+        return newProfileId
       })
+
+      const signupCountry = options.signupCountry && /^[A-Z]{2}$/.test(options.signupCountry) ? options.signupCountry : null
+      if (createdProfileId && signupCountry) {
+        await queryRows(
+          `insert into public.member_signup_countries (profile_id, country_code)
+           values ($1, $2)
+           on conflict (profile_id) do nothing`,
+          [createdProfileId, signupCountry],
+        ).catch(() => undefined)
+      }
+      return profileId
     },
   }
 }
@@ -456,8 +474,8 @@ export function resolveProfileWithStatusForCognitoSub(sub: string) {
   return identityRepository.resolveProfileWithStatusForCognitoSub(sub)
 }
 
-export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal) {
-  return identityRepository.provisionProfileForCognitoPrincipal(principal)
+export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal, options: { signupCountry?: string | null } = {}) {
+  return identityRepository.provisionProfileForCognitoPrincipal(principal, options)
 }
 
 export function getProfileAccountStatus(profileId: string) {

@@ -170,6 +170,46 @@ describe('Cognito identity repository', () => {
     )
   })
 
+  it('records the sign-up country code once, only for a profile it created, and never fails the sign-up over it (Round GP)', async () => {
+    const profileId = '33333333-3333-4333-8333-333333333333'
+    const newProfileQueries = () => vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
+      .mockResolvedValueOnce({ rows: [] })
+    const { createIdentityRepository } = await import('./identity-repository')
+
+    const query = vi.fn(async () => [] as IdentityRow[])
+    const client = { query: newProfileQueries() } as unknown as DatabaseQueryClient
+    const repository = createIdentityRepository({ query, withTransaction: async (fn) => fn(client) })
+    await expect(repository.provisionProfileForCognitoPrincipal(principal, { signupCountry: 'PH' })).resolves.toBe(profileId)
+    expect(query).toHaveBeenCalledTimes(1)
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('insert into public.member_signup_countries'), [profileId, 'PH'])
+
+    // No code, or anything that is not a two-letter code: nothing is written.
+    const quiet = vi.fn(async () => [] as IdentityRow[])
+    for (const signupCountry of [null, 'Philippines', '1.2.3.4']) {
+      const next = createIdentityRepository({ query: quiet, withTransaction: async (fn) => fn({ query: newProfileQueries() } as unknown as DatabaseQueryClient) })
+      await expect(next.provisionProfileForCognitoPrincipal(principal, { signupCountry })).resolves.toBe(profileId)
+    }
+    expect(quiet).not.toHaveBeenCalled()
+
+    // A failed write still signs the member up.
+    const failing = vi.fn(async () => { throw new Error('relation does not exist') })
+    const tolerant = createIdentityRepository({ query: failing, withTransaction: async (fn) => fn({ query: newProfileQueries() } as unknown as DatabaseQueryClient) })
+    await expect(tolerant.provisionProfileForCognitoPrincipal(principal, { signupCountry: 'IN' })).resolves.toBe(profileId)
+
+    // An existing member signing in again: no row.
+    const existing = vi.fn(async () => [] as IdentityRow[])
+    const existingClient = { query: vi.fn().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ profile_id: profileId, onboarding_completed_at: '2026-01-01' }] }).mockResolvedValue({ rows: [] }) } as unknown as DatabaseQueryClient
+    const signedIn = createIdentityRepository({ query: existing, withTransaction: async (fn) => fn(existingClient) })
+    await expect(signedIn.provisionProfileForCognitoPrincipal(principal, { signupCountry: 'PH' })).resolves.toBe(profileId)
+    expect(existing).not.toHaveBeenCalled()
+  })
+
   it('links a new Cognito subject to the existing profile when a verified email matches exactly one profile', async () => {
     const profileId = '55555555-5555-4555-8555-555555555555'
     const transactionQuery = vi.fn()

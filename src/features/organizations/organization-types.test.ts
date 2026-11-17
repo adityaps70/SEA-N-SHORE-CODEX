@@ -22,6 +22,7 @@ function input(overrides: Partial<OrganizationApplicationInput> = {}): Organizat
     website: null,
     officialEmail: 'care@harbourminds.org',
     officeLocation: 'Manila, Philippines',
+    country: 'PH',
     description: 'Confidential counselling for seafarers and their families.',
     fleetSummary: null,
     vesselTypes: [],
@@ -191,5 +192,15 @@ describe('type-dependent validation', () => {
   it('reads stored details defensively', () => {
     expect(parseOrganizationDetails(null)).toEqual({})
     expect(parseOrganizationDetails({ fleetSize: '12', languages: ['English', 3], helpline24x7: true })).toEqual({ languages: ['English'], helpline24x7: true })
+  })
+})
+
+describe('organization country (Round GP)', () => {
+  it('is required on a new application or claim, and must be a listed country', () => {
+    expect(fieldErrors(input({ country: null }))).toHaveProperty('country')
+    expect(fieldErrors(input({ country: '' }))).toHaveProperty('country')
+    expect(fieldErrors(input({ country: 'Philippines' }))).toHaveProperty('country')
+    const parsed = organizationApplicationSchema.parse(input({ country: 'ph' }))
+    expect(parsed.country).toBe('PH')
   })
 })

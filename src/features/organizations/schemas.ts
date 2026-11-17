@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { requiredCountryCodeSchema } from '@/features/countries/catalog'
 import {
   ORGANIZATION_TYPE_CODES,
   WELLBEING_SERVICE_VALUES,
@@ -136,6 +137,8 @@ const baseApplicationSchema = z.object({
   officeLocation: z.string().trim()
     .min(2, 'Enter the organization office location.')
     .max(240, 'Keep the office location to 240 characters or fewer.'),
+  // Round GP: the organization's country, for country review and Members by country.
+  country: requiredCountryCodeSchema,
   description: z.string().trim()
     .min(20, 'Add at least 20 characters describing the organization and what it does.')
     .max(4000, 'Keep the organization description to 4,000 characters or fewer.'),

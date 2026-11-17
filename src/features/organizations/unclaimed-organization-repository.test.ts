@@ -50,6 +50,7 @@ function claimInput(overrides: Record<string, unknown> = {}): ParsedOrganization
     website: 'https://harbourcrew.example',
     officialEmail: 'Director@HarbourCrew.example',
     officeLocation: 'Kochi, India',
+    country: 'IN',
     description: 'Crew welfare and representation for seafarers in Kerala.',
     applicantRole: 'Director',
     registrationReference: 'REG-1',

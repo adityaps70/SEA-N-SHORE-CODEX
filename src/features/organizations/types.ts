@@ -53,6 +53,8 @@ export type OrganizationApplicationInput = {
   website: string | null
   officialEmail: string
   officeLocation: string
+  /** Round GP: ISO country code. Required on a new application or claim; older pages may have none. */
+  country?: string | null
   description: string
   fleetSize?: number | null
   fleetSummary: string | null

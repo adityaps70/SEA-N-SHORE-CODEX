@@ -67,6 +67,7 @@ type ClaimTargetRow = QueryResultRow & {
   organization_details?: unknown
   website?: string | null
   office_locations?: string[] | null
+  country?: string | null
   description?: string | null
   fleet_summary?: string | null
   vessel_types?: string[] | null
@@ -240,7 +241,7 @@ export function createUnclaimedOrganizationRepository(input: {
          c.id, c.slug, c.name,
          (c.logo_path is not null and btrim(c.logo_path) <> '') as has_logo,
          c.company_type, c.organization_type, c.organization_details, c.website,
-         c.office_locations, c.description, c.fleet_summary, c.vessel_types,
+         c.office_locations, c.country, c.description, c.fleet_summary, c.vessel_types,
          ${organizationClaimStatusSql('c')} as claim_status
        from public.companies c
        where c.slug = $1
@@ -265,6 +266,7 @@ export function createUnclaimedOrganizationRepository(input: {
         website: row.website ?? null,
         officialEmail: '',
         officeLocation: Array.isArray(row.office_locations) ? row.office_locations[0] ?? '' : '',
+        country: row.country ?? null,
         description: row.description ?? '',
         fleetSize: details.fleetSize ?? null,
         fleetSummary: row.fleet_summary ?? null,
@@ -341,6 +343,7 @@ export function createUnclaimedOrganizationRepository(input: {
              office_locations = $8::text[],
              organization_type = $9,
              organization_details = $10::jsonb,
+             country = $11,
              updated_at = now()
          where id = $1`,
         [
@@ -354,6 +357,7 @@ export function createUnclaimedOrganizationRepository(input: {
           [data.officeLocation],
           data.organizationType,
           JSON.stringify(organizationDetailsFromInput(data)),
+          data.country,
         ],
       )
 

@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
 import { inActionScope, scoped } from '@/lib/server/action-scope'
 import { CognitoApiError, createCognitoApi, type CognitoPrincipal } from '@/lib/auth/cognito-api'
@@ -6,6 +6,7 @@ import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { createCognitoPrincipalResolver } from '@/lib/auth/cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import { checkCurrentSession } from '@/features/account-security/session-runtime'
+import { viewerCountryFromHeaders } from '@/features/account-security/request-context'
 import type { SessionEndReason } from '@/features/account-security/session-guard'
 import {
   getProfileAccountStatus,
@@ -152,10 +153,19 @@ export function actionAwareVerificationCache<T>(loader: () => Promise<T>): () =>
   return () => (inActionScope() ? scoped('auth:aws-verification', loader) : rendered())
 }
 
+/** Round GP: the sign-up request's CloudFront viewer country (code only), or null when it cannot be read. */
+async function signupCountry(): Promise<string | null> {
+  try {
+    return viewerCountryFromHeaders(await headers())
+  } catch {
+    return null
+  }
+}
+
 const productionQueries = createAwsAuthQueries({
   getPrincipal: getServerCognitoPrincipal,
   resolveProfileId: resolveProfileIdForCognitoSub,
-  provisionProfileId: provisionProfileForCognitoPrincipal,
+  provisionProfileId: async (principal) => provisionProfileForCognitoPrincipal(principal, { signupCountry: await signupCountry() }),
   getProfileAccountStatus,
   resolveProfileWithStatus: resolveProfileWithStatusForCognitoSub,
   cacheVerifiedUser: actionAwareVerificationCache,

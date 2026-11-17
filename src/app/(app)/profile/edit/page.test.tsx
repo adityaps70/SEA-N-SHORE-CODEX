@@ -19,6 +19,7 @@ vi.mock('@/features/profiles/components/profile-edit-form', () => ({
     <div>Edit form for {profile.fullName}{registeredOrganization ? ` linking ${registeredOrganization.name}` : ''}</div>
   ),
 }))
+vi.mock('@/features/countries/components/profile-country-sections', () => ({ ProfileCountrySection: () => null }))
 vi.mock('@/features/profiles/components/profile-preferences-form', () => ({
   ProfilePreferencesForm: ({ profile }: { profile: { fullName: string } }) => <div>Preferences for {profile.fullName}</div>,
 }))
