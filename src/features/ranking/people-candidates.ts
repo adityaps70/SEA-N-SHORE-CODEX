@@ -88,7 +88,7 @@ export function eligiblePersonSql(alias: string, maritimeAlias: string) {
     and not ${syntheticTextSql(`concat_ws(' ', ${alias}.slug, ${alias}.full_name, ${alias}.headline, ${alias}.summary, ${maritimeAlias}.rank, ${maritimeAlias}.current_company)`, `'${SYNTHETIC_PROFILE_PATTERN_SQL.replace(/'/g, "''")}'`)}`
 }
 
-const CANDIDATE_SQL = `
+export const CANDIDATE_SQL = `
   with viewer as (
     select p.id, p.role_key, p.role_department_key, p.persona, p.institution_name, p.location,
            mp.current_company_id, mp.current_company, coalesce(mp.vessel_type_codes, '{}') as vessel_codes
