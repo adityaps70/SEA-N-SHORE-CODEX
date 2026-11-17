@@ -81,7 +81,9 @@ export type FinalPrepareResult =
   | { status: 'paused' }
   | { status: 'first_batch_gate'; opensAt: string | null }
 
-export type FinalStartResult = { status: 'started'; started: number } | { status: 'paused' }
+export type FinalReminderSweepState = { due: boolean; paused: boolean; lastEventId: string | null; newRiskEvents: boolean }
+
+export type FinalStartResult ={ status: 'started'; started: number } | { status: 'paused' }
 
 type Query = <T extends QueryResultRow = QueryResultRow>(text: string, values?: readonly unknown[]) => Promise<T[]>
 type Transaction = <T>(work: (query: Query) => Promise<T>) => Promise<T>
@@ -515,6 +517,41 @@ export function createLegacyFinalReminderRepository(input: { query?: Query; tran
      * Claims up to `limit` queued final reminders (at most 5) and re-checks every rule for each one at send time.
      * Claims nothing while the mode is paused.
      */
+    /**
+     * Owner (17 Nov): what a sweep needs to know before the bounce and complaint rates (a count over every final
+     * reminder, about 21 ms; 12% of database time in the 14-16 Nov report, read on every idle sweep after the final
+     * reminder had finished). In one cheap read: whether any final reminder is due to send, whether the mode is
+     * paused, the newest delivery event id, and whether a bounce or complaint for a final reminder has arrived after
+     * `afterEventId` (only the new event rows are read, by primary key). The rates can only rise through a send or
+     * such an event, so the worker reads them only then.
+     */
+    async sweepState(afterEventId: string): Promise<FinalReminderSweepState> {
+      const [row] = await queryRows<{ due: boolean; paused: boolean; last_event_id: string | null; new_risk_events: boolean }>(`
+        select
+          exists (
+            select 1
+            from public.legacy_profile_invite_final_reminders final
+            where final.status = 'queued'
+              and final.attempts < 3
+              and final.next_attempt_at <= now()
+          ) as due,
+          coalesce((select controls.paused from public.legacy_final_reminder_controls controls where controls.id = 1), false) as paused,
+          (select max(event.id)::text from public.email_delivery_events event where event.id > $1::bigint) as last_event_id,
+          exists (
+            select 1
+            from public.email_delivery_events event
+            join public.legacy_profile_invite_final_reminders final on final.resend_message_id = event.resend_email_id
+            where event.id > $1::bigint and event.event_type in ('bounced', 'complained')
+          ) as new_risk_events
+      `, [afterEventId])
+      return {
+        due: row?.due === true,
+        paused: row?.paused === true,
+        lastEventId: row?.last_event_id ?? null,
+        newRiskEvents: row?.new_risk_events === true,
+      }
+    },
+
     async claimBatch(limit = 5): Promise<FinalReminderDelivery[]> {
       const bounded = Math.max(1, Math.min(5, Math.floor(limit)))
       return transaction(async (run) => {

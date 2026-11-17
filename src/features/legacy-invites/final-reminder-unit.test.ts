@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { QueryResultRow } from 'pg'
 import { finalReminderPauseReason } from './final-reminder-repository'
+import { createLegacyFinalReminderWorker } from './final-reminder-sending'
 import { createLegacyLiveCounts, LIVE_COUNT_SQL, liveCount } from './live-counts'
 import { legacyFinalReminderTestVariant, LEGACY_FINAL_REMINDER_TEST_CATEGORY } from './final-reminder-test'
 import { createLegacyReminderTestSender } from './reminder-test'
@@ -16,6 +17,59 @@ describe('final reminder auto-pause thresholds', () => {
     expect(finalReminderPauseReason({ sent: 100, bounced: 3, complained: 0 })).toBeNull()
     expect(finalReminderPauseReason({ sent: 100, bounced: 4, complained: 0 })).not.toBeNull()
     expect(finalReminderPauseReason({ sent: 1, bounced: 0, complained: 1 })).not.toBeNull()
+  })
+})
+
+// Owner (17 Nov): 12% of database time (14-16 Nov) went to the bounce and complaint rates read on every idle sweep.
+describe('final reminder sweep reads the rates only when they can have risen', () => {
+  type State = { due: boolean; paused: boolean; lastEventId: string | null; newRiskEvents: boolean }
+  function fakeRepository(state: State) {
+    return {
+      sweepState: vi.fn(async (after: string) => { void after; return state }),
+      autoPauseIfNeeded: vi.fn(async () => ({ paused: false, pausedNow: false })),
+      claimBatch: vi.fn(async () => []),
+    }
+  }
+  const sender = { sendEmail: vi.fn() }
+  const workerFor = (repository: ReturnType<typeof fakeRepository>) =>
+    createLegacyFinalReminderWorker({ repository: repository as never, resend: sender as never, log: () => {} })
+
+  it('an idle sweep with no new bounce or complaint runs no rate check and claims nothing, and reports the paused flag', async () => {
+    const repository = fakeRepository({ due: false, paused: true, lastEventId: '41', newRiskEvents: false })
+    await expect(workerFor(repository).runSweep(5)).resolves.toEqual({ claimed: 0, sent: 0, failed: 0, skipped: 0, retrying: 0, paused: true, disabled: false })
+    expect(repository.sweepState).toHaveBeenCalledWith('0')
+    expect(repository.autoPauseIfNeeded).not.toHaveBeenCalled()
+    expect(repository.claimBatch).not.toHaveBeenCalled()
+  })
+
+  it('reads only events newer than the last one it weighed', async () => {
+    const repository = fakeRepository({ due: false, paused: false, lastEventId: '41', newRiskEvents: false })
+    const worker = workerFor(repository)
+    await worker.runSweep(5)
+    await worker.runSweep(5)
+    expect(repository.sweepState.mock.calls.map(([after]) => after)).toEqual(['0', '41'])
+  })
+
+  it('a new bounce or complaint for a final reminder runs the rate check even with nothing due, so a too-high rate pauses at once', async () => {
+    const repository = fakeRepository({ due: false, paused: false, lastEventId: '42', newRiskEvents: true })
+    repository.autoPauseIfNeeded.mockResolvedValueOnce({ paused: true, pausedNow: true })
+    await expect(workerFor(repository).runSweep(5)).resolves.toMatchObject({ paused: true, claimed: 0 })
+    expect(repository.autoPauseIfNeeded).toHaveBeenCalledTimes(1)
+    expect(repository.claimBatch).not.toHaveBeenCalled()
+  })
+
+  it('with something due it checks the rates before claiming, and a pause stops the send', async () => {
+    const repository = fakeRepository({ due: true, paused: false, lastEventId: null, newRiskEvents: false })
+    const worker = workerFor(repository)
+    await worker.runSweep(5)
+    expect(repository.autoPauseIfNeeded).toHaveBeenCalledTimes(1)
+    expect(repository.claimBatch).toHaveBeenCalledTimes(1)
+    expect(repository.autoPauseIfNeeded.mock.invocationCallOrder[0]).toBeLessThan(repository.claimBatch.mock.invocationCallOrder[0]!)
+
+    repository.autoPauseIfNeeded.mockResolvedValueOnce({ paused: true, pausedNow: true })
+    repository.claimBatch.mockClear()
+    await expect(worker.runSweep(5)).resolves.toMatchObject({ paused: true, claimed: 0 })
+    expect(repository.claimBatch).not.toHaveBeenCalled()
   })
 })
 
