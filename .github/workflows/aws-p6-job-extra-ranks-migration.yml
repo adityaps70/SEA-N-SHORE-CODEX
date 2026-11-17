@@ -45,7 +45,7 @@ jobs:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
     # Cost cut 7 proof (owner-approved 14 Nov): this gate-only job on the 1-vCPU ubuntu-slim runner ($0.002/min, a
     # third of ubuntu-latest; 15-minute job limit). Every other workflow switches only if this run shows its tools.
-    runs-on: ubuntu-slim
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: read
@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 10
     steps:
       # Cost cut 7 proof: the tools this gate uses must be on ubuntu-slim; a missing one fails the gate (it refuses).
-      - name: Check the gate's tools (ubuntu-slim)
+      - name: Check the gate's tools
         shell: bash
         run: |
           set -euo pipefail
@@ -142,7 +142,7 @@ jobs:
   apply-approval:
     needs: apply-gate
     if: needs.apply-gate.outputs.approval == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     environment: staging-apply
     timeout-minutes: 10
     steps:
