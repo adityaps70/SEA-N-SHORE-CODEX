@@ -121,6 +121,12 @@ async function loadGlobalMessagingState() {
  * REALTIME_RELEASE_GRACE_MS, so the next layout picks it up instead of reconnecting.
  */
 export const REALTIME_RELEASE_GRACE_MS = 30_000
+/** Finding 4: back within this long (a quick app switch on a phone) and a pending retry is left to the backoff. */
+export const REALTIME_QUICK_RETURN_MS = 60_000
+
+function isHidden() {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
 let releaseGraceMs = REALTIME_RELEASE_GRACE_MS
 
 type SharedRealtime = {
@@ -183,16 +189,39 @@ function acquireSharedRealtime(viewerProfileId: string) {
       for (const listener of state.signalListeners) listener(signal)
     })
     const reconnectWhenOnline = () => state.connection.reconnectNow()
-    // Round ARCH: a tab shown again also tries at once (after a refused ticket, this is when it asks again).
-    const reconnectWhenShown = () => { if (document.visibilityState === 'visible') state.connection.reconnectNow() }
+    // Finding 4 (owner-approved, ₹0): every socket costs a ticket, so a tab that loads hidden (opened in the
+    // background) opens its socket when it is first shown, and a quick switch away and back does not force a new one.
+    let started = false
+    let hiddenSince: number | null = isHidden() ? Date.now() : null
+    const startOnce = () => {
+      if (started) return
+      started = true
+      void state.connection.start()
+    }
+    const onVisibilityChange = () => {
+      if (isHidden()) {
+        hiddenSince ??= Date.now()
+        return
+      }
+      const hiddenFor = hiddenSince === null ? Infinity : Date.now() - hiddenSince
+      hiddenSince = null
+      if (!started) {
+        startOnce()
+        return
+      }
+      // Round ARCH: a tab shown again tries at once (after a refused ticket, this is when it asks again). A socket
+      // dropped during a short absence already has a retry on the backoff, which is left to run.
+      if (hiddenFor < REALTIME_QUICK_RETURN_MS && state.connection.retryScheduled()) return
+      state.connection.reconnectNow()
+    }
     window.addEventListener('online', reconnectWhenOnline)
-    document.addEventListener('visibilitychange', reconnectWhenShown)
+    document.addEventListener('visibilitychange', onVisibilityChange)
     state.removeOnlineListener = () => {
       window.removeEventListener('online', reconnectWhenOnline)
-      document.removeEventListener('visibilitychange', reconnectWhenShown)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
     shared = state
-    void state.connection.start()
+    if (!isHidden()) startOnce()
   }
   if (shared.releaseTimer) {
     clearTimeout(shared.releaseTimer)
