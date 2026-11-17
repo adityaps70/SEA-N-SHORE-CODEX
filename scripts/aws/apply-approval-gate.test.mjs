@@ -41,7 +41,7 @@ test('the approval is asked only when the guard value is not a plan', () => {
     if (!text.includes('apply-gate:')) continue
     const values = ['plan', 'discover', ...(TEST_DATA_GUARD_VALUES[name] ? TEST_DATA_GUARD_VALUES[name].split('|') : [])].join('\\|')
     assert.match(text, new RegExp(`case "\\$ACTION" in\\n(?:\\s+#.*\\n)?\\s+${values}\\) echo "approval=false" >> "\\$GITHUB_OUTPUT" ;;\\n\\s+\\*\\) echo "approval=true" >> "\\$GITHUB_OUTPUT" ;;`), `${name}: only plans${TEST_DATA_GUARD_VALUES[name] ? ' and its test-data runs' : ''} skip the approval`)
-    assert.match(text, /if: needs\.apply-gate\.outputs\.approval == 'true'\n\s+runs-on: ubuntu-slim\n\s+environment: staging-apply/, name)
+    assert.match(text, /if: needs\.apply-gate\.outputs\.approval == 'true'\n\s+runs-on: \$\{\{ vars\.GATE_RUNNER \|\| 'ubuntu-latest' \}\}\n\s+environment: staging-apply/, name)
     assert.match(text, /needs\.apply-approval\.result == 'success' \|\| needs\.apply-approval\.result == 'skipped'/, `${name}: a plan (approval skipped) must still run`)
   }
 })

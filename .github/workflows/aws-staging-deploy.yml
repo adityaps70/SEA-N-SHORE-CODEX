@@ -136,7 +136,7 @@ jobs:
   apply-approval:
     needs: gate
     if: needs.gate.outputs.deploy_to_ecs == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     environment: staging-apply
     timeout-minutes: 10
     steps:

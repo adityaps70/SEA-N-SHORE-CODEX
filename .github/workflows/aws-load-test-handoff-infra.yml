@@ -27,8 +27,8 @@ concurrency:
 jobs:
   apply-gate:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
-    # Cost cut 7: a gate-only job on the 1-vCPU ubuntu-slim runner (a third of the ubuntu-latest rate).
-    runs-on: ubuntu-slim
+    # Gate-only job. Cost cut 7: vars.GATE_RUNNER=ubuntu-slim (a third of the ubuntu-latest rate) while the repo is private; GitHub does not serve ubuntu-slim to it while public.
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: read
@@ -39,7 +39,7 @@ jobs:
     steps:
       # Cost cut 7 (owner-approved 14 Nov; proved in run 43619379498): the tools this gate uses must be on ubuntu-slim;
       # a missing one fails the gate (it refuses).
-      - name: Check the gate's tools (ubuntu-slim)
+      - name: Check the gate's tools
         shell: bash
         run: |
           set -euo pipefail
@@ -126,7 +126,7 @@ jobs:
   apply-approval:
     needs: apply-gate
     if: needs.apply-gate.outputs.approval == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ${{ vars.GATE_RUNNER || 'ubuntu-latest' }}
     environment: staging-apply
     timeout-minutes: 10
     steps:

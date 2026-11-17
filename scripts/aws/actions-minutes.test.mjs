@@ -243,25 +243,29 @@ test('Application CI: superseded runs cancel and ~/.npm is cached', () => {
 })
 
 // Cost cut 7 (owner-approved 14 Nov; proved on the P6 runner in run 43619379498, all tools present): every gate-only
-// job runs on the 1-vCPU ubuntu-slim runner. Each apply-gate checks its tools first; all stay under the 15-minute limit.
-test('cut 7: every apply-gate and apply-approval job runs on ubuntu-slim; each gate checks its tools first', () => {
+// job runs on the runner named by the repository variable GATE_RUNNER, else ubuntu-latest. Set GATE_RUNNER=ubuntu-slim
+// (the 1-vCPU runner, a third of the ubuntu-latest rate) while the repository is private; GitHub did not serve
+// ubuntu-slim to it once public (17 Nov, run 44124039707: "not acquired by Runner of type hosted"), and ubuntu-latest
+// is free there. Each apply-gate checks its tools first; all stay under the 15-minute ubuntu-slim limit.
+const GATE_RUNS_ON = /^    runs-on: \$\{\{ vars\.GATE_RUNNER \|\| 'ubuntu-latest' \}\}$/m
+test('cut 7: every apply-gate and apply-approval job runs on the gate runner; each gate checks its tools first', () => {
   let gates = 0
   let approvals = 0
   for (const { name, text } of workflows) {
     for (const job of jobBlocks(text)) {
       if (job.startsWith('  apply-gate:')) {
         gates += 1
-        assert.match(job, /^    runs-on: ubuntu-slim$/m, `${name}: apply-gate`)
+        assert.match(job, GATE_RUNS_ON, `${name}: apply-gate`)
         const steps = job.split('      - name: ').slice(1)
-        assert.ok(steps[0].startsWith("Check the gate's tools (ubuntu-slim)"), `${name}: the tool check is the first step`)
+        assert.ok(steps[0].startsWith("Check the gate's tools"), `${name}: the tool check is the first step`)
         assert.match(steps[0], /for tool in bash curl jq python3 git; do/, name)
         assert.match(job, /^    timeout-minutes: (?:[1-9]|1[0-4])$/m, `${name}: under the 15-minute ubuntu-slim limit`)
       } else if (job.startsWith('  apply-approval:')) {
         approvals += 1
-        assert.match(job, /^    runs-on: ubuntu-slim$/m, `${name}: apply-approval`)
+        assert.match(job, GATE_RUNS_ON, `${name}: apply-approval`)
         assert.match(job, /^    timeout-minutes: (?:[1-9]|1[0-4])$/m, `${name}: under the 15-minute ubuntu-slim limit`)
       } else {
-        assert.doesNotMatch(job, /runs-on: ubuntu-slim/, `${name}: ${job.split('\n')[0].trim()} is not a gate-only job`)
+        assert.doesNotMatch(job, /runs-on: ubuntu-slim|vars\.GATE_RUNNER/, `${name}: ${job.split('\n')[0].trim()} is not a gate-only job`)
       }
     }
   }
