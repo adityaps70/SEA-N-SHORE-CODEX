@@ -1140,6 +1140,13 @@ def stale_statements(start, end):
     return [rotations, ends]
 
 
+def data_api_time(value):
+    """A timestamptz from the Data API: UTC text without an offset ("2026-11-16 10:00:00.123456"), so it is marked UTC.
+    Run 44382835058 failed comparing those offset-free times with the UTC window."""
+    t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
 def section_sessstale():
     out("=== STALE SIGN-IN TOKENS: WHAT RENEWED THEM, WHAT PRESENTED THEM, HOW OLD (owner 18 Nov; counts only) ===")
     start, end = sessions_window()
@@ -1147,8 +1154,8 @@ def section_sessstale():
     if rows[0] is None or rows[1] is None:
         out("STALE UNAVAILABLE")
         return
-    parse = lambda value: dt.datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
     renewals = defaultdict(list)
+    parse = data_api_time
     for r in rows[0]:
         renewals[r["origin_hash"]].append(parse(r["at"]))
     for times in renewals.values():
