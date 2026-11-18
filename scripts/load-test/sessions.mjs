@@ -3,10 +3,14 @@
 //
 //   node sessions.mjs keypair <dir>                      writes <dir>/private.pem (0600) and prints the public key (base64)
 //   node sessions.mjs open <private.pem> <sealed-file>   prints the sessions JSON (the accounts worker sealed it to the key)
-//   node sessions.mjs seal-shards <sessions.json> <n>    prints {"0": sealed, ...}: each shard's sessions, AES-256-GCM
-//                                                        with LOAD_TEST_HANDOFF_KEY (a GitHub secret, base64 of 32 bytes)
-//   node sessions.mjs open-shard <out-file>              reads LOAD_TEST_SHARD_SEALED, writes the shard's sessions to
-//                                                        <out-file> (0600) and masks every token in the job log
+//   node sessions.mjs seal-shards <sessions.json> <n> <dir>  writes <dir>/shard-<i>.sealed (0600) for each shard: its
+//                                                        sessions, AES-256-GCM with LOAD_TEST_HANDOFF_KEY (a GitHub
+//                                                        secret, base64 of 32 bytes); prints only the count of files
+//   node sessions.mjs open-shard <sealed-file> <out-file>  writes the shard's sessions to <out-file> (0600) and masks
+//                                                        every token in the job log
+// The repository is public (18 Nov): the sealed parts travel between jobs as a short-lived artifact that the run
+// deletes once every shard has opened its part, never as a job output or an environment value (both are printed in
+// the public log).
 import { createCipheriv, createDecipheriv, generateKeyPairSync, privateDecrypt, randomBytes, constants } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -58,14 +62,17 @@ if (isMain) {
     process.stdout.write(JSON.stringify(openSealed(readFileSync(b, 'utf8'), readFileSync(a, 'utf8'))))
   } else if (mode === 'seal-shards') {
     const key = handoffKey()
+    const dir = process.argv[5]
+    if (!dir) throw new Error('seal-shards needs an output directory')
     const parts = splitSessions(JSON.parse(readFileSync(a, 'utf8')), Number(b))
-    process.stdout.write(JSON.stringify(Object.fromEntries(parts.map((part, i) => [String(i), sealShard(part, key)]))))
+    parts.forEach((part, i) => writeFileSync(join(dir, `shard-${i}.sealed`), sealShard(part, key), { mode: 0o600 }))
+    process.stdout.write(`LOAD_TEST_SESSIONS_SEALED shards=${parts.length}\n`)
   } else if (mode === 'open-shard') {
-    const sessions = openShard(String(process.env.LOAD_TEST_SHARD_SEALED ?? ''), handoffKey())
+    const sessions = openShard(readFileSync(a, 'utf8').trim(), handoffKey())
     for (const session of sessions) {
       for (const token of [session.accessToken, session.refreshToken]) if (token) process.stdout.write(`::add-mask::${token}\n`)
     }
-    writeFileSync(a, JSON.stringify(sessions), { mode: 0o600 })
+    writeFileSync(b, JSON.stringify(sessions), { mode: 0o600 })
     process.stdout.write(`LOAD_TEST_SHARD_SESSIONS count=${sessions.length}\n`)
   } else {
     console.error(`unknown mode ${mode}`)

@@ -3,10 +3,13 @@ import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
 import { onboardingActivationSchema, type OnboardingActivationInput } from '@/features/profiles/schemas'
 
 /**
- * Round ARCH (Phase 1): the 50 load-test accounts. Each is a Cognito user on a reserved .invalid address (never
- * emailed; Cognito sends nothing because creation suppresses the welcome message), with an onboarded profile flagged
- * is_load_test. They follow each other, belong to one hidden private community (is_load_test) and share one test post
- * there. The app keeps them away from real members (src/features/load-test/load-test-sql.ts).
+ * Round ARCH (Phase 1): the load-test accounts (1,000 since 18 Nov, one per simulated member: the WAF limits each
+ * session to 1,000 requests per 5 minutes). Each is a Cognito user on a reserved .invalid address (never emailed;
+ * Cognito sends nothing because creation suppresses the welcome message), with an onboarded profile flagged
+ * is_load_test. Each follows the next 49 (as many as each of the first 50 did), all belong to one hidden private
+ * community (is_load_test) and share one test post there. The app keeps them away from real members
+ * (src/features/load-test/load-test-sql.ts). Cognito and the database are called at most
+ * LOAD_TEST_ACCOUNT_CONCURRENCY at a time, so 1,000 accounts stay inside Cognito's request rates and the host's time.
  *
  * Modes (scripts/workers/load-test-accounts.ts):
  *   plan         counts only;
@@ -19,14 +22,38 @@ import { onboardingActivationSchema, type OnboardingActivationInput } from '@/fe
  * Every line printed is a count or a status: no email, name, password or token.
  */
 
-export const LOAD_TEST_ACCOUNT_COUNT = 50
+export const LOAD_TEST_ACCOUNT_COUNT = 1000
+/** How many of the next accounts each one follows (each of the first 50 followed the other 49). */
+export const LOAD_TEST_FOLLOWS_PER_ACCOUNT = 49
+/** At most this many Cognito or database calls at once (ListUsers allows about 30 a second). */
+export const LOAD_TEST_ACCOUNT_CONCURRENCY = 4
 export const LOAD_TEST_EMAIL_DOMAIN = 'loadtest.seanshore.invalid'
 export const LOAD_TEST_COMMUNITY_SLUG = 'sns-load-test-hidden'
-const EMAIL_PATTERN = /^loadtest-(\d{2})@loadtest\.seanshore\.invalid$/
+const EMAIL_PATTERN = /^loadtest-(\d{4})@loadtest\.seanshore\.invalid$/
+
+/** The account's number, four digits (0001-1000). */
+export function loadTestNumber(index: number) {
+  if (!Number.isInteger(index) || index < 1 || index > LOAD_TEST_ACCOUNT_COUNT) throw new Error('load_test_index_invalid')
+  return String(index).padStart(4, '0')
+}
 
 export function loadTestEmail(index: number) {
-  if (!Number.isInteger(index) || index < 1 || index > LOAD_TEST_ACCOUNT_COUNT) throw new Error('load_test_index_invalid')
-  return `loadtest-${String(index).padStart(2, '0')}@${LOAD_TEST_EMAIL_DOMAIN}`
+  return `loadtest-${loadTestNumber(index)}@${LOAD_TEST_EMAIL_DOMAIN}`
+}
+
+/** Runs `work` over `items`, at most `limit` at a time, and returns the results in the items' order. */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const position = next
+      next += 1
+      results[position] = await work(items[position]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
 }
 
 export function isLoadTestEmail(email: string | null | undefined) {
@@ -36,7 +63,7 @@ export function isLoadTestEmail(email: string | null | undefined) {
 
 /** The onboarding answers every test account gets: a plain maritime enthusiast, nothing that reaches real members. */
 export function loadTestActivation(index: number): OnboardingActivationInput {
-  const number = String(index).padStart(2, '0')
+  const number = loadTestNumber(index)
   return onboardingActivationSchema.parse({
     persona: 'maritime_enthusiast',
     profileIntents: ['network'],
@@ -88,6 +115,8 @@ export type LoadTestAccountDeps = {
    * 42486602879 and the 9 Nov run: a log of about 200 KB printed at exit never fully reached CloudWatch.
    */
   storeSealed?: (sealed: string) => Promise<void>
+  /** Tests only: fewer accounts than LOAD_TEST_ACCOUNT_COUNT (the real worker never sets it). */
+  accountCount?: number
   log(line: string): void
 }
 
@@ -109,7 +138,12 @@ export function actionIdsFromManifest(manifest: { node?: Record<string, { filena
 }
 
 export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
-  const indexes = Array.from({ length: LOAD_TEST_ACCOUNT_COUNT }, (_, i) => i + 1)
+  const accountCount = deps.accountCount ?? LOAD_TEST_ACCOUNT_COUNT
+  if (!Number.isInteger(accountCount) || accountCount < 2 || accountCount > LOAD_TEST_ACCOUNT_COUNT) throw new Error('load_test_account_count_invalid')
+  const indexes = Array.from({ length: accountCount }, (_, i) => i + 1)
+  /** Whether each index's address has a Cognito user, LOAD_TEST_ACCOUNT_CONCURRENCY lookups at a time. */
+  const cognitoUserCount = async () =>
+    (await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => Boolean(await deps.cognito.findUserSub(loadTestEmail(index))))).filter(Boolean).length
 
   async function flaggedProfiles() {
     const rows = await deps.query(
@@ -143,16 +177,15 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
   }
 
   async function plan() {
-    let cognitoUsers = 0
-    for (const index of indexes) if (await deps.cognito.findUserSub(loadTestEmail(index))) cognitoUsers += 1
-    deps.log(`LOAD_TEST_ACCOUNTS_COGNITO_USERS count=${cognitoUsers} of=${LOAD_TEST_ACCOUNT_COUNT}`)
+    const cognitoUsers = await cognitoUserCount()
+    deps.log(`LOAD_TEST_ACCOUNTS_COGNITO_USERS count=${cognitoUsers} of=${accountCount}`)
     report('PLAN', await counts())
     deps.log('LOAD_TEST_ACCOUNTS_PLAN_VERIFIED=true')
   }
 
   async function create() {
-    const profileIds: string[] = []
-    for (const index of indexes) {
+    // In index order: account 1 owns the community, and each follows the next LOAD_TEST_FOLLOWS_PER_ACCOUNT.
+    const profileIds = await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
       const email = loadTestEmail(index)
       const activation = loadTestActivation(index)
       const sub = (await deps.cognito.findUserSub(email)) ?? (await deps.cognito.createUser(email, activation.fullName))
@@ -168,14 +201,17 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
       if (!profile.is_load_test && profile.onboarded) throw new Error('load_test_profile_not_new')
       await deps.query(`update public.profiles set is_load_test = true where id = $1`, [profileId])
       if (!profile.onboarded) await deps.completeActivation(profileId, activation)
-      profileIds.push(profileId)
-    }
+      return profileId
+    })
+    const followsEach = Math.min(LOAD_TEST_FOLLOWS_PER_ACCOUNT, accountCount - 1)
     await deps.transaction(async (query) => {
+      // A ring: account n follows n+1 ... n+followsEach (wrapping), so every account has the same few follows.
       await query(
         `insert into public.follows (follower_id, following_id)
-         select a, b from unnest($1::uuid[]) a cross join unnest($1::uuid[]) b where a <> b
+         select a.id, b.id from unnest($1::uuid[]) with ordinality a(id, n)
+         join unnest($1::uuid[]) with ordinality b(id, m) on (b.m - a.n + $2) % $2 between 1 and $3
          on conflict do nothing`,
-        [profileIds],
+        [profileIds, accountCount, followsEach],
       )
       const [group] = await query(
         `insert into public.community_groups (name, slug, visibility, description, created_by, is_load_test)
@@ -200,7 +236,7 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
     })
     const after = await counts()
     report('CREATED', after)
-    if (after.profiles !== LOAD_TEST_ACCOUNT_COUNT || after.mixedFollows !== 0) throw new Error('load_test_create_incomplete')
+    if (after.profiles !== accountCount || after.follows < accountCount * followsEach || after.mixedFollows !== 0) throw new Error('load_test_create_incomplete')
     deps.log('LOAD_TEST_ACCOUNTS_CREATE_VERIFIED=true')
   }
 
@@ -210,25 +246,21 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
     await deps.transaction(async (query) => {
       await query(`delete from public.community_groups where is_load_test and slug = $1`, [LOAD_TEST_COMMUNITY_SLUG])
     })
-    let deleted = 0
-    for (const profile of profiles) {
+    await mapLimit(profiles, LOAD_TEST_ACCOUNT_CONCURRENCY, async (profile) => {
       await deps.transaction(async (query) => {
         const rows = await query(`delete from public.profiles where id = $1 and is_load_test returning id`, [profile.id])
         if (rows.length !== 1) throw new Error('load_test_delete_refused')
       })
-      deleted += 1
-    }
-    let cognitoDeleted = 0
-    for (const index of indexes) {
+    })
+    const deleted = profiles.length
+    const cognitoDeleted = (await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
       const email = loadTestEmail(index)
-      if (await deps.cognito.findUserSub(email)) {
-        await deps.cognito.deleteUser(email)
-        cognitoDeleted += 1
-      }
-    }
+      if (!(await deps.cognito.findUserSub(email))) return false
+      await deps.cognito.deleteUser(email)
+      return true
+    })).filter(Boolean).length
     // Cognito is checked again, address by address: the clean-up only passes when no test user is left there either.
-    let cognitoLeft = 0
-    for (const index of indexes) if (await deps.cognito.findUserSub(loadTestEmail(index))) cognitoLeft += 1
+    const cognitoLeft = await cognitoUserCount()
     deps.log(`LOAD_TEST_ACCOUNTS_DELETED profiles=${deleted} cognito_users=${cognitoDeleted} cognito_users_left=${cognitoLeft}`)
     const after = await counts()
     report('AFTER_DELETE', after)
@@ -239,15 +271,14 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
   async function sessions(publicKeyPem: string) {
     const randomPassword = deps.randomPassword ?? randomLoadTestPassword
     const flagged = new Set((await flaggedProfiles()).map((profile) => profile.email))
-    const result: LoadTestSession[] = []
-    for (const index of indexes) {
+    for (const index of indexes) if (!flagged.has(loadTestEmail(index))) throw new Error('load_test_account_missing')
+    const result: LoadTestSession[] = await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
       const email = loadTestEmail(index)
-      if (!flagged.has(email)) throw new Error('load_test_account_missing')
       const password = randomPassword()
       await deps.cognito.setPassword(email, password)
       const tokens = await deps.cognito.signIn(email, password)
-      result.push({ index, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken })
-    }
+      return { index, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
+    })
     deps.log(`LOAD_TEST_SESSIONS count=${result.length}`)
     if (!deps.storeSealed) throw new Error('load_test_handoff_missing')
     const sealed = encryptSessions(result, publicKeyPem)
@@ -258,14 +289,12 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
   }
 
   async function signOut() {
-    let count = 0
-    for (const index of indexes) {
+    const count = (await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
       const email = loadTestEmail(index)
-      if (await deps.cognito.findUserSub(email)) {
-        await deps.cognito.globalSignOut(email)
-        count += 1
-      }
-    }
+      if (!(await deps.cognito.findUserSub(email))) return false
+      await deps.cognito.globalSignOut(email)
+      return true
+    })).filter(Boolean).length
     deps.log(`LOAD_TEST_SIGNED_OUT count=${count}`)
     deps.log('LOAD_TEST_SIGN_OUT_VERIFIED=true')
   }

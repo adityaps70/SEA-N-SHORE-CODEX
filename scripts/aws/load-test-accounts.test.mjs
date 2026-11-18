@@ -108,7 +108,7 @@ test('sessions are handed off as one S3 object, with counts only in the log', ()
   assert.match(script, /\[\[ "\$\{LOAD_TEST_SESSIONS_OBJECT_KEY:-\}" =~ \^sessions\/\[0-9\]\{6,20\}-\[0-9\]\{1,3\}\\\.sealed\$ \]\]/)
   assert.match(script, /\{name:"LOAD_TEST_SESSIONS_OBJECT_KEY",value:\$object\}/)
   assert.doesNotMatch(script, /SEALED_PART|presign|aws s3 cp|s3api (get|put|delete)-object|ci-checkouts\/load-test-sessions/)
-  assert.match(script, /\[\[ "\$STORED" =~ \^LOAD_TEST_SESSIONS_STORED\\ count=50\\ bytes=\[0-9\]\+\$ \]\]/)
+  assert.match(script, /\[\[ "\$STORED" =~ \^LOAD_TEST_SESSIONS_STORED\\ count=1000\\ bytes=\[0-9\]\+\$ \]\]/)
   // The worker writes once, never overwrites, sends no encryption header (the bucket's KMS default applies), and has
   // no read, list or delete of S3.
   assert.match(worker, /const HANDOFF_BUCKET = 'sea-n-shore-staging-310356785722-load-test-handoff'/)

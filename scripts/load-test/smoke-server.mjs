@@ -4,7 +4,7 @@ import { createServer } from 'node:http'
 
 const port = Number(process.argv[2] || '8099')
 const PUBLIC = /^\/(jobs(\/[0-9a-f-]{36})?|learn\/courses\/[a-z0-9-]+|privacy)?$/
-const SIGNED_IN = /^\/(home|network|messages|notifications|jobs(\/[0-9a-f-]{36})?|people\/sns-load-test-\d{2}|api\/realtime\/messaging-state)$/
+const SIGNED_IN = /^\/(home|network|messages|notifications|jobs(\/[0-9a-f-]{36})?|people\/sns-load-test-\d{4}|api\/realtime\/messaging-state)$/
 const ACTIONS = new Set(['a'.repeat(42), 'b'.repeat(42)])
 
 createServer((req, res) => {
