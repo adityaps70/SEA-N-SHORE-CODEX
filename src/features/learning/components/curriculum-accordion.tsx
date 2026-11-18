@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import { IntentLink } from '@/components/navigation/intent-link'
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { CheckCircle2, ChevronDown, Circle, LockKeyhole, PlayCircle } from 'lucide-react'
 import { moduleLabel } from '../module-label'
@@ -246,7 +246,9 @@ export function CurriculumAccordion({
                   return (
                     <li key={item.id} data-item-id={item.id}>
                       {item.href ? (
-                        <Link
+                        // Owner (17 Nov): every visible lesson row was prefetched on load (about 20 RSC requests per
+                        // lesson opened, almost all for lessons never visited); now only on hover, focus or tap.
+                        <IntentLink
                           href={item.href}
                           data-curriculum-focus=""
                           aria-current={active ? 'page' : undefined}
@@ -254,7 +256,7 @@ export function CurriculumAccordion({
                           className={`${rowClass} ${active ? '' : 'hover:bg-mist-50'}`}
                         >
                           {body}
-                        </Link>
+                        </IntentLink>
                       ) : (
                         <div className={rowClass}>{body}</div>
                       )}

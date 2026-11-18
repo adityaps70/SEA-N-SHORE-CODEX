@@ -1,6 +1,17 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime'
+import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetIntentPrefetchForTests } from '@/components/navigation/intent-link'
 import { CurriculumAccordion, type CurriculumModuleView } from './curriculum-accordion'
+
+const linkProps = vi.hoisted(() => [] as Array<{ prefetch: unknown; href: string }>)
+vi.mock('next/link', () => ({
+  default: ({ prefetch, href, children, ...props }: { prefetch?: unknown; href: string; children: ReactNode }) => {
+    linkProps.push({ prefetch, href })
+    return <a href={href} {...props}>{children}</a>
+  },
+}))
 
 const modules: CurriculumModuleView[] = [
   { id: 'm1', title: 'Why SIRE 2.0 exists', done: 4, items: [
@@ -95,5 +106,33 @@ describe('CurriculumAccordion module labels (Round H, H7)', () => {
     const first = screen.getByRole('button', { name: /Team Working/ })
     expect(first.textContent?.match(/Module 1/g)).toHaveLength(1)
     expect(screen.getByRole('button', { name: /Module 2\s*Bridge resource management/ })).toBeInTheDocument()
+  })
+})
+
+// Owner (17 Nov): every visible lesson row was prefetched on load (about 20 RSC requests per lesson opened).
+describe('CurriculumAccordion lesson links prefetch only on intent', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    resetIntentPrefetchForTests()
+    linkProps.length = 0
+  })
+  afterEach(() => cleanup())
+
+  it('prefetches no lesson on load, and one lesson when the learner hovers or taps it', () => {
+    const prefetch = vi.fn()
+    const router = { prefetch, push: vi.fn(), replace: vi.fn(), back: vi.fn(), forward: vi.fn(), refresh: vi.fn() }
+    render(
+      <AppRouterContext.Provider value={router as unknown as ComponentProps<typeof AppRouterContext.Provider>['value']}>
+        <CurriculumAccordion modules={modules} currentItemId="l1" storageKey="sire" />
+      </AppRouterContext.Provider>,
+    )
+    const rows = linkProps.filter((props) => props.href.includes('?lesson='))
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every((props) => props.prefetch === false)).toBe(true)
+    expect(prefetch).not.toHaveBeenCalled()
+
+    fireEvent.mouseEnter(screen.getByRole('link', { name: /Reading/ }))
+    expect(prefetch).toHaveBeenCalledTimes(1)
+    expect(prefetch).toHaveBeenCalledWith('/learn/courses/sire/learn?lesson=l2')
   })
 })
