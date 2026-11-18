@@ -636,12 +636,12 @@ print("ok")
 // sign-ins across a member's devices, read-only, administrators apart, and prints no member data.
 test('the sessions window runs two read-only sections over at most 14 days and prints counts only', () => {
   const wrapper = readFileSync(wrapperPath, 'utf8')
-  assert.match(wrapper, /const SESSION_SECTIONS = \['sessdb', 'sessmetric'\]/)
+  assert.match(wrapper, /const SESSION_SECTIONS = \['sessdb', 'sessmetric', 'sessstale'\]/)
   assert.match(wrapper, /const SECTIONS = COMPARE\?\.sessions \? SESSION_SECTIONS :/)
   assert.match(wrapper, /at most 14 days, in whole UTC minutes'\)\n    return \{ sessions: true, sessStart: sessions\[1\], sessEnd: sessions\[2\] \}/)
   assert.match(wrapper, /export SESS_START=\$\{quote\(COMPARE\?\.sessStart \?\? ''\)\}\nexport SESS_END=\$\{quote\(COMPARE\?\.sessEnd \?\? ''\)\}/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['sessdb', 'sessmetric']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['sessdb', 'sessmetric', 'sessstale']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util, io, contextlib, os
 spec = importlib.util.spec_from_file_location("r", "${remotePath}")
@@ -709,3 +709,59 @@ print("ok")
   assert.equal(run.status, 0, run.stderr)
   assert.match(run.stdout, /^ok$/m)
 })
+
+// Owner (18 Nov): the stale-token look, on fake rows and fake load balancer lines: ages, the request that carried the
+// last renewal (and whether the viewer went away, 460), what presented the stale token, device kinds, and nothing that
+// identifies anyone.
+test('the stale-token section reports ages, renewal requests and device kinds, with no ids or hashes', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, os
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+os.environ["SESS_START"], os.environ["SESS_END"] = "2026-11-14T00:00:00Z", "2026-11-18T00:00:00Z"
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    return [
+        [{"origin_hash": "originAAAA", "at": "2026-11-16 10:00:00+00"}, {"origin_hash": "originBBBB", "at": "2026-11-16 11:00:00+00"},
+         {"origin_hash": "originCCCC", "at": "2026-11-14 09:00:00+00"}],
+        [{"origin_hash": "originAAAA", "at": "2026-11-16 10:05:00+00", "summary": "Safari on iPhone", "is_admin": False},
+         {"origin_hash": "originBBBB", "at": "2026-11-17 12:00:00+00", "summary": "Chrome on Windows", "is_admin": True},
+         {"origin_hash": "originCCCC", "at": "2026-11-14 09:01:00+00", "summary": "Home Screen app on iPhone", "is_admin": False}],
+    ]
+IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1"
+WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
+def line(t, method, url, elb, target, ua):
+    return 'h2 %s app/x 1.2.3.4:5 10.0.0.1:3000 0.001 0.010 0.000 %s %s 100 0 "%s https://seanshore.in:443%s HTTP/2.0" "%s"' % (t, elb, target, method, url, ua)
+LINES = {
+    "2026-11-16": [line("2026-11-16T10:00:01.100000Z", "GET", "/jobs?_rsc=abc", "460", "-", IPHONE),
+                   line("2026-11-16T10:05:00.200000Z", "GET", "/home", "200", "200", IPHONE),
+                   line("2026-11-16T11:00:02.300000Z", "POST", "/messages/abc123", "200", "200", WINDOWS)],
+    "2026-11-17": [line("2026-11-17T12:00:01.000000Z", "POST", "/api/realtime/ticket", "401", "401", WINDOWS)],
+}
+def fake_days(day, totals, budget):
+    return LINES.get(day.isoformat(), [])
+r.sql_rows = fake_rows
+r.alb_day_lines = fake_days
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_sessstale()
+text = buf.getvalue()
+print(text)
+assert "STALE_ENDS_TOTAL before_fix=1 after_fix=2" in text, text
+assert "STALE_END period=after_fix who=member age=2_10m device=phone n=1" in text, text
+assert "STALE_END period=after_fix who=admin age=over_24h device=computer n=1" in text, text
+assert "STALE_END period=before_fix who=member age=under_2m device=app n=1" in text, text
+assert "STALE_END_LAST_RENEWAL period=after_fix who=member kind=rsc route=/jobs elb=460 device=phone n=1" in text, text
+assert "STALE_END_LAST_RENEWAL period=after_fix who=admin kind=action route=/messages/:x elb=200 device=computer n=1" in text, text
+assert "STALE_PRESENTED_NEAR_END period=after_fix kind=realtime_ticket route=/api/realtime/ticket elb=401 device=computer n=1" in text, text
+assert "STALE_RENEWALS_TOTAL" in text and "client_closed_460=1" in text, text
+# Real members only, and nothing that identifies anyone reaches the output.
+assert all("not p.is_load_test" in st for st in seen), seen
+for secret in ("originAAAA", "originBBBB", "originCCCC", "abc123", "1.2.3.4", "Safari on iPhone"):
+    assert secret not in text, secret
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr || run.stdout)
+})
+

@@ -90,7 +90,8 @@ const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'db
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
 // Owner (14 Nov): the home feed's share needs the people-online counts over the same window (caponline).
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d', 'caponline']
-const SESSION_SECTIONS = ['sessdb', 'sessmetric']
+// Owner (18 Nov): plus the stale-token look (what renewed the tokens that came back, what presented them, how old).
+const SESSION_SECTIONS = ['sessdb', 'sessmetric', 'sessstale']
 const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
   (COMPARE?.sessions && SESSION_SECTIONS.includes(s)) ||
