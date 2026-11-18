@@ -765,3 +765,80 @@ for secret in ("originAAAA", "originBBBB", "originCCCC", "abc123", "1.2.3.4", "S
   assert.equal(run.status, 0, run.stderr || run.stdout)
 })
 
+
+// Owner (18 Nov): the Aurora platform version, connection churn and what the edge forwards. Versions, settings and
+// counts only: no addresses, no queries, nothing a member typed.
+test('the dbconn window runs one read-only section that prints versions, connection counts and edge cookie settings', () => {
+  const wrapper = readFileSync('scripts/aws/capacity-media-report.cjs', 'utf8')
+  const remote = readFileSync(remotePath, 'utf8')
+  assert.match(wrapper, /if \(line === 'dbconn'\) return \{ dbconn: true \}/)
+  assert.match(wrapper, /COMPARE\?\.dbconn \? \['dbconn'\] :/)
+  assert.match(remote, /"dbconn": section_dbconn/)
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+seen = []
+def fake_rows(statements):
+    seen.extend(statements)
+    s = statements[0]
+    if "pg_stat_database" in s:
+        return [[{"since": "2026-11-11", "seconds": 7200, "backends": 20, "sessions": 1200, "abandoned": 3, "fatal": 1,
+                  "killed": 0, "session_s": 60000, "active_s": 900, "idle_tx_s": 2}]]
+    if "pg_stat_activity" in s:
+        return [[{"role": "app_web", "app": "", "state": "idle", "age_s": 20}, {"role": "app_web", "app": "", "state": "idle", "age_s": 30},
+                 {"role": "app_worker", "app": "", "state": "active", "age_s": 4000}]]
+    if "aurora_stat_database" in s:
+        return [[{"datname": "sea_n_shore", "total_auth_attempts": 1500, "numbackends": 20, "xact_commit": 5}]]
+    return [[{"name": "max_connections", "setting": "450", "unit": None}]]
+def fake_aws(service, action, *args, **kw):
+    if (service, action) == ("rds", "describe-db-clusters"):
+        return {"DBClusters": [{"DBClusterArn": "arn:aws:rds:x:1:cluster:c", "EngineVersion": "16.4", "AutoMinorVersionUpgrade": True,
+                "ServerlessV2PlatformVersion": "3", "MasterUserSecret": {"SecretArn": "arn:s"}, "PreferredMaintenanceWindow": "sun:20:00-sun:20:30",
+                "DBClusterMembers": [{"DBInstanceIdentifier": "w1", "IsClusterWriter": True}]}]}
+    if (service, action) == ("rds", "describe-db-instances"):
+        return {"DBInstances": [{"DBInstanceArn": "arn:aws:rds:x:1:db:w1", "DBInstanceClass": "db.serverless", "DBInstanceStatus": "available",
+                "PendingModifiedValues": {}, "Endpoint": {"Address": "secret-host.example"}}]}
+    if (service, action) == ("rds", "describe-pending-maintenance-actions"):
+        return {"PendingMaintenanceActions": [{"ResourceIdentifier": "arn:aws:rds:x:1:db:w1", "PendingMaintenanceActionDetails": [
+            {"Action": "system-update", "Description": "Upgrade to serverless platform version 4", "OptInStatus": "pending"}]},
+            {"ResourceIdentifier": "arn:aws:rds:x:1:db:someone-else", "PendingMaintenanceActionDetails": [{"Action": "db-upgrade"}]}]}
+    if (service, action) == ("rds", "describe-db-engine-versions"):
+        return {"DBEngineVersions": [{"ValidUpgradeTarget": [{"EngineVersion": "16.6", "IsMajorVersionUpgrade": False},
+                {"EngineVersion": "16.10", "IsMajorVersionUpgrade": False}, {"EngineVersion": "17.4", "IsMajorVersionUpgrade": True}]}]}
+    if (service, action) == ("cloudfront", "list-distributions"):
+        return {"DistributionList": {"Items": [{"Id": "E1", "DefaultCacheBehavior": {"CachePolicyId": "cp1", "OriginRequestPolicyId": "orp1"},
+                "CacheBehaviors": {"Items": [{"PathPattern": "/_next/static/*", "CachePolicyId": "cp2"}]}}]}}
+    if (service, action) == ("cloudfront", "get-cache-policy"):
+        name = "public-pages" if args[-1] == "cp1" else "CachingOptimized"
+        cookies = {"CookieBehavior": "whitelist", "Cookies": {"Items": ["a", "b"]}} if args[-1] == "cp1" else {"CookieBehavior": "none"}
+        return {"CachePolicy": {"CachePolicyConfig": {"Name": name, "MinTTL": 0, "DefaultTTL": 0, "MaxTTL": 300,
+                "ParametersInCacheKeyAndForwardedToOrigin": {"CookiesConfig": cookies}}}}
+    if (service, action) == ("cloudfront", "get-origin-request-policy"):
+        return {"OriginRequestPolicy": {"OriginRequestPolicyConfig": {"Name": "AllViewerExceptHostHeader", "CookiesConfig": {"CookieBehavior": "all"}}}}
+    return {}
+r.sql_rows = fake_rows
+r.aws = fake_aws
+r.metric_series = lambda *a, **k: [10.0, 20.0]
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_dbconn()
+text = buf.getvalue()
+print(text)
+assert "cluster.ServerlessV2PlatformVersion=3" in text, text
+assert "PLATFORM_PENDING_MAINTENANCE count=1" in text, text
+assert "action=system-update" in text and "platform version 4" in text, text
+assert "latest_minor=16.10" in text and "major=1" in text, text
+assert "sessions_per_hour=600.0" in text and "avg_session_s=50.0" in text, text
+assert "CONN_NOW total=3" in text, text
+assert "CONN_NOW_GROUP role=app_web app=\\"\\" state=idle age=<1m n=2" in text, text
+assert '"total_auth_attempts": 1500' in text and "xact_commit" not in text, text
+assert "path=default cache=public-pages[cookies=whitelist:2 ttl=0/0/300] origin_request=AllViewerExceptHostHeader[cookies=all]" in text, text
+assert "path=/_next/static/* cache=CachingOptimized[cookies=none:0" in text, text
+for secret in ("secret-host.example", "someone-else", "arn:"):
+    assert secret not in text, secret
+assert all(st.lstrip().lower().startswith("select") for st in seen), seen
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr || run.stdout)
+})

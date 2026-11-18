@@ -2284,6 +2284,125 @@ def section_dbhealth():
             out(label, json.dumps(row, sort_keys=True)[:400])
 
 
+# ---------------------------------------------------------------- owner 18 Nov: platform, connections, edge cookies
+
+CONN_AGE_BUCKETS = [(60, "<1m"), (600, "1-10m"), (3600, "10-60m"), (86400, "1-24h")]
+
+
+def conn_age_bucket(seconds):
+    for limit, name in CONN_AGE_BUCKETS:
+        if seconds is not None and seconds < limit:
+            return name
+    return ">24h" if seconds is not None else "unknown"
+
+
+CONN_STAT_KEY = re.compile(r"auth|conn|session|backend", re.I)
+
+
+def platform_fields(record, prefix):
+    """Every field naming a platform or serverless version, whatever AWS calls it (values are AWS version labels)."""
+    return ["%s.%s=%s" % (prefix, k, record[k]) for k in sorted(record) if re.search(r"platform|serverlessv2.*version", k, re.I)
+            and isinstance(record[k], (str, int, float, bool))]
+
+
+def section_dbconn():
+    out("=== OWNER 18 NOV: AURORA PLATFORM, CONNECTION CHURN, EDGE COOKIES (versions, counts and settings only) ===")
+    # (a) The serverless platform version, pending maintenance and the minor versions on offer.
+    c = cluster()
+    out("PLATFORM_CLUSTER", "engine=%s" % c.get("EngineVersion"), "autoMinor=%s" % c.get("AutoMinorVersionUpgrade"),
+        "maintenance=%s" % c.get("PreferredMaintenanceWindow"), *platform_fields(c, "cluster"))
+    instance_arns = []
+    for m in c.get("DBClusterMembers", []):
+        inst = (aws("rds", "describe-db-instances", "--db-instance-identifier", m["DBInstanceIdentifier"]) or {}).get("DBInstances", [{}])[0]
+        instance_arns.append(inst.get("DBInstanceArn"))
+        out("PLATFORM_INSTANCE", "writer" if m.get("IsClusterWriter") else "reader", "class=%s" % inst.get("DBInstanceClass"),
+            "status=%s" % inst.get("DBInstanceStatus"), "autoMinor=%s" % inst.get("AutoMinorVersionUpgrade"),
+            "pending=%s" % ",".join(sorted((inst.get("PendingModifiedValues") or {}).keys())), *platform_fields(inst, "instance"))
+    pending = (aws("rds", "describe-pending-maintenance-actions") or {}).get("PendingMaintenanceActions", [])
+    ours = [p for p in pending if p.get("ResourceIdentifier") in [c.get("DBClusterArn")] + instance_arns]
+    out("PLATFORM_PENDING_MAINTENANCE", "count=%d" % sum(len(p.get("PendingMaintenanceActionDetails", [])) for p in ours))
+    for p in ours:
+        kind = "cluster" if p.get("ResourceIdentifier") == c.get("DBClusterArn") else "instance"
+        for d in p.get("PendingMaintenanceActionDetails", []):
+            out("PLATFORM_PENDING", kind, "action=%s" % d.get("Action"), "autoAppliedAfter=%s" % d.get("AutoAppliedAfterDate"),
+                "forcedApply=%s" % d.get("ForcedApplyDate"), "optIn=%s" % d.get("OptInStatus"),
+                "description=%s" % json.dumps((d.get("Description") or "")[:200]))
+    versions = (aws("rds", "describe-db-engine-versions", "--engine", "aurora-postgresql", "--engine-version", c.get("EngineVersion") or "none")
+                or {}).get("DBEngineVersions", [])
+    targets = [t for v in versions for t in v.get("ValidUpgradeTarget", [])]
+    minor = sorted((t.get("EngineVersion") for t in targets if not t.get("IsMajorVersionUpgrade")), key=lambda s: [int(x) if x.isdigit() else 0 for x in re.split(r"[.]", s or "")])
+    out("PLATFORM_UPGRADE_TARGETS", "minor=%d" % len(minor), "major=%d" % sum(1 for t in targets if t.get("IsMajorVersionUpgrade")),
+        "latest_minor=%s" % (minor[-1] if minor else "none"), "minor_list=%s" % ",".join(minor[-6:]))
+
+    # (b) Connection churn: sessions opened since the statistics reset, who holds connections now and for how long.
+    statements = [
+        "select stats_reset::text as since, extract(epoch from now() - stats_reset)::bigint as seconds, numbackends::int as backends, "
+        "sessions::bigint as sessions, sessions_abandoned::bigint as abandoned, sessions_fatal::bigint as fatal, "
+        "sessions_killed::bigint as killed, (session_time / 1000)::bigint as session_s, (active_time / 1000)::bigint as active_s, "
+        "(idle_in_transaction_time / 1000)::bigint as idle_tx_s from pg_stat_database where datname = current_database()",
+        "select usename as role, coalesce(application_name, '') as app, coalesce(state, '') as state, "
+        "extract(epoch from now() - backend_start)::bigint as age_s from pg_stat_activity where backend_type = 'client backend'",
+        "select name, setting, unit from pg_settings where name in ('max_connections', 'log_connections', 'log_disconnections', "
+        "'password_encryption', 'ssl', 'superuser_reserved_connections', 'tcp_keepalives_idle') order by name",
+        "select * from aurora_stat_database() where datname = current_database()",
+    ]
+    rows = [sql_rows([s])[0] for s in statements]
+    totals, activity, settings, aurora = rows
+    if totals:
+        t = totals[0]
+        hours = max((t.get("seconds") or 0) / 3600, 1 / 60)
+        out("CONN_TOTALS", json.dumps(t, sort_keys=True), "sessions_per_hour=%s" % round((t.get("sessions") or 0) / hours, 1),
+            "avg_session_s=%s" % (round((t.get("session_s") or 0) / t["sessions"], 1) if t.get("sessions") else "none"))
+    else:
+        out("CONN_TOTALS", "UNAVAILABLE")
+    if activity is None:
+        out("CONN_NOW", "UNAVAILABLE")
+    else:
+        grouped = Counter((r.get("role"), r.get("app"), r.get("state"), conn_age_bucket(r.get("age_s"))) for r in activity)
+        out("CONN_NOW", "total=%d" % len(activity))
+        for (role, app, state, age), n in sorted(grouped.items(), key=lambda kv: -kv[1])[:30]:
+            out("CONN_NOW_GROUP", "role=%s" % role, "app=%s" % json.dumps(app[:40]), "state=%s" % state, "age=%s" % age, "n=%d" % n)
+    out("CONN_SETTINGS", json.dumps(settings)[:600] if settings is not None else "UNAVAILABLE")
+    if aurora:
+        out("CONN_AURORA_STAT", json.dumps({k: v for k, v in aurora[0].items() if CONN_STAT_KEY.search(k) and isinstance(v, (int, float))},
+                                          sort_keys=True)[:800])
+    else:
+        out("CONN_AURORA_STAT", "UNAVAILABLE")
+    # Connections by the hour over the last 7 days (CloudWatch), so the counts above have a trend behind them.
+    week = NOW - dt.timedelta(days=7)
+    dims = {"DBClusterIdentifier": CLUSTER_ID}
+    summarize("aurora_connections_hourly_max_7d", metric_series("AWS/RDS", "DatabaseConnections", dims, "Maximum", 3600, start=week))
+    summarize("aurora_connections_hourly_avg_7d", metric_series("AWS/RDS", "DatabaseConnections", dims, "Average", 3600, start=week))
+    summarize("aurora_acu_hourly_max_7d", metric_series("AWS/RDS", "ServerlessDatabaseCapacity", dims, "Maximum", 3600, start=week))
+
+    # (c) What the main distribution keys its cache on and forwards, per behaviour (policy settings only).
+    dists = (aws("cloudfront", "list-distributions", region="us-east-1") or {}).get("DistributionList", {}).get("Items", [])
+    policies = {}
+
+    def policy(kind, pid):
+        if not pid:
+            return "none"
+        if (kind, pid) not in policies:
+            if kind == "cache":
+                cfg = ((aws("cloudfront", "get-cache-policy", "--id", pid, region="us-east-1") or {}).get("CachePolicy") or {}).get("CachePolicyConfig") or {}
+                p = cfg.get("ParametersInCacheKeyAndForwardedToOrigin") or {}
+                ck = p.get("CookiesConfig") or {}
+                policies[(kind, pid)] = "%s[cookies=%s:%d ttl=%s/%s/%s]" % (cfg.get("Name"), ck.get("CookieBehavior"),
+                    len((ck.get("Cookies") or {}).get("Items") or []), cfg.get("MinTTL"), cfg.get("DefaultTTL"), cfg.get("MaxTTL"))
+            else:
+                cfg = ((aws("cloudfront", "get-origin-request-policy", "--id", pid, region="us-east-1") or {}).get("OriginRequestPolicy") or {}).get("OriginRequestPolicyConfig") or {}
+                policies[(kind, pid)] = "%s[cookies=%s]" % (cfg.get("Name"), (cfg.get("CookiesConfig") or {}).get("CookieBehavior"))
+        return policies[(kind, pid)]
+
+    out("EDGE_DISTRIBUTIONS", "count=%d" % len(dists))
+    for d in dists:
+        behaviours = [("default", d.get("DefaultCacheBehavior") or {})] + [(b.get("PathPattern"), b) for b in (d.get("CacheBehaviors") or {}).get("Items") or []]
+        for path, b in behaviours:
+            out("EDGE_BEHAVIOUR", "dist=%s" % d.get("Id"), "path=%s" % path, "cache=%s" % policy("cache", b.get("CachePolicyId")),
+                "origin_request=%s" % policy("origin", b.get("OriginRequestPolicyId")),
+                "legacy_forwarded_cookies=%s" % (((b.get("ForwardedValues") or {}).get("Cookies") or {}).get("Forward") or "none"))
+
+
 # ---------------------------------------------------------------- Round DB: cost (read-only)
 
 def section_cost():
@@ -2359,7 +2478,7 @@ def main():
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
      "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit,
-     "sessdb": section_sessdb, "sessmetric": section_sessmetric, "sessstale": section_sessstale}[SECTION]()
+     "sessdb": section_sessdb, "sessmetric": section_sessmetric, "sessstale": section_sessstale, "dbconn": section_dbconn}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

@@ -34,6 +34,8 @@ function compareWindow() {
   // Round CAP (finding 2): the plans of the top statements (EXPLAIN GENERIC_PLAN) only when asked for by name. The step
   // showed about 2,100 database seconds in Performance Insights over a week, so the db window no longer runs it.
   if (line === 'plans') return { plans: true }
+  // Owner (18 Nov): read-only look at the Aurora platform version, connection churn and the edge's cookie settings.
+  if (line === 'dbconn') return { dbconn: true }
   // Round DB: where the database time goes and what the stack costs, with Performance Insights over one load test
   // window (under 3 hours): "db <start> <end>". Runs the config, db, dbwindow, dbminutes, dbstats, dbhealth and cost
   // sections.
@@ -92,11 +94,11 @@ const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'db
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d', 'caponline']
 // Owner (18 Nov): plus the stale-token look (what renewed the tokens that came back, what presented them, how old).
 const SESSION_SECTIONS = ['sessdb', 'sessmetric', 'sessstale']
-const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.dbconn ? ['dbconn'] : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
   (COMPARE?.sessions && SESSION_SECTIONS.includes(s)) ||
   (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
-  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
+  (COMPARE?.plans && s === 'dbplans') || (COMPARE?.dbconn && s === 'dbconn') || (COMPARE && !COMPARE.dbconn && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
