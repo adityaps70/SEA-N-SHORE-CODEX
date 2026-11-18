@@ -512,6 +512,35 @@ describe('auto-pause', () => {
   })
 })
 
+describe('sweep state (owner 17 Nov: rates only when they can have risen)', () => {
+  it('reports due work, the paused flag and only new bounces or complaints for final reminders', async () => {
+    const first = await person()
+    await sendAll()
+    const sent = (await finalFor(first.inviteId))!
+    const start = await legacyFinalReminderRepository.sweepState('0')
+    expect(start).toMatchObject({ due: false, paused: false, newRiskEvents: false })
+
+    // A delivered event, and a bounce for an email that is not a final reminder: no reason to re-read the rates.
+    await event('delivered', sent.resend_message_id as string, first.email)
+    await event('bounced', 'not-a-final-reminder', 'someone@example.test')
+    const quiet = await legacyFinalReminderRepository.sweepState(start.lastEventId ?? '0')
+    expect(quiet).toMatchObject({ due: false, newRiskEvents: false })
+    expect(Number(quiet.lastEventId)).toBeGreaterThan(Number(start.lastEventId ?? 0))
+
+    // A complaint for a final reminder is new until it has been weighed.
+    await event('complained', sent.resend_message_id as string, first.email)
+    const risky = await legacyFinalReminderRepository.sweepState(quiet.lastEventId!)
+    expect(risky.newRiskEvents).toBe(true)
+    await expect(legacyFinalReminderRepository.sweepState(risky.lastEventId!)).resolves.toMatchObject({ newRiskEvents: false })
+
+    // Queued work is due.
+    await person()
+    await legacyFinalReminderRepository.prepareEligible(10, ADMIN.id)
+    await legacyFinalReminderRepository.startPrepared()
+    await expect(legacyFinalReminderRepository.sweepState(risky.lastEventId!)).resolves.toMatchObject({ due: true })
+  })
+})
+
 describe('first batch gate', () => {
   it('allows only the first 100 until they have all finished and 24 hours have passed since the last send', async () => {
     for (let index = 0; index < 103; index += 1) await person()

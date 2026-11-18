@@ -35,6 +35,9 @@ export function createLegacyFinalReminderWorker(input: {
   const counts = input.liveCounts ?? legacyLiveCounts
   const log: Log = input.log ?? ((message, details) => console.info(message, details))
   let client: Sender | null | undefined = input.resend
+  // The newest delivery event this worker has already weighed in a rate check ('0' at start: the first sweep looks
+  // at every event once).
+  let checkedThroughEventId = '0'
 
   async function resolveClient() {
     if (client !== undefined) return client
@@ -83,7 +86,15 @@ export function createLegacyFinalReminderWorker(input: {
       const empty = { claimed: 0, sent: 0, failed: 0, skipped: 0, retrying: 0 }
       const sender = await resolveClient()
       if (!sender) return { ...empty, paused: false, disabled: true }
+      // Owner (17 Nov): the rate check (a count over every final reminder) runs only when the rates can have risen:
+      // before a send, or after a new bounce or complaint for a final reminder. An idle sweep reads one cheap row.
+      const state = await repository.sweepState(checkedThroughEventId)
+      if (!state.due && !state.newRiskEvents) {
+        if (state.lastEventId) checkedThroughEventId = state.lastEventId
+        return { ...empty, paused: state.paused, disabled: false }
+      }
       const pause = await repository.autoPauseIfNeeded()
+      if (state.lastEventId) checkedThroughEventId = state.lastEventId
       if (pause.pausedNow) log('[legacy_final_reminder_auto_paused]', { paused: true })
       if (pause.paused) return { ...empty, paused: true, disabled: false }
 
