@@ -791,6 +791,8 @@ def fake_rows(statements):
                  {"role": "app_worker", "app": "", "state": "active", "age_s": 4000}]]
     if "aurora_stat_database" in s:
         return [[{"datname": "sea_n_shore", "total_auth_attempts": 1500, "numbackends": 20, "xact_commit": 5}]]
+    if "pg_stat_statements" in s:
+        return [[{"id": "123", "calls": 900, "total_ms": "450.0", "mean_ms": "0.500", "shape": "insert into public.notifications (recipient_id) values ($1)"}]]
     if "people_suggestions" in s:
         assert "not p.is_load_test" in s
         return [[{"stored": "0", "members": 4}, {"stored": "12+", "members": 30}]]
@@ -836,6 +838,7 @@ assert "latest_minor=16.10" in text and "major=1" in text, text
 assert "sessions_per_hour=600.0" in text and "avg_session_s=50.0" in text, text
 assert "CONN_NOW total=3" in text, text
 assert "CONN_NOW_GROUP role=app_web app=\\"\\" state=idle age=<1m n=2" in text, text
+assert 'CACHED_TABLE_WRITE {"calls": 900, "id": "123", "mean_ms": "0.500"' in text, text
 assert 'PYMK_PREPARED_PER_MEMBER [{"stored": "0", "members": 4}, {"stored": "12+", "members": 30}]' in text, text
 assert '"total_auth_attempts": 1500' in text and "xact_commit" not in text, text
 assert "path=default cache=public-pages[cookies=whitelist:2 ttl=0/0/300] origin_request=AllViewerExceptHostHeader[cookies=all]" in text, text

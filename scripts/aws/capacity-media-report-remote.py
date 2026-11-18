@@ -2300,14 +2300,12 @@ CONN_STAT_KEY = re.compile(r"auth|conn|session|backend", re.I)
 
 
 def platform_fields(record, prefix):
-    """Every field naming a platform or serverless version, whatever AWS calls it (values are AWS version labels)."""
     return ["%s.%s=%s" % (prefix, k, record[k]) for k in sorted(record) if re.search(r"platform|serverlessv2.*version", k, re.I)
             and isinstance(record[k], (str, int, float, bool))]
 
 
 def section_dbconn():
     out("=== OWNER 18 NOV: AURORA PLATFORM, CONNECTION CHURN, EDGE COOKIES (versions, counts and settings only) ===")
-    # (a) The serverless platform version, pending maintenance and the minor versions on offer.
     c = cluster()
     out("PLATFORM_CLUSTER", "engine=%s" % c.get("EngineVersion"), "autoMinor=%s" % c.get("AutoMinorVersionUpgrade"),
         "maintenance=%s" % c.get("PreferredMaintenanceWindow"), *platform_fields(c, "cluster"))
@@ -2334,7 +2332,6 @@ def section_dbconn():
     out("PLATFORM_UPGRADE_TARGETS", "minor=%d" % len(minor), "major=%d" % sum(1 for t in targets if t.get("IsMajorVersionUpgrade")),
         "latest_minor=%s" % (minor[-1] if minor else "none"), "minor_list=%s" % ",".join(minor[-6:]))
 
-    # (b) Connection churn: sessions opened since the statistics reset, who holds connections now and for how long.
     statements = [
         "select stats_reset::text as since, extract(epoch from now() - stats_reset)::bigint as seconds, numbackends::int as backends, "
         "sessions::bigint as sessions, sessions_abandoned::bigint as abandoned, sessions_fatal::bigint as fatal, "
@@ -2345,16 +2342,23 @@ def section_dbconn():
         "select name, setting, unit from pg_settings where name in ('max_connections', 'log_connections', 'log_disconnections', "
         "'password_encryption', 'ssl', 'superuser_reserved_connections', 'tcp_keepalives_idle') order by name",
         "select * from aurora_stat_database() where datname = current_database()",
-        # How many real members fall back to live People-you-may-know scoring: those with fewer prepared suggestions
-        # than a list shows (12) take the live top-up on every view.
         "select case when n = 0 then '0' when n < 12 then '1-11' else '12+' end as stored, count(*)::int as members from ("
         "select p.id, (select count(*) from public.people_suggestions s where s.viewer_id = p.id)::int as n "
         "from public.profiles p where p.account_status = 'active' and p.onboarding_completed_at is not null and not p.is_load_test "
         "and coalesce(p.identity_root, 'professional') <> 'organisation') m group by 1 order by 1",
+        "select s.queryid::text as id, s.calls::bigint as calls, round(s.total_exec_time::numeric, 1)::text as total_ms, "
+        "round(s.mean_exec_time::numeric, 3)::text as mean_ms, left(regexp_replace(s.query, '\\s+', ' ', 'g'), 90) as shape "
+        "from pg_stat_statements s where s.dbid = (select oid from pg_database where datname = current_database()) "
+        "and s.query ~* '^\\s*(insert\\s+into|update|delete\\s+from)\\s+(public\\.)?(profiles|maritime_profiles|profile_skills|companies|"
+        "identity_accounts|notifications|messages|conversation_participants|connections|auth_sessions)\\M' "
+        "order by s.calls desc limit 20",
     ]
     rows = [sql_rows([s])[0] for s in statements]
-    totals, activity, settings, aurora, pymk = rows
+    totals, activity, settings, aurora, pymk, writes = rows
     out("PYMK_PREPARED_PER_MEMBER", json.dumps(pymk) if pymk is not None else "UNAVAILABLE")
+    out("CACHED_TABLE_WRITES", "count=%s" % (len(writes) if writes is not None else "UNAVAILABLE"), "at=%s" % iso(NOW))
+    for w in writes or []:
+        out("CACHED_TABLE_WRITE", json.dumps(w, sort_keys=True)[:300])
     if totals:
         t = totals[0]
         hours = max((t.get("seconds") or 0) / 3600, 1 / 60)
@@ -2375,14 +2379,12 @@ def section_dbconn():
                                           sort_keys=True)[:800])
     else:
         out("CONN_AURORA_STAT", "UNAVAILABLE")
-    # Connections by the hour over the last 7 days (CloudWatch), so the counts above have a trend behind them.
     week = NOW - dt.timedelta(days=7)
     dims = {"DBClusterIdentifier": CLUSTER_ID}
     summarize("aurora_connections_hourly_max_7d", metric_series("AWS/RDS", "DatabaseConnections", dims, "Maximum", 3600, start=week))
     summarize("aurora_connections_hourly_avg_7d", metric_series("AWS/RDS", "DatabaseConnections", dims, "Average", 3600, start=week))
     summarize("aurora_acu_hourly_max_7d", metric_series("AWS/RDS", "ServerlessDatabaseCapacity", dims, "Maximum", 3600, start=week))
 
-    # (c) What the main distribution keys its cache on and forwards, per behaviour (policy settings only).
     dists = (aws("cloudfront", "list-distributions", region="us-east-1") or {}).get("DistributionList", {}).get("Items", [])
     policies = {}
 
