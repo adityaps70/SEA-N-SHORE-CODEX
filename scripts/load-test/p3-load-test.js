@@ -106,10 +106,11 @@ function record(res, step) {
 const BROWSER_PAGE_LOAD = { Accept: 'text/html,application/xhtml+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' }
 
 // Signed-in mix: each iteration takes this shard's next account in turn (not one fixed account per VU, which would
-// pile a quiet step's requests onto a few sessions), and remembers per account where its "visit" is in the
-// Top-for-you feed.
-const feeds = new Map()
-let feed = { sessionId: null, position: null, pages: 0 }
+// pile a quiet step's requests onto a few sessions). A Top-for-you "visit" stays on one VU and its account: its next
+// pages go out with the same account and the visit's session, as a member scrolling home does. Owner (18 Nov): the
+// visit used to live in a per-VU map keyed by the round-robin account, and response bodies were thrown away, so a
+// visit almost never continued and every feed page built a fresh snapshot (about 3x a member's feed cost).
+let visit = null
 // Round DB: each request names its ramp step in the User-Agent, so the report can cut the ALB's server-side times
 // per step exactly (the shards start a few seconds apart). Set per iteration.
 let stepAgent = 'SeaNShore-LoadTest/1'
@@ -121,31 +122,39 @@ export function sessionSlot(iteration, sessions) {
 
 function signedInRequest(name) {
   const slot = sessionSlot(exec.scenario.iterationInInstance, SESSIONS.length)
-  const session = SESSIONS[slot]
-  feed = feeds.get(slot) || { sessionId: null, position: null, pages: 0 }
+  // Three pages per visit, then a new visit starts (a new snapshot) on this iteration's account.
+  const continuing = name === 'feed-page' && visit !== null && visit.sessionId !== null && visit.pages < 3
+  const session = SESSIONS[continuing ? visit.slot : slot]
   const cookie = `sns_cognito_access=${session.accessToken}${session.refreshToken ? `; sns_cognito_refresh=${session.refreshToken}` : ''}`
   const base = { 'X-SNS-Load-Test': 'P3', 'User-Agent': stepAgent, Cookie: cookie }
   // Page loads look like a browser's (as in the signed-out mix); the realtime state is a fetch, not a page.
   const page = (path, tag) => http.get(BASE_URL + path, {
     headers: path.startsWith('/api/') ? base : { ...base, ...BROWSER_PAGE_LOAD }, redirects: 0, timeout: '20s', tags: { name: tag || path },
   })
-  const action = (id, args, tag) => http.post(`${BASE_URL}/home`, JSON.stringify(args), {
+  const action = (id, args, tag, keepBody = false) => http.post(`${BASE_URL}/home`, JSON.stringify(args), {
     headers: { ...base, 'Next-Action': id, 'Content-Type': 'text/plain;charset=UTF-8', Accept: 'text/x-component', Origin: BASE_URL },
     redirects: 0, timeout: '20s', tags: { name: tag },
+    // Only the feed page's body is read (for its session and next position); every other body is discarded.
+    ...(keepBody ? { responseType: 'text' } : {}),
   })
   switch (name) {
     case 'home':
-      feeds.set(slot, { sessionId: null, position: null, pages: 0 })
+      // A home load starts that account's next visit afresh.
+      if (visit !== null && visit.slot === slot) visit = null
       return page('/home')
     case 'feed-page': {
-      // Three pages per visit, then a new visit starts (a new snapshot), as a member scrolling home does.
-      if (feed.pages >= 3) feed = { sessionId: null, position: null, pages: 0 }
-      const args = feed.sessionId ? [{ sessionId: feed.sessionId, ...(feed.position !== null ? { position: feed.position } : {}) }] : [{}]
-      const res = action(ACTIONS.loadTopFeedPage, args, 'action:loadTopFeedPage')
+      const current = continuing ? visit : { slot, sessionId: null, position: null, pages: 0 }
+      const args = current.sessionId ? [{ sessionId: current.sessionId, ...(current.position !== null ? { position: current.position } : {}) }] : [{}]
+      const res = action(ACTIONS.loadTopFeedPage, args, 'action:loadTopFeedPage', true)
       const body = String(res.body || '')
       const sessionId = /"sessionId":"([0-9a-f-]{36})"/.exec(body)
       const position = /"nextPosition":(\d+|null)/.exec(body)
-      feeds.set(slot, { sessionId: sessionId ? sessionId[1] : null, position: position && position[1] !== 'null' ? Number(position[1]) : null, pages: feed.pages + 1 })
+      visit = {
+        slot: current.slot,
+        sessionId: sessionId ? sessionId[1] : null,
+        position: position && position[1] !== 'null' ? Number(position[1]) : null,
+        pages: current.pages + 1,
+      }
       return res
     }
     case 'profile':
