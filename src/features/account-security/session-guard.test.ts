@@ -67,6 +67,24 @@ describe('session guard (Round H, H3)', () => {
     expect(revokedRepository.touch).not.toHaveBeenCalled()
   })
 
+  it('owner 18 Nov: a sign-in ended on another server is dropped from this server at once (cache-clear hub)', async () => {
+    const repository = fakeRepository()
+    let registered: { dropTag(tag: string): void; dropAll(): void } | null = null
+    const guard = createSessionGuard({ repository, now: () => 1_000_000, clearHub: { register: (cache) => { registered = cache } } })
+    const token = accessToken({ origin_jti: 'origin-aaaa-0004' })
+    await expect(guard.check({ accessToken: token, profileId: PROFILE, context })).resolves.toMatchObject({ status: 'active' })
+    // Another server revokes it: the database row changes and the clear for its origin hash arrives here.
+    repository.row.revoked = true
+    registered!.dropTag(`s:${sessionOriginHash('origin-aaaa-0004')}`)
+    await expect(guard.check({ accessToken: token, profileId: PROFILE, context })).resolves.toEqual({ status: 'revoked', sessionId: 'session-1', reason: 'signed_out' })
+    expect(repository.findOrCreate).toHaveBeenCalledTimes(2)
+    // A clear for another sign-in, or a lost listener, never leaves a stale answer: the latter drops everything.
+    registered!.dropTag(`s:${sessionOriginHash('origin-other')}`)
+    registered!.dropAll()
+    await guard.check({ accessToken: token, profileId: PROFILE, context })
+    expect(repository.findOrCreate).toHaveBeenCalledTimes(3)
+  })
+
   it('keeps a session used within 30 days and ends one not used for longer (Round I, I3 sliding session)', async () => {
     const DAY = 24 * 60 * 60 * 1000
     const now = 400 * DAY

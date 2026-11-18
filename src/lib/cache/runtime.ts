@@ -1,4 +1,4 @@
-import { listenForNotifications, query, setDatabaseWriteHook } from '@/lib/db/client'
+import * as database from '@/lib/db/client'
 import { createCacheClearHub, type CacheClearTransport } from './cache-clear'
 
 /**
@@ -12,8 +12,9 @@ const enabled = process.env.NEXT_RUNTIME === 'nodejs'
   && process.env.CACHE_CLEAR !== 'off'
 
 const databaseTransport: CacheClearTransport = {
-  listen: (channel, onMessage, onLost) => listenForNotifications(channel, onMessage, onLost),
-  notify: async (channel, payload) => { await query('select pg_notify($1, $2)', [channel, payload]) },
+  // Read from the module only when used, so tests that mock the database client never touch these.
+  listen: (channel, onMessage, onLost) => database.listenForNotifications(channel, onMessage, onLost),
+  notify: async (channel, payload) => { await database.query('select pg_notify($1, $2)', [channel, payload]) },
 }
 
 const disabledTransport: CacheClearTransport = {
@@ -24,4 +25,4 @@ const disabledTransport: CacheClearTransport = {
 
 export const cacheClearHub = createCacheClearHub({ transport: enabled ? databaseTransport : disabledTransport })
 
-if (enabled) setDatabaseWriteHook(() => cacheClearHub.writeBarrier())
+if (enabled) database.setDatabaseWriteHook(() => cacheClearHub.writeBarrier())

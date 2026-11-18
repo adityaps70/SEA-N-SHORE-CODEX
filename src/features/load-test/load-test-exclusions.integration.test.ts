@@ -109,6 +109,14 @@ describe('load-test accounts never reach real members (Round ARCH)', () => {
     await signals.incrementMetric('feed.top_pages', 2)
     const rows = await db.query(`select value from public.ranking_metrics_daily where metric = 'feed.top_pages'`)
     expect(Number(rows[0]?.value)).toBe(3)
+    // Owner (18 Nov, fix 3d): the batched write leaves load-test accounts out the same way.
+    await signals.incrementMetrics([
+      { metric: 'feed.batched', amount: 5, actorProfileId: ids.testA },
+      { metric: 'feed.batched', amount: 2, actorProfileId: ids.real },
+      { metric: 'feed.batched', amount: 1, actorProfileId: null },
+    ])
+    const batched = await db.query(`select value from public.ranking_metrics_daily where metric = 'feed.batched'`)
+    expect(batched.map((row) => Number(row.value))).toEqual([3])
     const impressions = await db.query(`select viewer_id from public.post_impressions`)
     expect(impressions.map((row) => row.viewer_id)).toEqual([ids.real])
   })
