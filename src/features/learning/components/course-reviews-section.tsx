@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Star } from 'lucide-react'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import type { OwnerReplyView, PublicCourseReviews } from '../course-rating-repository'

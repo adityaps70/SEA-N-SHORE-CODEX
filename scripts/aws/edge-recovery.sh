@@ -102,7 +102,7 @@ PY
 echo 'EDGE_PROVIDER_LOCK_VERIFIED=true'
 PLAN_EXIT=0
 terraform_plan_bounded "$RECOVERY_DIR/plan.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image -target=aws_cloudfront_cache_policy.public_pages -target=aws_cloudfront_cache_policy.media_cdn \
+  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image -target=aws_cloudfront_cache_policy.public_pages -target=aws_cloudfront_cache_policy.media_cdn -target=aws_cloudfront_cache_policy.public_company_logo \
   -var-file="$RECOVERY_DIR/variables.json" -out="$RECOVERY_DIR/edge.tfplan" \
   2> "$RECOVERY_DIR/plan.err" || PLAN_EXIT=$?
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
@@ -142,7 +142,8 @@ fi
 # Round P3 (B4): so may the page cache policy (check-edge-plan.py validates its exact settings).
 # Round P3 (B7): and the media cache policy. The media key group, public key and origin access
 # control come from media-cdn-infra.sh first, so here they must be no-ops like every dependency.
-EDGE_ADDRESSES='["aws_cloudfront_cache_policy.media_cdn", "aws_cloudfront_cache_policy.next_image", "aws_cloudfront_cache_policy.public_pages", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
+# Request cuts (owner-approved 18 Nov): and the cookie-free public logo cache policy (check-edge-plan.py validates it).
+EDGE_ADDRESSES='["aws_cloudfront_cache_policy.media_cdn", "aws_cloudfront_cache_policy.next_image", "aws_cloudfront_cache_policy.public_company_logo", "aws_cloudfront_cache_policy.public_pages", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
 jq -e --argjson edge "$EDGE_ADDRESSES" '
   [.resource_changes[] | select(.mode == "managed") | select((.address | IN($edge[])) | not) | select(.change.actions != ["no-op"])] | length == 0
 ' "$RECOVERY_DIR/plan.json" >/dev/null || {
@@ -152,11 +153,12 @@ jq -e --argjson edge "$EDGE_ADDRESSES" '
 if [[ -n "$STATE_CF_ID" ]]; then
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 6
+    | ($changes | length) == 7
       and ([ $changes[].address ] | sort) == ($edge | sort)
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.media_cdn") ][0].actions as $mp | ($mp == ["no-op"] or $mp == ["update"] or $mp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["update"] or $cp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_pages") ][0].actions as $pp | ($pp == ["no-op"] or $pp == ["update"] or $pp == ["create"]))
+      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_company_logo") ][0].actions as $lp | ($lp == ["no-op"] or $lp == ["update"] or $lp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["update"] or $fn == ["create"]))
@@ -170,11 +172,12 @@ if [[ -n "$STATE_CF_ID" ]]; then
 else
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 6
+    | ($changes | length) == 7
       and ([ $changes[].address ] | sort) == ($edge | sort)
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.media_cdn") ][0].actions as $mp | ($mp == ["no-op"] or $mp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_pages") ][0].actions as $pp | ($pp == ["no-op"] or $pp == ["create"]))
+      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.public_company_logo") ][0].actions as $lp | ($lp == ["no-op"] or $lp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["create"]))
@@ -226,13 +229,15 @@ PAGES_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == 
 [[ -n "$PAGES_POLICY_ID" && "$PAGES_POLICY_ID" != null ]]
 state_id() { jq -r --arg type "$1" --arg name "$2" '.resources[] | select(.mode == "managed" and .type == $type and .name == $name) | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json"; }
 MEDIA_POLICY_ID="$(state_id aws_cloudfront_cache_policy media_cdn)"
+LOGO_POLICY_ID="$(state_id aws_cloudfront_cache_policy public_company_logo)"
+[[ -n "$LOGO_POLICY_ID" && "$LOGO_POLICY_ID" != null ]]
 MEDIA_KEY_GROUP_ID="$(state_id aws_cloudfront_key_group media_cdn)"
 MEDIA_OAC_ID="$(state_id aws_cloudfront_origin_access_control media)"
 for value in "$MEDIA_POLICY_ID" "$MEDIA_KEY_GROUP_ID" "$MEDIA_OAC_ID"; do [[ -n "$value" && "$value" != null ]]; done
-jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" --arg pages "$PAGES_POLICY_ID" --arg media "$MEDIA_POLICY_ID" '
+jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" --arg pages "$PAGES_POLICY_ID" --arg media "$MEDIA_POLICY_ID" --arg logo "$LOGO_POLICY_ID" '
   .Distribution.DistributionConfig as $config
   | $config.DefaultCacheBehavior.CachePolicyId == $pages
-    and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/m/*", $media], ["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized]])
+    and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/m/*", $media], ["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized], ["/api/public/company-logo/*", $logo]])
     and all($config.CacheBehaviors.Items[]? | select(.PathPattern != "/m/*"); ((.GrpcConfig.Enabled // false) == false) and .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
 ' "$RECOVERY_DIR/live.json" >/dev/null
 # Round P3 (B7): /m/* answers only signed requests (the media key group), from the private media
@@ -274,6 +279,15 @@ jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .M
   and ((.ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig.Headers.Items | map(ascii_downcase) | sort) == ["next-router-prefetch", "next-router-segment-prefetch", "next-router-state-tree", "rsc"])
   and .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior == "all"' "$RECOVERY_DIR/live-pages-policy.json" >/dev/null
 echo 'EDGE_PAGE_CACHE_POLICY_VERIFIED=true'
+# Request cuts: the live public logo policy never keys on cookies or headers (only the path and v) and keeps what
+# the origin marks public for at most an hour; its behavior has no origin request policy (checked above).
+aws cloudfront get-cache-policy --id "$LOGO_POLICY_ID" --output json > "$RECOVERY_DIR/live-logo-policy.json"
+jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .MaxTTL == 3600
+  and .ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.CookieBehavior == "none"
+  and .ParametersInCacheKeyAndForwardedToOrigin.HeadersConfig.HeaderBehavior == "none"
+  and .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior == "whitelist"
+  and (.ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStrings.Items == ["v"])' "$RECOVERY_DIR/live-logo-policy.json" >/dev/null
+echo 'EDGE_PUBLIC_LOGO_CACHE_POLICY_VERIFIED=true'
 aws cloudfront describe-function --name sea-n-shore-staging-canonical-host-redirect --stage LIVE --output json > "$RECOVERY_DIR/live-function.json"
 jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.FunctionSummary | .FunctionMetadata.FunctionARN == $fn and .FunctionConfig.Runtime == "cloudfront-js-2.0"' "$RECOVERY_DIR/live-function.json" >/dev/null
 echo 'CANONICAL_HOST_REDIRECT_FUNCTION_LIVE=true'

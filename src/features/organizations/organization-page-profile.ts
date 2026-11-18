@@ -2,6 +2,7 @@
  * Shared helpers for the organization page (cover, tagline, company size,
  * media URLs). Pure functions: safe to import from server and client code.
  */
+import { companyLogoPath } from './company-logo-path'
 
 export const COMPANY_SIZES = [
   { value: '1-10', label: '1–10 employees' },
@@ -106,8 +107,12 @@ function version(path: string) {
   return encodeURIComponent(name.slice(-24))
 }
 
-export function organizationLogoUrl(company: { id: string; logoPath: string | null }) {
-  return company.logoPath ? `/api/company-logo/${company.id}?v=${version(company.logoPath)}` : null
+/**
+ * The logo's same-origin URL. Request cuts (owner-approved 18 Nov): a verified organization's logo comes from the
+ * cookie-free public route that CloudFront caches once for everyone; any other logo stays on the signed-in route.
+ */
+export function organizationLogoUrl(company: { id: string; logoPath: string | null; verified?: boolean | null }) {
+  return company.logoPath ? `${companyLogoPath(company.id, { verified: company.verified })}?v=${version(company.logoPath)}` : null
 }
 
 export function organizationCoverUrl(company: { id: string; coverPath: string | null }) {

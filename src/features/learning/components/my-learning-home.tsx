@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ArrowRight, Award, CalendarClock, CheckCircle2, Download, ExternalLink, PlayCircle } from 'lucide-react'
 import type { LearnerCertificateSummary } from '../certificate-repository'
 import type { ResumeCourse } from '../learner-home-repository'

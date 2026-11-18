@@ -22,6 +22,25 @@ const BUSY_LINK_FILES = [
   'src/app/(app)/jobs/applications/page.tsx',
   'src/features/jobs/share/components/job-share-panel.tsx',
   'src/features/feed/components/shared-job-card.tsx',
+  // Request cuts (owner-approved 18 Nov): community lists and pages, job and course detail pages and the learning
+  // components linked from them prefetched every link in view; they now prefetch on intent too.
+  'src/app/(app)/community/page.tsx',
+  'src/app/(app)/community/[slug]/page.tsx',
+  'src/features/community/components/group-card.tsx',
+  'src/features/community/components/community-discover.tsx',
+  'src/features/community/components/category-facet.tsx',
+  'src/features/community/components/group-members-list.tsx',
+  'src/app/(public)/jobs/[id]/page.tsx',
+  'src/app/(public)/learn/courses/[slug]/page.tsx',
+  'src/app/(app)/learn/courses/[slug]/learn/page.tsx',
+  'src/features/learning/components/my-learning-home.tsx',
+  'src/features/learning/components/course-action-bar.tsx',
+  'src/features/learning/components/lesson-action-bar.tsx',
+  'src/features/learning/components/page-actions-sheet.tsx',
+  'src/features/learning/components/course-reviews-section.tsx',
+  'src/features/learning/components/course-community-panel.tsx',
+  'src/features/learning/components/course-purchase-panel.tsx',
+  'src/features/learning/components/enroll-free-control.tsx',
 ]
 
 describe('busy signed-in lists prefetch on intent only', () => {

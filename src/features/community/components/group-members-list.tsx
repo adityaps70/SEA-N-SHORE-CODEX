@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ShieldCheck } from 'lucide-react'
 import { MediaImage } from '@/components/ui/media-image'
 import { GROUP_ROLE_LABELS, type GroupMember } from '../types'
