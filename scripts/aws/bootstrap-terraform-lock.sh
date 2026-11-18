@@ -36,16 +36,48 @@ echo "BOOTSTRAP_MEM_AVAILABLE_MB=$(awk '/^MemAvailable:/ {print int($2 / 1024)}'
 
 # Plans are read-only, so terraform_plan_bounded gives each one TERRAFORM_PLAN_TIMEOUT_SECONDS,
 # then interrupts it (Terraform releases its own state lock on SIGINT) and retries once. A plan
-# that ignores the interrupt is killed two minutes later; its lock then stays behind for the
-# state-unlock runner, so that case is not retried.
+# that ignores the interrupt is killed TERRAFORM_PLAN_KILL_AFTER_SECONDS (two minutes) later; its
+# lock then stays behind for the state-unlock runner, so that case is not retried.
+# The bound is kept here in the shell, not with `timeout`: the Rust coreutils `timeout` (the default
+# from Ubuntu 26.04) receives the interrupt it sends to its own process group and kills the plan at
+# once, which would leave the state lock behind every time. Terraform runs as its own job (process
+# group), so the interrupt reaches it and its provider plugins, as it did with GNU timeout.
 # Usage: terraform_plan_bounded <stdout-file> <the usual Terraform arguments>
 TERRAFORM_PLAN_TIMEOUT_SECONDS="${TERRAFORM_PLAN_TIMEOUT_SECONDS:-600}"
+TERRAFORM_PLAN_KILL_AFTER_SECONDS="${TERRAFORM_PLAN_KILL_AFTER_SECONDS:-120}"
+# One plan, bounded: its own status if it finishes in time, 124 if it had to be interrupted, 137 if
+# it ignored the interrupt and was killed.
+terraform_plan_once_bounded() {
+  local log="$1" pid deadline
+  shift
+  set -m
+  terraform "$@" > "$log" &
+  pid=$!
+  set +m
+  deadline=$((SECONDS + TERRAFORM_PLAN_TIMEOUT_SECONDS))
+  while kill -0 "$pid" 2>/dev/null && (( SECONDS < deadline )); do sleep 1; done
+  if ! kill -0 "$pid" 2>/dev/null; then
+    wait "$pid"
+    return
+  fi
+  kill -INT -- "-$pid" 2>/dev/null || true
+  kill -CONT -- "-$pid" 2>/dev/null || true
+  deadline=$((SECONDS + TERRAFORM_PLAN_KILL_AFTER_SECONDS))
+  while kill -0 "$pid" 2>/dev/null && (( SECONDS < deadline )); do sleep 1; done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -KILL -- "-$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    return 137
+  fi
+  wait "$pid" 2>/dev/null || true
+  return 124
+}
 terraform_plan_bounded() {
   local log="$1" attempt status
   shift
   for attempt in 1 2; do
     status=0
-    timeout --signal=INT --kill-after=120 "$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "$@" > "$log" || status=$?
+    terraform_plan_once_bounded "$log" "$@" || status=$?
     [[ "$status" == 124 || "$status" == 137 ]] || return "$status"
     echo "TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=$attempt"
     echo "TERRAFORM_PLAN_TIMED_OUT_MEM_AVAILABLE_MB=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
