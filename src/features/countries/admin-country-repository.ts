@@ -207,6 +207,8 @@ export function createAdminCountryRepository(input: {
   query?: Query
   /** The permission check every read runs first (the platform administrator role). */
   isPlatformAdministrator?: (userId: string) => Promise<boolean>
+  /** Round GP (Part C): a country admin's countries, or null. */
+  countryAdminCountries?: (userId: string) => Promise<string[] | null>
   cacheTtlMs?: number
   countrySchemaReady?: () => Promise<boolean>
 } = {}) {
@@ -225,6 +227,23 @@ export function createAdminCountryRepository(input: {
 
   async function authorize(adminId: string) {
     if (!await isPlatformAdministrator(adminId)) throw new Error('admin_forbidden')
+  }
+
+  /**
+   * Round GP (Part C): a platform administrator sees every country; a country admin only their own countries (never
+   * the "Country not set" row, which may hold anyone). Anyone else: admin_forbidden.
+   */
+  async function countriesFor(adminId: string): Promise<string[] | 'all'> {
+    if (await isPlatformAdministrator(adminId)) return 'all'
+    const countries = await (input.countryAdminCountries ?? defaultCountryAdminCountries)(adminId).catch(() => null)
+    if (!countries?.length) throw new Error('admin_forbidden')
+    return countries
+  }
+
+  async function defaultCountryAdminCountries(adminId: string) {
+    const rows = await query(`select countries from public.country_admins where profile_id = $1`, [adminId])
+    const value = rows[0]?.countries
+    return Array.isArray(value) ? value.filter((code): code is string => typeof code === 'string') : null
   }
 
   async function loadStats(basis: CountryBasis): Promise<CountryStatsRow[]> {
@@ -262,20 +281,25 @@ export function createAdminCountryRepository(input: {
 
   /** Every country's numbers, for a platform administrator. Cached for up to 30 seconds. */
   async function listCountryStats(adminId: string, basis: CountryBasis = 'residence'): Promise<CountryStatsRow[]> {
-    await authorize(adminId)
+    const allowed = await countriesFor(adminId)
     if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
-    return [...await countryStatsCache.get(basis, () => loadStats(basis))]
+    const rows = [...await countryStatsCache.get(basis, () => loadStats(basis))]
+    return allowed === 'all' ? rows : rows.filter((row) => row.code !== null && allowed.includes(row.code))
   }
 
   /** One country's totals, last 12 weeks and departments (null = members / organizations with no country). */
   async function getCountryDetail(adminId: string, code: CountryKey, basis: CountryBasis = 'residence'): Promise<CountryDetail> {
     if (code !== null && !isCountryCode(code)) throw new Error('country_unknown')
-    await authorize(adminId)
+    const allowed = await countriesFor(adminId)
+    if (allowed !== 'all' && (code === null || !allowed.includes(code))) throw new Error('country_out_of_scope')
     if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
     return countryDetailCache.get(`${basis}:${code ?? ''}`, () => loadDetail(basis, code))
   }
 
-  /** Each listed member's country and where it came from, for an admin list (estimates marked by their source). */
+  /**
+   * Each listed member's country and where it came from, for an admin list (estimates marked by their source).
+   * Platform administrators only: member lists are never shown to country admins.
+   */
   async function memberCountries(adminId: string, profileIds: readonly string[]): Promise<Map<string, MemberCountry>> {
     await authorize(adminId)
     const ids = [...new Set(profileIds)]

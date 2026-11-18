@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AdminPageHeader } from '@/features/admin/components/admin-ui'
 import { ExternalLink } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   learningAdminRepository,
   type MentorApplicationReviewItem,
@@ -10,6 +9,7 @@ import {
 import type { MentorApplicationStatus } from '@/features/learning/mentor-application'
 import { MentorReviewControls } from '@/features/learning/components/mentor-review-controls'
 import { formatYears } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Learning review · Admin' }
 
@@ -122,7 +122,7 @@ export default async function LearningAdminPage({
 }: {
   searchParams: Promise<{ status?: string | string[] }>
 }) {
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
   const params = await searchParams
   const status = selectedStatus(params.status)
   const applications = await learningAdminRepository.listMentorApplications(user.id, status)

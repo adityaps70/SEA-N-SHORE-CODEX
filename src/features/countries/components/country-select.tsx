@@ -1,3 +1,4 @@
+import type { ChangeEvent } from 'react'
 import { COUNTRY_OPTIONS } from '../catalog'
 
 /**
@@ -14,9 +15,12 @@ export function CountrySelect({
   errorId,
   describedBy,
   className,
+  value,
+  onChange,
 }: {
   id: string
-  name: string
+  /** Leave out inside a nested form (the organization picker), so the value is not submitted with the outer form. */
+  name?: string
   defaultValue?: string | null
   emptyLabel?: string
   required?: boolean
@@ -24,13 +28,16 @@ export function CountrySelect({
   errorId?: string
   describedBy?: string
   className?: string
+  /** Controlled use (a form that keeps its own state). */
+  value?: string
+  onChange?: (code: string) => void
 }) {
   const described = [describedBy, invalid ? errorId : undefined].filter(Boolean).join(' ') || undefined
   return (
     <select
       id={id}
       name={name}
-      defaultValue={defaultValue ?? ''}
+      {...(value !== undefined ? { value, onChange: (event: ChangeEvent<HTMLSelectElement>) => onChange?.(event.target.value) } : { defaultValue: defaultValue ?? '' })}
       required={required}
       aria-invalid={invalid || undefined}
       aria-describedby={described}

@@ -134,11 +134,12 @@ describe('OrganizationPicker', () => {
     expect(group.querySelectorAll('[name]')).toHaveLength(0)
     fireEvent.change(screen.getByRole('combobox', { name: 'Type or industry' }), { target: { value: 'ship_manager' } })
     fireEvent.change(screen.getByRole('textbox', { name: 'City and country' }), { target: { value: 'Kochi, India' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Country' }), { target: { value: 'IN' } })
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'City and country' }), { key: 'Enter' })
 
     await waitFor(() => expect(hiddenId(container)).toBe('44444444-4444-4444-8444-444444444444'))
     expect(actionMocks.createUnclaimedOrganization).toHaveBeenCalledWith({
-      name: 'Blue Anchor Marine', organizationType: 'ship_manager', location: 'Kochi, India', website: '',
+      name: 'Blue Anchor Marine', organizationType: 'ship_manager', location: 'Kochi, India', website: '', country: 'IN',
     })
     expect(outerSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent('Blue Anchor Marine is now on Sea N Shore as an unclaimed page')

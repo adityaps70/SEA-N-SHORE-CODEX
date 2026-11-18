@@ -80,14 +80,14 @@ describe('unclaimed organization helpers', () => {
   })
 
   it('validates the "I just work there" form and normalizes the website', () => {
-    const parsed = unclaimedOrganizationSchema.parse({ name: '  Blue   Anchor ', organizationType: 'ship_manager', location: ' Kochi,  India ', website: 'blueanchor.example' })
-    expect(parsed).toEqual({ name: 'Blue Anchor', organizationType: 'ship_manager', location: 'Kochi, India', website: 'https://blueanchor.example' })
-    expect(unclaimedOrganizationSchema.parse({ name: 'Blue Anchor', organizationType: 'other', location: 'Goa', website: '' }).website).toBeNull()
+    const parsed = unclaimedOrganizationSchema.parse({ name: '  Blue   Anchor ', organizationType: 'ship_manager', location: ' Kochi,  India ', website: 'blueanchor.example', country: 'in' })
+    expect(parsed).toEqual({ name: 'Blue Anchor', organizationType: 'ship_manager', location: 'Kochi, India', website: 'https://blueanchor.example', country: 'IN' })
+    expect(unclaimedOrganizationSchema.parse({ name: 'Blue Anchor', organizationType: 'other', location: 'Goa', website: '', country: 'IN' }).website).toBeNull()
 
-    const invalid = unclaimedOrganizationSchema.safeParse({ name: 'B', organizationType: 'not-a-type', location: '', website: 'not a site' })
+    const invalid = unclaimedOrganizationSchema.safeParse({ name: 'B', organizationType: 'not-a-type', location: '', website: 'not a site', country: '' })
     expect(invalid.success).toBe(false)
     const errors = invalid.success ? {} : invalid.error.flatten().fieldErrors
-    expect(Object.keys(errors).sort()).toEqual(['location', 'name', 'organizationType', 'website'])
+    expect(Object.keys(errors).sort()).toEqual(['country', 'location', 'name', 'organizationType', 'website'])
   })
 
   it('builds a URL-safe slug with a short suffix', () => {

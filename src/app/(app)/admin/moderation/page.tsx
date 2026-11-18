@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { pluralize } from '@/lib/format'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ModerationActionPanel } from '@/features/admin/components/moderation-action-panel'
 import { PendingCourseReviewsPanel } from '@/features/admin/components/pending-course-reviews-panel'
 import { CourseReviewRepliesPanel } from '@/features/admin/components/course-review-replies-panel'
@@ -16,6 +15,7 @@ import {
   type ModerationTargetType,
   type ModerationReportReason,
 } from '@/features/moderation/types'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Moderation · Admin' }
 
@@ -56,7 +56,7 @@ export default async function AdminModerationPage({
     ? requestedType as ModerationTargetType
     : 'all'
 
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
   // Learning round C: course reviews wait for approval before they are public; they lead the open queue.
   const showPendingReviews = status === 'open' && (targetType === 'all' || targetType === 'course_review')
   const [cases, pendingReviews, reviewReplies] = await Promise.all([

@@ -13,6 +13,7 @@ import { getPayoutSettings } from '@/features/payouts/payout-repository'
 import { getTaxSettings } from '@/features/tax/tax-settings'
 import { formatExactMoney, PAYOUT_STATUS_LABELS, sellerKey } from '@/features/payouts/payout-rules'
 import { arePayoutsConfigured } from '@/features/payouts/payout-runtime'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Payouts · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -89,6 +90,8 @@ function PayoutRow({ payout, withActions }: { payout: PayoutLine; withActions: b
 }
 
 export default async function AdminPayoutsQueuePage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const data = await withTransaction(async (tx) => {
     await releaseAvailableEarnings(tx)

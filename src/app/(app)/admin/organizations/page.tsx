@@ -13,7 +13,7 @@ import {
   type AdminChipTone,
 } from '@/features/admin/components/admin-ui'
 import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 import {
   ADMIN_ORGANIZATION_DIRECTORY_FILTERS,
   ADMIN_ORGANIZATION_STATUSES,
@@ -161,8 +161,9 @@ async function reviewQueue({ adminId, status }: { adminId: string; status: Admin
 }
 
 /** Round GP: the organization's country, or "Country not set" with a link to set it. */
-function OrganizationCountry({ id, country }: { id: string; country: string | null }) {
+function OrganizationCountry({ id, country, canSet = true }: { id: string; country: string | null; canSet?: boolean }) {
   if (country) return <span className="block truncate text-xs text-muted">{countryLabel(country)}</span>
+  if (!canSet) return <span className="mt-0.5 inline-flex"><AdminChip tone="warning">Country not set</AdminChip></span>
   return (
     <Link href={`/admin/organizations/country/${id}`} className="mt-0.5 inline-flex">
       <AdminChip tone="warning">Country not set</AdminChip>
@@ -172,12 +173,15 @@ function OrganizationCountry({ id, country }: { id: string; country: string | nu
 
 async function organizationDirectory({
   adminId,
+  platform,
   query,
   status,
   page,
   country,
 }: {
   adminId: string
+  /** Round GP (Part C): false for a country admin, who gets no member, workspace or country-setting links. */
+  platform: boolean
   query: string
   status: AdminOrganizationDirectoryFilter
   page: number
@@ -284,10 +288,12 @@ async function organizationDirectory({
                   ]}
                   actions={[
                     { kind: 'link', href: `/organizations/${organization.slug}`, label: 'View page', icon: <ExternalLink aria-hidden="true" /> },
-                    { kind: 'link', href: `/organizations/${organization.slug}/manage`, label: 'Manage', icon: <Settings2 aria-hidden="true" /> },
-                    { kind: 'link', href: `/admin/organizations/country/${organization.id}`, label: organization.country ? 'Change country' : 'Set country', icon: <Globe2 aria-hidden="true" /> },
+                    ...(platform ? [
+                      { kind: 'link' as const, href: `/organizations/${organization.slug}/manage`, label: 'Manage', icon: <Settings2 aria-hidden="true" /> },
+                      { kind: 'link' as const, href: `/admin/organizations/country/${organization.id}`, label: organization.country ? 'Change country' : 'Set country', icon: <Globe2 aria-hidden="true" /> },
+                    ] : []),
                     ...(organization.applicationId ? [{ kind: 'link' as const, href: `/admin/organizations/${organization.applicationId}`, label: 'Review application', icon: <ClipboardCheck aria-hidden="true" /> }] : []),
-                    ...(organization.owner ? [{ kind: 'link' as const, href: `/admin/users/${organization.owner.id}`, label: `Owner: ${organization.owner.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
+                    ...(platform && organization.owner ? [{ kind: 'link' as const, href: `/admin/users/${organization.owner.id}`, label: `Owner: ${organization.owner.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
                   ]}
                 />
               )
@@ -335,10 +341,12 @@ async function organizationDirectory({
                       </td>
                       <td className="px-4 py-2.5 text-navy-900">
                         <span className="block truncate" title={organization.location ?? undefined}>{organization.location ?? '—'}</span>
-                        <OrganizationCountry id={organization.id} country={organization.country} />
+                        <OrganizationCountry id={organization.id} country={organization.country} canSet={platform} />
                       </td>
                       <td className="px-4 py-2.5">
-                        {organization.owner ? (
+                        {organization.owner && !platform ? (
+                          <span className="block truncate font-medium text-navy-900">{organization.owner.fullName}</span>
+                        ) : organization.owner ? (
                           <Link href={`/admin/users/${organization.owner.id}`} className="block truncate font-medium text-navy-900 hover:text-ocean-700 hover:underline" title={organization.owner.fullName}>
                             {organization.owner.fullName}
                           </Link>
@@ -362,9 +370,11 @@ async function organizationDirectory({
                           <Link href={`/organizations/${organization.slug}`} className={actionClass}>
                             View page<span className="sr-only">: {organization.name}</span>
                           </Link>
-                          <Link href={`/organizations/${organization.slug}/manage`} className={actionClass}>
-                            Manage<span className="sr-only">: {organization.name}</span>
-                          </Link>
+                          {platform ? (
+                            <Link href={`/organizations/${organization.slug}/manage`} className={actionClass}>
+                              Manage<span className="sr-only">: {organization.name}</span>
+                            </Link>
+                          ) : null}
                           {organization.applicationId ? (
                             <Link href={`/admin/organizations/${organization.applicationId}`} className={actionClass}>
                               Review<span className="sr-only">: {organization.name}</span>
@@ -394,7 +404,9 @@ async function organizationDirectory({
 
 export default async function AdminOrganizationsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
-  const user = await requireAwsUser()
+  // Round GP (Part C): country admins see (and review) organizations from their own countries only.
+  const access = await requireAdminAccess('country')
+  const user = access.user
 
   if (readSingle(params.view) === 'queue') {
     return reviewQueue({ adminId: user.id, status: readQueueStatus(params.status) })
@@ -402,6 +414,7 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
 
   return organizationDirectory({
     adminId: user.id,
+    platform: access.kind === 'platform',
     query: readSingle(params.q).trim().slice(0, 120),
     status: readDirectoryFilter(params.status),
     page: readAdminPage(params.page),

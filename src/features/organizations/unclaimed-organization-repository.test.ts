@@ -72,6 +72,7 @@ describe('unclaimed organization repository: adding a page', () => {
       organizationType: 'ship_manager',
       location: 'Kochi, India',
       website: 'https://blueanchor.example',
+      country: 'IN',
     })
 
     expect(organization).toEqual({
@@ -82,7 +83,7 @@ describe('unclaimed organization repository: adding a page', () => {
     const insert = db.find(/insert into public\.companies/)[0]
     expect(insert?.text).toContain("'unclaimed'")
     expect(insert?.values).toEqual([
-      'blue-anchor-marine-abc123', 'Blue Anchor Marine', 'Ship manager', 'ship_manager', 'https://blueanchor.example', ['Kochi, India'], USER_ID,
+      'blue-anchor-marine-abc123', 'Blue Anchor Marine', 'Ship manager', 'ship_manager', 'https://blueanchor.example', ['Kochi, India'], USER_ID, 'IN',
     ])
     expect(db.find(/organization\.unclaimed_created/)).toHaveLength(1)
   })
@@ -93,7 +94,7 @@ describe('unclaimed organization repository: adding a page', () => {
     ])
     const repository = createUnclaimedOrganizationRepository(db)
 
-    const attempt = repository.createUnclaimedOrganization(USER_ID, { name: 'oceanic ship management', organizationType: 'ship_manager', location: 'Mumbai', website: null })
+    const attempt = repository.createUnclaimedOrganization(USER_ID, { name: 'oceanic ship management', organizationType: 'ship_manager', location: 'Mumbai', website: null, country: 'IN' })
 
     await expectCode(attempt, 'organization_duplicate_name')
     await attempt.catch((error: UnclaimedOrganizationError) => {
@@ -109,7 +110,7 @@ describe('unclaimed organization repository: adding a page', () => {
     const repository = createUnclaimedOrganizationRepository(db)
 
     await expectCode(
-      repository.createUnclaimedOrganization(USER_ID, { name: 'Oceanic', organizationType: 'ship_manager', location: 'Mumbai', website: null }),
+      repository.createUnclaimedOrganization(USER_ID, { name: 'Oceanic', organizationType: 'ship_manager', location: 'Mumbai', website: null, country: 'IN' }),
       'organization_duplicate_in_review',
     )
   })
@@ -119,7 +120,7 @@ describe('unclaimed organization repository: adding a page', () => {
     const repository = createUnclaimedOrganizationRepository(db)
 
     await expectCode(
-      repository.createUnclaimedOrganization(USER_ID, { name: 'New Co', organizationType: 'other', location: 'Goa', website: null }),
+      repository.createUnclaimedOrganization(USER_ID, { name: 'New Co', organizationType: 'other', location: 'Goa', website: null, country: 'IN' }),
       'unclaimed_organization_rate_limited',
     )
     expect(db.find(/insert into public\.companies/)).toHaveLength(0)
@@ -137,7 +138,7 @@ describe('unclaimed organization repository: adding a page', () => {
     ])
     const repository = createUnclaimedOrganizationRepository(db)
 
-    const attempt = repository.createUnclaimedOrganization(USER_ID, { name: 'New Co', organizationType: 'other', location: 'Goa', website: null })
+    const attempt = repository.createUnclaimedOrganization(USER_ID, { name: 'New Co', organizationType: 'other', location: 'Goa', website: null, country: 'IN' })
     await expectCode(attempt, 'organization_duplicate_name')
   })
 

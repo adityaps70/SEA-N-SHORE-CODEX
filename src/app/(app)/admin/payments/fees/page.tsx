@@ -9,11 +9,14 @@ import { listFeeOverrides } from '@/features/payouts/payout-queries'
 import { getPayoutSettings } from '@/features/payouts/payout-repository'
 import { formatPercentLabel, minorToRupeesInput, sellerKey } from '@/features/payouts/payout-rules'
 import { readClient } from '@/features/payouts/payout-runtime'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Fees · Payments · Admin' }
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPaymentFeesPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const [fees, payoutSettings, overrides] = await Promise.all([
     getPlatformFeeSettings(readClient),

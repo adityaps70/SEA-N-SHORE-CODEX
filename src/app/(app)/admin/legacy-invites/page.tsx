@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { emailDeliveryRepository } from '@/features/email-delivery/repository'
 import { LegacyInviteControls, LegacyReminderTestButton } from '@/features/legacy-invites/controls'
 import { LEGACY_INVITE_FROM, legacyInviteEmail } from '@/features/legacy-invites/email'
@@ -14,6 +13,7 @@ import {
   legacyFinalReminderRepository,
 } from '@/features/legacy-invites/final-reminder-repository'
 import { legacyLiveCounts } from '@/features/legacy-invites/live-counts'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Legacy invites · Admin' }
 export const dynamic = 'force-dynamic'
@@ -174,7 +174,7 @@ function RecentTable(props: {
 }
 
 export default async function LegacyInvitesAdminPage({ searchParams }: { searchParams?: Promise<{ mode?: string | string[] }> }) {
-  await requirePlatformAdministratorUser()
+  await requireAdminAccess('platform')
   const params = (await searchParams) ?? {}
   const mode = params.mode === 'reminder' ? 'reminder' : params.mode === 'final' ? 'final' : 'invite'
 

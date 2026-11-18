@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { AdminEmptyState, AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { adminRepository, type AdminOrganizationCountryTarget } from '@/features/admin/repository'
 import { COUNTRY_SCHEMA_MISSING_MESSAGE, CountrySchemaMissingError } from '@/features/countries/country-schema'
 import { countryLabel } from '@/features/countries/admin-country-view'
 import { AdminOrganizationCountryForm } from '@/features/countries/components/admin-organization-country-form'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Organization country · Admin' }
 
@@ -17,7 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export default async function AdminOrganizationCountryPage({ params }: { params: Promise<{ companyId: string }> }) {
   const { companyId } = await params
   if (!UUID.test(companyId)) notFound()
-  const admin = await requireAwsUser()
+  const admin = (await requireAdminAccess('platform')).user
   let organization: AdminOrganizationCountryTarget | null
   try {
     organization = await adminRepository.getOrganizationCountryTarget(admin.id, companyId)

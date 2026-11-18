@@ -1,0 +1,72 @@
+import { notFound } from 'next/navigation'
+import { cache } from 'react'
+import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
+import { countryAdminRepository } from '@/features/country-admins/repository'
+import { enforcePlatformAdminMfa } from './mfa-gate'
+import { adminRepository } from './repository'
+
+/**
+ * Round GP (Global Partners), Part C: who may open an admin page. Default deny:
+ * - 'platform' pages (every admin page unless it says otherwise): platform administrators only.
+ * - 'country' pages (Organizations, an organization's review, Members by country): platform administrators, and
+ *   country admins, whose data the page then limits to their countries.
+ * Anyone else, a country admin on a 'platform' page included, gets the same not-found answer the console gives every
+ * non-administrator, so no admin page or its contents is revealed. Both kinds of admin must have answered their
+ * authenticator app (the round 14 admin MFA gate). The repositories behind each page check the role again in SQL.
+ *
+ * src/admin-country-access-contract.test.ts requires every admin page to call this and lists the 'country' pages.
+ */
+export type AdminArea = 'platform' | 'country'
+
+export type AdminAccess =
+  | { kind: 'platform'; user: AwsVerifiedUser }
+  | { kind: 'country'; user: AwsVerifiedUser; countries: string[] }
+
+type ResolvedAccess = AdminAccess | { kind: 'none'; user: AwsVerifiedUser }
+
+export function createAdminAccess(input: {
+  requireUser: () => Promise<AwsVerifiedUser>
+  isPlatformAdministrator: (userId: string) => Promise<boolean>
+  countryAdminCountries: (userId: string) => Promise<string[] | null>
+  enforceMfa: (userId: string) => Promise<void>
+  touchCountryAdmin?: (userId: string) => Promise<void>
+  deny?: () => never
+  memo?: <T>(load: () => Promise<T>) => () => Promise<T>
+}) {
+  const deny = input.deny ?? (() => notFound())
+  const memo = input.memo ?? ((load) => load)
+
+  const resolve = memo(async (): Promise<ResolvedAccess> => {
+    const user = await input.requireUser()
+    if (await input.isPlatformAdministrator(user.id)) {
+      await input.enforceMfa(user.id)
+      return { kind: 'platform', user }
+    }
+    const countries = await input.countryAdminCountries(user.id).catch(() => null)
+    if (countries?.length) {
+      await input.enforceMfa(user.id)
+      await input.touchCountryAdmin?.(user.id).catch(() => undefined)
+      return { kind: 'country', user, countries }
+    }
+    return { kind: 'none', user }
+  })
+
+  return async function requireAdminAccess(area: AdminArea): Promise<AdminAccess> {
+    const access = await resolve()
+    if (access.kind === 'platform') return access
+    if (access.kind === 'country' && area === 'country') return access
+    return deny()
+  }
+}
+
+/** Once per request: the layout and the page share one role and MFA check. */
+const memoForRequest = <T,>(load: () => Promise<T>) => cache(load)
+
+export const requireAdminAccess = createAdminAccess({
+  requireUser: requireAwsUser,
+  isPlatformAdministrator: (userId) => adminRepository.isPlatformAdministrator(userId),
+  countryAdminCountries: (userId) => countryAdminRepository.getCountries(userId),
+  enforceMfa: (userId) => enforcePlatformAdminMfa(userId),
+  touchCountryAdmin: (userId) => countryAdminRepository.touchActive(userId),
+  memo: memoForRequest,
+})

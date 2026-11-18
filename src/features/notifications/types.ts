@@ -43,6 +43,8 @@ export type NetworkNotificationType =
   | 'learning_session_reminder'
   /** Algorithms round G (G3): new jobs matched one of the recipient's job alerts. No actor; details name the alert. */
   | 'job_alert_match'
+  /** Round GP (Part C): Sea N Shore approved, rejected or asked for changes to the recipient's organization verification. */
+  | 'organization_review_decided'
 
 export type NotificationActor = {
   id: string

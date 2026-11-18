@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { AdminFilterBar, AdminPageHeader } from '@/features/admin/components/admin-ui'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   CREATOR_VERIFICATION_STATUSES,
   type CreatorVerificationStatus,
@@ -9,6 +8,7 @@ import {
 import { creatorVerificationRepository } from '@/features/verifications/repository'
 import { CreatorVerificationReviewActions } from '@/features/verifications/components/creator-verification-review-actions'
 import { formatYears } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Verifications · Admin' }
 
@@ -46,7 +46,7 @@ export default async function AdminCreatorVerificationsPage({
   const params = await searchParams
   const status = readStatus(params.status)
   const type = readType(params.type)
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
   const applications = await creatorVerificationRepository.listAdminApplications(user.id, status, type)
 
   return (

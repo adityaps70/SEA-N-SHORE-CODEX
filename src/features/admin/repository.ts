@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { LIVE_JOB_SQL } from '@/features/jobs/repository'
 import { memberCountryCtes, memberCountryValues } from '@/features/countries/member-country-sql'
 import { CountrySchemaMissingError, countrySchemaReady } from '@/features/countries/country-schema'
+import { queueOrganizationReviewNotice } from '@/features/organizations/organization-review-notice'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
 import {
@@ -124,6 +125,12 @@ export type AdminAuditEvent = {
 export type AdminAuditFilter = {
   targetType: AdminAuditTargetType
   limit: number
+  /** Round GP (Part C): one admin's actions (a country admin's, from Admin › Country admins). */
+  actorId?: string | null
+  /** Round GP (Part C): actions about one country (the organization's country in the event metadata). */
+  country?: string | null
+  /** Round GP (Part C): only decisions made by country admins. */
+  countryAdminsOnly?: boolean
 }
 
 export const ADMIN_USER_STATUSES = ['active', 'restricted', 'suspended', 'deletion_requested'] as const
@@ -438,7 +445,13 @@ type LockedOrganizationApplicationRow = QueryResultRow & {
   company_id: string
   submitted_by: string
   status: string
+  company_country?: string | null
+  company_name?: string | null
+  company_slug?: string | null
 }
+
+/** Round GP (Part C): a platform administrator sees every country; a country admin only theirs. */
+export type AdminScope = { kind: 'platform' } | { kind: 'country'; countries: string[] }
 type CompanyAccessRequestRow = QueryResultRow & {
   request_id: string
   request_status: string
@@ -806,6 +819,24 @@ export function createAdminRepository(input: {
     return isPlatformAdministratorWithQuery(queryRows, userId)
   }
 
+  /**
+   * Round GP (Part C): who may review organizations. A platform administrator reviews every country; a country admin
+   * only organizations whose country is one of theirs. Anyone else: admin_forbidden. Checked in SQL on every call.
+   */
+  async function resolveAdminScope(query: AdminQuery, userId: string, lock = false): Promise<AdminScope> {
+    if (await isPlatformAdministratorWithQuery(query, userId, lock)) return { kind: 'platform' }
+    let countries: string[] = []
+    try {
+      const rows = await query(`select countries from public.country_admins where profile_id = $1`, [userId])
+      const value = rows[0]?.countries
+      countries = Array.isArray(value) ? value.filter((code): code is string => typeof code === 'string') : []
+    } catch {
+      countries = []
+    }
+    if (!countries.length) throw new Error('admin_forbidden')
+    return { kind: 'country', countries }
+  }
+
   async function getAdminDashboardMetrics(userId: string): Promise<AdminDashboardMetrics> {
     await requirePlatformAdministrator(queryRows, userId)
     const rows = await queryRows(
@@ -1006,6 +1037,9 @@ export function createAdminRepository(input: {
     if (filter.targetType !== 'all') {
       where.push('ae.target_type = ' + bind(filter.targetType))
     }
+    if (filter.actorId) where.push('ae.actor_id = ' + bind(filter.actorId) + '::uuid')
+    if (filter.country) where.push("ae.metadata->>'country' = " + bind(filter.country))
+    if (filter.countryAdminsOnly) where.push("ae.metadata->>'actorRole' = 'country_admin'")
     const limitParameter = bind(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
     const whereSql = where.length ? 'where ' + where.join(' and ') : ''
 
@@ -1701,7 +1735,7 @@ export function createAdminRepository(input: {
    * lateral joins, and the total comes from a window count.
    */
   async function listOrganizations(adminId: string, input: AdminOrganizationDirectorySearch): Promise<AdminOrganizationDirectoryPage> {
-    await requirePlatformAdministrator(queryRows, adminId)
+    const scope = await resolveAdminScope(queryRows, adminId)
     const hasClaimStatus = await hasClaimStatusColumn()
     const withCountries = await countryColumnsReady()
     const derivedClaimStatus = `case when org_owner.owner_id is null then 'unclaimed' else 'claimed' end`
@@ -1747,6 +1781,15 @@ export function createAdminRepository(input: {
     } else if (input.country) {
       values.push(input.country)
       where.push(`c.country = ${parameter()}`)
+    }
+    // Round GP (Part C): a country admin sees only organizations from their countries (none before 0108).
+    if (scope.kind === 'country') {
+      if (!withCountries) {
+        where.push('false')
+      } else {
+        values.push(scope.countries)
+        where.push(`c.country = any(${parameter()}::text[])`)
+      }
     }
 
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
@@ -1815,26 +1858,35 @@ export function createAdminRepository(input: {
   }
 
   async function listOrganizationApplications(userId: string, status: AdminOrganizationStatus): Promise<AdminOrganizationReview[]> {
-    await requirePlatformAdministrator(queryRows, userId)
+    const scope = await resolveAdminScope(queryRows, userId)
     const rows = await queryRows(
       `${await organizationReviewSelect()}
        where oa.status = $1
+         ${scope.kind === 'country' ? 'and c.country = any($2::text[])' : ''}
        order by oa.submitted_at asc, oa.id asc
        limit 100`,
-      [status],
+      scope.kind === 'country' ? [status, scope.countries] : [status],
     ) as OrganizationReviewRow[]
     return rows.map(mapOrganizationReview)
   }
 
+  /**
+   * One application for review. A country admin gets organization_out_of_scope for an organization whose country is
+   * not one of theirs (or not set), so neither its details nor its review actions reach them.
+   */
   async function getOrganizationApplicationReview(userId: string, applicationId: string): Promise<AdminOrganizationReview | null> {
-    await requirePlatformAdministrator(queryRows, userId)
+    const scope = await resolveAdminScope(queryRows, userId)
     const rows = await queryRows(
       `${await organizationReviewSelect()}
        where oa.id = $1
        limit 1`,
       [applicationId],
     ) as OrganizationReviewRow[]
-    return rows[0] ? mapOrganizationReview(rows[0]) : null
+    const review = rows[0] ? mapOrganizationReview(rows[0]) : null
+    if (review && scope.kind === 'country' && !(review.company.country && scope.countries.includes(review.company.country))) {
+      throw new Error('organization_out_of_scope')
+    }
+    return review
   }
 
   async function reviewOrganizationApplication(
@@ -1843,18 +1895,28 @@ export function createAdminRepository(input: {
     decision: AdminOrganizationDecision,
     reviewerNote: string | null,
   ) {
+    const withCountries = await countryColumnsReady()
     return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
+      const scope = await resolveAdminScope(txQuery, adminId, true)
 
       const lockedRows = await txQuery(
-        `select id, company_id, submitted_by, status
-         from public.organization_applications
-         where id = $1
-         for update`,
+        `select oa.id, oa.company_id, oa.submitted_by, oa.status,
+                ${withCountries ? 'c.country' : 'null::text'} as company_country,
+                c.name as company_name, c.slug as company_slug
+         from public.organization_applications oa
+         join public.companies c on c.id = oa.company_id
+         where oa.id = $1
+         for update of oa`,
         [applicationId],
       ) as LockedOrganizationApplicationRow[]
       const application = lockedRows[0]
       if (!application) throw new Error('organization_application_not_found')
+      const companyCountry = application.company_country ?? null
+      // Round GP (Part C): a country admin decides only for their countries, and never suspends.
+      if (scope.kind === 'country') {
+        if (!companyCountry || !scope.countries.includes(companyCountry)) throw new Error('organization_out_of_scope')
+        if (decision === 'suspended') throw new Error('admin_forbidden')
+      }
 
       const transitionAllowed = application.status === 'pending'
         ? ['approved', 'changes_requested', 'rejected'].includes(decision)
@@ -1902,14 +1964,15 @@ export function createAdminRepository(input: {
         )
       }
 
-      await txQuery(
+      const reviewedRows = await txQuery(
         `update public.organization_applications
          set status = $2,
              reviewed_by = $3,
              reviewed_at = now(),
              admin_review_note = $4,
              updated_at = now()
-         where id = $1`,
+         where id = $1
+         returning reviewed_at`,
         [applicationId, decision, adminId, reviewerNote],
       )
 
@@ -1927,9 +1990,26 @@ export function createAdminRepository(input: {
             previousStatus: application.status,
             decision,
             reviewerNote,
+            // Round GP (Part C): who decided (platform or country admin) and the organization's country.
+            actorRole: scope.kind === 'country' ? 'country_admin' : 'platform_admin',
+            country: companyCountry,
           }),
         ],
       )
+
+      // Round GP (Part C): the applicant hears about approve / reject / changes requested, in the app and by email.
+      if (decision === 'approved' || decision === 'rejected' || decision === 'changes_requested') {
+        await queueOrganizationReviewNotice(txQuery, {
+          applicationId,
+          companyId: application.company_id,
+          recipientId: application.submitted_by,
+          decision,
+          reason: reviewerNote,
+          companyName: application.company_name ?? '',
+          companySlug: application.company_slug ?? '',
+          decidedAt: reviewedRows[0]?.reviewed_at ?? new Date().toISOString(),
+        })
+      }
 
       return true
     })
@@ -2103,6 +2183,7 @@ export function createAdminRepository(input: {
     reviewCompanyAccessRequest,
     getOrganizationCountryTarget,
     setOrganizationCountry,
+    resolveAdminScope: (userId: string) => resolveAdminScope(queryRows, userId),
   }
 }
 

@@ -147,3 +147,25 @@ describe('platform admin server-action MFA checks (Round 15)', () => {
     await expect(gate.canUsePlatformAdminAuthority('someone')).resolves.toBe(false)
   })
 })
+
+describe('country admins and the server-action MFA checks (Round GP, Part C)', () => {
+  const countryChecks = (country: boolean | Error, status: CurrentMfaStatus | null) => createAdminActionMfaChecks({
+    isPlatformAdministrator: async () => false,
+    isCountryAdministrator: async () => {
+      if (country instanceof Error) throw country
+      return country
+    },
+    getStatus: async () => status,
+  })
+
+  it('holds a country admin to the same authenticator rule, and never gives them platform authority', async () => {
+    await expect(countryChecks(true, null).adminActionMfaMissing('partner-1')).resolves.toBe(true)
+    await expect(countryChecks(true, ready).adminActionMfaMissing('partner-1')).resolves.toBe(false)
+    await expect(countryChecks(true, ready).canUsePlatformAdminAuthority('partner-1')).resolves.toBe(false)
+  })
+
+  it('leaves other members alone, and fails closed when the country admin lookup fails', async () => {
+    await expect(countryChecks(false, null).adminActionMfaMissing('member-1')).resolves.toBe(false)
+    await expect(countryChecks(new Error('database down'), null).adminActionMfaMissing('member-1')).resolves.toBe(true)
+  })
+})

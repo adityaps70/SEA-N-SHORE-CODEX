@@ -23,6 +23,21 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ refresh: vi.fn() }), usePathname: () => '/admin/payments' }))
 vi.mock('@/lib/db/client', () => ({ query: vi.fn(), withTransaction: async (work: (tx: unknown) => unknown) => work({}) }))
+// Round GP (Part C): pages check access through requireAdminAccess; here it follows the existing mock above.
+vi.mock('@/features/admin/admin-access', async () => {
+  const access = await import('@/features/admin/access')
+  // Like the real gate: anyone who is not an administrator gets the not-found page.
+  return {
+    requireAdminAccess: async () => {
+      try {
+        return { kind: 'platform', user: await access.requirePlatformAdministratorUser() }
+      } catch (error) {
+        if (error instanceof Error && error.message === 'admin_forbidden') (await import('next/navigation')).notFound()
+        throw error
+      }
+    },
+  }
+})
 vi.mock('@/features/admin/access', () => ({
   requirePlatformAdministratorUser: async () => {
     if (!mocks.admin) throw new Error('admin_forbidden')

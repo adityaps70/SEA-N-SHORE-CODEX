@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
 }))
 
+// Round GP (Part C): a platform administrator.
+vi.mock('@/features/admin/admin-access', () => ({ requireAdminAccess: async () => ({ kind: 'platform', user: { id: 'admin-1' } }) }))
 vi.mock('@/features/support/repository', () => ({ supportRepository: { listTicketsForAdmin: mocks.listTicketsForAdmin, getTicketForAdmin: mocks.getTicketForAdmin } }))
 vi.mock('@/features/support/admin-actions', () => ({
   replyToTicketAsAdmin: Object.assign(vi.fn(), { bind: () => vi.fn() }),

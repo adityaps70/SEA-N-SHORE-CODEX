@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { categoryError, categoryNotice } from '@/features/community/category-admin-messages'
 import { createCommunityCategory } from '@/features/community/category-admin-actions'
@@ -10,6 +9,7 @@ import { communityCategoryRepository } from '@/features/community/category-repos
 import { CategoryAdminList, CategoryIconSelect } from '@/features/community/components/category-admin-list'
 import { COMMUNITY_CATEGORY_DESCRIPTION_MAX_LENGTH, COMMUNITY_CATEGORY_NAME_MAX_LENGTH } from '@/features/community/types'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Community categories' }
 export const dynamic = 'force-dynamic'
@@ -28,7 +28,7 @@ const inputClass = 'min-h-10 w-full rounded-lg border border-mist-200 bg-white p
  */
 export default async function CommunityCategoriesAdminPage({ searchParams }: { searchParams: SearchParams }) {
   try {
-    await requirePlatformAdministratorUser()
+    await requireAdminAccess('platform')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error

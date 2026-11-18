@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { addMasterRank, setMasterRankHidden } from '@/features/roles/admin-ranks-actions'
 import { ADDED_RANK_LABEL_MAX, adminRanksRepository } from '@/features/roles/admin-ranks-repository'
@@ -10,6 +9,7 @@ import { ensureRoleCatalog } from '@/features/roles/catalog-runtime'
 import { allRoles, jobDepartments, ladderStep, roleByKey, type RoleEntry } from '@/features/roles/taxonomy'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Ranks' }
 export const dynamic = 'force-dynamic'
@@ -50,7 +50,7 @@ const RELATIONS = [
  */
 export default async function RanksAdminPage({ searchParams }: { searchParams: SearchParams }) {
   try {
-    await requirePlatformAdministratorUser()
+    await requireAdminAccess('platform')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error

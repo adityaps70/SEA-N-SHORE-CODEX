@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { requiredCountryCodeSchema } from '@/features/countries/catalog'
 import {
   ORGANIZATION_TYPE_CODES,
   getOrganizationType,
@@ -76,6 +77,8 @@ export const unclaimedOrganizationSchema = z.object({
       .max(120, 'Keep the location to 120 characters or fewer.'),
   ),
   website: optionalWebsite,
+  // Round GP (Part C): required for a new unclaimed page, as on the full organization form.
+  country: requiredCountryCodeSchema,
 })
 
 /** What the "I just work there" form sends; validated on the server. */
@@ -84,6 +87,7 @@ export type UnclaimedOrganizationInput = {
   organizationType: string
   location: string
   website?: string | null
+  country?: string | null
 }
 export type ParsedUnclaimedOrganizationInput = z.output<typeof unclaimedOrganizationSchema>
 
