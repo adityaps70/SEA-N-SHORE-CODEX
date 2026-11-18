@@ -19,7 +19,7 @@ import { pluralize, pluralizeWithVerb } from '@/lib/format'
  * No learner names, emails or answers are read or printed; enrolment numbers are counts.
  */
 
-// The live SIRE course on seanshore.in (the seed script's older slug is not the published course).
+// The live SIRE course on the public site (the seed script's older slug is not the published course).
 export const SIRE_COURSE_SLUG = 'sire-2-0-inspection-readiness'
 export const ROUND_E_APPLY_CONFIRMATION = 'I_APPROVE_ROUND_E_SIRE_DRAFT_REVISION'
 const TEST_COURSE_PATTERN = /\b(test|tests|testing|e2e|demo|sample|fixture|dummy|untitled|asdf|qwerty|lorem|tmp|temp|trial course)\b/i

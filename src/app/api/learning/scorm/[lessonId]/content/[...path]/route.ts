@@ -4,7 +4,7 @@ import { injectScormBridge } from '@/features/learning/scorm-bridge'
 import { SCORM_CONTENT_SANDBOX, isScormContentToken, verifyScormContentToken } from '@/features/learning/scorm-content-link'
 import { resolveLearnerScormContentKey } from '@/features/learning/scorm-content-repository'
 import { getMediaObject } from '@/lib/aws/storage'
-import { siteOrigin } from '@/lib/site-url'
+import { siteOriginFor } from '@/lib/site-url'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  * sandboxed document's own requests do not carry the session cookie.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ lessonId: string; path: string[] }> },
 ) {
   try {
@@ -35,7 +35,7 @@ export async function GET(
     const object = await getMediaObject({ key, maxBytes: 100 * 1024 * 1024 })
     const contentType = object.contentType ?? 'application/octet-stream'
     const body = /^text\/html\b/i.test(contentType)
-      ? new TextEncoder().encode(injectScormBridge(Buffer.from(object.body).toString('utf8'), siteOrigin()))
+      ? new TextEncoder().encode(injectScormBridge(Buffer.from(object.body).toString('utf8'), siteOriginFor(request.headers)))
       : Uint8Array.from(object.body)
 
     return new Response(body.buffer as ArrayBuffer, {

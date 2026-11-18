@@ -1,4 +1,5 @@
 import { NOTIFICATION_EMAIL_COPY, type ActivityNotificationType, type NotificationEmailKind } from './kinds'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * Round H (H3): the member activity emails. Same frame as the other transactional emails (brand line, one white
@@ -16,7 +17,7 @@ export type RenderedNotificationEmail = {
 }
 
 export function notificationEmailSiteUrl(siteUrl?: string) {
-  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || 'https://seanshore.in').trim().replace(/\/+$/, '')
+  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
 }
 
 export function notificationUnsubscribeLinks(siteUrl: string, token: string) {

@@ -3,6 +3,7 @@ import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import { metaDescription } from '@/lib/seo/meta'
 import { coursePrice, isPaidCourse } from './course-pricing'
 import type { MarketplaceCourse } from './marketplace-repository'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * Search and share metadata for the public course catalogue and course pages: title, description,
@@ -11,7 +12,7 @@ import type { MarketplaceCourse } from './marketplace-repository'
  */
 
 export function siteOrigin() {
-  return process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, '') || 'https://seanshore.in'
+  return process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, '') || DEFAULT_PUBLIC_SITE_URL
 }
 
 export function coursePath(slug: string) {
