@@ -1,7 +1,10 @@
 // Round P3 load test contract: read-only signed-out traffic, the approved ramp and stop rules, under the WAF's
 // per-IP limit, owner-armed, and no AWS credentials anywhere near the traffic.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { guardAction } from './guard-value.mjs'
 import { createStats, stopReason, percentile, summary, MIN_SAMPLES, P95_LIMIT_MS, ERROR_LIMIT } from '../load-test/stop-watch.mjs'
@@ -139,7 +142,8 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   assert.match(window, /\[\[ "\$GITHUB_RUN_ATTEMPT" == 1 \]\]/)
   assert.ok(window.indexOf('exit 0\n          fi\n          [[ "$TRIGGERING_ACTOR"') > 0, 'every other start still needs the nightly start')
   assert.match(window, /\[\[ "\$TRIGGERING_ACTOR" == "github-actions\[bot\]" \]\]/)
-  assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
+  // 19:30 UTC today by arithmetic (Ubuntu 26.04's Rust date is not relied on to parse a date string).
+  assert.match(window, /START=\$\(\( NOW - NOW % 86400 \+ 70200 \)\)/)
   assert.match(window, /NOW < START \|\| NOW > START \+ 2700/)
   assert.doesNotMatch(window, /sleep/)
   assert.match(window, /event=workflow_dispatch&head_sha=\$GITHUB_SHA/)
@@ -169,10 +173,10 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   // The opened sessions only ever go from one file into seal-shards: never printed, never an output.
   assert.doesNotMatch(sessions, /cat "\$WORK|echo "\$\(cat|tee [^|]*sessions/)
   assert.deepEqual([...sessions.matchAll(/[^\n]*\$WORK\/sessions\.json[^\n]*/g)].map((m) => m[0].trim().split(' ').slice(0, 3).join(' ')), [
-    'node scripts/load-test/sessions.mjs open', "jq -e 'type", 'SEALED="$(node scripts/load-test/sessions.mjs seal-shards',
+    'node scripts/load-test/sessions.mjs open', "jq -e 'type", 'node scripts/load-test/sessions.mjs seal-shards',
   ])
   assert.match(sessions, /jq -e '[^']*' "\$WORK\/sessions\.json" >\/dev\/null \|\|/)
-  assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\$LOAD_TEST_SESSIONS_FILE"/)
+  assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\/tmp\/sealed-handoff\/shard-\$LOAD_TEST_SHARD\.sealed" "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('load'), /rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('report'), /load-test-host-command\.sh sign-out/)
   // Accounts exist only for the run: created before the sessions, deleted (with counts) after the sign-out.
@@ -270,6 +274,74 @@ test('sessions move from the sessions job to the shards sealed end to end', () =
   assert.deepEqual(openShard(sealedShard, key), parts[3])
   assert.throws(() => openShard(sealedShard, randomBytes(32)))
   assert.throws(() => handoffKey('short'), /32 random bytes/)
+})
+
+test('public repository: no sealed session, k6 log or relative date in the run; the hand-off artifact is deleted', () => {
+  // Ubuntu 26.04 (ubuntu-latest) ships the Rust coreutils: no date string parsing anywhere in the run.
+  assert.doesNotMatch(workflow, /date (-u )?-d |date --date/)
+  // A job output or an environment value is printed in the public log: the sealed parts never travel that way.
+  assert.doesNotMatch(workflow, /outputs\.sealed|LOAD_TEST_SHARD_SEALED|sealed=\$|echo "sealed=/)
+  const sessions = jobOf('sessions')
+  assert.match(sessions, /node scripts\/load-test\/sessions\.mjs seal-shards "\$WORK\/sessions\.json" "\$LOAD_TEST_SHARDS" \/tmp\/sealed-handoff\n/)
+  assert.match(sessions, /- name: Hand the sealed parts to the shards\n\s+uses: actions\/upload-artifact@[0-9a-f]{40} # v4\.6\.2\n\s+with:\n\s+name: sealed-handoff\n\s+path: \/tmp\/sealed-handoff\n\s+retention-days: 1\n\s+if-no-files-found: error\n/)
+  assert.match(sessions, /- name: Delete the sealed parts from this runner\n\s+if: always\(\)\n\s+shell: bash\n\s+run: rm -rf \/tmp\/sealed-handoff\n/)
+  const load = jobOf('load')
+  assert.match(load, /uses: actions\/download-artifact@[0-9a-f]{40} # v4\.3\.0\n\s+with:\n\s+name: sealed-handoff\n\s+path: \/tmp\/sealed-handoff\n/)
+  assert.match(load, /open-shard [^\n]*\n\s+rm -rf \/tmp\/sealed-handoff\n/)
+  // The monitor deletes it once every shard has opened its part; the report job again, whatever happened.
+  const monitor = jobOf('monitor')
+  assert.match(monitor, /"\$SHARDS" == "\$LOAD_TEST_SHARDS" && "\$OPENED" == "\$SHARDS"[^\n]*\n\s+bash scripts\/load-test\/delete-handoff-artifact\.sh/)
+  const report = jobOf('report')
+  assert.match(report, /permissions:\n\s+id-token: write\n\s+contents: read\n\s+actions: write\n/)
+  assert.match(report, /- name: Delete the sealed hand-off artifact and count what is left\n\s+if: always\(\) && \(needs\.window\.outputs\.mix == 'signed-in' \|\| needs\.window\.outputs\.mix == 'sessions-only'\)\n[\s\S]*?run: bash scripts\/load-test\/delete-handoff-artifact\.sh/)
+  // The report downloads only the numbers (load-test-*), never the sealed hand-off.
+  assert.match(report, /pattern: load-test-\*\n/)
+  assert.ok(!'sealed-handoff'.startsWith('load-test-'))
+  const remover = read('../load-test/delete-handoff-artifact.sh')
+  assert.match(remover, /actions\/runs\/\$\{GITHUB_RUN_ID\}\/artifacts\?name=sealed-handoff/)
+  assert.match(remover, /\[\[ "\$LEFT" == 0 \]\]$/m)
+  assert.equal((remover.match(/-X DELETE/g) ?? []).length, 1)
+  // k6's own log and summary (they name request URLs) stay on the runner: only their counts are printed.
+  assert.match(load, /k6 run --quiet --no-summary --log-output=file=\/tmp\/k6\.log --out csv=\/tmp\/k6\.csv scripts\/load-test\/p3-load-test\.js &/)
+  assert.match(load, /echo "LOAD_TEST_K6_LOG warnings=\$\(grep -c 'level=warning' \/tmp\/k6\.log/)
+  assert.doesNotMatch(load, /cat \/tmp\/k6\.log|tee [^\n]*k6\.log/)
+})
+
+test('seal-shards and open-shard hand sessions over as 0600 files and print counts only', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'handoff-'))
+  try {
+    const key = randomBytes(32).toString('base64')
+    const sessions = Array.from({ length: 50 }, (_, i) => ({ index: i + 1, accessToken: `access-${i + 1}`, refreshToken: `refresh-${i + 1}` }))
+    const input = join(dir, 'sessions.json')
+    execFileSync('node', ['-e', `require('fs').writeFileSync(${JSON.stringify(input)}, ${JSON.stringify(JSON.stringify(sessions))})`])
+    const sealedDir = join(dir, 'sealed')
+    execFileSync('mkdir', [sealedDir])
+    const cli = new URL('../load-test/sessions.mjs', import.meta.url).pathname
+    const env = { ...process.env, LOAD_TEST_HANDOFF_KEY: key }
+    const sealedOut = execFileSync('node', [cli, 'seal-shards', input, '8', sealedDir], { env, encoding: 'utf8' })
+    assert.equal(sealedOut, 'LOAD_TEST_SESSIONS_SEALED shards=8\n')
+    assert.deepEqual(readdirSync(sealedDir).sort(), Array.from({ length: 8 }, (_, i) => `shard-${i}.sealed`).sort())
+    const opened = []
+    for (let i = 0; i < 8; i += 1) {
+      const file = join(sealedDir, `shard-${i}.sealed`)
+      assert.equal(statSync(file).mode & 0o777, 0o600)
+      assert.doesNotMatch(readFileSync(file, 'utf8'), /access-|refresh-/)
+      const out = join(dir, `open-${i}.json`)
+      const printed = execFileSync('node', [cli, 'open-shard', file, out], { env, encoding: 'utf8' })
+      // Every token is masked in the job log before anything else; the only other line is the count.
+      const lines = printed.trim().split('\n')
+      assert.ok(lines.slice(0, -1).every((line) => line.startsWith('::add-mask::')))
+      assert.match(lines.at(-1), /^LOAD_TEST_SHARD_SESSIONS count=[67]$/)
+      assert.equal(statSync(out).mode & 0o777, 0o600)
+      opened.push(...JSON.parse(readFileSync(out, 'utf8')))
+    }
+    assert.deepEqual(opened.map((s) => s.index).sort((a, b) => a - b), sessions.map((s) => s.index))
+    assert.throws(() => execFileSync('node', [cli, 'open-shard', join(sealedDir, 'shard-0.sealed'), join(dir, 'x.json')], {
+      env: { ...process.env, LOAD_TEST_HANDOFF_KEY: randomBytes(32).toString('base64') }, stdio: 'pipe',
+    }))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('the monitor stop rules need 3 one-minute values all over one limit: CPU >= 90%, DB load >= 1.5, server p95 > 2 s', () => {
