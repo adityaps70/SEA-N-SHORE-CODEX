@@ -37,11 +37,12 @@ export LOAD_TEST_SESSIONS_PUBLIC_KEY={shlex.quote(public_key)}
 export LOAD_TEST_SESSIONS_OBJECT_KEY={shlex.quote(object_key)}
 bash scripts/aws/load-test-accounts.sh
 """
-print(json.dumps({"executionTimeout": ["900"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+print(json.dumps({"executionTimeout": ["1800"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
 PYTHON
-COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore load test $MODE $RUN_ID" --timeout-seconds 900 --parameters file:///tmp/load-test-ssm.json --query 'Command.CommandId' --output text)
+COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore load test $MODE $RUN_ID" --timeout-seconds 1800 --parameters file:///tmp/load-test-ssm.json --query 'Command.CommandId' --output text)
 rm -f /tmp/load-test-ssm.json
-for attempt in $(seq 1 180); do
+# 1,000 accounts take a few minutes per step: wait up to 30.
+for attempt in $(seq 1 360); do
   STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
   case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
 done
