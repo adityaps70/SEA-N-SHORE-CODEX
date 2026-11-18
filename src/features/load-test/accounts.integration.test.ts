@@ -49,7 +49,7 @@ function accountsDeps(): Parameters<typeof createLoadTestAccounts>[0] {
     query: (text, values) => db.query(text, values) as Promise<Array<Record<string, unknown>>>,
     transaction: (work) => db.transaction((query) => work(query as never)),
     cognito: {
-      findUserSub: async (email) => users.get(email)?.sub ?? null,
+      listLoadTestUsers: async () => new Map([...users].filter(([email]) => email.startsWith('loadtest-')).map(([email, user]) => [email, user.sub])),
       createUser: async (email) => {
         subSequence += 1
         const sub = `00000000-0000-4000-8000-${String(subSequence).padStart(12, '0')}`
@@ -67,6 +67,7 @@ function accountsDeps(): Parameters<typeof createLoadTestAccounts>[0] {
     provisionProfile: (principal) => provisionProfileForCognitoPrincipal(principal),
     completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
     accountCount: LOAD_TEST_ACCOUNT_COUNT,
+    cognitoCallsPerSecond: 100000,
     log: (line) => lines.push(line),
   }
 }
