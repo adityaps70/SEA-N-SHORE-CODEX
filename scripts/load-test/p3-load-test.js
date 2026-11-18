@@ -120,8 +120,19 @@ export function sessionSlot(iteration, sessions) {
   return iteration % sessions
 }
 
-function signedInRequest(name) {
-  const slot = sessionSlot(exec.scenario.iterationInInstance, SESSIONS.length)
+/**
+ * Owner (18 Nov): a real active member sends about 32 requests a minute (14-16 Nov ALB logs), so each step uses only
+ * as many of this shard's accounts as members it stands for: 800 a minute is 25 members, 32,000 is 1,000. Spreading a
+ * small step over all 1,000 accounts gave each under one request a minute, so no per-member cache ever hit and every
+ * request paid the cold cost.
+ */
+export const MEMBER_RPM = 32
+export function activeSessions(shardRpm, sessions) {
+  return Math.max(1, Math.min(sessions, Math.ceil(shardRpm / MEMBER_RPM)))
+}
+
+function signedInRequest(name, step) {
+  const slot = sessionSlot(exec.scenario.iterationInInstance, activeSessions(shardRate(TOTAL_RPM[step - 1], SHARD, SHARDS), SESSIONS.length))
   // Three pages per visit, then a new visit starts (a new snapshot) on this iteration's account.
   const continuing = name === 'feed-page' && visit !== null && visit.sessionId !== null && visit.pages < 3
   const session = SESSIONS[continuing ? visit.slot : slot]
@@ -185,7 +196,7 @@ export default function loadTestIteration(data) {
   const step = Math.min(TOTAL_RPM.length, Math.floor((Date.now() - data.startedAt) / 1000 / STEP_SECONDS) + 1)
   stepAgent = `SeaNShore-LoadTest/1 step/${step}`
   if (MIX === 'signed-in') {
-    record(signedInRequest(pickSignedIn()), step)
+    record(signedInRequest(pickSignedIn(), step), step)
     return
   }
   const path = PATHS[Math.floor(Math.random() * PATHS.length)]
