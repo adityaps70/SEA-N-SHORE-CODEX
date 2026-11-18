@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { countrySchemaReady } from '@/features/countries/country-schema'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { listableOrganizationSql } from '@/features/profiles/organization-link-repository'
 import { organizationLogoUrl, type LinkedOrganization } from '@/features/profiles/organization-link'
@@ -147,9 +148,12 @@ export function createUnclaimedOrganizationRepository(input: {
   query?: Query
   transaction?: Transaction
   slug?: (name: string) => string
+  countrySchemaReady?: () => Promise<boolean>
 } = {}) {
   const query: Query = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
   const transaction = input.transaction ?? runtimeTransaction
+  // Round GP safety net: before migration 0108 a claim is read and saved without its country.
+  const countryColumnsReady = input.countrySchemaReady ?? countrySchemaReady
   const slugFor = input.slug ?? ((name: string) => unclaimedOrganizationSlug(name))
 
   /**
@@ -236,12 +240,13 @@ export function createUnclaimedOrganizationRepository(input: {
 
   /** The organization behind a claim page, only while it is unclaimed and listed. */
   async function getClaimableOrganization(slug: string): Promise<ClaimableOrganization | null> {
+    const withCountries = await countryColumnsReady()
     const rows = await query(
       `select
          c.id, c.slug, c.name,
          (c.logo_path is not null and btrim(c.logo_path) <> '') as has_logo,
          c.company_type, c.organization_type, c.organization_details, c.website,
-         c.office_locations, c.country, c.description, c.fleet_summary, c.vessel_types,
+         c.office_locations, ${withCountries ? 'c.country' : 'null::text as country'}, c.description, c.fleet_summary, c.vessel_types,
          ${organizationClaimStatusSql('c')} as claim_status
        from public.companies c
        where c.slug = $1
@@ -291,6 +296,7 @@ export function createUnclaimedOrganizationRepository(input: {
    * 0050's trigger then marks the page claimed.
    */
   async function submitClaim(userId: string, companyId: string, data: ParsedOrganizationApplicationInput) {
+    const withCountries = await countryColumnsReady()
     return transaction(async (txQuery) => {
       const companyRows = await txQuery(
         `select c.id, c.slug, c.name, ${organizationClaimStatusSql('c')} as claim_status
@@ -342,8 +348,8 @@ export function createUnclaimedOrganizationRepository(input: {
              vessel_types = $7::text[],
              office_locations = $8::text[],
              organization_type = $9,
-             organization_details = $10::jsonb,
-             country = $11,
+             organization_details = $10::jsonb,${withCountries ? `
+             country = $11,` : ''}
              updated_at = now()
          where id = $1`,
         [
@@ -357,7 +363,7 @@ export function createUnclaimedOrganizationRepository(input: {
           [data.officeLocation],
           data.organizationType,
           JSON.stringify(organizationDetailsFromInput(data)),
-          data.country,
+          ...(withCountries ? [data.country] : []),
         ],
       )
 

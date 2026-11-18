@@ -7,6 +7,7 @@ import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from '@/features/ad
 import { adminRepository } from '@/features/admin/repository'
 import { optionalCountryCodeSchema } from './catalog'
 import { adminCountryRepository } from './admin-country-repository'
+import { COUNTRY_SCHEMA_MISSING_MESSAGE, CountrySchemaMissingError } from './country-schema'
 
 /** Round GP (Global Partners), Part A: a platform administrator sets an organization's country. */
 export type AdminCountryActionState = { status: 'idle' | 'saved' | 'error'; message?: string; revision: number }
@@ -33,6 +34,7 @@ export async function setOrganizationCountryAction(previous: AdminCountryActionS
     const saved = await adminRepository.setOrganizationCountry(user.id, parsed.data.companyId, parsed.data.country ?? null)
     if (!saved) return { status: 'error', message: 'That organization no longer exists.', revision }
   } catch (error) {
+    if (error instanceof CountrySchemaMissingError) return { status: 'error', message: COUNTRY_SCHEMA_MISSING_MESSAGE, revision }
     if (error instanceof Error && error.message === 'admin_forbidden') return { status: 'error', message: 'Only Sea N Shore administrators can set an organization’s country.', revision }
     return { status: 'error', message: 'We could not save the country. Please try again.', revision }
   }

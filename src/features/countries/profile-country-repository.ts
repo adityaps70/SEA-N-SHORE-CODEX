@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import { CountrySchemaMissingError, countrySchemaReady } from './country-schema'
 
 /**
  * Round GP (Global Partners), Part A: a member's own country of residence and nationality, and the one-time "add your
@@ -15,10 +16,13 @@ export type ProfileCountries = {
   showPrompt: boolean
 }
 
-export function createProfileCountryRepository(input: { query?: Query } = {}) {
+export function createProfileCountryRepository(input: { query?: Query; countrySchemaReady?: () => Promise<boolean> } = {}) {
   const query: Query = input.query ?? ((text, values) => databaseQuery<Row>(text, values))
+  // Round GP safety net: before migration 0108 there is nothing to read (no prompt) and a save is refused.
+  const countryColumnsReady = input.countrySchemaReady ?? countrySchemaReady
 
   async function getOwnCountries(profileId: string): Promise<ProfileCountries | null> {
+    if (!await countryColumnsReady()) return null
     const rows = await query(
       `select country_of_residence, nationality, country_prompt_dismissed_at
        from public.profiles
@@ -37,6 +41,7 @@ export function createProfileCountryRepository(input: { query?: Query } = {}) {
 
   /** Saves both fields as the member chose them (null clears one). True when the member's row was updated. */
   async function saveOwnCountries(profileId: string, countries: { countryOfResidence: string | null; nationality: string | null }) {
+    if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
     const rows = await query(
       `update public.profiles
        set country_of_residence = $2, nationality = $3, updated_at = now()
@@ -49,6 +54,7 @@ export function createProfileCountryRepository(input: { query?: Query } = {}) {
 
   /** Closes the prompt for good. Saving a country also hides it. */
   async function dismissPrompt(profileId: string) {
+    if (!await countryColumnsReady()) return
     await query(
       `update public.profiles
        set country_prompt_dismissed_at = coalesce(country_prompt_dismissed_at, now())
@@ -57,20 +63,7 @@ export function createProfileCountryRepository(input: { query?: Query } = {}) {
     )
   }
 
-  /**
-   * Records the country CloudFront reported when this account was created (the two-letter code only). Written once:
-   * a second call for the same member changes nothing.
-   */
-  async function recordSignupCountry(profileId: string, countryCode: string) {
-    await query(
-      `insert into public.member_signup_countries (profile_id, country_code)
-       values ($1, $2)
-       on conflict (profile_id) do nothing`,
-      [profileId, countryCode],
-    )
-  }
-
-  return { getOwnCountries, saveOwnCountries, dismissPrompt, recordSignupCountry }
+  return { getOwnCountries, saveOwnCountries, dismissPrompt }
 }
 
 export const profileCountryRepository = createProfileCountryRepository()

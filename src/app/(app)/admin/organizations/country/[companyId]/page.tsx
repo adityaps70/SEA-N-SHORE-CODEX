@@ -3,8 +3,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
-import { adminRepository } from '@/features/admin/repository'
+import { AdminEmptyState, AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
+import { adminRepository, type AdminOrganizationCountryTarget } from '@/features/admin/repository'
+import { COUNTRY_SCHEMA_MISSING_MESSAGE, CountrySchemaMissingError } from '@/features/countries/country-schema'
 import { countryLabel } from '@/features/countries/admin-country-view'
 import { AdminOrganizationCountryForm } from '@/features/countries/components/admin-organization-country-form'
 
@@ -17,7 +18,23 @@ export default async function AdminOrganizationCountryPage({ params }: { params:
   const { companyId } = await params
   if (!UUID.test(companyId)) notFound()
   const admin = await requireAwsUser()
-  const organization = await adminRepository.getOrganizationCountryTarget(admin.id, companyId)
+  let organization: AdminOrganizationCountryTarget | null
+  try {
+    organization = await adminRepository.getOrganizationCountryTarget(admin.id, companyId)
+  } catch (error) {
+    // Round GP safety net: this release can run before migration 0108 is applied.
+    if (error instanceof CountrySchemaMissingError) {
+      return (
+        <div className="space-y-4">
+          <AdminPageHeader title="Organization country" />
+          <AdminPanel>
+            <AdminEmptyState title="Not available yet" description={COUNTRY_SCHEMA_MISSING_MESSAGE} />
+          </AdminPanel>
+        </div>
+      )
+    }
+    throw error
+  }
   if (!organization) notFound()
 
   return (

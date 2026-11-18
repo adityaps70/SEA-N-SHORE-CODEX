@@ -10,6 +10,7 @@ import {
   type MemberCountrySource,
 } from './member-country-sql'
 import { isCountryCode } from './catalog'
+import { CountrySchemaMissingError, countrySchemaReady } from './country-schema'
 
 /**
  * Round GP (Global Partners), Part B: Admin › Members by country. Counts only: no member names, emails or phone
@@ -207,7 +208,11 @@ export function createAdminCountryRepository(input: {
   /** The permission check every read runs first (the platform administrator role). */
   isPlatformAdministrator?: (userId: string) => Promise<boolean>
   cacheTtlMs?: number
+  countrySchemaReady?: () => Promise<boolean>
 } = {}) {
+  // Round GP safety net: before migration 0108 the country pages say so instead of failing, and member lists show
+  // estimates only (location text, phone code, session country).
+  const countryColumnsReady = input.countrySchemaReady ?? countrySchemaReady
   const query: Query = input.query ?? ((text, values) => databaseQuery<Row>(text, values))
   const isPlatformAdministrator = input.isPlatformAdministrator ?? (async (userId: string) => {
     const rows = await query(`select 1 as allowed from public.user_roles where user_id = $1 and role::text = 'administrator' limit 1`, [userId])
@@ -258,6 +263,7 @@ export function createAdminCountryRepository(input: {
   /** Every country's numbers, for a platform administrator. Cached for up to 30 seconds. */
   async function listCountryStats(adminId: string, basis: CountryBasis = 'residence'): Promise<CountryStatsRow[]> {
     await authorize(adminId)
+    if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
     return [...await countryStatsCache.get(basis, () => loadStats(basis))]
   }
 
@@ -265,6 +271,7 @@ export function createAdminCountryRepository(input: {
   async function getCountryDetail(adminId: string, code: CountryKey, basis: CountryBasis = 'residence'): Promise<CountryDetail> {
     if (code !== null && !isCountryCode(code)) throw new Error('country_unknown')
     await authorize(adminId)
+    if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
     return countryDetailCache.get(`${basis}:${code ?? ''}`, () => loadDetail(basis, code))
   }
 
@@ -273,8 +280,9 @@ export function createAdminCountryRepository(input: {
     await authorize(adminId)
     const ids = [...new Set(profileIds)]
     if (!ids.length) return new Map()
+    const withCountryColumns = await countryColumnsReady()
     const rows = await query(
-      `with ${memberCountryCtes({ namesParam: 1, dialsParam: 2, profileIdsParam: 3 })}
+      `with ${memberCountryCtes({ namesParam: 1, dialsParam: 2, profileIdsParam: 3, withCountryColumns })}
        select profile_id, code, source from member_country`,
       [...memberCountryValues(), ids],
     )

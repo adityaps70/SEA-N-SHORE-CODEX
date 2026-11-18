@@ -44,8 +44,20 @@ const dollar: Placeholder = (position) => `${String.fromCharCode(36)}${position}
  * source are null when nothing is known. `namesParam` / `dialsParam` are the positions of memberCountryValues();
  * `profileIdsParam`, when given, is a uuid[] parameter that limits the work to those profiles.
  */
-export function memberCountryCtes(input: { namesParam: number; dialsParam: number; profileIdsParam?: number }) {
+export function memberCountryCtes(input: {
+  namesParam: number
+  dialsParam: number
+  profileIdsParam?: number
+  /**
+   * Round GP safety net: false before migration 0108. Nobody has chosen a country and nothing was recorded at sign-up
+   * yet, so only the estimates from location text, phone code and session country are used.
+   */
+  withCountryColumns?: boolean
+}) {
   const only = (column: string) => (input.profileIdsParam ? ` and ${column} = any(${dollar(input.profileIdsParam)}::uuid[])` : '')
+  const withColumns = input.withCountryColumns ?? true
+  const chosen = withColumns ? 'p.country_of_residence' : 'null::text'
+  const signup = withColumns ? 'sc.country_code' : 'null::text'
   return `country_names as materialized (
     select n.alias, n.code from jsonb_to_recordset(${dollar(input.namesParam)}::jsonb) as n(alias text, code text)
   ),
@@ -57,7 +69,7 @@ export function memberCountryCtes(input: { namesParam: number; dialsParam: numbe
            ${countryTextSql('p.location')} as whole_key,
            case when strpos(p.location, ',') > 0 then ${countryTextSql("split_part(p.location, ',', -1)")} end as last_key
     from public.profiles p
-    where p.country_of_residence is null and p.location is not null${only('p.id')}
+    where ${chosen} is null and p.location is not null${only('p.id')}
   ),
   member_location_country as (
     select t.profile_id, coalesce(w.code, l.code) as code
@@ -82,17 +94,17 @@ export function memberCountryCtes(input: { namesParam: number; dialsParam: numbe
   ),
   member_country as (
     select p.id as profile_id,
-           coalesce(p.country_of_residence, lc.code, pc.code, sc.country_code, fs.code) as code,
+           coalesce(${chosen}, lc.code, pc.code, ${signup}, fs.code) as code,
            case
-             when p.country_of_residence is not null then 'profile'
+             when ${chosen} is not null then 'profile'
              when lc.code is not null then 'location'
              when pc.code is not null then 'phone'
-             when sc.country_code is not null or fs.code is not null then 'signup'
+             when ${signup} is not null or fs.code is not null then 'signup'
            end as source
     from public.profiles p
     left join member_location_country lc on lc.profile_id = p.id
     left join member_phone_country pc on pc.profile_id = p.id
-    left join public.member_signup_countries sc on sc.profile_id = p.id
+    ${withColumns ? 'left join public.member_signup_countries sc on sc.profile_id = p.id' : ''}
     left join member_first_session_country fs on fs.profile_id = p.id
     where true${only('p.id')}
   )`

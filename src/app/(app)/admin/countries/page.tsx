@@ -16,6 +16,7 @@ import {
   type CountrySortKey,
   type SortDirection,
 } from '@/features/countries/admin-country-view'
+import { COUNTRY_SCHEMA_MISSING_MESSAGE, CountrySchemaMissingError } from '@/features/countries/country-schema'
 
 export const metadata: Metadata = { title: 'Members by country · Admin' }
 
@@ -36,6 +37,17 @@ function readBasis(value: string | string[] | undefined): CountryBasis {
 
 const count = (value: number) => value.toLocaleString('en-IN')
 
+function CountriesNotReady() {
+  return (
+    <div className="space-y-4">
+      <AdminPageHeader title="Members by country" />
+      <AdminPanel>
+        <AdminEmptyState title="Not available yet" description={COUNTRY_SCHEMA_MISSING_MESSAGE} />
+      </AdminPanel>
+    </div>
+  )
+}
+
 export default async function AdminCountriesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const admin = await requireAwsUser()
@@ -44,7 +56,14 @@ export default async function AdminCountriesPage({ searchParams }: { searchParam
   const sort = readSortKey(readSingle(params.sort))
   const direction = readSortDirection(readSingle(params.dir), sort)
 
-  const all = await adminCountryRepository.listCountryStats(admin.id, basis)
+  let all: CountryStatsRow[]
+  try {
+    all = await adminCountryRepository.listCountryStats(admin.id, basis)
+  } catch (error) {
+    // Round GP safety net: this release can run before migration 0108 is applied.
+    if (error instanceof CountrySchemaMissingError) return <CountriesNotReady />
+    throw error
+  }
   const rows = sortAndFilterCountries(all, { query, sort, direction })
   const totals = countryTotals(all)
 

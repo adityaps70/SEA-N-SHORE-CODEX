@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { countrySchemaReady } from '@/features/countries/country-schema'
 import type { OrganizationAccessRole } from '@/features/access/policy'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import {
@@ -185,9 +186,12 @@ function organizationAccessRole(value: string): OrganizationAccessRole {
 export function createOrganizationRepository(input: {
   query: OrganizationQuery
   transaction?: OrganizationTransaction
+  countrySchemaReady?: () => Promise<boolean>
 }) {
   const query = input.query
   const transaction = input.transaction ?? runtimeTransaction
+  // Round GP safety net: before migration 0108 an application is read and saved without its country.
+  const countryColumnsReady = input.countrySchemaReady ?? countrySchemaReady
 
   async function getUserOrganizationState(userId: string): Promise<UserOrganizationState> {
     const rows = await query(
@@ -236,6 +240,7 @@ export function createOrganizationRepository(input: {
   }
 
   async function getOrganizationApplication(userId: string, applicationId: string): Promise<OrganizationApplicationInput | null> {
+    const withCountries = await countryColumnsReady()
     const rows = await query(
       `select
          oa.id as application_id,
@@ -246,7 +251,7 @@ export function createOrganizationRepository(input: {
          c.website,
          oa.official_email,
          c.office_locations,
-         c.country,
+         ${withCountries ? 'c.country' : 'null::text as country'},
          c.description,
          c.fleet_summary,
          c.vessel_types,
@@ -289,14 +294,15 @@ export function createOrganizationRepository(input: {
   }
 
   async function submitOrganizationApplication(userId: string, data: ParsedOrganizationApplicationInput) {
+    const withCountries = await countryColumnsReady()
     return transaction(async (txQuery) => {
       const slug = organizationSlug(data.organizationName, userId)
       const companyRows = await txQuery(
         `insert into public.companies (
            slug, name, company_type, website, description, fleet_summary,
            vessel_types, office_locations, created_by, created_at, updated_at,
-           organization_type, organization_details, country
-         ) values ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, now(), now(), $10, $11::jsonb, $12)
+           organization_type, organization_details${withCountries ? ', country' : ''}
+         ) values ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, now(), now(), $10, $11::jsonb${withCountries ? ', $12' : ''})
          returning id, slug`,
         [
           slug,
@@ -310,7 +316,7 @@ export function createOrganizationRepository(input: {
           userId,
           data.organizationType,
           JSON.stringify(organizationDetailsFromInput(data)),
-          data.country,
+          ...(withCountries ? [data.country] : []),
         ],
       ) as ReturningCompanyRow[]
       const company = companyRows[0]
@@ -350,6 +356,7 @@ export function createOrganizationRepository(input: {
     applicationId: string,
     data: ParsedOrganizationApplicationInput,
   ) {
+    const withCountries = await countryColumnsReady()
     return transaction(async (txQuery) => {
       const lockedRows = await txQuery(
         `select id, company_id, status, submitted_by
@@ -374,8 +381,8 @@ export function createOrganizationRepository(input: {
              vessel_types = $7::text[],
              office_locations = $8::text[],
              organization_type = $9,
-             organization_details = $10::jsonb,
-             country = $11,
+             organization_details = $10::jsonb,${withCountries ? `
+             country = $11,` : ''}
              updated_at = now()
          where id = $1`,
         [
@@ -389,7 +396,7 @@ export function createOrganizationRepository(input: {
           [data.officeLocation],
           data.organizationType,
           JSON.stringify(organizationDetailsFromInput(data)),
-          data.country,
+          ...(withCountries ? [data.country] : []),
         ],
       )
 

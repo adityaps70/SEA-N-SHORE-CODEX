@@ -36,7 +36,8 @@ function asQuery(runner: PGlite | Transaction): TestQuery {
   }
 }
 
-export async function createTestDatabase(): Promise<TestDatabase> {
+/** `skipMigrations`: file names left out, to test the app against a database a release runs ahead of. */
+export async function createTestDatabase(options: { skipMigrations?: readonly string[] } = {}): Promise<TestDatabase> {
   const db = await PGlite.create({ extensions: { pg_trgm, pgcrypto } })
   await db.exec(`
     create role sns_cluster_admin;
@@ -46,7 +47,8 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     );
   `)
 
-  const files = readdirSync(MIGRATIONS_DIRECTORY).filter((file) => file.endsWith('.sql')).sort()
+  const skipped = new Set(options.skipMigrations ?? [])
+  const files = readdirSync(MIGRATIONS_DIRECTORY).filter((file) => file.endsWith('.sql') && !skipped.has(file)).sort()
   for (const file of files) {
     const statements = readFileSync(join(MIGRATIONS_DIRECTORY, file), 'utf8').split('-- statement-breakpoint')
     for (const statement of statements) {

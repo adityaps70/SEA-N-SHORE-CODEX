@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { countrySchemaReady } from '@/features/countries/country-schema'
 import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
 import {
   query as databaseQuery,
@@ -70,8 +71,9 @@ function knownAccountStatus(status: string | null | undefined): AccountStatus | 
 }
 
 export function createIdentityRepository(
-  input: { query?: IdentityQuery; withTransaction?: IdentityTransaction } = {},
+  input: { query?: IdentityQuery; withTransaction?: IdentityTransaction; countrySchemaReady?: () => Promise<boolean> } = {},
 ) {
+  const signupCountryTableReady = input.countrySchemaReady ?? countrySchemaReady
   const queryRows: IdentityQuery = input.query ?? ((text, values) =>
     databaseQuery<IdentityRow>(text, values))
   const runTransaction = input.withTransaction ?? databaseWithTransaction
@@ -451,7 +453,8 @@ export function createIdentityRepository(
       })
 
       const signupCountry = options.signupCountry && /^[A-Z]{2}$/.test(options.signupCountry) ? options.signupCountry : null
-      if (createdProfileId && signupCountry) {
+      // Round GP safety net: nothing is recorded before migration 0108 (the table does not exist yet).
+      if (createdProfileId && signupCountry && await signupCountryTableReady()) {
         await queryRows(
           `insert into public.member_signup_countries (profile_id, country_code)
            values ($1, $2)

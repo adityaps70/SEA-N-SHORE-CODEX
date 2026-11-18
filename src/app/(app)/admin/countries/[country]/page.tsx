@@ -3,8 +3,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
-import { adminCountryRepository, COUNTRY_BASES, type CountryBasis } from '@/features/countries/admin-country-repository'
+import { AdminEmptyState, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
+import { adminCountryRepository, COUNTRY_BASES, type CountryBasis, type CountryDetail } from '@/features/countries/admin-country-repository'
+import { COUNTRY_SCHEMA_MISSING_MESSAGE, CountrySchemaMissingError } from '@/features/countries/country-schema'
 import { countryLabel, countrySlug, departmentLabel, rankGroupCounts, readCountrySlug } from '@/features/countries/admin-country-view'
 
 export const metadata: Metadata = { title: 'Country · Members by country · Admin' }
@@ -34,7 +35,23 @@ export default async function AdminCountryDetailPage({ params, searchParams }: {
   if (code === undefined) notFound()
   const basis = readBasis((await searchParams).basis)
   const admin = await requireAwsUser()
-  const detail = await adminCountryRepository.getCountryDetail(admin.id, code, basis)
+  let detail: CountryDetail
+  try {
+    detail = await adminCountryRepository.getCountryDetail(admin.id, code, basis)
+  } catch (error) {
+    // Round GP safety net: this release can run before migration 0108 is applied.
+    if (error instanceof CountrySchemaMissingError) {
+      return (
+        <div className="space-y-4">
+          <AdminPageHeader title={countryLabel(code)} />
+          <AdminPanel>
+            <AdminEmptyState title="Not available yet" description={COUNTRY_SCHEMA_MISSING_MESSAGE} />
+          </AdminPanel>
+        </div>
+      )
+    }
+    throw error
+  }
   const { totals } = detail
   const groups = rankGroupCounts(detail.departments)
   const peak = Math.max(1, ...detail.weeks.map((week) => week.newMembers))
