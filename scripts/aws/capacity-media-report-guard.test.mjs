@@ -791,6 +791,9 @@ def fake_rows(statements):
                  {"role": "app_worker", "app": "", "state": "active", "age_s": 4000}]]
     if "aurora_stat_database" in s:
         return [[{"datname": "sea_n_shore", "total_auth_attempts": 1500, "numbackends": 20, "xact_commit": 5}]]
+    if "people_suggestions" in s:
+        assert "not p.is_load_test" in s
+        return [[{"stored": "0", "members": 4}, {"stored": "12+", "members": 30}]]
     return [[{"name": "max_connections", "setting": "450", "unit": None}]]
 def fake_aws(service, action, *args, **kw):
     if (service, action) == ("rds", "describe-db-clusters"):
@@ -833,6 +836,7 @@ assert "latest_minor=16.10" in text and "major=1" in text, text
 assert "sessions_per_hour=600.0" in text and "avg_session_s=50.0" in text, text
 assert "CONN_NOW total=3" in text, text
 assert "CONN_NOW_GROUP role=app_web app=\\"\\" state=idle age=<1m n=2" in text, text
+assert 'PYMK_PREPARED_PER_MEMBER [{"stored": "0", "members": 4}, {"stored": "12+", "members": 30}]' in text, text
 assert '"total_auth_attempts": 1500' in text and "xact_commit" not in text, text
 assert "path=default cache=public-pages[cookies=whitelist:2 ttl=0/0/300] origin_request=AllViewerExceptHostHeader[cookies=all]" in text, text
 assert "path=/_next/static/* cache=CachingOptimized[cookies=none:0" in text, text

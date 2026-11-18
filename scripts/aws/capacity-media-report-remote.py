@@ -2345,9 +2345,16 @@ def section_dbconn():
         "select name, setting, unit from pg_settings where name in ('max_connections', 'log_connections', 'log_disconnections', "
         "'password_encryption', 'ssl', 'superuser_reserved_connections', 'tcp_keepalives_idle') order by name",
         "select * from aurora_stat_database() where datname = current_database()",
+        # How many real members fall back to live People-you-may-know scoring: those with fewer prepared suggestions
+        # than a list shows (12) take the live top-up on every view.
+        "select case when n = 0 then '0' when n < 12 then '1-11' else '12+' end as stored, count(*)::int as members from ("
+        "select p.id, (select count(*) from public.people_suggestions s where s.viewer_id = p.id)::int as n "
+        "from public.profiles p where p.account_status = 'active' and p.onboarding_completed_at is not null and not p.is_load_test "
+        "and coalesce(p.identity_root, 'professional') <> 'organisation') m group by 1 order by 1",
     ]
     rows = [sql_rows([s])[0] for s in statements]
-    totals, activity, settings, aurora = rows
+    totals, activity, settings, aurora, pymk = rows
+    out("PYMK_PREPARED_PER_MEMBER", json.dumps(pymk) if pymk is not None else "UNAVAILABLE")
     if totals:
         t = totals[0]
         hours = max((t.get("seconds") or 0) / 3600, 1 / 60)
