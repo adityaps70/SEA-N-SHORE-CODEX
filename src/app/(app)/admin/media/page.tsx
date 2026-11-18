@@ -3,6 +3,7 @@ import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-u
 import { VideoPosterBackfill } from '@/features/feed/components/video-poster-backfill'
 import { feedRepository } from '@/features/feed/repository'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Video posters · Admin' }
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,8 @@ export const dynamic = 'force-dynamic'
  * The admin layout already requires a platform administrator.
  */
 export default async function AdminVideoPostersPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   const videos = await feedRepository.listPostedVideoStoragePaths().catch(() => [] as string[])
   const feedUrls = videos.map((path) => `/api/feed-media/${path.split('/').map(encodeURIComponent).join('/')}`)
 

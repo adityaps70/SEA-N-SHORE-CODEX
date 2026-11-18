@@ -10,8 +10,13 @@ describe('platform admin organization review experience', () => {
   it('guards the whole admin surface with the authenticated platform administrator authority', () => {
     const layout = source('src/app/(app)/admin/layout.tsx')
 
-    expect(layout).toContain('requirePlatformAdministratorUser')
-    expect(layout).toContain('notFound()')
+    // Round GP (Part C): the layout checks access through requireAdminAccess, which lets platform administrators in
+    // (and country admins into their pages only) and answers everyone else with notFound().
+    const gate = source('src/features/admin/admin-access.ts')
+    expect(layout).toContain("requireAdminAccess('country')")
+    expect(gate).toContain('isPlatformAdministrator')
+    expect(gate).toContain('enforcePlatformAdminMfa')
+    expect(gate).toContain('notFound()')
     expect(layout).toContain('Sea N Shore Admin')
   })
 

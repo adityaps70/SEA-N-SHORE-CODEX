@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { HEALTH_WINDOWS, createRankingHealth, per100, type RankingHealth } from '@/features/ranking/health'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Ranking health · Admin' }
 export const dynamic = 'force-dynamic'
@@ -66,6 +67,8 @@ const SECTIONS: Section[] = [
  * totals only: no member names, ids or lists of people.
  */
 export default async function RankingHealthPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   const health = await createRankingHealth().load().catch(() => null)
 
   return (

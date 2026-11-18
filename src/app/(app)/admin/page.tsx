@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { redirect } from 'next/navigation'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 import { auditSummary, auditTargetHref, auditTargetLabel } from '@/features/admin/audit-format'
 import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminRepository } from '@/features/admin/repository'
@@ -12,7 +13,10 @@ export const metadata: Metadata = { title: 'Admin' }
 type AttentionItem = { label: string; count: number; href: string; urgent?: boolean }
 
 export default async function AdminPage() {
-  const user = await requireAwsUser()
+  const access = await requireAdminAccess('country')
+  // Round GP (Part C): the overview is for platform administrators; a country admin starts at their review queue.
+  if (access.kind === 'country') redirect('/admin/organizations?view=queue')
+  const user = access.user
   const [metrics, recentEvents, otherRoles] = await Promise.all([
     adminRepository.getAdminDashboardMetrics(user.id),
     adminRepository.listAuditEvents(user.id, { targetType: 'all', limit: 8 }).catch(() => []),

@@ -9,6 +9,7 @@ import { TicketStatusBadge } from '@/features/support/components/ticket-status-b
 import { TicketThread } from '@/features/support/components/ticket-thread'
 import { supportRepository } from '@/features/support/repository'
 import { supportTicketReference, supportTopicLabel } from '@/features/support/topics'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Support request · Admin' }
 export const dynamic = 'force-dynamic'
@@ -17,6 +18,8 @@ const PAGE_WIDTH = 'max-w-4xl' // Round H (H6) width token: switch to max-w-page
 
 /** Round H (H7): one Contact page request: the thread, a reply box, and close / reopen. */
 export default async function AdminSupportTicketPage({ params }: { params: Promise<{ ticketId: string }> }) {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   const { ticketId } = await params
   const ticket = await supportRepository.getTicketForAdmin(ticketId)
   if (!ticket) notFound()

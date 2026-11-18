@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 import { AdminEmptyState, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminCountryRepository, COUNTRY_BASES, type CountryBasis, type CountryDetail } from '@/features/countries/admin-country-repository'
 import { COUNTRY_SCHEMA_MISSING_MESSAGE, CountrySchemaMissingError } from '@/features/countries/country-schema'
@@ -34,12 +34,24 @@ export default async function AdminCountryDetailPage({ params, searchParams }: {
   const code = readCountrySlug(decodeURIComponent(country))
   if (code === undefined) notFound()
   const basis = readBasis((await searchParams).basis)
-  const admin = await requireAwsUser()
+  // Round GP (Part C): a country admin opens only their own countries.
+  const access = await requireAdminAccess('country')
+  const admin = access.user
   let detail: CountryDetail
   try {
     detail = await adminCountryRepository.getCountryDetail(admin.id, code, basis)
   } catch (error) {
     // Round GP safety net: this release can run before migration 0108 is applied.
+    if (error instanceof Error && error.message === 'country_out_of_scope') {
+      return (
+        <div className="space-y-4">
+          <AdminPageHeader title={countryLabel(code)} />
+          <AdminPanel>
+            <AdminEmptyState title="This country is not one of yours" description="As a country admin you see the numbers for your own countries only." />
+          </AdminPanel>
+        </div>
+      )
+    }
     if (error instanceof CountrySchemaMissingError) {
       return (
         <div className="space-y-4">
@@ -70,7 +82,7 @@ export default async function AdminCountryDetailPage({ params, searchParams }: {
           : undefined}
         actions={(
           <>
-            {basis === 'residence' ? (
+            {basis === 'residence' && access.kind === 'platform' ? (
               <Link href={`/admin/users?country=${countrySlug(code)}`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50">Members</Link>
             ) : null}
             <Link href={`/admin/organizations?country=${countrySlug(code)}`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50">Organizations</Link>

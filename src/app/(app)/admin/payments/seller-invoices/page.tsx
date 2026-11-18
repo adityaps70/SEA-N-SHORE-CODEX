@@ -9,6 +9,7 @@ import { formatExactMoney } from '@/features/payouts/payout-rules'
 import { readClient } from '@/features/payouts/payout-runtime'
 import { periodLabel, SELLER_INVOICE_KIND_LABELS, sellerInvoiceFileRoute } from '@/features/payouts/seller-invoice-rules'
 import { listSellerInvoicesForReview, type SellerInvoiceReviewLine } from '@/features/payouts/seller-invoices'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Seller invoices · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -48,6 +49,8 @@ function InvoiceFacts({ line }: { line: SellerInvoiceReviewLine }) {
 }
 
 export default async function AdminSellerInvoicesPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const [submitted, reviewed] = await Promise.all([
     listSellerInvoicesForReview(readClient, { status: 'submitted' }),

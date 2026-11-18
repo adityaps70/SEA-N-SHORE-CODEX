@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import Link from '@/components/navigation/intent-link'
 import { ExternalLink, Search, ShieldCheck, UserCog } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { withAdminAvatarUrls } from '@/features/admin/avatars'
 import { signInMethodsLabel } from '@/features/admin/sign-in-methods'
 import {
@@ -28,6 +27,7 @@ import { pluralize } from '@/lib/format'
 import { adminCountryRepository, type MemberCountry } from '@/features/countries/admin-country-repository'
 import { countryLabel, countrySlug, readCountrySlug } from '@/features/countries/admin-country-view'
 import { isEstimatedCountrySource } from '@/features/countries/member-country-sql'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Users · Admin' }
 
@@ -88,7 +88,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   const params = await searchParams
   const query = readSingle(params.q).trim().slice(0, 120)
   const status = readStatus(params.status)
-  const admin = await requireAwsUser()
+  const admin = (await requireAdminAccess('platform')).user
   const hideTestAccounts = readSingle(params.test) === 'hide'
   const page = readAdminPage(params.page)
   const pageSize = readPageSize(params.size)

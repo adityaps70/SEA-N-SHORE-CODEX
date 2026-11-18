@@ -1,3 +1,5 @@
+import { countryName } from '@/features/countries/catalog'
+
 /** Plain-language formatting for administrator audit events, shared by the overview and the audit log. */
 
 function sentenceCase(value: string) {
@@ -83,6 +85,12 @@ export function auditDetails(metadata: Record<string, unknown>) {
       : null
 
   if (decision) values.push(`Decision: ${decision.replaceAll('_', ' ')}`)
+  // Round GP (Part C): the organization's country, and whether a country admin decided.
+  if (text('actorRole') === 'country_admin') values.push('By a country admin')
+  const country = text('country')
+  if (/^[A-Z]{2}$/.test(country)) values.push(`Country: ${countryName(country) ?? country}`)
+  const countries = Array.isArray(metadata.countries) ? metadata.countries.filter((code): code is string => typeof code === 'string') : []
+  if (countries.length) values.push(`Countries: ${countries.map((code) => countryName(code) ?? code).join(', ')}`)
   if (previousState) values.push(`Previously ${previousState.replaceAll('_', ' ')}`)
   if (reportCount !== null) values.push(`${reportCount} report${reportCount === 1 ? '' : 's'}`)
   if (note) values.push(note)

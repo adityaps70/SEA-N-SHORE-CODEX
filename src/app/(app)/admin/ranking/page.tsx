@@ -9,6 +9,7 @@ import { RankingTestEmails } from '@/features/ranking/components/ranking-test-em
 import { searchLog } from '@/features/search/search-log'
 import { SEARCH_WEIGHTS_VERSION } from '@/features/search/search-weights'
 import { listUnmappedTaxonomyValues } from '@/features/taxonomy/backfill'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Ranking · Admin' }
 export const dynamic = 'force-dynamic'
@@ -20,6 +21,8 @@ const KIND_LABELS = { rank: 'Ranks', vessel: 'Vessel types', certificate: 'Certi
  * the free-text taxonomy values that have no code yet. Values and counts only, never who typed them.
  */
 export default async function AdminRankingPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   const [modes, unmapped, noResults] = await Promise.all([
     rankingSwitches.listModes(),
     listUnmappedTaxonomyValues().catch(() => null),

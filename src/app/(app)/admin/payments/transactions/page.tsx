@@ -14,6 +14,7 @@ import {
 import { formatExactMoney } from '@/features/payouts/payout-rules'
 import { readClient } from '@/features/payouts/payout-runtime'
 import { single } from '@/features/payouts/seller-context'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Payments list · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,8 @@ function href(type: string, status: string) {
 }
 
 export default async function AdminPaymentsListPage({ searchParams }: { searchParams: SearchParams }) {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const params = await searchParams
   const typeParam = single(params.type)

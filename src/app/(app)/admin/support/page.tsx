@@ -12,6 +12,7 @@ import {
 import { TicketStatusBadge } from '@/features/support/components/ticket-status-badge'
 import { supportRepository } from '@/features/support/repository'
 import { isSupportTicketStatus, supportTicketReference, supportTopicShortLabel, type SupportTicketStatus } from '@/features/support/topics'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Support · Admin' }
 export const dynamic = 'force-dynamic'
@@ -35,6 +36,8 @@ function readStatus(value: string | string[] | undefined): SupportTicketStatus |
 
 /** Round H (H7): Admin › Support. Contact page requests by status, open ones first. */
 export default async function AdminSupportPage({ searchParams }: { searchParams: SearchParams }) {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   const params = await searchParams
   const status = readStatus(params.status)
   const page = readAdminPage(params.page)

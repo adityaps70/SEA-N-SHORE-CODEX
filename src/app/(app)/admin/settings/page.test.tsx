@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), getMemberNumbers: vi.fn() }))
 
+// Round GP (Part C): a platform administrator.
+vi.mock('@/features/admin/admin-access', () => ({ requireAdminAccess: async () => ({ kind: 'platform', user: { id: 'admin-1' } }) }))
 vi.mock('@/features/site-settings/repository', () => ({ siteSettingsRepository: { get: mocks.get } }))
 vi.mock('@/features/site-settings/queries', () => ({ getMemberNumbers: mocks.getMemberNumbers }))
 vi.mock('@/features/site-settings/images', () => ({ signedAboutImageUrls: async () => ({ 'site/about/11111111-1111-4111-8111-111111111111.png': 'https://media.example.com/logo.png' }) }))
