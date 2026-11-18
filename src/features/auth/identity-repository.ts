@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { countrySchemaReady } from '@/features/countries/country-schema'
 import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
 import {
   query as databaseQuery,
@@ -70,8 +71,9 @@ function knownAccountStatus(status: string | null | undefined): AccountStatus | 
 }
 
 export function createIdentityRepository(
-  input: { query?: IdentityQuery; withTransaction?: IdentityTransaction } = {},
+  input: { query?: IdentityQuery; withTransaction?: IdentityTransaction; countrySchemaReady?: () => Promise<boolean> } = {},
 ) {
+  const signupCountryTableReady = input.countrySchemaReady ?? countrySchemaReady
   const queryRows: IdentityQuery = input.query ?? ((text, values) =>
     databaseQuery<IdentityRow>(text, values))
   const runTransaction = input.withTransaction ?? databaseWithTransaction
@@ -346,10 +348,16 @@ export function createIdentityRepository(
       return knownAccountStatus(rows[0]?.account_status)
     },
 
-    async provisionProfileForCognitoPrincipal(principal: CognitoPrincipal): Promise<string> {
+    /**
+     * Round GP: `signupCountry` is the CloudFront viewer country (two-letter code only) of the request that creates a
+     * new profile. It is written once, after the profile exists, and only for a profile this call created; a failure
+     * to write it never stops the sign-up.
+     */
+    async provisionProfileForCognitoPrincipal(principal: CognitoPrincipal, options: { signupCountry?: string | null } = {}): Promise<string> {
       if (!principal.sub.trim()) throw new IdentityMappingError()
 
-      return runTransaction(async (client) => {
+      let createdProfileId: string | null = null
+      const profileId = await runTransaction(async (client) => {
         await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
           `cognito:${principal.sub}`,
         ])
@@ -435,13 +443,26 @@ export function createIdentityRepository(
            returning id as profile_id`,
           [normalizedProvisioningName(principal)],
         )
-        const profileId = profileResult.rows[0]?.profile_id
-        if (!profileId) throw new IdentityMappingError()
+        const newProfileId = profileResult.rows[0]?.profile_id
+        if (!newProfileId) throw new IdentityMappingError()
 
-        await insertIdentityMapping(client, profileId, principal)
+        await insertIdentityMapping(client, newProfileId, principal)
+        createdProfileId = newProfileId
 
-        return profileId
+        return newProfileId
       })
+
+      const signupCountry = options.signupCountry && /^[A-Z]{2}$/.test(options.signupCountry) ? options.signupCountry : null
+      // Round GP safety net: nothing is recorded before migration 0108 (the table does not exist yet).
+      if (createdProfileId && signupCountry && await signupCountryTableReady()) {
+        await queryRows(
+          `insert into public.member_signup_countries (profile_id, country_code)
+           values ($1, $2)
+           on conflict (profile_id) do nothing`,
+          [createdProfileId, signupCountry],
+        ).catch(() => undefined)
+      }
+      return profileId
     },
   }
 }
@@ -456,8 +477,8 @@ export function resolveProfileWithStatusForCognitoSub(sub: string) {
   return identityRepository.resolveProfileWithStatusForCognitoSub(sub)
 }
 
-export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal) {
-  return identityRepository.provisionProfileForCognitoPrincipal(principal)
+export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal, options: { signupCountry?: string | null } = {}) {
+  return identityRepository.provisionProfileForCognitoPrincipal(principal, options)
 }
 
 export function getProfileAccountStatus(profileId: string) {

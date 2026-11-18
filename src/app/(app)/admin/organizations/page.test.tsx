@@ -30,6 +30,7 @@ function organization(overrides: Partial<AdminOrganizationDirectoryEntry> = {}):
     logoPath: 'companies/33333333/logo-abc123.png',
     type: 'Ship manager',
     location: 'Mumbai, India',
+    country: 'IN',
     owner: { id: '44444444-4444-4444-8444-444444444444', fullName: 'Asha Singh', slug: 'asha-singh' },
     memberCount: 3,
     plan: 'organization_pro',

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Building2, ClipboardCheck, ExternalLink, Search, Settings2, UserRound } from 'lucide-react'
+import { Building2, ClipboardCheck, ExternalLink, Globe2, Search, Settings2, UserRound } from 'lucide-react'
 import {
   AdminChip,
   AdminEmptyState,
@@ -25,6 +25,8 @@ import {
 import { organizationLogoUrl } from '@/features/organizations/organization-page-profile'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
 import { pluralize } from '@/lib/format'
+import { countryLabel, countrySlug, readCountrySlug } from '@/features/countries/admin-country-view'
+import type { CountryKey } from '@/features/countries/admin-country-repository'
 
 export const metadata: Metadata = { title: 'Organizations · Admin' }
 
@@ -158,23 +160,38 @@ async function reviewQueue({ adminId, status }: { adminId: string; status: Admin
   )
 }
 
+/** Round GP: the organization's country, or "Country not set" with a link to set it. */
+function OrganizationCountry({ id, country }: { id: string; country: string | null }) {
+  if (country) return <span className="block truncate text-xs text-muted">{countryLabel(country)}</span>
+  return (
+    <Link href={`/admin/organizations/country/${id}`} className="mt-0.5 inline-flex">
+      <AdminChip tone="warning">Country not set</AdminChip>
+    </Link>
+  )
+}
+
 async function organizationDirectory({
   adminId,
   query,
   status,
   page,
+  country,
 }: {
   adminId: string
   query: string
   status: AdminOrganizationDirectoryFilter
   page: number
+  /** Round GP: undefined = every country; null = organizations with no country. */
+  country?: CountryKey
 }) {
+  const countryFilter = country === undefined ? undefined : countrySlug(country)
   // One extra row tells us whether there is a next page.
   const result = await adminRepository.listOrganizations(adminId, {
     query,
     status,
     limit: PAGE_SIZE + 1,
     offset: (page - 1) * PAGE_SIZE,
+    country: countryFilter,
   })
   const hasNextPage = result.organizations.length > PAGE_SIZE
   const organizations = result.organizations.slice(0, PAGE_SIZE)
@@ -184,6 +201,7 @@ async function organizationDirectory({
     if (query) search.set('q', query)
     const nextStatus = next.status ?? status
     if (nextStatus !== 'all') search.set('status', nextStatus)
+    if (countryFilter) search.set('country', countryFilter)
     // Changing a filter starts again from the first page.
     if (next.page && next.page > 1) search.set('page', String(next.page))
     const value = search.toString()
@@ -198,6 +216,12 @@ async function organizationDirectory({
           ? `${pluralize(result.total, 'organization')} · page ${page}`
           : pluralize(result.total, 'organization')}
         description="Every organization page on Sea N Shore, newest first. Applications waiting for a decision are in the review queue."
+        actions={country !== undefined ? (
+          <>
+            <AdminChip tone="info">Country: {countryLabel(country)}</AdminChip>
+            <Link href={`/admin/organizations${query || status !== 'all' ? `?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(status !== 'all' ? { status } : {}) }).toString()}` : ''}`} className="text-sm font-semibold text-ocean-700 hover:underline">All countries</Link>
+          </>
+        ) : undefined}
       />
 
       <ViewTabs view="directory" />
@@ -225,6 +249,7 @@ async function organizationDirectory({
             />
           </label>
           {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
+          {countryFilter ? <input type="hidden" name="country" value={countryFilter} /> : null}
           <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">
             Search
           </button>
@@ -255,10 +280,12 @@ async function organizationDirectory({
                     { label: 'Plan', value: organization.plan === 'organization_pro' ? 'Org Pro' : 'Free' },
                     { label: 'Owner', value: organization.owner?.fullName ?? 'No owner' },
                     { label: 'Members', value: organization.memberCount },
+                    { label: 'Country', value: organization.country ? countryLabel(organization.country) : 'Not set' },
                   ]}
                   actions={[
                     { kind: 'link', href: `/organizations/${organization.slug}`, label: 'View page', icon: <ExternalLink aria-hidden="true" /> },
                     { kind: 'link', href: `/organizations/${organization.slug}/manage`, label: 'Manage', icon: <Settings2 aria-hidden="true" /> },
+                    { kind: 'link', href: `/admin/organizations/country/${organization.id}`, label: organization.country ? 'Change country' : 'Set country', icon: <Globe2 aria-hidden="true" /> },
                     ...(organization.applicationId ? [{ kind: 'link' as const, href: `/admin/organizations/${organization.applicationId}`, label: 'Review application', icon: <ClipboardCheck aria-hidden="true" /> }] : []),
                     ...(organization.owner ? [{ kind: 'link' as const, href: `/admin/users/${organization.owner.id}`, label: `Owner: ${organization.owner.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
                   ]}
@@ -281,7 +308,7 @@ async function organizationDirectory({
               <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5">Organization</th>
-                  <th scope="col" className="px-4 py-2.5">Location</th>
+                  <th scope="col" className="px-4 py-2.5">Location · country</th>
                   <th scope="col" className="px-4 py-2.5">Owner</th>
                   <th scope="col" className="px-4 py-2.5">Members</th>
                   <th scope="col" className="px-4 py-2.5">Plan</th>
@@ -306,7 +333,10 @@ async function organizationDirectory({
                           </div>
                         </div>
                       </td>
-                      <td className="truncate px-4 py-2.5 text-navy-900" title={organization.location ?? undefined}>{organization.location ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-navy-900">
+                        <span className="block truncate" title={organization.location ?? undefined}>{organization.location ?? '—'}</span>
+                        <OrganizationCountry id={organization.id} country={organization.country} />
+                      </td>
                       <td className="px-4 py-2.5">
                         {organization.owner ? (
                           <Link href={`/admin/users/${organization.owner.id}`} className="block truncate font-medium text-navy-900 hover:text-ocean-700 hover:underline" title={organization.owner.fullName}>
@@ -375,5 +405,6 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
     query: readSingle(params.q).trim().slice(0, 120),
     status: readDirectoryFilter(params.status),
     page: readAdminPage(params.page),
+    country: readCountrySlug(readSingle(params.country)),
   })
 }

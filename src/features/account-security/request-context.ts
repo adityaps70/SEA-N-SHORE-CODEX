@@ -35,6 +35,11 @@ function cleanCountry(value: string | null) {
   return /^[A-Z]{2}$/.test(country) && country !== 'XX' ? country : null
 }
 
+/** Round GP: the CloudFront viewer country of a request (two-letter code), or null. Never the IP address. */
+export function viewerCountryFromHeaders(headers: HeaderSource): string | null {
+  return cleanCountry(headers.get('cloudfront-viewer-country'))
+}
+
 export function sessionRequestContext(headers: HeaderSource): SessionRequestContext {
   return {
     userAgentSummary: summarizeUserAgent(headers.get('user-agent'), { standalone: standaloneFromCookieHeader(headers.get('cookie')) }).summary,

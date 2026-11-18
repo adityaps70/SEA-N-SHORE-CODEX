@@ -38,6 +38,9 @@ export type OnboardingFormValues = {
   slug?: string
   usernameSuggestion?: string
   location?: string
+  /** Round GP: ISO country codes, kept on a failed submit. */
+  countryOfResidence?: string
+  nationality?: string
   headline?: string
   summary?: string
   contactVisibility?: 'private' | 'members' | 'public'
@@ -80,6 +83,8 @@ const boundedTextFields = {
   fullName: 160,
   slug: 80,
   location: 120,
+  countryOfResidence: 2,
+  nationality: 2,
   headline: 160,
   summary: 2000,
   skills: 2000,

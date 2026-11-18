@@ -19,6 +19,7 @@ import {
   type OrganizationTypeField,
 } from '../organization-types'
 import type { OrganizationApplicationInput } from '../types'
+import { CountrySelect } from '@/features/countries/components/country-select'
 
 type OrganizationApplicationFormProps =
   | {
@@ -48,6 +49,7 @@ const fieldLabels: Record<string, string> = {
   website: 'Website',
   officialEmail: 'Official work email',
   officeLocation: 'Office location',
+  country: 'Country',
   description: 'Description',
   fleetSize: 'Number of vessels',
   fleetSummary: 'Fleet summary',
@@ -92,6 +94,7 @@ function inputFromForm(formData: FormData): OrganizationApplicationInput {
     website: nullableText(formData, 'website'),
     officialEmail: text(formData, 'officialEmail'),
     officeLocation: text(formData, 'officeLocation'),
+    country: nullableText(formData, 'country'),
     description: text(formData, 'description'),
     fleetSize: fleetSize ? Number(fleetSize) : null,
     fleetSummary: nullableText(formData, 'fleetSummary'),
@@ -283,6 +286,23 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
             <label htmlFor="org-officeLocation" className="block">Office location</label>
             <input id="org-officeLocation" className={inputClass} name="officeLocation" maxLength={240} defaultValue={initial?.officeLocation ?? ''} placeholder="Mumbai, India" required {...errorProps(fieldErrors, 'officeLocation')} />
             <FieldError fieldErrors={fieldErrors} name="officeLocation" />
+          </div>
+          {/* Round GP: required, so the right country partner can review the organization. */}
+          <div className={labelClass}>
+            <label htmlFor="org-country" className="block">Country</label>
+            <CountrySelect
+              id="org-country"
+              name="country"
+              defaultValue={initial?.country ?? ''}
+              emptyLabel="Choose the country"
+              required
+              invalid={Boolean(fieldError(fieldErrors, 'country'))}
+              errorId="country-error"
+              describedBy="country-hint"
+              className={inputClass}
+            />
+            <span id="country-hint" className="block text-xs font-normal text-muted">Where the organization is registered or has its main office.</span>
+            <FieldError fieldErrors={fieldErrors} name="country" />
           </div>
           <div className={`${labelClass} sm:col-span-2`}>
             <label htmlFor="org-description" className="block">Description</label>

@@ -12,6 +12,8 @@ const SHARED_CACHES: Record<string, string[]> = {
   'src/features/learning/marketplace-repository.ts': ['published_courses'],
   'src/features/site-settings/queries.ts': ['member_numbers'],
   'src/features/site-settings/share-settings.ts': ['share_settings'],
+  // Round GP: Admin › Members by country (counts only, read after the permission check).
+  'src/features/countries/admin-country-repository.ts': ['admin_country_stats', 'admin_country_detail'],
 }
 const PERSONAL = /viewer|profileId|userId|memberId|session|cookies\(|headers\(|requireAwsUser|requireUser|getAwsVerifiedUser|role/i
 

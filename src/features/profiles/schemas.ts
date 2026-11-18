@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { optionalCountryCodeSchema } from '@/features/countries/catalog'
 import {
   defaultHeadlineForPersona,
   PERSONAS,
@@ -136,6 +137,9 @@ const activationFieldsSchema = z.object({
     .max(160, 'Keep your name to 160 characters or fewer.'),
   slug: usernameSchema,
   location: optionalText(120, 'Keep your location to 120 characters or fewer.'),
+  /** Round GP: optional ISO country codes; Admin › Members by country counts by country of residence. */
+  countryOfResidence: optionalCountryCodeSchema,
+  nationality: optionalCountryCodeSchema,
   currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
   currentCompanyId: optionalOrganizationIdSchema,
   rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),

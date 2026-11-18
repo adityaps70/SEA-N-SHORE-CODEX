@@ -1,5 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { LIVE_JOB_SQL } from '@/features/jobs/repository'
+import { memberCountryCtes, memberCountryValues } from '@/features/countries/member-country-sql'
+import { CountrySchemaMissingError, countrySchemaReady } from '@/features/countries/country-schema'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
 import {
@@ -163,6 +165,11 @@ export type AdminUserSearch = {
   limit: number
   /** Rows to skip, for paging. */
   offset?: number
+  /**
+   * Round GP: an ISO country code, or 'unset' for members with no country at all. Matches the member's country as
+   * Members by country counts it (their own choice, else an estimate).
+   */
+  country?: string | null
 }
 
 /** Directory filters for the admin Organizations list. */
@@ -174,6 +181,8 @@ export type AdminOrganizationDirectorySearch = {
   status: AdminOrganizationDirectoryFilter
   limit: number
   offset?: number
+  /** Round GP: an ISO country code, or 'unset' for organizations with no country. */
+  country?: string | null
 }
 
 export type AdminOrganizationDirectoryStatus =
@@ -193,6 +202,8 @@ export type AdminOrganizationDirectoryEntry = {
   /** Display label for the organization type, or null when none was chosen. */
   type: string | null
   location: string | null
+  /** Round GP: ISO country code, or null ("Country not set"). */
+  country: string | null
   owner: { id: string; fullName: string; slug: string | null } | null
   memberCount: number
   plan: 'free' | 'organization_pro'
@@ -207,6 +218,15 @@ export type AdminOrganizationDirectoryPage = {
   organizations: AdminOrganizationDirectoryEntry[]
   /** Organizations matching the search and filter, across all pages. */
   total: number
+}
+
+/** Round GP: an organization whose country an administrator is setting. */
+export type AdminOrganizationCountryTarget = {
+  id: string
+  slug: string
+  name: string
+  country: string | null
+  applicationId: string | null
 }
 
 export type DeletedPostRecord = {
@@ -252,6 +272,8 @@ export type AdminOrganizationReview = {
     fleetSummary: string | null
     vesselTypes: string[]
     officeLocations: string[]
+    /** Round GP: ISO country code, or null ("Country not set"). */
+    country: string | null
     verified: boolean
   }
   applicant: {
@@ -347,6 +369,7 @@ type OrganizationDirectoryRow = QueryResultRow & {
   company_type: string | null
   organization_type: string | null
   location: string | null
+  country?: string | null
   verified: boolean | null
   created_at: string | Date
   application_id: string | null
@@ -402,6 +425,7 @@ type OrganizationReviewRow = QueryResultRow & {
   fleet_summary: string | null
   vessel_types: string[] | null
   office_locations: string[] | null
+  company_country?: string | null
   company_verified: boolean | null
   applicant_name: string
   applicant_slug: string | null
@@ -466,6 +490,7 @@ const ORGANIZATION_REVIEW_SELECT = `
     c.fleet_summary,
     c.vessel_types,
     c.office_locations,
+    @@COMPANY_COUNTRY@@ as company_country,
     coalesce(c.is_verified, false) as company_verified,
     p.full_name as applicant_name,
     p.slug as applicant_slug,
@@ -653,6 +678,7 @@ function mapOrganizationDirectoryRow(row: OrganizationDirectoryRow): AdminOrgani
     logoPath: row.logo_path ?? null,
     type: row.company_type || row.organization_type ? displayOrganizationType(row.organization_type, row.company_type) : null,
     location: row.location?.trim() || null,
+    country: row.country ?? null,
     owner: row.owner_id ? { id: row.owner_id, fullName: row.owner_name ?? 'Member', slug: row.owner_slug ?? null } : null,
     memberCount: numberValue(row.member_count),
     plan: row.organization_pro ? 'organization_pro' : 'free',
@@ -692,6 +718,7 @@ function mapOrganizationReview(row: OrganizationReviewRow): AdminOrganizationRev
       fleetSummary: row.fleet_summary ?? null,
       vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
       officeLocations: Array.isArray(row.office_locations) ? row.office_locations : [],
+      country: row.company_country ?? null,
       verified: Boolean(row.company_verified),
     },
     applicant: {
@@ -714,10 +741,21 @@ function defaultTransaction<T>(work: (query: AdminQuery) => Promise<T>) {
 
 export type AdminOtherRoleText = { text: string; profileCount: number; jobCount: number }
 
-export function createAdminRepository(input: { query?: AdminQuery; transaction?: AdminTransaction; now?: () => number } = {}) {
+export function createAdminRepository(input: {
+  query?: AdminQuery
+  transaction?: AdminTransaction
+  now?: () => number
+  countrySchemaReady?: () => Promise<boolean>
+} = {}) {
   const queryRows: AdminQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
   const transaction = input.transaction ?? defaultTransaction
   const now = input.now ?? (() => Date.now())
+  // Round GP safety net: before migration 0108 organizations read as "Country not set" and members by estimate only.
+  const countryColumnsReady = input.countrySchemaReady ?? countrySchemaReady
+
+  async function organizationReviewSelect() {
+    return ORGANIZATION_REVIEW_SELECT.replace('@@COMPANY_COUNTRY@@', await countryColumnsReady() ? 'c.country' : 'null::text')
+  }
 
   // companies.claim_status arrives with migration 0050. Until then the directory
   // derives it from whether the organization has an approved owner. A positive
@@ -1362,7 +1400,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   }
 
   /** The WHERE clause shared by the user list and its total count, so both always agree. */
-  function adminUserFilter(input: Pick<AdminUserSearch, 'query' | 'status'>) {
+  function adminUserFilter(input: Pick<AdminUserSearch, 'query' | 'status' | 'country'>, withCountryColumns = true) {
     const values: unknown[] = []
     const where: string[] = []
     const normalizedQuery = input.query.trim().toLowerCase()
@@ -1391,13 +1429,23 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     } else {
       where.push("p.account_status::text <> 'deletion_requested'")
     }
+
+    if (input.country) {
+      values.push(...memberCountryValues())
+      const ctes = memberCountryCtes({ namesParam: values.length - 1, dialsParam: values.length, withCountryColumns })
+      values.push(input.country === 'unset' ? '' : input.country)
+      where.push(`p.id in (
+        with ${ctes}
+        select mc.profile_id from member_country mc where coalesce(mc.code, '') = ${String.fromCharCode(36)}${values.length}
+      )`)
+    }
     return { values, where }
   }
 
   /** How many accounts match the same search and status filter as `searchUsers` (round 10). */
-  async function countUsers(adminId: string, input: Pick<AdminUserSearch, 'query' | 'status'>): Promise<number> {
+  async function countUsers(adminId: string, input: Pick<AdminUserSearch, 'query' | 'status' | 'country'>): Promise<number> {
     await requirePlatformAdministrator(queryRows, adminId)
-    const { values, where } = adminUserFilter(input)
+    const { values, where } = adminUserFilter(input, input.country ? await countryColumnsReady() : true)
     const rows = await queryRows(
       `select count(*) as total
        from public.profiles p
@@ -1412,7 +1460,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     input: AdminUserSearch,
   ): Promise<AdminUserSummary[]> {
     await requirePlatformAdministrator(queryRows, adminId)
-    const { values, where } = adminUserFilter(input)
+    const { values, where } = adminUserFilter(input, input.country ? await countryColumnsReady() : true)
 
     // 101 lets a 100-row page fetch one look-ahead row.
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 101))
@@ -1655,6 +1703,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   async function listOrganizations(adminId: string, input: AdminOrganizationDirectorySearch): Promise<AdminOrganizationDirectoryPage> {
     await requirePlatformAdministrator(queryRows, adminId)
     const hasClaimStatus = await hasClaimStatusColumn()
+    const withCountries = await countryColumnsReady()
     const derivedClaimStatus = `case when org_owner.owner_id is null then 'unclaimed' else 'claimed' end`
     const claimStatusSql = hasClaimStatus ? `coalesce(c.claim_status::text, ${derivedClaimStatus})` : derivedClaimStatus
 
@@ -1690,6 +1739,15 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       default:
         break
     }
+    // Round GP: Members by country links here with ?country=PH (or 'unset'). Before 0108 every page is "not set".
+    if (input.country && !withCountries) {
+      if (input.country !== 'unset') where.push('false')
+    } else if (input.country === 'unset') {
+      where.push('c.country is null')
+    } else if (input.country) {
+      values.push(input.country)
+      where.push(`c.country = ${parameter()}`)
+    }
 
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
     const limitParameter = parameter()
@@ -1705,6 +1763,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          c.company_type,
          c.organization_type,
          c.office_locations[1] as location,
+         ${withCountries ? 'c.country' : 'null::text as country'},
          coalesce(c.is_verified, false) as verified,
          c.created_at,
          oa.id as application_id,
@@ -1758,7 +1817,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   async function listOrganizationApplications(userId: string, status: AdminOrganizationStatus): Promise<AdminOrganizationReview[]> {
     await requirePlatformAdministrator(queryRows, userId)
     const rows = await queryRows(
-      `${ORGANIZATION_REVIEW_SELECT}
+      `${await organizationReviewSelect()}
        where oa.status = $1
        order by oa.submitted_at asc, oa.id asc
        limit 100`,
@@ -1770,7 +1829,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   async function getOrganizationApplicationReview(userId: string, applicationId: string): Promise<AdminOrganizationReview | null> {
     await requirePlatformAdministrator(queryRows, userId)
     const rows = await queryRows(
-      `${ORGANIZATION_REVIEW_SELECT}
+      `${await organizationReviewSelect()}
        where oa.id = $1
        limit 1`,
       [applicationId],
@@ -1973,6 +2032,52 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     })
   }
 
+  /** Round GP: the organization an administrator is setting a country for (name, slug, current country). */
+  async function getOrganizationCountryTarget(adminId: string, companyId: string): Promise<AdminOrganizationCountryTarget | null> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
+    const rows = await queryRows(
+      `select c.id, c.slug, c.name, c.country, oa.id as application_id
+       from public.companies c
+       left join public.organization_applications oa on oa.company_id = c.id
+       where c.id = $1
+       limit 1`,
+      [companyId],
+    )
+    const row = rows[0]
+    if (!row) return null
+    return {
+      id: String(row.id),
+      slug: String(row.slug),
+      name: String(row.name),
+      country: typeof row.country === 'string' ? row.country : null,
+      applicationId: typeof row.application_id === 'string' ? row.application_id : null,
+    }
+  }
+
+  /**
+   * Round GP: a platform administrator sets (or clears) an organization's country. Written to the audit trail with
+   * the previous and new country. False when the organization does not exist.
+   */
+  async function setOrganizationCountry(adminId: string, companyId: string, country: string | null): Promise<boolean> {
+    if (!await countryColumnsReady()) throw new CountrySchemaMissingError()
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+      const rows = await txQuery(`select country from public.companies where id = $1 for update`, [companyId])
+      const current = rows[0]
+      if (!current) return false
+      const previous = typeof current.country === 'string' ? current.country : null
+      if (previous === country) return true
+      await txQuery(`update public.companies set country = $2, updated_at = now() where id = $1`, [companyId, country])
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, 'organization.country_set', 'company', $2, $3::jsonb)`,
+        [adminId, companyId, JSON.stringify({ previousCountry: previous, country })],
+      )
+      return true
+    })
+  }
+
   return {
     isPlatformAdministrator,
     getAdminDashboardMetrics,
@@ -1996,6 +2101,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     listCompanyAccessRequests,
     countCompanyAccessRequests,
     reviewCompanyAccessRequest,
+    getOrganizationCountryTarget,
+    setOrganizationCountry,
   }
 }
 

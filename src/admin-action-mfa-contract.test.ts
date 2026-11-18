@@ -32,6 +32,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/jobs/extra-ranks-admin-actions.ts', ['setJobExtraRankHidden']],
   // P6b: Admin › Ranks (add a missing rank to the master list, hide / show one an administrator added).
   ['src/features/roles/admin-ranks-actions.ts', ['addMasterRank', 'setMasterRankHidden']],
+  // Round GP: Admin › Organizations › Set country.
+  ['src/features/countries/admin-country-actions.ts', ['setOrganizationCountryAction']],
   ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites', 'prepareLegacyReminderBatch', 'startPreparedLegacyReminders', 'cancelPreparedLegacyReminders', 'stopUnsentLegacyReminders', 'sendLegacyReminderTest']],
   // P4: the final legacy reminder (Resume also needs the admin step-up).
   ['src/features/legacy-invites/final-reminder-admin-actions.ts', ['prepareLegacyFinalReminderBatch', 'startPreparedLegacyFinalReminders', 'cancelPreparedLegacyFinalReminders', 'stopUnsentLegacyFinalReminders', 'resumeLegacyFinalReminders', 'sendLegacyFinalReminderTest']],

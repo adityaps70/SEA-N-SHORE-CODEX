@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   searchUsers: vi.fn(),
   countUsers: vi.fn(),
+  memberCountries: vi.fn(async () => new Map()),
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
@@ -22,6 +23,10 @@ vi.mock('@/features/admin/repository', async (importOriginal) => {
     },
   }
 })
+
+vi.mock('@/features/countries/admin-country-repository', () => ({
+  adminCountryRepository: { memberCountries: mocks.memberCountries },
+}))
 
 import AdminUsersPage from './page'
 

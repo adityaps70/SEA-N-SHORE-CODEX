@@ -25,6 +25,9 @@ import {
   type AdminUserStatusFilter,
 } from '@/features/admin/repository'
 import { pluralize } from '@/lib/format'
+import { adminCountryRepository, type MemberCountry } from '@/features/countries/admin-country-repository'
+import { countryLabel, countrySlug, readCountrySlug } from '@/features/countries/admin-country-view'
+import { isEstimatedCountrySource } from '@/features/countries/member-country-sql'
 
 export const metadata: Metadata = { title: 'Users · Admin' }
 
@@ -63,6 +66,17 @@ function readPageSize(value: string | string[] | undefined) {
   return (PAGE_SIZES as readonly number[]).includes(size) ? size : PAGE_SIZE
 }
 
+/** Round GP: a member's country in the list, "estimated" when it is not one they chose. */
+function MemberCountryValue({ country }: { country: MemberCountry | undefined }) {
+  if (!country?.code) return <span className="text-muted">Not set</span>
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span className="truncate">{countryLabel(country.code)}</span>
+      {isEstimatedCountrySource(country.source) ? <AdminChip tone="info">estimated</AdminChip> : null}
+    </span>
+  )
+}
+
 function readStatus(value: string | string[] | undefined): AdminUserStatusFilter {
   const candidate = readSingle(value)
   return candidate === 'all' || ADMIN_USER_STATUSES.includes(candidate as AdminUserStatus)
@@ -78,6 +92,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   const hideTestAccounts = readSingle(params.test) === 'hide'
   const page = readAdminPage(params.page)
   const pageSize = readPageSize(params.size)
+  // Round GP: ?country=PH (or "unset") from Admin › Members by country.
+  const countryCode = readCountrySlug(readSingle(params.country))
+  const country = countryCode === undefined ? undefined : countrySlug(countryCode)
   // One extra row tells us whether there is a next page; the count uses the same filter.
   const [fetched, totalUsers] = await Promise.all([
     adminRepository.searchUsers(admin.id, {
@@ -85,8 +102,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
       status,
       limit: pageSize + 1,
       offset: (page - 1) * pageSize,
+      country,
     }),
-    adminRepository.countUsers(admin.id, { query, status }),
+    adminRepository.countUsers(admin.id, { query, status, country }),
   ])
   const hasNextPage = fetched.length > pageSize
   const results = fetched.slice(0, pageSize)
@@ -97,6 +115,10 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   const users = await withAdminAvatarUrls(
     hideTestAccounts && !viewingDeletionRecords ? results.filter((user) => !looksLikeTestAccount(user)) : results,
   )
+  // A failed country read leaves the column at "Not set" rather than failing the list.
+  const countries = viewingDeletionRecords
+    ? new Map<string, MemberCountry>()
+    : await adminCountryRepository.memberCountries(admin.id, users.map((user) => user.id)).catch(() => new Map<string, MemberCountry>())
 
   function usersHref(next: { status?: AdminUserStatusFilter; hideTest?: boolean; page?: number; size?: number }) {
     const search = new URLSearchParams()
@@ -104,6 +126,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
     const nextStatus = next.status ?? status
     if (nextStatus !== 'all') search.set('status', nextStatus)
     if (next.hideTest ?? hideTestAccounts) search.set('test', 'hide')
+    if (country) search.set('country', country)
     const nextSize = next.size ?? pageSize
     if (nextSize !== PAGE_SIZE) search.set('size', String(nextSize))
     // Changing a filter starts again from the first page.
@@ -140,6 +163,12 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
         description={viewingDeletionRecords
           ? 'These are not active or manageable users. They are anonymized tombstones retained only so moderation history and integrity records remain traceable.'
           : undefined}
+        actions={country ? (
+          <>
+            <AdminChip tone="info">Country: {countryLabel(countryCode ?? null)}</AdminChip>
+            <Link href={`/admin/users${query || status !== 'all' ? `?${new URLSearchParams({ ...(query ? { q: query } : {}), ...(status !== 'all' ? { status } : {}) }).toString()}` : ''}`} className="text-sm font-semibold text-ocean-700 hover:underline">All countries</Link>
+          </>
+        ) : undefined}
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -160,6 +189,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
           {hideTestAccounts ? <input type="hidden" name="test" value="hide" /> : null}
           {pageSize !== PAGE_SIZE ? <input type="hidden" name="size" value={pageSize} /> : null}
+          {country ? <input type="hidden" name="country" value={country} /> : null}
           <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900 max-md:min-h-11 max-md:rounded-xl max-md:px-4">
             Search
           </button>
@@ -187,6 +217,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                     { label: 'Role', value: user.isAdministrator ? 'Admin' : 'Member' },
                     { label: 'Status', value: <AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip> },
                     { label: 'Joined', value: formatAdminDate(user.createdAt) },
+                    ...(deleted ? [] : [{ label: 'Country', value: <MemberCountryValue country={countries.get(user.id)} /> }]),
                     {
                       label: 'Email',
                       value: signInMethodsLabel(user)
@@ -205,16 +236,18 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           <div className={ADMIN_TABLE_DESKTOP_CLASS}>
             <table className="w-full min-w-[44rem] table-fixed text-left text-sm">
               <colgroup>
-                <col className="w-[38%]" />
-                <col className="w-[24%]" />
-                <col className="w-[11%]" />
-                <col className="w-[12%]" />
-                <col className="w-[15%]" />
+                <col className="w-[31%]" />
+                <col className="w-[21%]" />
+                <col className="w-[14%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[14%]" />
               </colgroup>
               <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5">Member</th>
                   <th scope="col" className="px-4 py-2.5">Email</th>
+                  <th scope="col" className="px-4 py-2.5">Country</th>
                   <th scope="col" className="px-4 py-2.5">Status</th>
                   <th scope="col" className="px-4 py-2.5">Joined</th>
                   <th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th>
@@ -249,6 +282,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                         {user.email ?? (deleted ? '—' : 'No email retained')}
                         {signInMethodsLabel(user) ? <span className="block truncate text-xs text-muted">{signInMethodsLabel(user)}</span> : null}
                       </td>
+                      <td className="px-4 py-2.5 text-navy-900">{deleted ? <span className="text-muted">—</span> : <MemberCountryValue country={countries.get(user.id)} />}</td>
                       <td className="px-4 py-2.5"><AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip></td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(user.createdAt)}</td>
                       <td className="px-4 py-2.5 text-right">
@@ -293,6 +327,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
               {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
               {hideTestAccounts ? <input type="hidden" name="test" value="hide" /> : null}
               {pageSize !== PAGE_SIZE ? <input type="hidden" name="size" value={pageSize} /> : null}
+              {country ? <input type="hidden" name="country" value={country} /> : null}
               <label htmlFor="admin-users-jump">Go to page</label>
               <input
                 id="admin-users-jump"

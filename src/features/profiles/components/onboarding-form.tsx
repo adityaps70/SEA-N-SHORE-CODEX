@@ -22,6 +22,7 @@ import { UsernameField } from './username-field'
 import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 import { NameCaseSuggestion } from './name-case-suggestion'
 import { LocationPicker } from './location-picker'
+import { CountrySelect } from '@/features/countries/components/country-select'
 import { buttonClass } from '@/components/ui/interactive-styles'
 import { cn } from '@/lib/cn'
 
@@ -326,6 +327,35 @@ function OnboardingFields({
               />
               {firstError(state, 'location') ? <span id="location-error" className="text-red-700">{firstError(state, 'location')}</span> : null}
             </div>
+            {/* Round GP: country of residence and nationality, both optional (ISO codes from one list). */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2 text-sm font-medium text-navy-900">
+                <label htmlFor="countryOfResidence">Country you live in <span className="font-normal text-muted">(optional)</span></label>
+                <CountrySelect
+                  id="countryOfResidence"
+                  name="countryOfResidence"
+                  defaultValue={values?.countryOfResidence ?? ''}
+                  emptyLabel="Choose a country"
+                  invalid={Boolean(firstError(state, 'countryOfResidence'))}
+                  errorId="countryOfResidence-error"
+                  className="min-h-12 w-full rounded-xl border border-mist-100 bg-white px-4 text-base text-ink shadow-sm focus:border-ocean-700"
+                />
+                {firstError(state, 'countryOfResidence') ? <span id="countryOfResidence-error" className="text-red-700">{firstError(state, 'countryOfResidence')}</span> : null}
+              </div>
+              <div className="grid gap-2 text-sm font-medium text-navy-900">
+                <label htmlFor="nationality">Nationality <span className="font-normal text-muted">(optional)</span></label>
+                <CountrySelect
+                  id="nationality"
+                  name="nationality"
+                  defaultValue={values?.nationality ?? ''}
+                  emptyLabel="Choose a country"
+                  invalid={Boolean(firstError(state, 'nationality'))}
+                  errorId="nationality-error"
+                  className="min-h-12 w-full rounded-xl border border-mist-100 bg-white px-4 text-base text-ink shadow-sm focus:border-ocean-700"
+                />
+                {firstError(state, 'nationality') ? <span id="nationality-error" className="text-red-700">{firstError(state, 'nationality')}</span> : null}
+              </div>
+            </div>
 
             {/* Round 12: Department → Rank / Role (or stage and target role, or occupation) for this profile type. */}
             <ProfileRoleFields
@@ -508,6 +538,8 @@ const onboardingFieldLabels: Record<string, string> = {
   fullName: 'Name',
   slug: 'Username',
   location: 'Location',
+  countryOfResidence: 'Country you live in',
+  nationality: 'Nationality',
   rank: 'Rank',
   currentCompany: 'Current organisation',
   headline: 'Role / headline',
@@ -540,6 +572,8 @@ function captureSubmittedActivationValues(formData: FormData): ProfileActionStat
     slug: text('slug'),
     usernameSuggestion: text('usernameSuggestion'),
     location: text('location'),
+    countryOfResidence: text('countryOfResidence'),
+    nationality: text('nationality'),
     rank: text('rank'),
     currentCompany: text('currentCompany'),
     currentCompanyId: text('currentCompanyId'),

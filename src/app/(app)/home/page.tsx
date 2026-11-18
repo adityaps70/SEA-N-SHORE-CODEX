@@ -15,6 +15,7 @@ import { getHomeRailData } from '@/features/profiles/home-rail-queries'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 import { RankSelectionPrompt } from '@/features/roles/components/rank-selection-prompt'
+import { HomeCountryPrompt } from '@/features/countries/components/profile-country-sections'
 
 export const metadata: Metadata = { title: 'Home' }
 
@@ -57,6 +58,10 @@ export default async function HomePage({
       verified={rail.verified}
     >
       <RankSelectionPrompt profile={profile} className="mb-4 max-md:mb-2" />
+      {/* Round GP: one dismissible "which country do you live in?" prompt; streams in, never blocks the feed. */}
+      <Suspense fallback={null}>
+        <HomeCountryPrompt profileId={profile.id} className="mb-4 max-md:mb-2" />
+      </Suspense>
       {/* On phones the trigger card is hidden: the Post tab's Create sheet opens the composer. */}
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} composeRequest={composeRequest} hideTriggerOnPhones />

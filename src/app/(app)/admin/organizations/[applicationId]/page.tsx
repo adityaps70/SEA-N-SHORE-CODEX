@@ -6,6 +6,7 @@ import { Building2, ExternalLink, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { UserWebsiteLink } from '@/components/ui/user-website-link'
 import { adminRepository } from '@/features/admin/repository'
+import { countryLabel } from '@/features/countries/admin-country-view'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { OrganizationReviewActions } from '@/features/admin/components/organization-review-actions'
@@ -97,6 +98,19 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
             ) : null}
             {has('accreditation') ? <Detail label="Accreditation" value={valueOrDash(details.accreditation)} /> : null}
             <Detail label="Office locations" value={review.company.officeLocations.length ? review.company.officeLocations.join(', ') : '—'} />
+            {/* Round GP: the organization's country; one without a country is flagged and can be set. */}
+            <Detail
+              label="Country"
+              value={(
+                <>
+                  {review.company.country ? countryLabel(review.company.country) : <span className="font-semibold text-amber-900">Country not set</span>}
+                  {' '}
+                  <Link href={`/admin/organizations/country/${review.company.id}`} className="text-sm font-semibold text-ocean-700 hover:underline">
+                    {review.company.country ? 'Change' : 'Set country'}
+                  </Link>
+                </>
+              )}
+            />
             <Detail label="Last updated" value={dateLabel(review.updatedAt)} />
           </dl>
 

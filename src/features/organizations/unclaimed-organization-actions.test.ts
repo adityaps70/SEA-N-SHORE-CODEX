@@ -32,6 +32,7 @@ const claim = {
   website: null,
   officialEmail: 'director@blueanchor.example',
   officeLocation: 'Kochi, India',
+  country: 'IN',
   description: 'Crew welfare and representation for seafarers in Kerala.',
   fleetSummary: null,
   vesselTypes: [],
