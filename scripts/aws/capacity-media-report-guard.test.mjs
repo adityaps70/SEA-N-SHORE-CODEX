@@ -671,6 +671,11 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     r.section_sessdb()
 text = buf.getvalue()
+# Owner (18 Nov): every sessions count leaves the load-test accounts out: each read of auth_sessions s is filtered.
+real = "not exists (select 1 from public.profiles lt where lt.id = s.profile_id and lt.is_load_test)"
+for statement in seen[:4]:
+    reads = statement.count("public.auth_sessions s ")
+    assert reads >= 1 and statement.count(real) == reads, statement
 assert "SESS_ADMINS count=2" in text, text
 assert "SESS_DAY 2026-11-13 started admin google n=3" in text and "SESS_DAY 2026-11-13 reuse_ended member password n=2" in text, text
 assert "SESS_END 2026-11-13 admin reuse ended=2 other_device_active_near=2 signed_in_again_30min=1 had_parallel_renewal=2" in text, text

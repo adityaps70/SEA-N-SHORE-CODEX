@@ -17,7 +17,10 @@ vi.mock('@/lib/db/client', () => ({
     db.transaction((query) => work({ query: async (text, values) => ({ rows: await query(text, values) }) })),
 }))
 
-const { createLoadTestAccounts, LOAD_TEST_ACCOUNT_COUNT, loadTestEmail } = await import('./accounts')
+const { createLoadTestAccounts, LOAD_TEST_FOLLOWS_PER_ACCOUNT, loadTestEmail } = await import('./accounts')
+// The real worker makes 1,000 (LOAD_TEST_ACCOUNT_COUNT, checked in accounts.test.ts); 60 here keeps every rule
+// (more accounts than each one's 49 follows) at a fraction of the time.
+const LOAD_TEST_ACCOUNT_COUNT = 60
 const { provisionProfileForCognitoPrincipal } = await import('@/features/auth/identity-repository')
 const { createOnboardingService } = await import('@/features/profiles/onboarding-service')
 const { createOnboardingRepositoryForClient } = await import('@/features/profiles/onboarding-repository')
@@ -63,17 +66,18 @@ function accountsDeps(): Parameters<typeof createLoadTestAccounts>[0] {
     },
     provisionProfile: (principal) => provisionProfileForCognitoPrincipal(principal),
     completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
+    accountCount: LOAD_TEST_ACCOUNT_COUNT,
     log: (line) => lines.push(line),
   }
 }
 
 describe('load-test accounts (Round ARCH)', () => {
-  it('creates 50 onboarded, flagged accounts that follow only each other, in one hidden community with one post', async () => {
+  it('creates the onboarded, flagged accounts, each following the next 49 test accounts only, in one hidden community with one post', async () => {
     const realRows = await db.query(`insert into public.profiles (id, full_name) values (gen_random_uuid(), 'Placeholder Real Member') returning id`)
     const realId = realRows[0]!.id as string
     await accounts().create()
     const counts = await accounts().counts()
-    expect(counts).toEqual({ profiles: LOAD_TEST_ACCOUNT_COUNT, communities: 1, follows: LOAD_TEST_ACCOUNT_COUNT * (LOAD_TEST_ACCOUNT_COUNT - 1), mixedFollows: 0, posts: 1 })
+    expect(counts).toEqual({ profiles: LOAD_TEST_ACCOUNT_COUNT, communities: 1, follows: LOAD_TEST_ACCOUNT_COUNT * LOAD_TEST_FOLLOWS_PER_ACCOUNT, mixedFollows: 0, posts: 1 })
     const onboarded = await db.query(`select count(*)::int as n from public.profiles where is_load_test and onboarding_completed_at is not null`)
     expect(onboarded[0]!.n).toBe(LOAD_TEST_ACCOUNT_COUNT)
     const group = await db.query(`select visibility from public.community_groups where is_load_test`)

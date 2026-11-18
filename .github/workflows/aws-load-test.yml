@@ -22,8 +22,12 @@ name: AWS Load Test
 # minutes, and every session is signed out afterwards. The sessions task hands the sealed sessions over as one
 # S3 object (infra/aws/app/load-test-handoff.tf): the sessions job reads it, deletes it and proves the prefix is
 # empty, and the report job deletes it again whatever happened.
+# Owner (18 Nov), started by the arm's own merge (a push) once the owner approves staging-apply, any time of day:
+# "smoke-signed-in-once <sha>" (10 members for 2 minutes) and "run-signed-in-day-once <sha>" (25 -> 50 -> 100 -> 250 ->
+# 500 -> 750 -> 1,000 members, 5 minutes each), both on the 1,000 test accounts at about 32 requests a minute per
+# member. The nightly start never starts either (it is disabled, and it only knows run-once and run-signed-in-once).
 # "sessions-only-once <sha>" (owner-merged arm; the merge itself starts it, as it sends no traffic to the site):
-# the hand-off proof. It creates the 50 accounts, hands their sessions off, checks the count, opens each shard's
+# the hand-off proof. It creates the test accounts, hands their sessions off, checks the count, opens each shard's
 # part with no k6 at all, then signs out and deletes everything and reports what is left (0).
 # "plan" sends no traffic to the site: it runs the contract test and the whole pipeline against a local
 # server on the runner.
@@ -50,9 +54,20 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  LOAD_TEST_SHARDS: "8"
+  # 16 runners: at the daytime run's 32,000 requests a minute each sends 2,000, half the WAF's ceiling per address
+  # (20,000 per 5 minutes).
+  LOAD_TEST_SHARDS: "16"
+  LOAD_TEST_ACCOUNTS: "1000"
+  # The signed-out run and the nightly signed-in run (run-once, run-signed-in-once).
   LOAD_TEST_TOTAL_RPM: "100,300,600,1000,2000,3000"
   LOAD_TEST_STEP_SECONDS: "300"
+  # Owner (18 Nov): members at once 25, 50, 100, 250, 500, 750, 1,000, at 32 requests a minute each (14-16 Nov: 10,641
+  # signed-in requests in 255 member-minutes, less the 2,452 course-page requests #519 removed).
+  LOAD_TEST_DAY_RPM: "800,1600,3200,8000,16000,24000,32000"
+  LOAD_TEST_DAY_STEP_SECONDS: "300"
+  # The smoke run: 10 members for 2 minutes, on exactly the same pipeline.
+  LOAD_TEST_SMOKE_RPM: "320"
+  LOAD_TEST_SMOKE_STEP_SECONDS: "120"
   LOAD_TEST_BASE_URL: https://seanshore.in
   K6_DEB_URL: https://dl.k6.io/deb/dists/stable/main/binary-amd64/k6-v2.2.0-amd64.deb
   K6_DEB_SHA256: 58b6468440332f882dba76efa87fb3b6d6eea0e3bd96090e3a5d5159f35832e0
@@ -230,7 +245,7 @@ jobs:
     needs:
       - apply-gate
       - apply-approval
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.apply-gate.outputs.action == 'sessions-only-once')) }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(fromJSON('["sessions-only-once","smoke-signed-in-once","run-signed-in-day-once"]'), needs.apply-gate.outputs.action))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -238,6 +253,8 @@ jobs:
       course_path: ${{ steps.pages.outputs.course_path }}
       started_at: ${{ steps.pages.outputs.started_at }}
       mix: ${{ steps.mix.outputs.mix }}
+      rpm: ${{ steps.mix.outputs.rpm }}
+      step_seconds: ${{ steps.mix.outputs.step_seconds }}
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -253,26 +270,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # start=nightly: only the nightly start, 01:00-01:45 IST. start=merge: the arm's own merge, once.
           case "$(cut -d' ' -f1 < scripts/aws/load-test-action.txt)" in
-            run-once) echo "mix=signed-out" >> "$GITHUB_OUTPUT" ;;
-            run-signed-in-once) echo "mix=signed-in" >> "$GITHUB_OUTPUT" ;;
-            sessions-only-once) echo "mix=sessions-only" >> "$GITHUB_OUTPUT" ;;
+            run-once) MIX=signed-out RPM="$LOAD_TEST_TOTAL_RPM" STEP="$LOAD_TEST_STEP_SECONDS" START=nightly ;;
+            run-signed-in-once) MIX=signed-in RPM="$LOAD_TEST_TOTAL_RPM" STEP="$LOAD_TEST_STEP_SECONDS" START=nightly ;;
+            sessions-only-once) MIX=sessions-only RPM="$LOAD_TEST_TOTAL_RPM" STEP="$LOAD_TEST_STEP_SECONDS" START=merge ;;
+            smoke-signed-in-once) MIX=signed-in RPM="$LOAD_TEST_SMOKE_RPM" STEP="$LOAD_TEST_SMOKE_STEP_SECONDS" START=merge ;;
+            run-signed-in-day-once) MIX=signed-in RPM="$LOAD_TEST_DAY_RPM" STEP="$LOAD_TEST_DAY_STEP_SECONDS" START=merge ;;
             *) echo "Not armed for a run." >&2; exit 1 ;;
           esac
+          { echo "mix=$MIX"; echo "rpm=$RPM"; echo "step_seconds=$STEP"; echo "start=$START"; } >> "$GITHUB_OUTPUT"
+          echo "LOAD_TEST_PLAN mix=$MIX start=$START target_rpm=$RPM step_seconds=$STEP shards=$LOAD_TEST_SHARDS"
 
       - name: Require the nightly start inside 01:00-01:45 IST, once per arm
         env:
           GH_TOKEN: ${{ github.token }}
           TRIGGERING_ACTOR: ${{ github.triggering_actor }}
           MIX: ${{ steps.mix.outputs.mix }}
+          START: ${{ steps.mix.outputs.start }}
         shell: bash
         run: |
           set -euo pipefail
-          # The sessions-only proof: only from its arm's merge (a push), never re-run, and no traffic to the site.
-          if [[ "$MIX" == sessions-only || "$GITHUB_EVENT_NAME" == push ]]; then
-            [[ "$MIX" == sessions-only && "$GITHUB_EVENT_NAME" == push ]] || { echo "Only the sessions-only proof starts from its arm's merge; traffic needs the nightly start." >&2; exit 1; }
-            [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || { echo "The sessions-only proof runs once per arm; re-arm for another." >&2; exit 1; }
-            echo "LOAD_TEST_SESSIONS_ONLY_NO_TRAFFIC"
+          # The sessions-only proof, the smoke run and the daytime run: only from their arm's merge (a push, after the
+          # owner approved staging-apply), never re-run.
+          if [[ "$START" == merge || "$GITHUB_EVENT_NAME" == push ]]; then
+            [[ "$START" == merge && "$GITHUB_EVENT_NAME" == push ]] || { echo "This arm starts only from its own merge; the nightly arms need the nightly start." >&2; exit 1; }
+            [[ "$GITHUB_RUN_ATTEMPT" == 1 ]] || { echo "This arm runs once; re-arm for another." >&2; exit 1; }
+            if [[ "$MIX" == sessions-only ]]; then echo "LOAD_TEST_SESSIONS_ONLY_NO_TRAFFIC"; else echo "LOAD_TEST_STARTED_BY_ARM_MERGE"; fi
             exit 0
           fi
           [[ "$TRIGGERING_ACTOR" == "github-actions[bot]" ]] || { echo "Only the nightly start may begin the load test (started by $TRIGGERING_ACTOR)." >&2; exit 1; }
@@ -322,7 +346,7 @@ jobs:
     if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' && (needs.window.outputs.mix == 'signed-in' || needs.window.outputs.mix == 'sessions-only') }}
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       AWS_REGION: ap-south-1
       LOAD_TEST_HANDOFF_BUCKET: sea-n-shore-staging-310356785722-load-test-handoff
@@ -348,7 +372,7 @@ jobs:
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
           WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-          # The 50 accounts are created for this run and deleted after it (report job), with counts reported.
+          # The test accounts are created for this run and deleted after it (report job), with counts reported.
           # On failure, show the task's own count and failure lines (never a key, name or address), then stop.
           CREATED="$(bash scripts/aws/load-test-host-command.sh create-once "$GITHUB_SHA" "$GITHUB_RUN_ID")" || { grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${CREATED:-}" >&2 || true; exit 1; }
           grep -E '^LOAD_TEST_ACCOUNTS_(CREATED|CREATE_ONCE_VERIFIED)' <<<"$CREATED"
@@ -356,7 +380,7 @@ jobs:
           PUBLIC_KEY="$(node scripts/load-test/sessions.mjs keypair "$WORK")"
           OUTPUT="$(bash scripts/aws/load-test-host-command.sh sessions "$GITHUB_SHA" "$GITHUB_RUN_ID" "$PUBLIC_KEY" "$LOAD_TEST_HANDOFF_OBJECT")" || { grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${OUTPUT:-}" >&2 || true; exit 1; }
           grep -q '^LOAD_TEST_SESSIONS_READY=true$' <<<"$OUTPUT" || { echo "The host did not prepare the sessions." >&2; exit 1; }
-          grep -E '^LOAD_TEST_SESSIONS_STORED count=50 bytes=[0-9]+$' <<<"$OUTPUT"
+          grep -E "^LOAD_TEST_SESSIONS_STORED count=$LOAD_TEST_ACCOUNTS bytes=[0-9]+\$" <<<"$OUTPUT"
           ACTIONS="$(sed -n 's/^LOAD_TEST_ACTIONS //p' <<<"$OUTPUT" | head -1)"
           # The run's one hand-off object: read it (it must carry the hand-off key), delete it, prove nothing is left.
           aws s3api get-object --bucket "$LOAD_TEST_HANDOFF_BUCKET" --key "$LOAD_TEST_HANDOFF_OBJECT" "$WORK/sealed" > "$WORK/object.json"
@@ -366,8 +390,8 @@ jobs:
           echo "LOAD_TEST_HANDOFF_OBJECTS_LEFT=$LEFT"
           [[ "$LEFT" == 0 ]] || { echo "The hand-off bucket still holds sessions objects." >&2; exit 1; }
           node scripts/load-test/sessions.mjs open "$WORK/private.pem" "$WORK/sealed" > "$WORK/sessions.json"
-          jq -e 'type == "array" and length == 50 and all(.[]; (.accessToken | type) == "string" and (.accessToken | length) > 0)' "$WORK/sessions.json" >/dev/null || { echo "The opened hand-off does not hold 50 sessions." >&2; exit 1; }
-          echo "LOAD_TEST_SESSIONS_OPENED count=50"
+          jq -e --argjson n "$LOAD_TEST_ACCOUNTS" 'type == "array" and length == $n and all(.[]; (.accessToken | type) == "string" and (.accessToken | length) > 0 and (.refreshToken | type) == "string")' "$WORK/sessions.json" >/dev/null || { echo "The opened hand-off does not hold every session." >&2; exit 1; }
+          echo "LOAD_TEST_SESSIONS_OPENED count=$LOAD_TEST_ACCOUNTS"
           # Each shard's part, sealed with the hand-off key, as a file: a job output or an environment value would be
           # printed in the public log.
           rm -rf /tmp/sealed-handoff && mkdir -m 700 /tmp/sealed-handoff
@@ -419,7 +443,7 @@ jobs:
     if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' && needs.window.outputs.mix != 'sessions-only' }}
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 50
+    timeout-minutes: 75
     permissions:
       id-token: write
       contents: read
@@ -428,6 +452,8 @@ jobs:
       AWS_REGION: ap-south-1
       LOAD_TEST_AURORA_CLUSTER: sea-n-shore-staging-aurora
       LOAD_TEST_AURORA_WRITER: sea-n-shore-staging-aurora-writer
+      LOAD_TEST_ECS_CLUSTER: sea-n-shore-staging
+      LOAD_TEST_ECS_SERVICE: sea-n-shore-staging-web
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -466,13 +492,16 @@ jobs:
               | jq -c "[.Datapoints | sort_by(.Timestamp) | .[] | $field]"
           }
           HANDOFF_DELETED=false
-          for minute in $(seq 1 45); do
+          for minute in $(seq 1 65); do
             sleep 60
             CPU="$(series AWS/RDS CPUUtilization "Name=DBClusterIdentifier,Value=$LOAD_TEST_AURORA_CLUSTER" "--statistics Maximum" .Maximum)"
             LOAD="$(series AWS/RDS DBLoad "Name=DBInstanceIdentifier,Value=$LOAD_TEST_AURORA_WRITER" "--statistics Average" .Average)"
             P95="$(series AWS/ApplicationELB TargetResponseTime "Name=LoadBalancer,Value=$ALB" "--extended-statistics p95" '.ExtendedStatistics.p95')"
             ACU="$(series AWS/RDS ServerlessDatabaseCapacity "Name=DBClusterIdentifier,Value=$LOAD_TEST_AURORA_CLUSTER" "--statistics Maximum" .Maximum)"
-            echo "LOAD_TEST_MONITOR minute=$minute aurora_cpu=$CPU db_load=$LOAD server_p95_s=$P95 aurora_acu_info=$ACU"
+            # Web tasks running/desired (read-only; information, never a stop): autoscaling allows up to 8.
+            ECS="$(aws ecs describe-services --region "$AWS_REGION" --cluster "$LOAD_TEST_ECS_CLUSTER" --services "$LOAD_TEST_ECS_SERVICE" --query 'services[0].[runningCount,desiredCount]' --output text 2>/dev/null | tr '\t' '/' || true)"
+            [[ "$ECS" =~ ^[0-9]+/[0-9]+$ ]] || ECS=unavailable
+            echo "LOAD_TEST_MONITOR minute=$minute aurora_cpu=$CPU db_load=$LOAD server_p95_s=$P95 aurora_acu_info=$ACU ecs_running_desired=$ECS"
             if REASON="$(node scripts/load-test/monitor-stop.mjs "$(jq -nc --argjson cpu "$CPU" --argjson dbLoad "$LOAD" --argjson p95 "$P95" '{cpu: $cpu, dbLoad: $dbLoad, p95: $p95}')")"; then
               echo "LOAD_TEST_STOP $REASON" | tee -a "$GITHUB_STEP_SUMMARY"
               echo "$REASON" > /tmp/monitor/stop-monitor.txt
@@ -509,16 +538,18 @@ jobs:
       - sessions
     if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.window.result == 'success' && (needs.sessions.result == 'success' || (needs.sessions.result == 'skipped' && needs.window.outputs.mix == 'signed-out')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: write
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     env:
       LOAD_TEST_SHARD: ${{ matrix.shard }}
+      LOAD_TEST_TOTAL_RPM: ${{ needs.window.outputs.rpm }}
+      LOAD_TEST_STEP_SECONDS: ${{ needs.window.outputs.step_seconds }}
       LOAD_TEST_JOB_PATH: ${{ needs.window.outputs.job_path }}
       LOAD_TEST_COURSE_PATH: ${{ needs.window.outputs.course_path }}
       LOAD_TEST_MIX: ${{ needs.window.outputs.mix }}
@@ -628,13 +659,15 @@ jobs:
     if: ${{ always() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && needs.apply-approval.result == 'success' && needs.window.result == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       id-token: write
       contents: read
       actions: write
     env:
       AWS_REGION: ap-south-1
+      LOAD_TEST_TOTAL_RPM: ${{ needs.window.outputs.rpm }}
+      LOAD_TEST_STEP_SECONDS: ${{ needs.window.outputs.step_seconds }}
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -699,7 +732,7 @@ jobs:
           node scripts/aws/capacity-media-report.cjs | tee /tmp/site-metrics.txt
           grep -E '^LOAD_TEST_(STEP_SERVER|P95_UNDER_1S_SERVER) ' /tmp/site-metrics.txt | tee -a "$GITHUB_STEP_SUMMARY" || true
 
-      # The sessions-only proof: every shard opened its part, and the parts add up to the 50 sessions.
+      # The sessions-only proof: every shard opened its part, and the parts add up to every account's session.
       - name: Sessions-only proof (counts only)
         if: needs.window.outputs.mix == 'sessions-only'
         shell: bash
@@ -709,7 +742,7 @@ jobs:
           SUM=0
           for file in "${COUNTS[@]}"; do VALUE="$(tr -d '[:space:]' < "$file")"; [[ "$VALUE" =~ ^[0-9]+$ ]]; SUM=$((SUM + VALUE)); done
           echo "LOAD_TEST_HANDOFF_SHARDS opened=${#COUNTS[@]} of=$LOAD_TEST_SHARDS sessions=$SUM" | tee -a "$GITHUB_STEP_SUMMARY"
-          [[ "${#COUNTS[@]}" == "$LOAD_TEST_SHARDS" && "$SUM" == 50 ]] || { echo "The shards did not open all 50 sessions." >&2; exit 1; }
+          [[ "${#COUNTS[@]}" == "$LOAD_TEST_SHARDS" && "$SUM" == "$LOAD_TEST_ACCOUNTS" ]] || { echo "The shards did not open every session." >&2; exit 1; }
           echo "LOAD_TEST_HANDOFF_PROOF_VERIFIED=true"
 
       # Signed-in mix and the sessions-only proof: every test account's sessions end now (Cognito global sign-out),

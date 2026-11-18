@@ -944,14 +944,20 @@ def session_statements(start, end):
         return "%s between %s - interval '%s' and %s + interval '%s'" % (col, at, before, at, after)
 
     admin = "s.profile_id in (select user_id from admins)"
+    # Owner (18 Nov): the load-test accounts are never counted (they exist only during a run, then are deleted).
+    real = "not exists (select 1 from public.profiles lt where lt.id = s.profile_id and lt.is_load_test)"
+
+    def inside_real(col):
+        return "%s and %s" % (inside(col), real)
+
     started_ended = (
         "with %s select kind, day, is_admin, detail, count(*)::int as n from ("
         "select 'started' as kind, %s as day, %s as is_admin, s.sign_in_method as detail from public.auth_sessions s where %s "
         "union all select 'signed_out', %s, %s, s.revoke_reason from public.auth_sessions s where %s "
         "union all select 'reuse_ended', %s, %s, s.sign_in_method from public.auth_sessions s where %s"
         ") x group by 1, 2, 3, 4 order by 2, 1, 3, 4"
-    ) % (SESSION_ADMINS_SQL, day("s.created_at"), admin, inside("s.created_at"), day("s.revoked_at"), admin,
-         inside("s.revoked_at"), day("s.reuse_detected_at"), admin, inside("s.reuse_detected_at"))
+    ) % (SESSION_ADMINS_SQL, day("s.created_at"), admin, inside_real("s.created_at"), day("s.revoked_at"), admin,
+         inside_real("s.revoked_at"), day("s.reuse_detected_at"), admin, inside_real("s.reuse_detected_at"))
     other_active = (
         "exists (select 1 from public.auth_sessions o where o.profile_id = e.profile_id and o.id <> e.id and (%s or %s or %s "
         "or exists (select 1 from minted m where m.origin_hash = o.token_origin_hash and %s)))"
@@ -971,7 +977,7 @@ def session_statements(start, end):
         "and o.created_at > e.end_at and o.created_at <= e.end_at + interval '30 minutes'))::int as signed_in_again_30min, "
         "count(*) filter (where %s)::int as had_parallel_renewal "
         "from e group by 1, 2, 3 order by 1, 2, 3"
-    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside("coalesce(s.reuse_detected_at, s.revoked_at)"),
+    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside_real("coalesce(s.reuse_detected_at, s.revoked_at)"),
          day("e.end_at"), other_active, parallel_before_end)
     # A sign-in started while an older one on the same kind of device (browser and system, the user agent summary)
     # never ended and was not used after it: the device lost its sign-in without our record of it ending.
@@ -991,7 +997,7 @@ def session_statements(start, end):
         "select %s as day, n.is_admin, count(*)::int as sign_ins, count(*) filter (where %s)::int as replaced_unended, "
         "count(*) filter (where %s and %s)::int as replaced_after_other_device "
         "from n group by 1, 2 order by 1, 2"
-    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside("s.created_at"), day("n.created_at"), replaced, replaced, other_before)
+    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside_real("s.created_at"), day("n.created_at"), replaced, replaced, other_before)
     renewals = (
         "with %s, m as (select t.token_hash, t.origin_hash, t.created_at, t.superseded_at from public.auth_refresh_tokens t "
         "where (t.superseded_at is null or t.superseded_at > t.created_at) and t.created_at >= %s - interval '1 minute' and t.created_at < %s) "
@@ -1002,7 +1008,7 @@ def session_statements(start, end):
         "count(*) filter (where m.superseded_at is null and exists (select 1 from m m2 where m2.origin_hash = m.origin_hash "
         "and m2.created_at > m.created_at))::int as never_used_again "
         "from m join public.auth_sessions s on s.token_origin_hash = m.origin_hash where %s group by 1, 2 order by 1, 2"
-    ) % (SESSION_ADMINS_SQL, a, b, day("m.created_at"), inside("m.created_at"))
+    ) % (SESSION_ADMINS_SQL, a, b, day("m.created_at"), inside_real("m.created_at"))
     step_up = (
         "select kind, day, count(*)::int as n from ("
         "select case when succeeded then 'step_up_ok' else 'step_up_failed' end as kind, %s as day from public.admin_step_up_attempts where %s "
