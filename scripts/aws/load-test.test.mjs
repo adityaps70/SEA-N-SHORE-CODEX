@@ -302,7 +302,7 @@ test('public repository: no sealed session, k6 log or relative date in the run; 
   assert.match(remover, /\[\[ "\$LEFT" == 0 \]\]$/m)
   assert.equal((remover.match(/-X DELETE/g) ?? []).length, 1)
   // k6's own log and summary (they name request URLs) stay on the runner: only their counts are printed.
-  assert.match(load, /k6 run --quiet --no-summary --log-output=file=\/tmp\/k6\.log --out csv=\/tmp\/k6\.csv scripts\/load-test\/p3-load-test\.js &/)
+  assert.match(load, /k6 run --quiet --summary-mode=disabled --log-output=file=\/tmp\/k6\.log --out csv=\/tmp\/k6\.csv scripts\/load-test\/p3-load-test\.js &/)
   assert.match(load, /echo "LOAD_TEST_K6_LOG warnings=\$\(grep -c 'level=warning' \/tmp\/k6\.log/)
   assert.doesNotMatch(load, /cat \/tmp\/k6\.log|tee [^\n]*k6\.log/)
 })

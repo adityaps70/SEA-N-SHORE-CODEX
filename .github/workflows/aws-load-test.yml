@@ -576,7 +576,7 @@ jobs:
           set -euo pipefail
           # k6's own log and end-of-test summary stay off the public log (its warnings name request URLs, test
           # accounts' profile paths among them); only their counts are printed. The report job gives the numbers.
-          k6 run --quiet --no-summary --log-output=file=/tmp/k6.log --out csv=/tmp/k6.csv scripts/load-test/p3-load-test.js &
+          k6 run --quiet --summary-mode=disabled --log-output=file=/tmp/k6.log --out csv=/tmp/k6.csv scripts/load-test/p3-load-test.js &
           K6=$!
           node scripts/load-test/stop-watch.mjs watch /tmp/k6.csv "$K6" /tmp/stop.txt &
           wait "$K6" || echo "k6 exited with $?"
