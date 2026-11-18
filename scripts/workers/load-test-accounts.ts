@@ -22,7 +22,8 @@ import { actionIdsFromManifest, createLoadTestAccounts } from '../../src/feature
 const mode = process.env.LOAD_TEST_ACCOUNTS_MODE ?? 'plan'
 const poolId = process.env.AWS_COGNITO_USER_POOL_ID ?? ''
 const clientId = process.env.AWS_COGNITO_CLIENT_ID ?? ''
-const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION ?? 'ap-south-1' })
+// Adaptive retries back off when Cognito throttles (run 44328902760), on top of the worker's own spacing.
+const cognito = new CognitoIdentityProviderClient({ region: process.env.AWS_REGION ?? 'ap-south-1', retryMode: 'adaptive', maxAttempts: 8 })
 // The sessions hand-off (infra/aws/app/load-test-handoff.tf): one object per run under sessions/. No encryption
 // header: the bucket refuses one, and its default (the hand-off KMS key) applies. IfNoneMatch: never overwrite.
 const HANDOFF_BUCKET = 'sea-n-shore-staging-310356785722-load-test-handoff'
@@ -38,13 +39,25 @@ const accounts = createLoadTestAccounts({
   transaction: (work) => withTransaction((client) => work(async (text, values) => (await client.query(text, values)).rows as Array<Record<string, unknown>>)),
   cognito: {
     // ListUsers, not AdminGetUser: the web task role may list users but not get one (the role's Cognito actions are
-    // pinned by scripts/aws/account-security-infra.test.mjs). The addresses are reserved .invalid ones, so an exact
-    // email filter can only match the test account itself.
-    async findUserSub(email) {
-      const listed = await cognito.send(new ListUsersCommand({ UserPoolId: poolId, Filter: `email = "${email}"`, Limit: 2 }))
-      const users = listed.Users ?? []
-      if (users.length > 1) throw new Error('load_test_user_not_unique')
-      return users[0]?.Attributes?.find((attribute) => attribute.Name === 'sub')?.Value ?? null
+    // pinned by scripts/aws/account-security-infra.test.mjs). One paged listing by email prefix (60 a page, about 17
+    // pages for 1,000) instead of a lookup per account, which hit Cognito's request rate in run 44328902760. Pages are
+    // spaced; only the reserved .invalid test addresses are used from it (accounts.ts).
+    async listLoadTestUsers() {
+      const users = new Map<string, string>()
+      let token: string | undefined
+      do {
+        const page = await cognito.send(new ListUsersCommand({ UserPoolId: poolId, Filter: 'email ^= "loadtest-"', Limit: 60, PaginationToken: token }))
+        for (const user of page.Users ?? []) {
+          const email = user.Attributes?.find((attribute) => attribute.Name === 'email')?.Value?.toLowerCase()
+          const sub = user.Attributes?.find((attribute) => attribute.Name === 'sub')?.Value
+          if (!email || !sub) continue
+          if (users.has(email)) throw new Error('load_test_user_not_unique')
+          users.set(email, sub)
+        }
+        token = page.PaginationToken
+        if (token) await new Promise((resolve) => setTimeout(resolve, 200))
+      } while (token)
+      return users
     },
     async createUser(email, name) {
       const created = await cognito.send(new AdminCreateUserCommand({

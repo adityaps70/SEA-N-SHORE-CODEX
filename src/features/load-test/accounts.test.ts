@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  isLoadTestEmail, loadTestActivation, loadTestEmail, mapLimit,
-  LOAD_TEST_ACCOUNT_CONCURRENCY, LOAD_TEST_ACCOUNT_COUNT, LOAD_TEST_FOLLOWS_PER_ACCOUNT,
+  createLoadTestAccounts, createRateLimiter, isLoadTestEmail, loadTestActivation, loadTestEmail, mapLimit,
+  LOAD_TEST_ACCOUNT_CONCURRENCY, LOAD_TEST_ACCOUNT_COUNT, LOAD_TEST_COGNITO_CALLS_PER_SECOND, LOAD_TEST_FOLLOWS_PER_ACCOUNT,
 } from './accounts'
 
 describe('load-test accounts at 1,000 (owner, 18 Nov)', () => {
@@ -39,4 +39,54 @@ describe('load-test accounts at 1,000 (owner, 18 Nov)', () => {
     await expect(mapLimit([1, 2, 3], 2, async (i) => { if (i === 2) throw new Error('boom'); return i })).rejects.toThrow('boom')
     expect(await mapLimit([], 4, async () => 1)).toEqual([])
   })
+
+  it('spaces Cognito calls to at most 8 a second, in order', async () => {
+    expect(LOAD_TEST_COGNITO_CALLS_PER_SECOND).toBe(8)
+    // Five calls asked for at once (the clock stands still): each waits one more gap than the one before it.
+    const waits: number[] = []
+    const limited = createRateLimiter(8, () => 0, async (ms) => { waits.push(ms) })
+    expect(await Promise.all(Array.from({ length: 5 }, (_, i) => limited(async () => i)))).toEqual([0, 1, 2, 3, 4])
+    expect(waits).toEqual([125, 250, 375, 500])
+    // Once time has passed the schedule, a call goes straight through.
+    let clock = 0
+    const later = createRateLimiter(8, () => clock, async (ms) => { waits.push(ms) })
+    await later(async () => 1)
+    clock = 1000
+    waits.length = 0
+    await later(async () => 2)
+    expect(waits).toEqual([])
+    expect(() => createRateLimiter(0)).toThrow('rate_invalid')
+  })
+
+  it('lists the test users once (paged) instead of looking each one up, and signs out or deletes only those present', async () => {
+    const calls: string[] = []
+    const present = new Map([[loadTestEmail(2), 'sub-2'], [loadTestEmail(5), 'sub-5'], ['loadtest-0003@example.com', 'not-ours']])
+    const deps = {
+      query: async () => [{ profiles: 0, communities: 0, follows: 0, mixed_follows: 0, posts: 0 }],
+      transaction: async () => { throw new Error('no transaction expected') },
+      cognito: {
+        listLoadTestUsers: async () => { calls.push('list'); return new Map(present) },
+        createUser: async () => { throw new Error('no create expected') },
+        setPassword: async () => undefined,
+        signIn: async () => ({ accessToken: 'a', refreshToken: 'r' }),
+        deleteUser: async (email: string) => { calls.push(`delete ${email}`) },
+        globalSignOut: async (email: string) => { calls.push(`signout ${email}`) },
+      },
+      provisionProfile: async () => 'x',
+      completeActivation: async () => undefined,
+      accountCount: 10,
+      cognitoCallsPerSecond: 100000,
+      log: (line: string) => { calls.push(line) },
+    }
+    const accounts = createLoadTestAccounts(deps as never)
+    await accounts.signOut()
+    expect(calls.filter((c) => c === 'list')).toHaveLength(1)
+    expect(calls.filter((c) => c.startsWith('signout')).sort()).toEqual([`signout ${loadTestEmail(2)}`, `signout ${loadTestEmail(5)}`])
+    expect(calls).toContain('LOAD_TEST_SIGNED_OUT count=2')
+    calls.length = 0
+    await accounts.plan()
+    expect(calls.filter((c) => c === 'list')).toHaveLength(1)
+    expect(calls).toContain('LOAD_TEST_ACCOUNTS_COGNITO_USERS count=2 of=10')
+  })
 })
+

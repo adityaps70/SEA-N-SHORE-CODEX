@@ -219,6 +219,11 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   // Accounts exist only for the run: created before the sessions, deleted (with counts) after the sign-out.
   assert.match(sessions, /load-test-host-command\.sh create-once[\s\S]*sessions\.mjs keypair/)
   assert.match(jobOf('report'), /sign-out[\s\S]*load-test-host-command\.sh delete-once[\s\S]*DELETE_ONCE_VERIFIED=true/)
+  // Run 44328902760: a failed sign-out must not skip the deletion, and a failed task shows its own failure line.
+  assert.match(jobOf('report'), /OUTPUT="\$\(bash scripts\/aws\/load-test-host-command\.sh sign-out "\$GITHUB_SHA" "\$GITHUB_RUN_ID"\)" \|\| FAILED=1\n/)
+  assert.match(jobOf('report'), /DELETED="\$\(bash scripts\/aws\/load-test-host-command\.sh delete-once "\$GITHUB_SHA" "\$GITHUB_RUN_ID"\)" \|\| FAILED=1\n/)
+  assert.match(jobOf('report'), /grep -E '\^LOAD_TEST_ACCOUNTS_' <<<"\$\{OUTPUT:-\}" >&2 \|\| true/)
+  assert.match(jobOf('report'), /exit "\$FAILED"/)
   // Run 42479008102: when the run stops before any traffic, the report step fails on missing shards; the sign-out and
   // deletion must still get AWS credentials, so both credential steps run whatever happened above.
   const report = jobOf('report')

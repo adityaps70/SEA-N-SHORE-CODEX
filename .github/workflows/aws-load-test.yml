@@ -751,13 +751,22 @@ jobs:
         if: always() && (needs.window.outputs.mix == 'signed-in' || needs.window.outputs.mix == 'sessions-only')
         shell: bash
         run: |
-          set -euo pipefail
-          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sign-out "$GITHUB_SHA" "$GITHUB_RUN_ID")"
-          grep -q '^LOAD_TEST_SIGNED_OUT=true$' <<<"$OUTPUT"
-          echo "LOAD_TEST_SIGNED_OUT=true"
-          DELETED="$(bash scripts/aws/load-test-host-command.sh delete-once "$GITHUB_SHA" "$GITHUB_RUN_ID")"
-          grep -E '^LOAD_TEST_ACCOUNTS_(DELETED|AFTER_DELETE|DELETE_ONCE_VERIFIED)' <<<"$DELETED" | tee -a "$GITHUB_STEP_SUMMARY"
-          grep -q '^LOAD_TEST_ACCOUNTS_DELETE_ONCE_VERIFIED=true$' <<<"$DELETED"
+          set -uo pipefail
+          # Run 44328902760: the sign-out task failed and the deletion never ran. Now the accounts are deleted whatever
+          # the sign-out did (deleting a user ends its sessions too), and a failed task's own count and failure lines are
+          # shown (never a key, name or address). The step still fails unless both verified.
+          FAILED=0
+          OUTPUT="$(bash scripts/aws/load-test-host-command.sh sign-out "$GITHUB_SHA" "$GITHUB_RUN_ID")" || FAILED=1
+          if grep -q '^LOAD_TEST_SIGNED_OUT=true$' <<<"${OUTPUT:-}"; then
+            echo "LOAD_TEST_SIGNED_OUT=true"
+          else
+            FAILED=1
+            grep -E '^LOAD_TEST_ACCOUNTS_' <<<"${OUTPUT:-}" >&2 || true
+          fi
+          DELETED="$(bash scripts/aws/load-test-host-command.sh delete-once "$GITHUB_SHA" "$GITHUB_RUN_ID")" || FAILED=1
+          grep -E '^LOAD_TEST_ACCOUNTS_(DELETED|AFTER_DELETE|DELETE_ONCE_VERIFIED|COGNITO_USERS|FAILED)' <<<"${DELETED:-}" | tee -a "$GITHUB_STEP_SUMMARY" || true
+          grep -q '^LOAD_TEST_ACCOUNTS_DELETE_ONCE_VERIFIED=true$' <<<"${DELETED:-}" || FAILED=1
+          exit "$FAILED"
 
       # Whatever happened above: the run's hand-off object is gone and the sessions/ prefix is empty.
       - name: Delete the hand-off object and count what is left

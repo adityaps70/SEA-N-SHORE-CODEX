@@ -25,8 +25,14 @@ import { onboardingActivationSchema, type OnboardingActivationInput } from '@/fe
 export const LOAD_TEST_ACCOUNT_COUNT = 1000
 /** How many of the next accounts each one follows (each of the first 50 followed the other 49). */
 export const LOAD_TEST_FOLLOWS_PER_ACCOUNT = 49
-/** At most this many Cognito or database calls at once (ListUsers allows about 30 a second). */
+/** At most this many Cognito or database calls at once. */
 export const LOAD_TEST_ACCOUNT_CONCURRENCY = 4
+/**
+ * And at most this many Cognito calls a second, whatever the concurrency. Run 44328902760 (18 Nov): 4 unthrottled
+ * workers hit Cognito's request rate ("Too many requests") on the sign-out pass; the test accounts are now listed in
+ * pages (about 17 calls for 1,000) instead of looked up one by one, and every call is spaced.
+ */
+export const LOAD_TEST_COGNITO_CALLS_PER_SECOND = 8
 export const LOAD_TEST_EMAIL_DOMAIN = 'loadtest.seanshore.invalid'
 export const LOAD_TEST_COMMUNITY_SLUG = 'sns-load-test-hidden'
 const EMAIL_PATTERN = /^loadtest-(\d{4})@loadtest\.seanshore\.invalid$/
@@ -39,6 +45,20 @@ export function loadTestNumber(index: number) {
 
 export function loadTestEmail(index: number) {
   return `loadtest-${loadTestNumber(index)}@${LOAD_TEST_EMAIL_DOMAIN}`
+}
+
+/** Spaces calls to at most `perSecond` a second (one every 1000/perSecond ms), in the order they ask. */
+export function createRateLimiter(perSecond: number, now: () => number = Date.now, sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))) {
+  if (!(perSecond > 0)) throw new Error('rate_invalid')
+  const gap = 1000 / perSecond
+  let next = 0
+  return async function limited<T>(call: () => Promise<T>): Promise<T> {
+    const at = Math.max(now(), next)
+    next = at + gap
+    const wait = at - now()
+    if (wait > 0) await sleep(wait)
+    return call()
+  }
 }
 
 /** Runs `work` over `items`, at most `limit` at a time, and returns the results in the items' order. */
@@ -98,7 +118,11 @@ export type LoadTestAccountDeps = {
   query: Query
   transaction: <T>(work: (query: Query) => Promise<T>) => Promise<T>
   cognito: {
-    findUserSub(email: string): Promise<string | null>
+    /**
+     * Every Cognito user whose email starts with "loadtest-" (paged ListUsers), as email -> sub. Only the reserved
+     * test addresses (isLoadTestEmail) are used from it.
+     */
+    listLoadTestUsers(): Promise<Map<string, string>>
     createUser(email: string, name: string): Promise<string>
     setPassword(email: string, password: string): Promise<void>
     signIn(email: string, password: string): Promise<{ accessToken: string; refreshToken: string | null }>
@@ -117,6 +141,8 @@ export type LoadTestAccountDeps = {
   storeSealed?: (sealed: string) => Promise<void>
   /** Tests only: fewer accounts than LOAD_TEST_ACCOUNT_COUNT (the real worker never sets it). */
   accountCount?: number
+  /** Tests only: a faster Cognito rate than LOAD_TEST_COGNITO_CALLS_PER_SECOND. */
+  cognitoCallsPerSecond?: number
   log(line: string): void
 }
 
@@ -141,9 +167,23 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
   const accountCount = deps.accountCount ?? LOAD_TEST_ACCOUNT_COUNT
   if (!Number.isInteger(accountCount) || accountCount < 2 || accountCount > LOAD_TEST_ACCOUNT_COUNT) throw new Error('load_test_account_count_invalid')
   const indexes = Array.from({ length: accountCount }, (_, i) => i + 1)
-  /** Whether each index's address has a Cognito user, LOAD_TEST_ACCOUNT_CONCURRENCY lookups at a time. */
-  const cognitoUserCount = async () =>
-    (await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => Boolean(await deps.cognito.findUserSub(loadTestEmail(index))))).filter(Boolean).length
+  const limited = createRateLimiter(deps.cognitoCallsPerSecond ?? LOAD_TEST_COGNITO_CALLS_PER_SECOND)
+  // Every Cognito call goes through the limiter; the paged listing counts as one call per page in the worker.
+  const cognito = {
+    listLoadTestUsers: () => limited(() => deps.cognito.listLoadTestUsers()),
+    createUser: (email: string, name: string) => limited(() => deps.cognito.createUser(email, name)),
+    setPassword: (email: string, password: string) => limited(() => deps.cognito.setPassword(email, password)),
+    signIn: (email: string, password: string) => limited(() => deps.cognito.signIn(email, password)),
+    deleteUser: (email: string) => limited(() => deps.cognito.deleteUser(email)),
+    globalSignOut: (email: string) => limited(() => deps.cognito.globalSignOut(email)),
+  }
+  /** This run's test addresses that have a Cognito user (email -> sub), from one paged listing. */
+  async function existingTestUsers() {
+    const listed = await cognito.listLoadTestUsers()
+    const wanted = new Set(indexes.map((index) => loadTestEmail(index)))
+    return new Map([...listed].filter(([email]) => wanted.has(email)))
+  }
+  const cognitoUserCount = async () => (await existingTestUsers()).size
 
   async function flaggedProfiles() {
     const rows = await deps.query(
@@ -184,11 +224,12 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
   }
 
   async function create() {
+    const existing = await existingTestUsers()
     // In index order: account 1 owns the community, and each follows the next LOAD_TEST_FOLLOWS_PER_ACCOUNT.
     const profileIds = await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
       const email = loadTestEmail(index)
       const activation = loadTestActivation(index)
-      const sub = (await deps.cognito.findUserSub(email)) ?? (await deps.cognito.createUser(email, activation.fullName))
+      const sub = existing.get(email) ?? (await cognito.createUser(email, activation.fullName))
       const profileId = await deps.provisionProfile({ sub, email, emailVerified: true, name: activation.fullName })
       const [profile] = await deps.query(
         `select p.is_load_test, p.onboarding_completed_at is not null as onboarded, ia.email
@@ -253,12 +294,9 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
       })
     })
     const deleted = profiles.length
-    const cognitoDeleted = (await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
-      const email = loadTestEmail(index)
-      if (!(await deps.cognito.findUserSub(email))) return false
-      await deps.cognito.deleteUser(email)
-      return true
-    })).filter(Boolean).length
+    const present = [...(await existingTestUsers()).keys()]
+    await mapLimit(present, LOAD_TEST_ACCOUNT_CONCURRENCY, (email) => cognito.deleteUser(email))
+    const cognitoDeleted = present.length
     // Cognito is checked again, address by address: the clean-up only passes when no test user is left there either.
     const cognitoLeft = await cognitoUserCount()
     deps.log(`LOAD_TEST_ACCOUNTS_DELETED profiles=${deleted} cognito_users=${cognitoDeleted} cognito_users_left=${cognitoLeft}`)
@@ -275,8 +313,8 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
     const result: LoadTestSession[] = await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
       const email = loadTestEmail(index)
       const password = randomPassword()
-      await deps.cognito.setPassword(email, password)
-      const tokens = await deps.cognito.signIn(email, password)
+      await cognito.setPassword(email, password)
+      const tokens = await cognito.signIn(email, password)
       return { index, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
     })
     deps.log(`LOAD_TEST_SESSIONS count=${result.length}`)
@@ -289,12 +327,9 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
   }
 
   async function signOut() {
-    const count = (await mapLimit(indexes, LOAD_TEST_ACCOUNT_CONCURRENCY, async (index) => {
-      const email = loadTestEmail(index)
-      if (!(await deps.cognito.findUserSub(email))) return false
-      await deps.cognito.globalSignOut(email)
-      return true
-    })).filter(Boolean).length
+    const present = [...(await existingTestUsers()).keys()]
+    await mapLimit(present, LOAD_TEST_ACCOUNT_CONCURRENCY, (email) => cognito.globalSignOut(email))
+    const count = present.length
     deps.log(`LOAD_TEST_SIGNED_OUT count=${count}`)
     deps.log('LOAD_TEST_SIGN_OUT_VERIFIED=true')
   }
