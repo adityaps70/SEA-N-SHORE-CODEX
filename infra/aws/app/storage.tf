@@ -96,6 +96,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "migration_backup" {
     }
   }
 
+  # Private reports (owner-approved 17 Nov): every object under private-reports/ (domain-move/, admin-filters/, ...) is
+  # deleted 14 days after it is written, and the versions S3 keeps after that (the bucket is versioned) 1 day later.
+  # Applied by scripts/aws/private-reports-lifecycle.sh; nothing else in this bucket is touched.
+  rule {
+    id     = "expire-private-reports-after-14-days"
+    status = "Enabled"
+
+    filter {
+      prefix = "private-reports/"
+    }
+
+    expiration {
+      days = 14
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+
   depends_on = [
     aws_s3_bucket_versioning.app
   ]
