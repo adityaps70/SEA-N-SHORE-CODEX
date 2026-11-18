@@ -110,7 +110,8 @@ describe('ResumableLessonMedia', () => {
     expect(media.currentTime).toBe(42)
   })
 
-  it('checkpoints approximately every fifteen seconds instead of on every time update', async () => {
+  // Owner (17 Nov): a checkpoint every 60 seconds of playback (it was 15).
+  it('checkpoints approximately every sixty seconds instead of on every time update', async () => {
     const { container } = render(
       <ResumableLessonMedia
         kind="video"
@@ -122,16 +123,16 @@ describe('ResumableLessonMedia', () => {
     )
 
     const media = container.querySelector('video')!
-    media.currentTime = 139
+    media.currentTime = 184
     fireEvent.timeUpdate(media)
     expect(mocks.saveLearningPlaybackPosition).not.toHaveBeenCalled()
 
-    media.currentTime = 140
+    media.currentTime = 185
     fireEvent.timeUpdate(media)
 
     await waitFor(() => {
       expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledTimes(1)
-      expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 140)
+      expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 185)
     })
   })
 
@@ -176,7 +177,7 @@ describe('ResumableLessonMedia', () => {
       .mockImplementationOnce(() => new Promise((resolve) => {
         resolveFirst = resolve
       }))
-      .mockResolvedValueOnce({ ok: true, lessonId, lastPositionSeconds: 155 })
+      .mockResolvedValueOnce({ ok: true, lessonId, lastPositionSeconds: 245 })
 
     const { container } = render(
       <ResumableLessonMedia
@@ -189,19 +190,73 @@ describe('ResumableLessonMedia', () => {
     )
 
     const media = container.querySelector('video')!
-    media.currentTime = 140
+    media.currentTime = 185
     fireEvent.timeUpdate(media)
     await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledTimes(1))
 
-    media.currentTime = 155
+    media.currentTime = 245
     fireEvent.timeUpdate(media)
     expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledTimes(1)
 
-    resolveFirst?.({ ok: true, lessonId, lastPositionSeconds: 140 })
+    resolveFirst?.({ ok: true, lessonId, lastPositionSeconds: 185 })
 
     await waitFor(() => {
       expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledTimes(2)
-      expect(mocks.saveLearningPlaybackPosition).toHaveBeenLastCalledWith(slug, lessonId, 155)
+      expect(mocks.saveLearningPlaybackPosition).toHaveBeenLastCalledWith(slug, lessonId, 245)
+    })
+  })
+
+  // Owner (17 Nov): the resume point is saved when the learner seeks, hides the tab or closes the page, since the next
+  // 60-second checkpoint may never come.
+  describe('saves the resume point on seek, tab hide and close', () => {
+    let visibility: DocumentVisibilityState = 'visible'
+    beforeEach(() => {
+      visibility = 'visible'
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility })
+    })
+    afterEach(() => {
+      visibility = 'visible'
+    })
+    function playing(at: number) {
+      const { container } = render(<ResumableLessonMedia kind="video" src={src} slug={slug} lessonId={lessonId} initialPositionSeconds={125} />)
+      const media = container.querySelector('video')!
+      Object.defineProperty(media, 'duration', { configurable: true, value: 780 })
+      media.currentTime = at
+      fireEvent.timeUpdate(media)
+      return media
+    }
+
+    it('saves when the tab is hidden, between checkpoints', async () => {
+      playing(150)
+      expect(mocks.saveLearningPlaybackPosition).not.toHaveBeenCalled()
+      visibility = 'hidden'
+      fireEvent(document, new Event('visibilitychange'))
+      await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 150, 780, expect.any(Number)))
+    })
+
+    it('saves when the page is closed (pagehide), between checkpoints', async () => {
+      playing(163.4)
+      expect(mocks.saveLearningPlaybackPosition).not.toHaveBeenCalled()
+      fireEvent(window, new Event('pagehide'))
+      await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 163, 780, expect.any(Number)))
+    })
+
+    it('saves a seek at once, and does not resend a position already saved', async () => {
+      mocks.saveLearningPlaybackPosition.mockResolvedValueOnce({ ok: true, lessonId, lastPositionSeconds: 90 })
+      const media = playing(130)
+      media.currentTime = 90
+      fireEvent.seeked(media)
+      await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 90, 780, expect.any(Number)))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      mocks.saveLearningPlaybackPosition.mockClear()
+      fireEvent(window, new Event('pagehide'))
+      expect(mocks.saveLearningPlaybackPosition).not.toHaveBeenCalled()
+    })
+
+    it('a visible tab (shown again) does not save', () => {
+      playing(150)
+      fireEvent(document, new Event('visibilitychange'))
+      expect(mocks.saveLearningPlaybackPosition).not.toHaveBeenCalled()
     })
   })
 
@@ -244,11 +299,12 @@ describe('ResumableLessonMedia', () => {
       const media = video({ initialWatchedSeconds: 40, initialFurthestSeconds: 40, initialPositionSeconds: 40 })
       fireEvent.loadedMetadata(media)
       fireEvent.click(screen.getByRole('button', { name: 'Resume from 0:40' }))
-      for (let second = 41; second <= 56; second += 1) {
+      // Owner (17 Nov): the first checkpoint now comes after 60 seconds of playback (it was 15).
+      for (let second = 41; second <= 101; second += 1) {
         media.currentTime = second
         fireEvent.timeUpdate(media)
       }
-      await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 55, 600, 55))
+      await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 100, 600, 100))
     })
 
     it('offers speeds from 0.75× to 2×', () => {

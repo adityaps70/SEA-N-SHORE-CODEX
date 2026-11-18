@@ -48,7 +48,12 @@ type ResumableLessonMediaProps = {
   stream?: VideoStream | null
 }
 
-const CHECKPOINT_SECONDS = 15
+/**
+ * Owner (17 Nov): a playback checkpoint every 60 seconds of playback (it was 15: about 5 Server Actions a minute per
+ * viewer, half of all course-page requests), plus one on pause, end, seek, and when the tab is hidden or closed, so
+ * the resume point is never more than a minute behind and nothing is lost on leaving.
+ */
+export const CHECKPOINT_SECONDS = 60
 /** Fetch a fresh URL this long before the current one expires. */
 const REFRESH_BEFORE_EXPIRY_MS = 3 * 60 * 1000
 /** Offer "Resume from …" only for a saved position at least this far in and not at the very end. */
@@ -333,6 +338,35 @@ export function ResumableLessonMedia({
     setCurrentTime(media.currentTime)
   }, [completed])
 
+  // Owner (17 Nov): a seek is a deliberate new resume point, saved at once rather than at the next checkpoint.
+  const handleSeeked = useCallback(() => {
+    const media = mediaRef.current
+    if (!media) return
+    if (wholeSeconds(media.currentTime) === lastPersistedPositionRef.current) return
+    queuePosition(media.currentTime, media.duration)
+  }, [queuePosition])
+
+  // Owner (17 Nov): leaving the tab (hidden, or the page closing) saves the resume point, since the next 60-second
+  // checkpoint may never come. visibilitychange to hidden also fires when a tab or app is closed in modern browsers;
+  // pagehide covers the rest. A position already saved is not sent again.
+  useEffect(() => {
+    function saveOnLeave() {
+      const media = mediaRef.current
+      if (!media) return
+      if (wholeSeconds(media.currentTime) === lastPersistedPositionRef.current) return
+      queuePosition(media.currentTime, media.duration)
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === 'hidden') saveOnLeave()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pagehide', saveOnLeave)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pagehide', saveOnLeave)
+    }
+  }, [queuePosition])
+
   const handlePause = useCallback(() => {
     const media = mediaRef.current
     if (!media) return
@@ -483,6 +517,7 @@ export function ResumableLessonMedia({
     onLoadedMetadata: handleLoadedMetadata,
     onTimeUpdate: handleTimeUpdate,
     onSeeking: handleSeeking,
+    onSeeked: handleSeeked,
     onPause: handlePause,
     onEnded: handleEnded,
     onError: handleError,
