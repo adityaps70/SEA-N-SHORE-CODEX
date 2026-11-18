@@ -81,7 +81,7 @@ test('retired one-shot runners stay retired', () => {
 })
 
 // Round 14: plans that hang are interrupted and retried once; Terraform runs with a small memory footprint.
-function runBoundedPlan(stubBody) {
+function runBoundedPlan(stubBody, extraEnv = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'tf-bounded-'))
   try {
     writeFileSync(join(dir, 'terraform'), `#!/usr/bin/env bash\n${stubBody}\n`)
@@ -90,7 +90,7 @@ function runBoundedPlan(stubBody) {
     const source = lock.slice(lock.indexOf('TERRAFORM_PLAN_TIMEOUT_SECONDS="'))
     const script = `set -euo pipefail\n${source}\nset +e\nterraform_plan_bounded "${dir}/plan.log" -chdir=x plan -out=y\necho "STATUS=$?"\ncat "${dir}/plan.log"\n`
     return execFileSync('bash', ['-c', script], {
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, TERRAFORM_PLAN_TIMEOUT_SECONDS: '1' },
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, TERRAFORM_PLAN_TIMEOUT_SECONDS: '1', ...extraEnv },
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -104,7 +104,13 @@ test('Terraform on the host is bounded: low memory footprint, plans interrupted 
   assert.match(lock, /export GOMEMLIMIT="\$\{GOMEMLIMIT:-320MiB\}"/)
   assert.match(lock, /export TF_CLI_ARGS_plan="\$\{TF_CLI_ARGS_plan:--parallelism=4\}"/)
   assert.match(lock, /export TF_CLI_ARGS_apply="\$\{TF_CLI_ARGS_apply:--parallelism=4\}"/)
-  assert.match(lock, /timeout --signal=INT --kill-after=120 "\$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "\$@"/)
+  // The bound lives in the shell: the Rust coreutils `timeout` (Ubuntu 26.04) kills the plan at once instead of
+  // waiting for it to release its state lock after the interrupt.
+  assert.doesNotMatch(lock, /^\s*timeout /m)
+  assert.match(lock, /TERRAFORM_PLAN_KILL_AFTER_SECONDS="\$\{TERRAFORM_PLAN_KILL_AFTER_SECONDS:-120\}"/)
+  assert.match(lock, /set -m\n  terraform "\$@" > "\$log" &\n  pid=\$!\n  set \+m/)
+  assert.match(lock, /kill -INT -- "-\$pid"/)
+  assert.match(lock, /kill -KILL -- "-\$pid"/)
   assert.doesNotMatch(lock, /TF_LOG/)
   for (const runner of ['edge-recovery', 'sms-retirement-infra']) {
     const script = read(`scripts/aws/${runner}.sh`)
@@ -126,4 +132,11 @@ test('Terraform on the host is bounded: low memory footprint, plans interrupted 
   assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=2/)
   assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_MEM_AVAILABLE_MB=\d+/)
   assert.match(hung, /STATUS=124/)
+
+  // A plan that ignores the interrupt is killed after the grace period and not retried: its lock stays behind for the
+  // state-unlock runner.
+  const stubborn = runBoundedPlan("trap '' INT; sleep 30", { TERRAFORM_PLAN_KILL_AFTER_SECONDS: '1' })
+  assert.match(stubborn, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=1/)
+  assert.doesNotMatch(stubborn, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=2/)
+  assert.match(stubborn, /STATUS=137/)
 })
