@@ -4,6 +4,7 @@ import { createAdminRepository } from '@/features/admin/repository'
 import { createAdminCountryRepository, type CountryStatsRow } from './admin-country-repository'
 import { countryFromLocation, countryFromPhone, normaliseCountryText } from './catalog'
 import { countryTextSql, memberCountryCtes, memberCountryValues } from './member-country-sql'
+import { adminFiltersReportStatements } from './admin-filters-report-sql'
 
 /**
  * Round GP (Global Partners), Parts A and B, against the real schema (PGlite with every migration, including 0108):
@@ -238,5 +239,51 @@ describe('Round GP member countries (migration 0108)', () => {
     expect(await run(`select 1 from public.audit_events where target_id = $1`, [companyId])).toHaveLength(1)
     await expect(admin.setOrganizationCountry(memberAdmin, companyId, 'IN')).rejects.toThrow('admin_forbidden')
     expect(await admin.setOrganizationCountry(adminId, '00000000-0000-4000-8000-000000000000', 'IN')).toBe(false)
+  })
+
+  it('the read-only counts report runs on the real schema, returns counts and codes only, and agrees with the page', async () => {
+    const outputs: Record<string, unknown> = {}
+    for (const [name, sql] of Object.entries(adminFiltersReportStatements())) {
+      const rows = await run(`begin read only`).then(() => run(sql)).finally(() => run('rollback'))
+      expect(rows, name).toHaveLength(1)
+      const value = Object.values(rows[0]!)[0]
+      expect(typeof value, name).toBe('string')
+      outputs[name] = JSON.parse(String(value))
+    }
+    // Counts only: every leaf is a number, a country code, a dialling code, or a status / currency label; nothing
+    // that names a member or an organization.
+    // '' is the page's "no country" row.
+    const allowed = /^(|[A-Z]{2}|\+[0-9]{1,6}|[A-Z]{3}(\/[a-z_]+)?|[a-z_]+\/[a-z_]+|profile|location|phone|signup)$/
+    const leaves: unknown[] = []
+    const walk = (value: unknown) => {
+      if (Array.isArray(value)) value.forEach(walk)
+      else if (value && typeof value === 'object') Object.values(value).forEach(walk)
+      else leaves.push(value)
+    }
+    walk(outputs)
+    for (const leaf of leaves) {
+      if (leaf === null || typeof leaf === 'number') continue
+      expect(String(leaf)).toMatch(allowed)
+    }
+    const text = JSON.stringify(outputs)
+    for (const name of Object.keys(ids)) expect(text).not.toContain(name)
+    expect(text).not.toMatch(/Placeholder|\+9198|@/)
+
+    expect(outputs.members).toMatchObject({ registered: 12, verified: 1, country_of_residence_set: 3, nationality_set: 2, phone_any: 6 })
+    expect(outputs.members_by_country).toMatchObject({ unset: 1 })
+    const top = (outputs.members_by_country as { top15: Array<{ code: string; members: number; chosen: number }> }).top15
+    expect(top.find((entry) => entry.code === 'PH')).toMatchObject({ members: 3, chosen: 1, from_location: 2 })
+    const phones = (outputs.members_by_phone_code as { top15: Array<{ dialling_code: string; code: string; members: number }> }).top15
+    expect(phones).toEqual(expect.arrayContaining([{ dialling_code: '+91', code: 'IN', members: 3 }, { dialling_code: '+1416', code: 'CA', members: 1 }]))
+    expect(outputs.jobs).toEqual({ live: 2, live_organization: 1, live_personal: 1 })
+
+    // The page's numbers equal direct counts: chosen members (registered minus estimated) and organizations.
+    const stats = outputs.app_country_stats as Array<{ code: string; registered: number; estimated: number; organizations: number }>
+    const direct = outputs.direct_country_counts as { chosen_members: Record<string, number>; organizations: Record<string, number> }
+    for (const code of ['PH', 'IN', 'SG']) {
+      const row = stats.find((entry) => entry.code === code)!
+      expect(row.registered - row.estimated).toBe(direct.chosen_members[code] ?? 0)
+      expect(row.organizations).toBe(direct.organizations[code] ?? 0)
+    }
   })
 })

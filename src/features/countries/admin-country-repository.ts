@@ -105,7 +105,7 @@ const emptyStats = (code: CountryKey): CountryStatsRow => ({
 })
 
 /** Stats for every country with at least one member, organization or live job ('' stands for "no country"). */
-function statsSql(basis: CountryBasis, countryFilter: string | null) {
+export function statsSql(basis: CountryBasis, countryFilter: string | null) {
   const { ctes, values } = memberCodes(basis, 1)
   const filter = countryFilter === null ? '' : `where codes.code = ${String.fromCharCode(36)}${values.length + 1}`
   return {
