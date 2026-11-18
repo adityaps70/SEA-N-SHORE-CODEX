@@ -275,6 +275,10 @@ jobs:
         run: node --test scripts/aws/load-test-handoff-infra.test.mjs
       - name: Verify Resend delivery webhook runner contract
         run: node --test scripts/aws/resend-delivery-webhook.test.mjs
+      - name: Verify private reports lifecycle runner contract
+        run: node --test scripts/aws/private-reports-lifecycle.test.mjs
+      - name: Verify domain move report runner contract (read only, one private PutObject)
+        run: node --test scripts/aws/domain-move-report-guard.test.mjs
       - name: Verify guarded staging data cleanup contract
         run: node scripts/aws/staging-data-cleanup.test.mjs
       - name: Verify social event parity runtime audit contract
