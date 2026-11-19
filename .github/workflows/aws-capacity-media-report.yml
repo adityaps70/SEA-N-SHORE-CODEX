@@ -16,6 +16,7 @@ on:
       - scripts/aws/capacity-media-report-window.txt
       - scripts/aws/capacity-media-report.cjs
       - scripts/aws/capacity-media-report-remote.py
+      - scripts/aws/capacity-media-report-slice.py
       - scripts/aws/capacity-media-report-guard.test.mjs
       - .github/workflows/aws-capacity-media-report.yml
   workflow_dispatch:
@@ -92,7 +93,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/capacity-media-report-action.txt
-          RUNNER_FILES: "scripts/aws/capacity-media-report-window.txt scripts/aws/capacity-media-report.cjs scripts/aws/capacity-media-report-remote.py scripts/aws/capacity-media-report-guard.test.mjs"
+          RUNNER_FILES: "scripts/aws/capacity-media-report-window.txt scripts/aws/capacity-media-report.cjs scripts/aws/capacity-media-report-remote.py scripts/aws/capacity-media-report-slice.py scripts/aws/capacity-media-report-guard.test.mjs"
         shell: bash
         run: |
           set -euo pipefail

@@ -9,6 +9,8 @@ const actionPath = 'scripts/aws/capacity-media-report-action.txt'
 const workflowPath = '.github/workflows/aws-capacity-media-report.yml'
 const wrapperPath = 'scripts/aws/capacity-media-report.cjs'
 const remotePath = 'scripts/aws/capacity-media-report-remote.py'
+// Owner (19 Nov): a section runs when it is listed in REPORT_SECTIONS and its function exists (main dispatches by name).
+const listed = (remote, name) => new RegExp(`REPORT_SECTIONS = \\([^)]*"${name}"[^)]*\\)`).test(remote) && new RegExp(`^def section_${name}\\(`, "m").test(remote)
 const windowPath = 'scripts/aws/capacity-media-report-window.txt'
 
 const READ_ONLY_ACTION = /^(describe|get|list)-[a-z-]+$/
@@ -39,10 +41,55 @@ test('the SSM wrapper only sends the report and reads its result', async () => {
   // The load test's usage report (REPORT_SECTIONS set) never turns into the compare.
   assert.match(wrapper, /const COMPARE = process\.env\.REPORT_SECTIONS \? null : compareWindow\(\)/)
   // Run 43017998127: plain base64 passed SSM's 97 KB limit, so the script goes gzipped, and stays well under it.
-  assert.match(wrapper, /gzipSync\(Buffer\.from\(remoteScript, 'utf8'\), \{ level: 9 \}\)\.toString\('base64'\)/)
+  // Owner (19 Nov): each command carries only its section's slice, built and checked by capacity-media-report-slice.py.
+  assert.match(wrapper, /gzipSync\(Buffer\.from\(sliced\.stdout, 'utf8'\), \{ level: 9 \}\)\.toString\('base64'\)/)
+  assert.match(wrapper, /'scripts\/aws\/capacity-media-report-slice\.py', 'scripts\/aws\/capacity-media-report-remote\.py', section\]/)
+  assert.match(wrapper, /async function runSection\(section\) \{\n  const encoded = encodedSection\(section\)/)
   assert.match(wrapper, /\| base64 -d \| gunzip > "\$WORK\/report\.py"/)
+})
+
+test('owner 19 Nov: every section slice builds, defines what it uses, stays under the SSM limit and runs the right section', async () => {
+  const remote = readFileSync(remotePath, 'utf8')
+  const list = remote.match(/REPORT_SECTIONS = \(([^)]*)\)/)
+  assert.ok(list, 'the remote script lists its sections')
+  const sections = [...list[1].matchAll(/"([a-z0-9]+)"/g)].map((m) => m[1])
+  // Every section function is listed, and every listed one exists.
+  assert.deepEqual([...remote.matchAll(/^def section_([a-z0-9]+)\(/gm)].map((m) => m[1]).sort(), [...sections].sort())
   const { gzipSync } = await import('node:zlib')
-  assert.ok(gzipSync(readFileSync(remotePath), { level: 9 }).toString('base64').length < 60_000, 'the encoded script is too big for SSM')
+  for (const section of sections) {
+    const sliced = spawnSync('python3', ['-I', 'scripts/aws/capacity-media-report-slice.py', remotePath, section], { encoding: 'utf8' })
+    assert.equal(sliced.status, 0, `${section}: ${sliced.stderr}`)
+    assert.ok(gzipSync(Buffer.from(sliced.stdout), { level: 9 }).toString('base64').length < 60_000, `${section} slice too big for SSM`)
+    assert.match(sliced.stdout, new RegExp(`^def section_${section}\\(`, 'm'))
+    // Only this section's function among the sections, so a slice can never run another section's code.
+    assert.deepEqual([...sliced.stdout.matchAll(/^def section_([a-z0-9]+)\(/gm)].map((m) => m[1]), [section])
+    // The slice compiles, and loading it runs no section (only main() does).
+    const check = spawnSync('python3', ['-I', '-c', `
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("s", "/dev/stdin")
+src = sys.stdin.read()
+code = compile(src, "slice", "exec")
+module = {"__name__": "slice"}
+exec(code, module)
+assert callable(module["section_${section}"]) and callable(module["main"])
+print("ok")
+`], { input: sliced.stdout, encoding: 'utf8' })
+    assert.equal(check.status, 0, `${section}: ${check.stderr}`)
+  }
+  // A slice whose section uses a helper that is not there is refused before it is ever sent.
+  const broken = spawnSync('python3', ['-I', '-c', `
+import importlib.util
+spec = importlib.util.spec_from_file_location("slicer", "scripts/aws/capacity-media-report-slice.py")
+slicer = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(slicer)
+try:
+    slicer.slice_source("import os\\ndef main():\\n    section_x()\\ndef section_x():\\n    missing_helper()\\n", "x")
+    raise SystemExit("not refused")
+except SystemExit as error:
+    assert "missing_helper" in str(error), error
+print("ok")
+`], { encoding: 'utf8' })
+  assert.equal(broken.status, 0, broken.stderr || broken.stdout)
 })
 
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
@@ -139,7 +186,7 @@ test('the db window runs the read-only Round DB sections over one load test wind
   assert.match(wrapper, /COMPARE\?\.plans \? \['dbplans'\]/)
   assert.match(wrapper, /3 \* 3600_000/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['db', 'dbwindow', 'dbminutes', 'edgeminutes', 'dbstats', 'dbplans', 'dbhealth', 'cost']) assert.ok(listed(remote, name), name)
   // Text plans keep node lines only; condition and filter lines, which can hold values, never come out.
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util
@@ -380,7 +427,7 @@ test('the cap window runs the three read-only Step 0 sections over at most 14 da
   assert.match(wrapper, /14 \* 24 \* 3600_000/)
   assert.match(wrapper, /export CAP_START=/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['capminutes', 'capwrites', 'cap7d', 'caponline']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['capminutes', 'capwrites', 'cap7d', 'caponline']) assert.ok(listed(remote, name), name)
   // The signed-in route list mirrors the app's own.
   const proxy = readFileSync('src/lib/auth/cognito-proxy.ts', 'utf8')
   const appList = [...proxy.match(/const PROTECTED_PREFIXES = \[([\s\S]*?)\] as const/)[1].replace(/\/\/.*$/gm, '').matchAll(/'([^']+)'/g)].map((m) => m[1])
@@ -641,7 +688,7 @@ test('the sessions window runs two read-only sections over at most 14 days and p
   assert.match(wrapper, /at most 14 days, in whole UTC minutes'\)\n    return \{ sessions: true, sessStart: sessions\[1\], sessEnd: sessions\[2\] \}/)
   assert.match(wrapper, /export SESS_START=\$\{quote\(COMPARE\?\.sessStart \?\? ''\)\}\nexport SESS_END=\$\{quote\(COMPARE\?\.sessEnd \?\? ''\)\}/)
   const remote = readFileSync(remotePath, 'utf8')
-  for (const name of ['sessdb', 'sessmetric', 'sessstale']) assert.match(remote, new RegExp(`"${name}": section_${name}`))
+  for (const name of ['sessdb', 'sessmetric', 'sessstale']) assert.ok(listed(remote, name), name)
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util, io, contextlib, os
 spec = importlib.util.spec_from_file_location("r", "${remotePath}")
@@ -772,8 +819,8 @@ test('the dbconn window runs one read-only section that prints versions, connect
   const wrapper = readFileSync('scripts/aws/capacity-media-report.cjs', 'utf8')
   const remote = readFileSync(remotePath, 'utf8')
   assert.match(wrapper, /if \(line === 'dbconn'\) return \{ dbconn: true \}/)
-  assert.match(wrapper, /COMPARE\?\.dbconn \? \['dbconn'\] :/)
-  assert.match(remote, /"dbconn": section_dbconn/)
+  assert.match(wrapper, /COMPARE\?\.dbconn \? \['dbconn', 'budgets'\] :/)
+  assert.ok(listed(remote, 'dbconn'))
   const run = spawnSync('python3', ['-I', '-c', `
 import importlib.util, io, contextlib
 spec = importlib.util.spec_from_file_location("r", "${remotePath}")
@@ -846,6 +893,44 @@ assert "path=/_next/static/* cache=CachingOptimized[cookies=none:0" in text, tex
 for secret in ("secret-host.example", "someone-else", "arn:"):
     assert secret not in text, secret
 assert all(st.lstrip().lower().startswith("select") for st in seen), seen
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr || run.stdout)
+})
+
+// Owner (18-19 Nov): which AWS budget sent the 18 Nov alert and why. Budget names, amounts, thresholds and states only.
+test('the budgets section names each budget, its limit, spend, forecast, alert thresholds and states', () => {
+  const remote = readFileSync(remotePath, 'utf8')
+  assert.ok(listed(remote, 'budgets'))
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+calls = []
+def fake_aws(service, action, *args, **kw):
+    calls.append((service, action, kw.get("region")))
+    if action == "describe-budgets":
+        return {"Budgets": [{"BudgetName": "sea-n-shore-mediaconvert", "BudgetType": "COST", "TimeUnit": "MONTHLY",
+                "BudgetLimit": {"Amount": "5.0", "Unit": "USD"}, "CalculatedSpend": {"ActualSpend": {"Amount": "4.2"},
+                "ForecastedSpend": {"Amount": "6.1"}}, "CostFilters": {"Service": ["AWS Elemental MediaConvert"]}}]}
+    if action == "describe-notifications-for-budget":
+        return {"Notifications": [{"NotificationType": "FORECASTED", "ComparisonOperator": "GREATER_THAN", "Threshold": 100,
+                "ThresholdType": "PERCENTAGE", "NotificationState": "ALARM"}]}
+    if action == "describe-budget-performance-history":
+        return {"BudgetPerformanceHistory": {"BudgetedAndActualAmountsList": [
+            {"TimePeriod": {"Start": "2026-11-01T00:00:00Z"}, "BudgetedAmount": {"Amount": "5.0"}, "ActualAmount": {"Amount": "4.2"}}]}}
+    return {}
+r.aws = fake_aws
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_budgets()
+text = buf.getvalue()
+print(text)
+assert 'BUDGET "sea-n-shore-mediaconvert" type=COST unit=MONTHLY limit=5.0 USD actual=4.2 forecast=6.1 filters={"Service": 1}' in text, text
+assert 'BUDGET_ALERT "sea-n-shore-mediaconvert" kind=FORECASTED when=GREATER_THAN 100 PERCENTAGE state=ALARM' in text, text
+assert 'BUDGET_HISTORY "sea-n-shore-mediaconvert" from=2026-11-01 budgeted=5.0 actual=4.2' in text, text
+assert "AWS Elemental MediaConvert" not in text
+assert all(region == "us-east-1" for _s, _a, region in calls), calls
 `], { encoding: 'utf8' })
   assert.equal(run.status, 0, run.stderr || run.stdout)
 })

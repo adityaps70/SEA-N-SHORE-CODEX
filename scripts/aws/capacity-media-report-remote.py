@@ -2419,6 +2419,34 @@ def section_dbconn():
                 "legacy_forwarded_cookies=%s" % (((b.get("ForwardedValues") or {}).get("Cookies") or {}).get("Forward") or "none"))
 
 
+# ---------------------------------------------------------------- owner 18-19 Nov: the AWS Budgets alert (read-only)
+
+def section_budgets():
+    out("=== AWS BUDGETS: WHICH BUDGET, WHAT IT WATCHES, WHAT TRIPPED (amounts, thresholds and states only) ===")
+    budgets = (aws("budgets", "describe-budgets", "--account-id", ACCOUNT, region="us-east-1") or {}).get("Budgets", [])
+    out("BUDGETS", "count=%d" % len(budgets))
+    for b in budgets:
+        name = b.get("BudgetName") or ""
+        spend = b.get("CalculatedSpend") or {}
+        limit = b.get("BudgetLimit") or {}
+        filters = b.get("CostFilters") or {}
+        out("BUDGET", json.dumps(name[:80]), "type=%s" % b.get("BudgetType"), "unit=%s" % b.get("TimeUnit"),
+            "limit=%s %s" % (limit.get("Amount"), limit.get("Unit")),
+            "actual=%s" % (spend.get("ActualSpend") or {}).get("Amount"), "forecast=%s" % (spend.get("ForecastedSpend") or {}).get("Amount"),
+            "filters=%s" % json.dumps({k: len(v) for k, v in filters.items()}, sort_keys=True),
+            "updated=%s" % str(b.get("LastUpdatedTime") or "")[:19])
+        notes = (aws("budgets", "describe-notifications-for-budget", "--account-id", ACCOUNT, "--budget-name", name, region="us-east-1") or {}).get("Notifications", [])
+        for n in notes:
+            out("BUDGET_ALERT", json.dumps(name[:80]), "kind=%s" % n.get("NotificationType"), "when=%s %s %s" % (
+                n.get("ComparisonOperator"), n.get("Threshold"), n.get("ThresholdType")), "state=%s" % n.get("NotificationState"))
+        history = (aws("budgets", "describe-budget-performance-history", "--account-id", ACCOUNT, "--budget-name", name,
+                       "--max-results", "3", region="us-east-1") or {}).get("BudgetPerformanceHistory") or {}
+        for h in (history.get("BudgetedAndActualAmountsList") or [])[-3:]:
+            period = h.get("TimePeriod") or {}
+            out("BUDGET_HISTORY", json.dumps(name[:80]), "from=%s" % str(period.get("Start"))[:10],
+                "budgeted=%s" % (h.get("BudgetedAmount") or {}).get("Amount"), "actual=%s" % (h.get("ActualAmount") or {}).get("Amount"))
+
+
 # ---------------------------------------------------------------- Round DB: cost (read-only)
 
 def section_cost():
@@ -2488,13 +2516,15 @@ def section_cost():
             "GB=%.2f" % (sum(i.get("imageSizeInBytes", 0) for i in images) / 1024 ** 3), "lifecyclePolicy=%s" % bool(policy))
 
 
+REPORT_SECTIONS = ("config", "usage", "media", "compare", "checks", "db", "dbstats", "dbplans", "dbhealth", "cost", "dbwindow", "dbminutes", "edgeminutes", "dbcompare", "online", "capminutes", "capwrites", "cap7d", "caponline", "legacysplit", "sessdb", "sessmetric", "sessstale", "dbconn", "budgets")
+
+
 def main():
     out("CAPACITY_MEDIA_REPORT section=%s window_days=%d now=%s" % (SECTION, DAYS, iso(NOW)))
-    {"config": section_config, "usage": section_usage, "media": section_media, "compare": section_compare, "checks": section_checks,
-     "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
-     "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
-     "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit,
-     "sessdb": section_sessdb, "sessmetric": section_sessmetric, "sessstale": section_sessstale, "dbconn": section_dbconn}[SECTION]()
+    # Owner (19 Nov): each SSM command carries only this section's slice (capacity-media-report-slice.py), so the
+    # section is found by name among the known ones rather than through a table of every section function.
+    assert SECTION in REPORT_SECTIONS, "unknown report section"
+    globals()["section_" + SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

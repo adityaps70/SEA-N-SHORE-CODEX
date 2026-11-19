@@ -13,11 +13,18 @@ const instanceId = process.env.INSTANCE_ID
 const region = process.env.AWS_REGION || 'ap-south-1'
 assert.match(instanceId || '', /^i-[0-9a-f]+$/)
 
-const remoteScript = readFileSync('scripts/aws/capacity-media-report-remote.py', 'utf8')
 // Round DB: gzipped before base64. Plain base64 of the script passed SSM's 97 KB command limit
 // (run 43017998127, MaxDocumentSizeExceeded); gzip brings it to about a quarter.
-const encoded = gzipSync(Buffer.from(remoteScript, 'utf8'), { level: 9 }).toString('base64')
-assert.ok(encoded.length < 60_000, 'the encoded report script must stay well under the 97 KB SSM limit')
+// Owner (19 Nov): the whole script reached 59,896 of the 60,000 characters below, so each command now carries only
+// its section's slice (capacity-media-report-slice.py: the set-up, the functions that section reaches, and main),
+// checked there for any name it would miss.
+function encodedSection(section) {
+  const sliced = spawnSync('python3', ['-I', 'scripts/aws/capacity-media-report-slice.py', 'scripts/aws/capacity-media-report-remote.py', section], { encoding: 'utf8' })
+  assert.equal(sliced.status, 0, `the ${section} slice could not be built: ${(sliced.stderr || '').trim().slice(-300)}`)
+  const encoded = gzipSync(Buffer.from(sliced.stdout, 'utf8'), { level: 9 }).toString('base64')
+  assert.ok(encoded.length < 60_000, `the encoded ${section} slice must stay well under the 97 KB SSM limit`)
+  return encoded
+}
 const ALL_SECTIONS = ['config', 'usage', 'media']
 const MINUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z$/
 const isoMinute = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -34,7 +41,8 @@ function compareWindow() {
   // Round CAP (finding 2): the plans of the top statements (EXPLAIN GENERIC_PLAN) only when asked for by name. The step
   // showed about 2,100 database seconds in Performance Insights over a week, so the db window no longer runs it.
   if (line === 'plans') return { plans: true }
-  // Owner (18 Nov): read-only look at the Aurora platform version, connection churn and the edge's cookie settings.
+  // Owner (18-19 Nov): read-only look at the Aurora platform version, connection churn, the edge's cookie settings and
+  // the AWS Budgets alert of 18 Nov (the budgets section).
   if (line === 'dbconn') return { dbconn: true }
   // Round DB: where the database time goes and what the stack costs, with Performance Insights over one load test
   // window (under 3 hours): "db <start> <end>". Runs the config, db, dbwindow, dbminutes, dbstats, dbhealth and cost
@@ -94,11 +102,11 @@ const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'db
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d', 'caponline']
 // Owner (18 Nov): plus the stale-token look (what renewed the tokens that came back, what presented them, how old).
 const SESSION_SECTIONS = ['sessdb', 'sessmetric', 'sessstale']
-const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.dbconn ? ['dbconn'] : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.dbconn ? ['dbconn', 'budgets'] : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
   (COMPARE?.sessions && SESSION_SECTIONS.includes(s)) ||
   (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
-  (COMPARE?.plans && s === 'dbplans') || (COMPARE?.dbconn && s === 'dbconn') || (COMPARE && !COMPARE.dbconn && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
+  (COMPARE?.plans && s === 'dbplans') || (COMPARE?.dbconn && ['dbconn', 'budgets'].includes(s)) || (COMPARE && !COMPARE.dbconn && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
@@ -117,6 +125,7 @@ function aws(args, { allowFailure = false } = {}) {
 }
 
 async function runSection(section) {
+  const encoded = encodedSection(section)
   const remote = `set -euo pipefail
 export AWS_REGION=${quote(region)}
 export REPORT_SECTION=${quote(section)}
