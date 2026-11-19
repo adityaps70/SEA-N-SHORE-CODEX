@@ -6,6 +6,7 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/database/migrations/0111_cache_clear_notify.sql
+      - infra/aws/database/migrations/0112_refresh_recovery.sql
       - scripts/aws/cache-clear-migration.sh
       - scripts/aws/cache-clear-migration-action.txt
       - scripts/aws/cache-clear-migration.test.mjs
@@ -13,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       requested_action:
-        description: "Plan only or apply the cache clear migration (0111)"
+        description: "Plan only or apply the cache clear and refresh recovery migrations (0111, 0112)"
         required: true
         type: choice
         options:
@@ -101,7 +102,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/cache-clear-migration-action.txt
-          RUNNER_FILES: "infra/aws/database/migrations/0111_cache_clear_notify.sql scripts/aws/cache-clear-migration.sh scripts/aws/cache-clear-migration.test.mjs"
+          RUNNER_FILES: "infra/aws/database/migrations/0111_cache_clear_notify.sql infra/aws/database/migrations/0112_refresh_recovery.sql scripts/aws/cache-clear-migration.sh scripts/aws/cache-clear-migration.test.mjs"
         shell: bash
         run: |
           set -euo pipefail

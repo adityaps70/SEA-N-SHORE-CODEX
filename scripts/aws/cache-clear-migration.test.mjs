@@ -4,6 +4,7 @@ import { guardAction } from './guard-value.mjs'
 
 const migrations = [
   '0111_cache_clear_notify',
+  '0112_refresh_recovery',
 ]
 // Files that each hold exactly one CREATE INDEX CONCURRENTLY, run outside a transaction by the concurrent-index step.
 const concurrentIndexes = [
@@ -72,6 +73,15 @@ assert.match(script, /rollback-transaction/)
 assert.match(script, /pg_advisory_xact_lock/)
 assert.match(script, /sea_n_shore_applied_migrations/)
 assert.match(script, /already_applied 0110_country_admins/, 'cache clear follows 0110_country_admins')
+// Every file is previewed by a plan run (none adds an enum value a later one uses).
+for (const name of migrations) {
+  assert.ok(script.slice(script.indexOf('PREVIEW_MIGRATIONS=('), script.indexOf('CONCURRENT_INDEX_MIGRATIONS=(')).includes(`"infra/aws/database/migrations/${name}.sql"`), `${name} is previewed`)
+}
+// After apply: the 0112 columns are checked in the catalog (never member rows).
+assert.match(script, /\[\[ "\$RECOVERY_COLUMNS" == "5" \]\]/, 'the five refresh recovery columns are checked after apply')
+for (const column of ['recovery_sealed', 'recovery_expires_at', 'recovered_at', 'renewal_jti_hash', 'renewal_seen_at']) {
+  assert.ok(script.includes(`'${column}'`), `the schema check names ${column}`)
+}
 assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
 
 // The concurrent-index step: outside a transaction, the catalog is the evidence, an INVALID index is dropped (only

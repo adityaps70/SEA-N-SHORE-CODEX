@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Applies the cache clear migration (0111, owner 18 Nov) to the staging Aurora cluster through the RDS Data API.
+# Applies the cache clear migration (0111, owner 18 Nov) and the refresh recovery migration (0112, owner 19 Nov) to the staging Aurora cluster through the RDS Data API.
 # Each file is split on "-- statement-breakpoint", checked against the additive-only rules (plus any statement listed
 # word for word in APPROVED below), and applied in its own transaction under an advisory lock. Every file is
 # idempotent; a ledger row records each applied file.
@@ -26,11 +26,13 @@ DATABASE_NAME="sea_n_shore"
 ACTION_FILE="scripts/aws/cache-clear-migration-action.txt"
 MIGRATIONS=(
   "infra/aws/database/migrations/0111_cache_clear_notify.sql"
+  "infra/aws/database/migrations/0112_refresh_recovery.sql"
 )
 # Files the plan run previews in a rolled-back transaction. Leave out a file whose new enum values a later file in
 # the same preview uses (Postgres refuses a new enum value inside the transaction that added it).
 PREVIEW_MIGRATIONS=(
   "infra/aws/database/migrations/0111_cache_clear_notify.sql"
+  "infra/aws/database/migrations/0112_refresh_recovery.sql"
 )
 # Files that each hold one CREATE INDEX CONCURRENTLY (the concurrent-index step above). Never previewed.
 CONCURRENT_INDEX_MIGRATIONS=(
@@ -299,6 +301,9 @@ CLEAR_TRIGGERS="$(read_count "SELECT count(*)::bigint FROM pg_trigger t JOIN pg_
 [[ "$CLEAR_TRIGGERS" == "10" ]] || { echo "Expected 10 cache clear triggers after apply, found $CLEAR_TRIGGERS." >&2; exit 1; }
 CLEAR_FUNCTIONS="$(read_count "SELECT count(*)::bigint FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname LIKE 'cache\\_clear\\_%'")"
 [[ "$CLEAR_FUNCTIONS" == "9" ]] || { echo "Expected 9 cache clear functions after apply, found $CLEAR_FUNCTIONS." >&2; exit 1; }
-echo "CACHE_CLEAR_MIGRATION_SCHEMA triggers=$CLEAR_TRIGGERS functions=$CLEAR_FUNCTIONS"
+# 0112: the five refresh recovery columns exist.
+RECOVERY_COLUMNS="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'public' AND ((table_name = 'auth_refresh_tokens' AND column_name IN ('recovery_sealed', 'recovery_expires_at', 'recovered_at')) OR (table_name = 'auth_sessions' AND column_name IN ('renewal_jti_hash', 'renewal_seen_at')))")"
+[[ "$RECOVERY_COLUMNS" == "5" ]] || { echo "Expected 5 refresh recovery columns after apply, found $RECOVERY_COLUMNS." >&2; exit 1; }
+echo "CACHE_CLEAR_MIGRATION_SCHEMA triggers=$CLEAR_TRIGGERS functions=$CLEAR_FUNCTIONS recovery_columns=$RECOVERY_COLUMNS"
 
 echo "CACHE_CLEAR_MIGRATION_APPLY_VERIFIED=true"
