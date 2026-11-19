@@ -1,4 +1,4 @@
-import { siteOrigin } from '@/lib/site-url'
+import { siteOrigins } from '@/lib/site-url'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { cspReportOverRateLimit } from '@/lib/security/csp-report-rate-limit'
 import { cspBlockedHost, cspDirectiveName, cspSection, cspSource, recordCspRateLimited, recordCspViolation } from '@/lib/security/csp-report-summary'
@@ -52,7 +52,7 @@ function violations(payload: unknown): Violation[] {
  */
 export async function POST(request: Request) {
   const origin = request.headers.get('origin')
-  if (origin && origin !== siteOrigin() && origin !== 'null') return new Response(null, { status: 204 })
+  if (origin && !siteOrigins().includes(origin) && origin !== 'null') return new Response(null, { status: 204 })
   if (cspReportOverRateLimit(trustedClientIp(request.headers))) {
     recordCspRateLimited()
     return new Response(null, { status: 204 })

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES, createCognitoCookieManager } from '@/lib/auth/cognito-cookies'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
-import { siteUrlFor } from '@/lib/site-url'
+import { siteUrlForRequest } from '@/lib/site-url'
 import { getAwsVerification } from '@/features/auth/aws-queries'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!revoked) {
-    const response = NextResponse.redirect(siteUrlFor(signedIn ? '/home' : '/auth/sign-in'))
+    const response = NextResponse.redirect(siteUrlForRequest(request.headers, signedIn ? '/home' : '/auth/sign-in'))
     response.headers.set('Cache-Control', 'private, no-store')
     return response
   }
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.redirect(siteUrlFor(`/auth/sign-in?notice=${notice}`))
+  const response = NextResponse.redirect(siteUrlForRequest(request.headers, `/auth/sign-in?notice=${notice}`))
   createCognitoCookieManager(response.cookies, publicEnvironment.NEXT_PUBLIC_SITE_URL, {
     allowInsecureHttp: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
   }).clearCognitoCookies()

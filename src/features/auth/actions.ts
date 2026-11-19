@@ -15,6 +15,7 @@ import { getAwsVerifiedUser } from './aws-queries'
 import { accountSecurityKey } from '@/features/account-security/keys'
 import { signMfaChallenge } from '@/features/account-security/mfa-challenge-binding'
 import { currentSessionId, sessionControls } from '@/features/account-security/session-runtime'
+import { currentSiteOrigin } from '@/lib/site-url-request'
 
 export type { AuthActionState } from './action-handlers'
 
@@ -56,13 +57,14 @@ async function signOutThisDevice() {
 const handlers = createAuthActionHandlers({
   getActions: getProductionActions,
   redirect: nextRedirect,
-  getSignOutDestination: () => {
+  getSignOutDestination: async () => {
     const environment = getCognitoEnvironment()
     if (!environment.AWS_COGNITO_DOMAIN) return '/'
     return createCognitoLogoutUrl({
       domain: environment.AWS_COGNITO_DOMAIN,
       clientId: environment.AWS_COGNITO_CLIENT_ID,
-      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+      // Domain move: Cognito returns the visitor to the host they signed out on (each is a registered logout URL).
+      siteUrl: await currentSiteOrigin(),
     })
   },
 })

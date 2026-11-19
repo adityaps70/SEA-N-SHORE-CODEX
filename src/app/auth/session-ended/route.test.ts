@@ -7,7 +7,10 @@ vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_REGION: 'ap-south-1', AWS_COGNITO_CLIENT_ID: 'client', AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: false }),
   publicEnvironment: { NEXT_PUBLIC_SITE_URL: 'https://seanshore.example' },
 }))
-vi.mock('@/lib/site-url', () => ({ siteUrlFor: (path: string) => new URL(path, 'https://seanshore.example') }))
+vi.mock('@/lib/site-url', () => ({
+  siteUrlFor: (path: string) => new URL(path, 'https://seanshore.example'),
+  siteUrlForRequest: (_headers: unknown, path: string) => new URL(path, 'https://seanshore.example'),
+}))
 vi.mock('@/features/auth/aws-queries', () => ({ getAwsVerification: mocks.getAwsVerification }))
 vi.mock('@/lib/auth/cognito-api', () => ({ createCognitoApi: () => ({ revokeToken: mocks.revokeToken }) }))
 

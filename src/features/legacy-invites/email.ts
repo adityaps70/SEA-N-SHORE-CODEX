@@ -1,3 +1,5 @@
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
+
 export function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -11,7 +13,7 @@ export function escapeHtml(value: string) {
 export const LEGACY_INVITE_FROM = 'Sea N Shore <accounts@mail.seanshore.in>'
 
 export function legacySiteUrl(siteUrl?: string) {
-  return (siteUrl?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://seanshore.in').replace(/\/+$/g, '')
+  return (siteUrl?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim() || DEFAULT_PUBLIC_SITE_URL).replace(/\/+$/g, '')
 }
 
 /** The invitation's unique claim link. The second reminder uses the same link as the first invitation. */
