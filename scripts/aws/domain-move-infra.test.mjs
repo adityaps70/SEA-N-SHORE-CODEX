@@ -102,6 +102,15 @@ test('import: exactly the console-made resources, every one a no-op', () => {
     assert.match(result.stdout, /DOMAIN_MOVE_PLAN_REFUSED/, why)
   }
   refused(importPlan().map((c) => c.address === 'aws_cloudfront_distribution.console_redirect' ? { ...c, change: { ...c.change, actions: ['update'] } } : c), 'an import that would change the distribution')
+  // Every change is named with its attribute names, never values (run 44507644027 showed only the first).
+  const listed = run(['import', planFile(importPlan().map((c) => c.address === 'aws_cloudfront_function.console_redirect'
+    ? { ...c, change: { ...c.change, actions: ['update'], before: { publish: null, code: 'SECRETCODE', name: 'f' }, after: { publish: true, code: 'SECRETCODE', name: 'f' } } }
+    : c.address === 'aws_route53_zone.seanshore_net' ? { ...c, change: { ...c.change, actions: ['update'], before: { comment: 'a' }, after: { comment: 'b' } } } : c))])
+  assert.notEqual(listed.status, 0)
+  assert.match(listed.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_cloudfront_function\.console_redirect actions=update attributes=publish$/m)
+  assert.match(listed.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_route53_zone\.seanshore_net actions=update attributes=comment$/m)
+  assert.match(listed.stdout, /DOMAIN_MOVE_PLAN_REFUSED changes=2/)
+  assert.doesNotMatch(listed.stdout, /SECRETCODE|"a"|"b"/)
   refused(importPlan().map((c) => c.address === 'aws_acm_certificate.console_redirect' ? { ...c, change: { ...c.change, actions: ['delete', 'create'] } } : c), 'a replaced certificate')
   refused([...importPlan(), { address: 'aws_route53_zone.extra', mode: 'managed', change: { actions: ['create'] } }], 'a create')
   refused(importPlan().slice(1), 'a missing import')

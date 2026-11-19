@@ -74,13 +74,26 @@ def managed_changes(plan):
     return [c for c in plan.get("resource_changes") or [] if c.get("mode") == "managed"]
 
 
+def changed_attributes(change):
+    """Names (never values) of the top-level attributes a change would set differently, or leaves unknown."""
+    body = change.get("change") or {}
+    before, after, unknown = body.get("before") or {}, body.get("after") or {}, body.get("after_unknown") or {}
+    names = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    names |= {k for k, v in unknown.items() if v}
+    return sorted(names)
+
+
 def check_import(plan):
     changes = managed_changes(plan)
     imported = sorted(c["address"] for c in changes if (c.get("change") or {}).get("importing"))
-    for change in changes:
+    # Every change is listed (address, actions, attribute names only), so one run shows all there is to fix.
+    refused = [c for c in changes if (c.get("change") or {}).get("actions") != ["no-op"]]
+    for change in refused:
         actions = (change.get("change") or {}).get("actions")
-        if actions != ["no-op"]:
-            refuse(f"address={change['address']} actions={'+'.join(actions or [])}")
+        print(f"DOMAIN_MOVE_PLAN_DIFF address={change['address']} actions={'+'.join(actions or [])} "
+              f"attributes={','.join(changed_attributes(change)) or '-'}")
+    if refused:
+        refuse(f"changes={len(refused)}")
     if not imported:
         in_plan = {c["address"] for c in changes}
         missing = [a for a in EXPECTED_IMPORTS if a not in in_plan]
