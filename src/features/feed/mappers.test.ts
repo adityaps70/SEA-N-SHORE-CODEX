@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapFeedPost, type FeedPostRow } from './mappers'
+import { mapFeedPost, mapHiddenPost, mapOrganization, mapOrganizationMentions, organizationLogoUrl, type FeedPostRow } from './mappers'
 
 const viewer = {
   likedPostIds: new Set(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']),
@@ -156,5 +156,57 @@ describe('mapFeedPost', () => {
       canEdit: true,
       deleted: false,
     })
+  })
+})
+
+describe('organization logo routes (request cuts)', () => {
+  const companyId = '44444444-4444-4444-8444-444444444444'
+
+  it('uses the cacheable public route only for a verified organization with a logo', () => {
+    expect(organizationLogoUrl(companyId, 'companies/logo.png', true)).toBe(`/api/public/company-logo/${companyId}`)
+    expect(organizationLogoUrl(companyId, 'companies/logo.png', false)).toBe(`/api/company-logo/${companyId}`)
+    expect(organizationLogoUrl(companyId, 'companies/logo.png', null)).toBe(`/api/company-logo/${companyId}`)
+    expect(organizationLogoUrl(companyId, 'companies/logo.png')).toBe(`/api/company-logo/${companyId}`)
+    expect(organizationLogoUrl(companyId, '  ', true)).toBeNull()
+    expect(organizationLogoUrl(companyId, null, true)).toBeNull()
+  })
+
+  it('carries the verified flag through post organizations, organization mentions and hidden posts', () => {
+    const identity = { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG', logo_path: 'companies/logo.png' }
+    expect(mapOrganization({ ...identity, is_verified: true })?.logoUrl).toBe(`/api/public/company-logo/${companyId}`)
+    expect(mapOrganization({ ...identity, is_verified: false })?.logoUrl).toBe(`/api/company-logo/${companyId}`)
+    expect(mapOrganization(identity)?.logoUrl).toBe(`/api/company-logo/${companyId}`)
+
+    const mention = { company_id: companyId, slug: 'nordic-lng', name: 'Nordic LNG', logo_path: 'companies/logo.png' }
+    expect(mapOrganizationMentions([
+      { ...mention, is_verified: true },
+      { ...mention, is_verified: false },
+      mention,
+    ]).map((item) => item.logoUrl)).toEqual([
+      `/api/public/company-logo/${companyId}`,
+      `/api/company-logo/${companyId}`,
+      `/api/company-logo/${companyId}`,
+    ])
+
+    const hidden = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      body: 'Body',
+      post_type: 'standard' as const,
+      created_at: '2026-09-20T08:00:00.000Z',
+      hidden_at: '2026-09-25T08:00:00.000Z',
+      author_id: '11111111-1111-4111-8111-111111111111',
+      author_slug: 'member-a',
+      author_name: 'Member A',
+      author_avatar_path: null,
+      company_id: companyId,
+      company_slug: 'nordic-lng',
+      company_name: 'Nordic LNG',
+      company_logo_path: 'companies/logo.png',
+      source_body: null,
+      media_path: null,
+      media_mime_type: null,
+    }
+    expect(mapHiddenPost({ ...hidden, company_is_verified: true }, new Map())?.organization?.logoUrl).toBe(`/api/public/company-logo/${companyId}`)
+    expect(mapHiddenPost({ ...hidden, company_is_verified: false }, new Map())?.organization?.logoUrl).toBe(`/api/company-logo/${companyId}`)
   })
 })

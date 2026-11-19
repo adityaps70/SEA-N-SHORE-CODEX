@@ -33,6 +33,8 @@ type MarketplaceCourseRow = QueryResultRow & {
   /** Round H (H6): the publishing organization and its logo (null for a trainer's own course). */
   publisher_company_id?: string | null
   publisher_logo_path?: string | null
+  /** `companies.is_verified`: a verified publisher's logo uses the cacheable public route. */
+  publisher_is_verified?: boolean | null
 }
 
 export type MarketplaceCourse = {
@@ -98,6 +100,7 @@ const marketplaceSelect = `select
   end as mentor_name,
   course.company_id as publisher_company_id,
   company.logo_path as publisher_logo_path,
+  company.is_verified as publisher_is_verified,
   course.slug,
   course.title,
   course.subtitle,
@@ -178,7 +181,7 @@ function mapCourse(row: MarketplaceCourseRow): MarketplaceCourse {
     publishedAt: isoDateTime(row.published_at),
     // Left out (not null) for trainers' courses and organizations without a logo.
     ...(row.publisher_company_id && row.publisher_logo_path?.trim()
-      ? { publisherLogoUrl: organizationLogoUrl({ id: row.publisher_company_id, logoPath: row.publisher_logo_path }) ?? undefined }
+      ? { publisherLogoUrl: organizationLogoUrl({ id: row.publisher_company_id, logoPath: row.publisher_logo_path, verified: row.publisher_is_verified === true }) ?? undefined }
       : {}),
   }
 }
