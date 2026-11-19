@@ -113,9 +113,17 @@ esac
 echo "DOMAIN_MOVE_INFRA_ACTION=$ACTION"
 echo "DOMAIN_MOVE_INFRA_STEP=$STEP"
 
+# A failing Terraform step prints its Error blocks (this step's resources hold no secrets) instead of stopping
+# silently; run 44479432280 stopped after DOMAIN_MOVE_INFRA_STEP with nothing to show why.
+terraform_errors() {
+  echo "DOMAIN_MOVE_INFRA=FAIL $1"
+  grep -E -A12 '^(│ )?Error' "$2" | sed -e 's/^│ //' | head -120 >&2 || true
+  exit 1
+}
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \
-  -backend-config="region=$AWS_REGION" -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
+  -backend-config="region=$AWS_REGION" -backend-config=use_lockfile=true > "$WORK_DIR/init.log" 2>&1 \
+  || terraform_errors "terraform init" "$WORK_DIR/init.log"
 
 PLAN_ARGS=()
 if [[ "$STEP" == import ]]; then
@@ -127,8 +135,10 @@ fi
 plan() {
   # Bounded like every host plan: interrupted and retried once if it hangs (scripts/aws/bootstrap-terraform-lock.sh).
   terraform_plan_bounded "$WORK_DIR/$1.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-    "${PLAN_ARGS[@]}" -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/$1.tfplan"
-  terraform -chdir="$APP_DIR" show -json "$WORK_DIR/$1.tfplan" > "$WORK_DIR/$1.json"
+    "${PLAN_ARGS[@]}" -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/$1.tfplan" \
+    || terraform_errors "terraform plan ($1)" "$WORK_DIR/$1.log"
+  terraform -chdir="$APP_DIR" show -json "$WORK_DIR/$1.tfplan" > "$WORK_DIR/$1.json" 2> "$WORK_DIR/$1.show.err" \
+    || terraform_errors "terraform show ($1)" "$WORK_DIR/$1.show.err"
 }
 classify() {
   if [[ "$STEP" == import ]]; then
@@ -139,8 +149,11 @@ classify() {
 }
 
 plan before
-CLASSIFICATION="$(classify "$WORK_DIR/before.json")"
+# The checker's refusal line is printed before the run stops (a failing $(...) would end the script first).
+CLASSIFY_STATUS=0
+CLASSIFICATION="$(classify "$WORK_DIR/before.json")" || CLASSIFY_STATUS=$?
 echo "$CLASSIFICATION"
+[[ "$CLASSIFY_STATUS" == 0 ]] || { echo "DOMAIN_MOVE_INFRA=FAIL plan refused"; exit 1; }
 if grep -qx 'DOMAIN_MOVE_PLAN=NO_CHANGES' <<<"$CLASSIFICATION"; then
   echo "DOMAIN_MOVE_INFRA_ALREADY_APPLIED=true"
   exit 0
@@ -158,12 +171,15 @@ STATE_SERIAL_BEFORE="$(terraform -chdir="$APP_DIR" state pull | jq -r '.serial')
 [[ "$STATE_SERIAL_BEFORE" =~ ^[0-9]+$ ]]
 echo "STATE_SERIAL_BEFORE=$STATE_SERIAL_BEFORE"
 # Apply exactly the plan that was classified (the certificate validations wait up to 45 minutes for ISSUED).
-terraform -chdir="$APP_DIR" apply -input=false -no-color -lock-timeout=60s "$WORK_DIR/before.tfplan" > "$WORK_DIR/apply.log"
+terraform -chdir="$APP_DIR" apply -input=false -no-color -lock-timeout=60s "$WORK_DIR/before.tfplan" > "$WORK_DIR/apply.log" 2>&1 \
+  || terraform_errors "terraform apply" "$WORK_DIR/apply.log"
 rm -f -- "$APP_DIR/zz_domain_move_imports.tf"
 
 # After the import the same addresses plan with no change and no import; after the create, nothing is left to create.
 plan after
-classify "$WORK_DIR/after.json" | grep -qx 'DOMAIN_MOVE_PLAN=NO_CHANGES' || { echo "The domain move resources still differ after the apply." >&2; exit 1; }
+AFTER="$(classify "$WORK_DIR/after.json")" || true
+echo "DOMAIN_MOVE_INFRA_AFTER $AFTER"
+grep -qx 'DOMAIN_MOVE_PLAN=NO_CHANGES' <<<"$AFTER" || { echo "The domain move resources still differ after the apply." >&2; exit 1; }
 STATE_SERIAL_AFTER="$(terraform -chdir="$APP_DIR" state pull | jq -r '.serial')"
 [[ "$STATE_SERIAL_AFTER" -gt "$STATE_SERIAL_BEFORE" ]]
 echo "STATE_SERIAL_AFTER=$STATE_SERIAL_AFTER"
