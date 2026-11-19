@@ -281,6 +281,8 @@ jobs:
         run: node --test scripts/aws/domain-move-report-guard.test.mjs
       - name: Verify admin filters counts runner contract (read only, counts only, one private PutObject)
         run: node --test scripts/aws/admin-filters-report-guard.test.mjs
+      - name: Verify domain move infra runner contract (import unchanged, then create only)
+        run: node --test scripts/aws/domain-move-infra.test.mjs
       - name: Verify guarded staging data cleanup contract
         run: node scripts/aws/staging-data-cleanup.test.mjs
       - name: Verify social event parity runtime audit contract
