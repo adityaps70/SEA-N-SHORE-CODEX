@@ -144,6 +144,9 @@ test('Terraform: imported resources are kept, the import blocks never live under
     const block = tf.slice(tf.indexOf(`resource "${resource}"`))
     assert.match(block.slice(0, block.indexOf('\n}\n')), /prevent_destroy\s+= true/, resource)
   }
+  // The console zones have no comment; the provider would plan "Managed by Terraform" on import.
+  const consoleZone = tf.slice(tf.indexOf('resource "aws_route53_zone" "console"'))
+  assert.match(consoleZone.slice(0, consoleZone.indexOf('\n}\n')), /ignore_changes\s+= \[comment\]/)
   // The import ids are exactly the Phase 0 report's.
   assert.match(imports, /id = "E2MCZ79G101LLD"/)
   assert.match(tf, /seanshore_net_zone_id = "Z09758912UIE2T2PK09U"/)
