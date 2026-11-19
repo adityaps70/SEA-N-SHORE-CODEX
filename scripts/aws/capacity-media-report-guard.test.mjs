@@ -724,11 +724,11 @@ seen = []
 def fake_rows(statements):
     seen.extend(statements)
     return [
-        [{"origin_hash": "originAAAA", "at": "2026-11-16 10:00:00+00"}, {"origin_hash": "originBBBB", "at": "2026-11-16 11:00:00+00"},
-         {"origin_hash": "originCCCC", "at": "2026-11-14 09:00:00+00"}],
-        [{"origin_hash": "originAAAA", "at": "2026-11-16 10:05:00+00", "summary": "Safari on iPhone", "is_admin": False},
-         {"origin_hash": "originBBBB", "at": "2026-11-17 12:00:00+00", "summary": "Chrome on Windows", "is_admin": True},
-         {"origin_hash": "originCCCC", "at": "2026-11-14 09:01:00+00", "summary": "Home Screen app on iPhone", "is_admin": False}],
+        [{"origin_hash": "originAAAA", "at": "2026-11-16 10:00:00"}, {"origin_hash": "originBBBB", "at": "2026-11-16 11:00:00"},
+         {"origin_hash": "originCCCC", "at": "2026-11-14 09:00:00"}],
+        [{"origin_hash": "originAAAA", "at": "2026-11-16 10:05:00", "summary": "Safari on iPhone", "is_admin": False},
+         {"origin_hash": "originBBBB", "at": "2026-11-17 12:00:00", "summary": "Chrome on Windows", "is_admin": True},
+         {"origin_hash": "originCCCC", "at": "2026-11-14 09:01:00", "summary": "Home Screen app on iPhone", "is_admin": False}],
     ]
 IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1"
 WINDOWS = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
