@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/scorm-content-repository', () => ({ resolveLearnerScormContentKey: mocks.resolveLearnerScormContentKey }))
 vi.mock('@/lib/aws/storage', () => ({ getMediaObject: mocks.getMediaObject }))
-vi.mock('@/lib/site-url', () => ({ siteOrigin: () => 'https://seanshore.in' }))
+vi.mock('@/lib/site-url', () => ({ siteOrigin: () => 'https://seanshore.in', siteOriginFor: () => 'https://seanshore.in' }))
 
 const learner = '0b3c6f6e-1c2d-4e5f-8a9b-0c1d2e3f4a5b'
 const lesson = '7d1f2a3b-4c5d-4e6f-9a8b-1c2d3e4f5a6b'

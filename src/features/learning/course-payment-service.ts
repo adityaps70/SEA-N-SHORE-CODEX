@@ -71,6 +71,8 @@ export function createCoursePaymentService(deps: {
   transaction?: RunInTransaction
   log?: (message: string, details?: Record<string, unknown>) => void
   siteUrl?: () => string | null
+  /** Domain move: the origin the buyer is on, for the return URL (the webhook URL stays canonical). */
+  returnSiteUrl?: () => Promise<string | null>
   now?: () => Date
   /** C4: the LUT ARN for the financial year of an instant; USD (export) sales are off without one. */
   lutForDate?: (at: Date) => Promise<string | null>
@@ -79,6 +81,7 @@ export function createCoursePaymentService(deps: {
   const transaction = deps.transaction ?? withTransaction
   const log = deps.log ?? ((message, details) => console.error(message, details ?? {}))
   const siteUrl = deps.siteUrl ?? (() => siteUrlFromEnvironment())
+  const returnSiteUrl = deps.returnSiteUrl ?? (async () => siteUrl())
   const now = deps.now ?? (() => new Date())
   const lutFor = deps.lutForDate ?? ((at: Date) => lutForDate(at))
 
@@ -222,7 +225,7 @@ export function createCoursePaymentService(deps: {
         currency: order.currency,
         customer: input.customer,
         description: input.description,
-        returnUrl: paymentReturnUrl(siteUrl(), reference),
+        returnUrl: paymentReturnUrl(await returnSiteUrl(), reference),
         notifyUrl: cashfreeNotifyUrl(siteUrl()),
         expiresAt: new Date(now().getTime() + GATEWAY_ORDER_LIFETIME_MINUTES * 60_000),
         notes: input.notes,

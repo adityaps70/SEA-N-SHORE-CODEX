@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/site-url', () => ({ siteOrigin: () => 'https://seanshore.in' }))
+vi.mock('@/lib/site-url', () => ({ siteOrigin: () => 'https://seanshore.in', siteOrigins: () => ['https://seanshore.in'] }))
 
 import { CSP_REPORT_REQUESTS_PER_MINUTE, resetCspReportRateLimit } from '@/lib/security/csp-report-rate-limit'
 import { CSP_REPORT_FLUSH_INTERVAL_MS, flushCspViolationSummary } from '@/lib/security/csp-report-summary'

@@ -1,6 +1,7 @@
 import { createResendEmailClient, loadResendApiKey, ResendApiError, type ResendEmailClient } from '@/lib/email/resend'
 import { withEmailSuppression } from '@/lib/email/suppression'
 import type { AccountQuery, AccountTransaction } from './types'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * Round H (H3): account security notices, queued in public.account_security_emails and sent by the outbox worker
@@ -19,7 +20,7 @@ function escapeHtml(value: string) {
 }
 
 function siteUrlOf(siteUrl?: string) {
-  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || 'https://seanshore.in').trim().replace(/\/+$/, '')
+  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
 }
 
 export function emailChangedNotice(input: { maskedNewEmail: string; siteUrl?: string }) {
