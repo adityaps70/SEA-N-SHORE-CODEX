@@ -85,6 +85,9 @@ describe('domain move: one site address', () => {
     const helper = read('src/lib/site-url-request.ts')
     expect(helper).toMatch(/await import\('next\/headers'\)/)
     expect(helper).not.toMatch(/^import [^\n]*from 'next\/headers'/m)
+    // site-url.ts reads NEXT_PUBLIC_SITE_URL on load; workers do not set it (scripts/workers/worker-imports.test.mjs).
+    expect(helper).toMatch(/await import\('@\/lib\/site-url'\)/)
+    expect(helper).not.toMatch(/^import /m)
   })
 
   it('next.config inlines the alias hosts and lets Server Actions accept them', () => {
