@@ -121,3 +121,11 @@ describe('cache clear triggers (migration 0111)', () => {
     expect(received).toContain('i:subject-1')
   })
 })
+
+describe('the trigger list the app waits for (runtime.ts)', () => {
+  it('names exactly the triggers migration 0111 creates', async () => {
+    const { CACHE_CLEAR_TRIGGERS } = await import('./runtime')
+    const rows = await db.query(`select tgname from pg_trigger where not tgisinternal and tgname like '%\\_cache\\_clear' order by tgname`)
+    expect(rows.map((row) => row.tgname)).toEqual([...CACHE_CLEAR_TRIGGERS].sort())
+  })
+})

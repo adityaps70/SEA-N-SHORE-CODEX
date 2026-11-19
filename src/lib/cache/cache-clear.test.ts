@@ -3,7 +3,7 @@ import { createCacheClearHub, createClearableCache, HEARTBEAT_MS, HEARTBEAT_TIME
 
 type Timer = { fn: () => void; at: number; done: boolean }
 
-function harness(options: { listenFails?: number } = {}) {
+function harness(options: { listenFails?: number; installed?: () => boolean } = {}) {
   let clock = 1_000_000
   const timers: Timer[] = []
   let onMessage: ((payload: string) => void) | null = null
@@ -22,6 +22,9 @@ function harness(options: { listenFails?: number } = {}) {
       onLost = lost
       open = true
       return { close: async () => { open = false } }
+    },
+    async clearsInstalled() {
+      return options.installed ? options.installed() : true
     },
     async notify(_channel, payload) {
       notified.push(payload)
@@ -89,6 +92,23 @@ describe('cache clear hub and caches (owner 18 Nov)', () => {
     await cache.getOrLoad('p1', source.load, () => ['p:1'])
     await cache.getOrLoad('p1', source.load, () => ['p:1'])
     expect(source.calls()).toBe(3)
+  })
+
+  it('caches nothing while the clear triggers are missing (app deployed before migration 0111), however healthy the listener', async () => {
+    let installed = false
+    const h = harness({ installed: () => installed })
+    const cache = createClearableCache<number>({ hub: h.hub, ttlMs: 60_000, maxEntries: 10 })
+    h.hub.start()
+    await h.flush()
+    expect(h.hub.healthy()).toBe(false)
+    const source = counter(() => 1)
+    await cache.getOrLoad('k', source.load, () => ['c:1'])
+    await cache.getOrLoad('k', source.load, () => ['c:1'])
+    expect(source.calls()).toBe(2)
+    // The migration is applied: the next reconnect finds the triggers and caching starts.
+    installed = true
+    await h.advance(60_000)
+    expect(h.hub.healthy()).toBe(true)
   })
 
   it('serves a kept answer until its tag is cleared, then loads afresh', async () => {

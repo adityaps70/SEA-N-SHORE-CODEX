@@ -32,6 +32,11 @@ export type CacheClearTransport = {
   listen(channel: string, onMessage: (payload: string) => void, onLost: (reason: string) => void): Promise<ListenerConnection>
   /** Sends one NOTIFY on the channel through the ordinary pool (the heartbeat). */
   notify(channel: string, payload: string): Promise<void>
+  /**
+   * True only when the database sends the clears (migration 0111's triggers are all there). Without them a heartbeat
+   * would still come back, so this is checked before anything is cached, and again on every reconnect.
+   */
+  clearsInstalled(): Promise<boolean>
 }
 
 type Clearable = { dropTag(tag: string): void; dropAll(): void }
@@ -159,8 +164,11 @@ export function createCacheClearHub(input: {
         return
       }
       connection = opened
-      // Healthy only once a heartbeat has made the whole trip: pool -> database -> this listener.
-      if (await roundTrip()) {
+      // Healthy only when the clear triggers exist and a heartbeat has made the whole trip: pool -> database -> listener.
+      if (!(await input.transport.clearsInstalled().catch(() => false))) {
+        if (failures === 0) log('[cache_clear_listener_unavailable]', { reason: 'clear_triggers_missing' })
+        lose('clear_triggers_missing')
+      } else if (await roundTrip()) {
         failures = 0
         dropEverything()
         healthy = true
