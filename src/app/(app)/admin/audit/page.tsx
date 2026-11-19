@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ExternalLink, UserRound } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { auditDetails, auditTargetHref, auditTargetLabel, auditVerb } from '@/features/admin/audit-format'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
@@ -10,6 +9,9 @@ import {
   type AdminAuditTargetType,
 } from '@/features/admin/repository'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
+import { isCountryCode } from '@/features/countries/catalog'
+import { CountrySelect } from '@/features/countries/components/country-select'
 
 export const metadata: Metadata = { title: 'Audit log · Admin' }
 
@@ -37,11 +39,33 @@ export default async function AdminAuditPage({
     ? requestedType as AdminAuditTargetType
     : 'all'
 
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
+  // Round GP (Part C): filter by one admin, by country, and to country admin decisions.
+  const actorCandidate = firstValue(params.actor) ?? ''
+  const actorId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actorCandidate) ? actorCandidate : null
+  const countryCandidate = (firstValue(params.country) ?? '').toUpperCase()
+  const country = isCountryCode(countryCandidate) ? countryCandidate : null
+  const countryAdminsOnly = firstValue(params.role) === 'country_admin'
   const events = await adminRepository.listAuditEvents(user.id, {
     targetType,
     limit: 100,
+    ...(actorId ? { actorId } : {}),
+    ...(country ? { country } : {}),
+    ...(countryAdminsOnly ? { countryAdminsOnly } : {}),
   })
+  const keep = (next: Record<string, string | null>) => {
+    const search = new URLSearchParams()
+    const values: Record<string, string | null> = {
+      type: targetType,
+      actor: actorId,
+      country,
+      role: countryAdminsOnly ? 'country_admin' : null,
+      ...next,
+    }
+    for (const [key, value] of Object.entries(values)) if (value) search.set(key, value)
+    const query = search.toString()
+    return `/admin/audit${query ? `?${query}` : ''}`
+  }
 
   const filters: Array<{ value: AdminAuditTargetType; label: string }> = [
     { value: 'all', label: 'All activity' },
@@ -63,11 +87,29 @@ export default async function AdminAuditPage({
       <AdminFilterBar
         label="Audit filters"
         options={filters.map((filter) => ({
-          href: `/admin/audit?type=${filter.value}`,
+          href: keep({ type: filter.value }),
           label: filter.label,
           active: targetType === filter.value,
         }))}
       />
+
+      <form method="get" action="/admin/audit" className="flex flex-wrap items-end gap-3 text-sm">
+        {targetType !== 'all' ? <input type="hidden" name="type" value={targetType} /> : null}
+        {actorId ? <input type="hidden" name="actor" value={actorId} /> : null}
+        <div>
+          <label htmlFor="audit-country" className="block text-xs font-semibold text-muted">Country</label>
+          <CountrySelect id="audit-country" name="country" defaultValue={country} emptyLabel="All countries" className="mt-1 min-h-9 rounded-lg border border-mist-200 bg-white px-2 text-sm text-navy-950" />
+        </div>
+        <label className="flex min-h-9 items-center gap-2 text-navy-900">
+          <input type="checkbox" name="role" value="country_admin" defaultChecked={countryAdminsOnly} className="size-4" />
+          Country admin decisions only
+        </label>
+        <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Filter</button>
+        {actorId || country || countryAdminsOnly ? (
+          <Link href={keep({ actor: null, country: null, role: null })} className="min-h-9 py-2 text-sm font-semibold text-ocean-700 hover:underline">Clear</Link>
+        ) : null}
+        {actorId ? <AdminChip tone="info">One administrator</AdminChip> : null}
+      </form>
 
       <AdminPanel>
         {events.length === 0 ? (

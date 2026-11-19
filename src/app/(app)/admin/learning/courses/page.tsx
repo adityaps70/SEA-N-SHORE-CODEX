@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   UserRoundCheck,
 } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   learningAdminRepository,
   type CourseReviewItem,
@@ -22,6 +21,7 @@ import { createMediaReadUrl } from '@/lib/aws/storage'
 import type { CourseReviewChange } from '@/features/learning/course-review-snapshot'
 import type { CourseStatus } from '@/features/learning/course-workflow'
 import { formatMoney } from '@/features/payments/currency'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Course review · Admin' }
 
@@ -380,7 +380,7 @@ export default async function LearningCoursesAdminPage({
 }: {
   searchParams: Promise<{ status?: string | string[] }>
 }) {
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
   const params = await searchParams
   const status = selectedStatus(params.status)
   const listed = await learningAdminRepository.listCoursesForReview(user.id, status)

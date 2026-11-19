@@ -2,7 +2,9 @@
 // each stays under the WAF's per-IP limit (2,000 requests per 5 minutes).
 //
 // LOAD_TEST_MIX=signed-out (Round P3): read-only page fetches, no sign-in, forms, posts, messages, payments or emails.
-// LOAD_TEST_MIX=signed-in (Round ARCH, Phase 1): the 50 hidden load-test accounts, weighted by P3's real traffic: home
+// LOAD_TEST_MIX=signed-in (Round ARCH, Phase 1): the hidden load-test accounts (1,000 since 18 Nov, one per simulated
+// member; each shard has its own share and spreads its requests evenly over them, so every session stays far under
+// the WAF's 1,000 requests per 5 minutes), weighted by P3's real traffic: home
 // and 3 feed pages, notifications, messages (opened, nothing sent), jobs list and a job page, a test profile, PYMK and
 // the realtime ticket. Reads only, except the feed's own per-visit bookkeeping. No like or unlike until the realtime
 // broadcast fix is live.
@@ -12,11 +14,12 @@
 // recorded in the lt_req trend (and lt_hit for the CloudFront cache), which scripts/load-test/stop-watch.mjs reads
 // from the CSV output to apply the stop rules and build the report.
 import http from 'k6/http'
+import exec from 'k6/execution'
 import { Rate, Trend } from 'k6/metrics'
 
 const BASE_URL = __ENV.LOAD_TEST_BASE_URL || ''
 const SHARD = Number(__ENV.LOAD_TEST_SHARD || '0')
-const SHARDS = Number(__ENV.LOAD_TEST_SHARDS || '8')
+const SHARDS = Number(__ENV.LOAD_TEST_SHARDS || '16')
 const STEP_SECONDS = Number(__ENV.LOAD_TEST_STEP_SECONDS || '300')
 const TOTAL_RPM = (__ENV.LOAD_TEST_TOTAL_RPM || '100,300,600,1000,2000,3000').split(',').map(Number)
 const JOB_PATH = __ENV.LOAD_TEST_JOB_PATH || ''
@@ -68,9 +71,9 @@ export const options = {
       executor: 'ramping-arrival-rate',
       startRate: Math.max(1, shardRate(TOTAL_RPM[0], SHARD, SHARDS)),
       timeUnit: '1m',
-      // Enough VUs for a 2 s p95 at the top step, with headroom; never more than 100 per shard.
-      preAllocatedVUs: Math.min(100, Math.ceil(peak / 20) + 5),
-      maxVUs: 100,
+      // Enough VUs for a 2 s p95 at the top step, with headroom; never more than 150 per shard.
+      preAllocatedVUs: Math.min(150, Math.ceil(peak / 20) + 5),
+      maxVUs: 150,
       stages,
       gracefulStop: '15s',
     },
@@ -102,14 +105,24 @@ function record(res, step) {
 // cacheable and the run measures only the uncached path (the 7 Nov morning run did exactly that).
 const BROWSER_PAGE_LOAD = { Accept: 'text/html,application/xhtml+xml', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate' }
 
-// Per-VU state for the signed-in mix: which account, and where this "visit" is in the Top-for-you feed.
+// Signed-in mix: each iteration takes this shard's next account in turn (not one fixed account per VU, which would
+// pile a quiet step's requests onto a few sessions), and remembers per account where its "visit" is in the
+// Top-for-you feed.
+const feeds = new Map()
 let feed = { sessionId: null, position: null, pages: 0 }
 // Round DB: each request names its ramp step in the User-Agent, so the report can cut the ALB's server-side times
 // per step exactly (the shards start a few seconds apart). Set per iteration.
 let stepAgent = 'SeaNShore-LoadTest/1'
 
+/** The shard's account for this iteration: round robin over the shard's iterations, the same for every VU count. */
+export function sessionSlot(iteration, sessions) {
+  return iteration % sessions
+}
+
 function signedInRequest(name) {
-  const session = SESSIONS[(__VU - 1) % SESSIONS.length]
+  const slot = sessionSlot(exec.scenario.iterationInInstance, SESSIONS.length)
+  const session = SESSIONS[slot]
+  feed = feeds.get(slot) || { sessionId: null, position: null, pages: 0 }
   const cookie = `sns_cognito_access=${session.accessToken}${session.refreshToken ? `; sns_cognito_refresh=${session.refreshToken}` : ''}`
   const base = { 'X-SNS-Load-Test': 'P3', 'User-Agent': stepAgent, Cookie: cookie }
   // Page loads look like a browser's (as in the signed-out mix); the realtime state is a fetch, not a page.
@@ -122,7 +135,7 @@ function signedInRequest(name) {
   })
   switch (name) {
     case 'home':
-      feed = { sessionId: null, position: null, pages: 0 }
+      feeds.set(slot, { sessionId: null, position: null, pages: 0 })
       return page('/home')
     case 'feed-page': {
       // Three pages per visit, then a new visit starts (a new snapshot), as a member scrolling home does.
@@ -132,11 +145,11 @@ function signedInRequest(name) {
       const body = String(res.body || '')
       const sessionId = /"sessionId":"([0-9a-f-]{36})"/.exec(body)
       const position = /"nextPosition":(\d+|null)/.exec(body)
-      feed = { sessionId: sessionId ? sessionId[1] : null, position: position && position[1] !== 'null' ? Number(position[1]) : null, pages: feed.pages + 1 }
+      feeds.set(slot, { sessionId: sessionId ? sessionId[1] : null, position: position && position[1] !== 'null' ? Number(position[1]) : null, pages: feed.pages + 1 })
       return res
     }
     case 'profile':
-      return page(`/people/sns-load-test-${String(1 + Math.floor(Math.random() * 50)).padStart(2, '0')}`, '/people/:slug')
+      return page(`/people/sns-load-test-${String(1 + Math.floor(Math.random() * 1000)).padStart(4, '0')}`, '/people/:slug')
     case 'network': return page('/network')
     case 'jobs': return page('/jobs')
     case 'job': return page(JOB_PATH, '/jobs/:id')

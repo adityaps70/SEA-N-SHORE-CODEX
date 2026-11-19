@@ -5,6 +5,7 @@ import { canStepUpForAdmin, satisfiesAdminMfa, type CurrentMfaStatus } from '@/f
 import { hasAdminStepUp } from '@/features/account-security/admin-step-up-runtime'
 import { getCurrentMfaStatus } from '@/features/auth/mfa-status'
 import { adminRepository } from './repository'
+import { countryAdminRepository } from '@/features/country-admins/repository'
 
 /**
  * Round 14 (2.11): platform administrators need an authenticator app, and a session that answered
@@ -48,6 +49,8 @@ export const ADMIN_MFA_REQUIRED_MESSAGE = 'Turn on your authenticator app and si
  */
 export function createAdminActionMfaChecks(input: {
   isPlatformAdministrator: (userId: string) => Promise<boolean>
+  /** Round GP (Part C): a country admin acts with admin authority too, so the same MFA rule applies. */
+  isCountryAdministrator?: (userId: string) => Promise<boolean>
   getStatus: () => Promise<CurrentMfaStatus | null>
   hasStepUp?: (userId: string) => Promise<boolean>
 }) {
@@ -72,6 +75,7 @@ export function createAdminActionMfaChecks(input: {
       let administrator: boolean
       try {
         administrator = await input.isPlatformAdministrator(userId)
+          || (input.isCountryAdministrator ? await input.isCountryAdministrator(userId) : false)
       } catch {
         administrator = true
       }
@@ -92,6 +96,7 @@ export function createAdminActionMfaChecks(input: {
 
 const adminActionMfaChecks = createAdminActionMfaChecks({
   isPlatformAdministrator: (userId) => adminRepository.isPlatformAdministrator(userId),
+  isCountryAdministrator: async (userId) => Boolean((await countryAdminRepository.getCountries(userId))?.length),
   getStatus: () => getCurrentMfaStatus(),
   hasStepUp: (userId) => hasAdminStepUp(userId),
 })

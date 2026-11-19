@@ -175,6 +175,7 @@ export function createUnclaimedOrganizationRepository(input: {
    */
   async function createUnclaimedOrganization(userId: string, data: ParsedUnclaimedOrganizationInput): Promise<LinkedOrganization> {
     const name = normalizeOrganizationName(data.name)
+    const withCountries = await countryColumnsReady()
     try {
       return await transaction(async (txQuery) => {
         // Serialize concurrent adds of the same name; the unique index is the final guard.
@@ -198,8 +199,8 @@ export function createUnclaimedOrganizationRepository(input: {
         const rows = await txQuery(
           `insert into public.companies (
              slug, name, company_type, organization_type, website, office_locations,
-             created_by, claim_status, created_at, updated_at
-           ) values ($1, $2, $3, $4, $5, $6::text[], $7, 'unclaimed', now(), now())
+             created_by, claim_status, created_at, updated_at${withCountries ? ', country' : ''}
+           ) values ($1, $2, $3, $4, $5, $6::text[], $7, 'unclaimed', now(), now()${withCountries ? ', $8' : ''})
            returning id, slug, name`,
           [
             slugFor(name),
@@ -209,6 +210,7 @@ export function createUnclaimedOrganizationRepository(input: {
             data.website,
             [data.location],
             userId,
+            ...(withCountries ? [data.country] : []),
           ],
         ) as SlugRow[]
         const company = rows[0]

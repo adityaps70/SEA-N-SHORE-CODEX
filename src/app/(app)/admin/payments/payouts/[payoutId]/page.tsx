@@ -11,6 +11,7 @@ import { getPayoutLine, listPayoutAudit, listPayoutEarningLines } from '@/featur
 import { formatExactMoney, formatPercentLabel, PAYOUT_STATUS_LABELS, SOURCE_TYPE_LABELS } from '@/features/payouts/payout-rules'
 import { readClient } from '@/features/payouts/payout-runtime'
 import { formatRateBasisPoints } from '@/features/payouts/tds'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Payout · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,8 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 export default async function AdminPayoutDetailPage({ params }: { params: Promise<{ payoutId: string }> }) {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const { payoutId } = await params
   if (!z.string().uuid().safeParse(payoutId).success) notFound()

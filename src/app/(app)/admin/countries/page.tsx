@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowDown, ArrowUp, Building2, Search, UsersRound } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import { adminCountryRepository, COUNTRY_BASES, type CountryBasis, type CountryStatsRow } from '@/features/countries/admin-country-repository'
@@ -50,8 +50,11 @@ function CountriesNotReady() {
 
 export default async function AdminCountriesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
-  const admin = await requireAwsUser()
+  // Round GP (Part C): country admins see their own countries' rows only, and no member lists.
+  const access = await requireAdminAccess('country')
+  const admin = access.user
   const basis = readBasis(params.basis)
+  const membersLinks = access.kind === 'platform' && basis === 'residence'
   const query = readSingle(params.q).trim().slice(0, 80)
   const sort = readSortKey(readSingle(params.sort))
   const direction = readSortDirection(readSingle(params.dir), sort)
@@ -156,7 +159,7 @@ export default async function AdminCountriesPage({ searchParams }: { searchParam
                   ]}
                   actions={[
                     // The member list filters by country of residence (with estimates), so it is offered on that view only.
-                    ...(basis === 'residence' ? [{ kind: 'link' as const, href: `/admin/users?country=${countrySlug(row.code)}`, label: 'Members in this country', icon: <UsersRound aria-hidden="true" /> }] : []),
+                    ...(membersLinks ? [{ kind: 'link' as const, href: `/admin/users?country=${countrySlug(row.code)}`, label: 'Members in this country', icon: <UsersRound aria-hidden="true" /> }] : []),
                     { kind: 'link', href: `/admin/organizations?country=${countrySlug(row.code)}`, label: 'Organizations in this country', icon: <Building2 aria-hidden="true" /> },
                   ]}
                 />
@@ -183,7 +186,7 @@ export default async function AdminCountriesPage({ searchParams }: { searchParam
                         <td key={column} className="px-3 py-2.5 text-right tabular-nums text-navy-900">{count(row[column])}</td>
                       ))}
                       <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                        {basis === 'residence' ? (
+                        {membersLinks ? (
                           <>
                             <Link href={`/admin/users?country=${countrySlug(row.code)}`} className="text-xs font-semibold text-ocean-700 hover:underline">Members</Link>
                             <span aria-hidden="true" className="px-1 text-muted">·</span>

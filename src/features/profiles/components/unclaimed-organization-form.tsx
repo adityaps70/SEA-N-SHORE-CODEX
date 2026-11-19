@@ -5,6 +5,7 @@ import { Info } from 'lucide-react'
 import { organizationTypeGroups, type OrganizationTypeCode } from '@/features/organizations/organization-types'
 import { createUnclaimedOrganization } from '@/features/organizations/unclaimed-organization-actions'
 import { cn } from '@/lib/cn'
+import { CountrySelect } from '@/features/countries/components/country-select'
 import type { LinkedOrganization } from '../organization-link'
 
 const TYPE_GROUPS = organizationTypeGroups()
@@ -38,6 +39,7 @@ export function UnclaimedOrganizationForm({
   const [name, setName] = useState(initialName.trim())
   const [organizationType, setOrganizationType] = useState<OrganizationTypeCode | ''>('')
   const [location, setLocation] = useState('')
+  const [country, setCountry] = useState('')
   const [website, setWebsite] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
@@ -56,7 +58,7 @@ export function UnclaimedOrganizationForm({
     setExisting(null)
     startTransition(async () => {
       try {
-        const result = await createUnclaimedOrganization({ name, organizationType, location, website })
+        const result = await createUnclaimedOrganization({ name, organizationType, location, website, country })
         if (result.ok) {
           onAdded(result.organization)
           return
@@ -153,6 +155,22 @@ export function UnclaimedOrganizationForm({
             className={fieldClass}
           />
           {fieldError('location')}
+        </div>
+        {/* Round GP (Part C): required for every new organization page, so the right country partner can review it. */}
+        <div>
+          <label htmlFor={`${baseId}-country`} className={labelClass}>
+            Country
+          </label>
+          <CountrySelect
+            id={`${baseId}-country`}
+            value={country}
+            onChange={setCountry}
+            emptyLabel="Choose the country"
+            invalid={Boolean(fieldErrors.country?.[0])}
+            describedBy={describedBy('country')}
+            className={fieldClass}
+          />
+          {fieldError('country')}
         </div>
         <div>
           <label htmlFor={`${baseId}-website`} className={labelClass}>

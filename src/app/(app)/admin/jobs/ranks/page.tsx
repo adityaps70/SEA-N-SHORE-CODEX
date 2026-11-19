@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
 import { setJobExtraRankHidden } from '@/features/jobs/extra-ranks-admin-actions'
 import { extraRanksRepository, type DepartmentExtraRankLink } from '@/features/jobs/extra-ranks-repository'
 import { departmentByKey, roleByKey } from '@/features/roles/taxonomy'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Job extra ranks' }
 export const dynamic = 'force-dynamic'
@@ -35,7 +35,7 @@ const ERRORS: Record<string, string> = {
  */
 export default async function JobExtraRanksAdminPage({ searchParams }: { searchParams: SearchParams }) {
   try {
-    await requirePlatformAdministratorUser()
+    await requireAdminAccess('platform')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error

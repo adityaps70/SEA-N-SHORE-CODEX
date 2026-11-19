@@ -8,6 +8,21 @@ const mocks = vi.hoisted(() => ({
   listOrganizationApplications: vi.fn(),
 }))
 
+// Round GP (Part C): pages check access through requireAdminAccess; here it follows the existing mock above.
+vi.mock('@/features/admin/admin-access', async () => {
+  const auth = await import('@/features/auth/aws-queries')
+  // Like the real gate: anyone who is not an administrator gets the not-found page.
+  return {
+    requireAdminAccess: async () => {
+      try {
+        return { kind: 'platform', user: await auth.requireAwsUser() }
+      } catch (error) {
+        if (error instanceof Error && error.message === 'admin_forbidden') (await import('next/navigation')).notFound()
+        throw error
+      }
+    },
+  }
+})
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/admin/repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/admin/repository')>()

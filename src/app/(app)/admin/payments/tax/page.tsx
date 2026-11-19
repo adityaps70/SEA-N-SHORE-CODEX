@@ -9,6 +9,7 @@ import { LutForm, TdsSettingsForm } from '@/features/tax/components/tax-settings
 import { previousMonth } from '@/features/payouts/seller-invoice-rules'
 import { COURSE_SAC, financialYearOf, GST_SUPPLIER, indiaMonth } from '@/features/tax/gst'
 import { getTaxSettings, listLutRegistrations } from '@/features/tax/tax-settings'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Tax · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -19,6 +20,8 @@ function rupees(minor: number | null) {
 
 /** C4: GST invoicing details, the LUT per financial year, and TDS on course-seller payouts. */
 export default async function AdminPaymentTaxPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const [settings, luts] = await Promise.all([getTaxSettings(readClient), listLutRegistrations(readClient)])
   const currentYear = financialYearOf(new Date())

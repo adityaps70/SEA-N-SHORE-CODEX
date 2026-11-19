@@ -9,7 +9,6 @@ import {
   formatAdminDate,
   type AdminChipTone,
 } from '@/features/admin/components/admin-ui'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   ADMIN_COMPANY_ACCESS_FILTERS,
   adminRepository,
@@ -19,6 +18,7 @@ import {
 import { CompanyAccessReviewActions } from '@/features/admin/components/company-access-review-actions'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { requestAgeDays, type PlatformFallbackReason } from '@/features/organizations/access-request-policy'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Access requests · Admin' }
 
@@ -70,7 +70,7 @@ function decidedBy(request: AdminCompanyAccessRequest) {
 export default async function AdminOrganizationAccessPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const filter = readFilter(params.status)
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
   const [requests, counts] = await Promise.all([
     adminRepository.listCompanyAccessRequests(user.id, filter),
     adminRepository.countCompanyAccessRequests(user.id),

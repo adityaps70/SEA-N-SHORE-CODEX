@@ -83,7 +83,7 @@ describe('before migration 0108 (Round GP safety net)', () => {
     expect(await run(`select description from public.companies where id = $1`, [companyId])).toEqual([{ description: 'An updated placeholder description.' }])
 
     const unclaimed = createUnclaimedOrganizationRepository({ query: run, transaction, countrySchemaReady: ready })
-    const page = await unclaimed.createUnclaimedOrganization(adminId, { name: 'Placeholder Unclaimed Port', organizationType: 'port_terminal', website: null, location: 'Cebu, Philippines' } as never)
+    const page = await unclaimed.createUnclaimedOrganization(adminId, { name: 'Placeholder Unclaimed Port', organizationType: 'port_terminal', website: null, location: 'Cebu, Philippines', country: 'PH' } as never)
     expect(await unclaimed.getClaimableOrganization(page.slug)).toMatchObject({ unclaimed: true, prefill: { country: null } })
     const claimant = String((await run(`insert into public.profiles (id, full_name) values (gen_random_uuid(), 'Placeholder Claimant') returning id`))[0]!.id)
     await unclaimed.submitClaim(claimant, page.id, application({ organizationName: 'Placeholder Unclaimed Port', organizationType: 'port_terminal' }))

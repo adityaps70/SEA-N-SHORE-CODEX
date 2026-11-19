@@ -148,6 +148,9 @@ export async function reviewOrganizationApplication(
     if (code === 'admin_forbidden') {
       return { ok: false, error: 'You do not have permission to review organization applications.' }
     }
+    if (code === 'organization_out_of_scope') {
+      return { ok: false, error: 'This organization is not in your countries. A Sea N Shore administrator handles it.' }
+    }
     if (code === 'organization_review_transition_forbidden') {
       return { ok: false, error: 'This organization application cannot move to that review state.' }
     }

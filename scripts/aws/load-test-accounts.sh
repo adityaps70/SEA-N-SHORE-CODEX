@@ -3,7 +3,8 @@
 # web image) as a single ECS task on the staging cluster, with the web task definition and only its command and one
 # environment variable overridden. See src/features/load-test/accounts.ts.
 #
-# plan (read only): how many of the 50 test accounts, their follows, the hidden community and its post exist.
+# plan (read only): how many of the 1,000 test accounts, their follows, the hidden community and its post exist, and
+#   the Cognito user pool's tier (the owner checks the free monthly users before a run).
 # create-once: creates whatever is missing (Cognito users on reserved .invalid addresses, never emailed; onboarded
 #   profiles flagged is_load_test; follows among them only; the hidden private community and its one post).
 # delete-once: deletes every flagged account, the community and their Cognito users; refuses anything unflagged.
@@ -52,6 +53,16 @@ TASKDEF="$(jq -r '.services[0].taskDefinition // empty' <<<"$SERVICE_JSON")"
 IMAGE="$(aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASKDEF" --query "taskDefinition.containerDefinitions[?name=='web'].image | [0]" --output text)"
 echo "LOAD_TEST_ACCOUNTS_TASK_DEFINITION=${TASKDEF##*/}"
 echo "LOAD_TEST_ACCOUNTS_IMAGE_TAG=${IMAGE##*:}"
+if [[ "$ACTION" == "plan" ]]; then
+  # Read only: the user pool's tier (LITE, ESSENTIALS or PLUS), never its id. The pool is the web task's own.
+  POOL_ID="$(aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASKDEF" --query "taskDefinition.containerDefinitions[?name=='web'].environment[] | [?name=='AWS_COGNITO_USER_POOL_ID'].value | [0]" --output text)"
+  TIER="unavailable"
+  if [[ "$POOL_ID" =~ ^ap-south-1_[A-Za-z0-9]+$ ]]; then
+    TIER="$(aws cognito-idp describe-user-pool --region "$AWS_REGION" --user-pool-id "$POOL_ID" --query 'UserPool.UserPoolTier' --output text 2>/dev/null || echo unavailable)"
+  fi
+  [[ "$TIER" =~ ^(LITE|ESSENTIALS|PLUS|None|unavailable)$ ]] || TIER=unavailable
+  echo "LOAD_TEST_ACCOUNTS_COGNITO_TIER=$TIER"
+fi
 
 ENVIRONMENT="$(jq -nc --arg mode "$ACTION" --arg key "${LOAD_TEST_SESSIONS_PUBLIC_KEY:-}" --arg object "${LOAD_TEST_SESSIONS_OBJECT_KEY:-}" '[{name:"LOAD_TEST_ACCOUNTS_MODE",value:$mode}] + (if $key == "" then [] else [{name:"LOAD_TEST_SESSIONS_PUBLIC_KEY",value:$key},{name:"LOAD_TEST_SESSIONS_OBJECT_KEY",value:$object}] end)')"
 OVERRIDES="$(jq -nc --arg worker "$WORKER" --argjson environment "$ENVIRONMENT" '{containerOverrides:[{name:"web",command:["node",$worker],environment:$environment}]}')"
@@ -107,7 +118,7 @@ if [[ "$ACTION" == "sessions" ]]; then
   # private key, which never leaves the runner. Nothing of it is in the log: the task prints counts only.
   grep -q 'LOAD_TEST_SESSIONS_VERIFIED=true' <<<"$LOGS" || { echo "The sessions were not all created." >&2; exit 1; }
   STORED="$(tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_SESSIONS_STORED count=[0-9]+ bytes=[0-9]+' | head -1)"
-  [[ "$STORED" =~ ^LOAD_TEST_SESSIONS_STORED\ count=50\ bytes=[0-9]+$ ]] || { echo "The sealed sessions were not stored for all 50 accounts." >&2; exit 1; }
+  [[ "$STORED" =~ ^LOAD_TEST_SESSIONS_STORED\ count=1000\ bytes=[0-9]+$ ]] || { echo "The sealed sessions were not stored for all 1,000 accounts." >&2; exit 1; }
   echo "$STORED"
   tr '\t' '\n' <<<"$LOGS" | grep -oE 'LOAD_TEST_ACTIONS \{[^}]*\}' | head -1
   echo "LOAD_TEST_SESSIONS_READY=true"
