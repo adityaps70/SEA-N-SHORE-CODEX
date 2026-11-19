@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { Building2, ExternalLink, UserRound } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireAdminAccess } from '@/features/admin/admin-access'
+import { AdminEmptyState, AdminPanel } from '@/features/admin/components/admin-ui'
 import { UserWebsiteLink } from '@/components/ui/user-website-link'
 import { adminRepository } from '@/features/admin/repository'
 import { countryLabel } from '@/features/countries/admin-country-view'
@@ -42,11 +43,34 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
   const { applicationId } = await params
   if (!z.string().uuid().safeParse(applicationId).success) notFound()
 
-  const user = await requireAwsUser()
-  const review = await adminRepository.getOrganizationApplicationReview(user.id, applicationId)
+  // Round GP (Part C): country admins review organizations from their own countries only.
+  const access = await requireAdminAccess('country')
+  const user = access.user
+  let review: Awaited<ReturnType<typeof adminRepository.getOrganizationApplicationReview>>
+  try {
+    review = await adminRepository.getOrganizationApplicationReview(user.id, applicationId)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'organization_out_of_scope') {
+      return (
+        <div className="space-y-4">
+          <Link href="/admin/organizations?view=queue" className="text-sm font-bold text-ocean-700 underline-offset-2 hover:underline">← Organization reviews</Link>
+          <AdminPanel>
+            <AdminEmptyState
+              title="This organization is not in your countries"
+              description="As a country admin you review organizations from your own countries only. A Sea N Shore administrator handles this one."
+            />
+          </AdminPanel>
+        </div>
+      )
+    }
+    throw error
+  }
   if (!review) notFound()
-  const membership = await adminMembershipRepository.getOrganizationAccessOverview(user.id, review.company.id)
-  if (!membership) notFound()
+  // Plan, entitlements and the workspace team are platform administrator matters (country admins never see them).
+  const membership = access.kind === 'platform'
+    ? await adminMembershipRepository.getOrganizationAccessOverview(user.id, review.company.id)
+    : null
+  if (access.kind === 'platform' && !membership) notFound()
   const typeCode = review.company.typeCode
   const details = review.company.details
   const has = (field: Parameters<typeof organizationTypeHasField>[1]) => organizationTypeHasField(typeCode, field)
@@ -104,10 +128,14 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
               value={(
                 <>
                   {review.company.country ? countryLabel(review.company.country) : <span className="font-semibold text-amber-900">Country not set</span>}
-                  {' '}
-                  <Link href={`/admin/organizations/country/${review.company.id}`} className="text-sm font-semibold text-ocean-700 hover:underline">
-                    {review.company.country ? 'Change' : 'Set country'}
-                  </Link>
+                  {access.kind === 'platform' ? (
+                    <>
+                      {' '}
+                      <Link href={`/admin/organizations/country/${review.company.id}`} className="text-sm font-semibold text-ocean-700 hover:underline">
+                        {review.company.country ? 'Change' : 'Set country'}
+                      </Link>
+                    </>
+                  ) : null}
                 </>
               )}
             />
@@ -164,6 +192,8 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
         </div>
       </section>
 
+      {membership ? (
+      <>
       <section className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
         <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Organization membership</p>
@@ -213,8 +243,10 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
           entitlementHistory={membership.entitlementHistory}
         />
       </div>
+      </>
+      ) : null}
 
-      <OrganizationReviewActions applicationId={review.applicationId} status={review.status} />
+      <OrganizationReviewActions applicationId={review.applicationId} status={review.status} canSuspend={access.kind === 'platform'} />
     </div>
   )
 }

@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate, type AdminChipTone } from '@/features/admin/components/admin-ui'
 import { subscriptionChargeMode } from '@/features/billing/billing-config'
 import { paymentMethodLabel } from '@/features/billing/billing-view'
@@ -10,6 +9,7 @@ import { INTERVAL_LABELS, PLAN_LABELS, PAID_PLAN_CODES, BILLING_INTERVALS, TRIAL
 import { subscriptionRepository } from '@/features/billing/subscription-repository'
 import { subscriptionService } from '@/features/billing/subscription-service'
 import { formatMoney, minorToPriceInput } from '@/features/payments/currency'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Billing · Admin' }
 export const dynamic = 'force-dynamic'
@@ -41,7 +41,7 @@ function first(value: string | string[] | undefined) {
  */
 export default async function AdminBillingPage({ searchParams }: { searchParams?: SearchParams }) {
   try {
-    await requirePlatformAdministratorUser()
+    await requireAdminAccess('platform')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error

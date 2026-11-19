@@ -10,6 +10,7 @@ import { PaymentsAdminTabs } from '@/features/payouts/components/admin/payments-
 import { getPaymentsOverview, type PaymentType } from '@/features/payouts/payout-queries'
 import { formatExactMoney } from '@/features/payouts/payout-rules'
 import { payoutsEnvironment, readClient } from '@/features/payouts/payout-runtime'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -21,6 +22,8 @@ function Money({ minor, currency }: { minor: number; currency: string }) {
 }
 
 export default async function AdminPaymentsOverviewPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const [overview, capabilities, payoutsMode, health] = await Promise.all([
     getPaymentsOverview(readClient),

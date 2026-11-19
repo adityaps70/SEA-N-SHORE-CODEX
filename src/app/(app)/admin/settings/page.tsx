@@ -6,6 +6,7 @@ import { SocialHandlesForm } from '@/features/site-settings/components/social-ha
 import { getMemberNumbers } from '@/features/site-settings/queries'
 import { siteSettingsRepository } from '@/features/site-settings/repository'
 import { signedAboutImageUrls } from '@/features/site-settings/images'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Site settings · Admin' }
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,8 @@ const PAGE_WIDTH = 'max-w-4xl' // Round H (H6) width token: switch to max-w-page
  * loudly here (unlike the public pages) so an administrator never overwrites settings they could not see.
  */
 export default async function AdminSiteSettingsPage() {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   const [officer, about, socials] = await Promise.all([
     siteSettingsRepository.get('grievance_officer').catch(() => null),
     siteSettingsRepository.get('about_page').catch(() => null),

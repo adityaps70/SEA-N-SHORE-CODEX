@@ -16,6 +16,7 @@ import { formatRateBasisPoints } from '@/features/payouts/tds'
 import { formatExactMoney, formatPercentLabel, maskPayoutAccount, parseSellerKey, SOURCE_TYPE_LABELS } from '@/features/payouts/payout-rules'
 import { arePayoutsConfigured } from '@/features/payouts/payout-runtime'
 import { single } from '@/features/payouts/seller-context'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Review payout · Payments · Admin' }
 export const dynamic = 'force-dynamic'
@@ -23,6 +24,8 @@ export const dynamic = 'force-dynamic'
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
 export default async function ReviewPayoutPage({ searchParams }: { searchParams: SearchParams }) {
+  // Round GP (Part C): platform administrators only (default deny for country admins).
+  await requireAdminAccess('platform')
   await requirePaymentsAdmin()
   const params = await searchParams
   const seller = parseSellerKey(single(params.seller))

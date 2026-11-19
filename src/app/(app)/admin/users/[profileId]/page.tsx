@@ -3,7 +3,6 @@ import Link from '@/components/navigation/intent-link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { capabilityLabel } from '@/features/access/capability-labels'
 import { AdminChip, formatAdminDate, looksLikeTestAccount, type AdminChipTone } from '@/features/admin/components/admin-ui'
 import { AdminUserControlPanel } from '@/features/admin/components/admin-user-control-panel'
@@ -11,6 +10,7 @@ import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { adminRepository, type AdminUserStatus } from '@/features/admin/repository'
 import { signInMethodsLabel } from '@/features/admin/sign-in-methods'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'User account · Admin' }
 
@@ -69,7 +69,7 @@ export default async function AdminUserDetailPage({
   const { profileId } = await params
   if (!z.string().uuid().safeParse(profileId).success) notFound()
 
-  const admin = await requireAwsUser()
+  const admin = (await requireAdminAccess('platform')).user
   const [user, history, membership] = await Promise.all([
     adminRepository.getAdminUser(admin.id, profileId),
     adminRepository.listUserAccountHistory(admin.id, profileId, 100),

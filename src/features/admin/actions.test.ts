@@ -17,6 +17,8 @@ const adminMfa = vi.hoisted(() => ({
 vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+// Round GP (Part C): the MFA gate also asks whether the member is a country admin; here they are not.
+vi.mock('@/features/country-admins/repository', () => ({ countryAdminRepository: { getCountries: async () => null } }))
 vi.mock('./repository', () => ({
   adminRepository: {
     isPlatformAdministrator: adminMfa.isPlatformAdministrator,

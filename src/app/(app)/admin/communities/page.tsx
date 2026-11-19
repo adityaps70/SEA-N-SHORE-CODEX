@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Archive, ArchiveRestore, ExternalLink, PencilLine, Search, UserRound } from 'lucide-react'
-import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import { archiveGroupAsAdmin, unarchiveGroupAsAdmin } from '@/features/community/admin-actions'
@@ -12,6 +11,7 @@ import { communityCategoryRepository } from '@/features/community/category-repos
 import { communityRepository } from '@/features/community/repository'
 import { groupHref, type AdminCommunityGroup } from '@/features/community/types'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Communities · Admin' }
 
@@ -49,7 +49,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
   // Round 14 (2.10): the admin layout's check does not run for every page render (partial
   // rendering), and listAdminGroups takes no admin id, so the page checks for itself.
   try {
-    await requirePlatformAdministratorUser()
+    await requireAdminAccess('platform')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error

@@ -40,6 +40,17 @@ const copyByType: Record<NetworkNotificationType, string> = {
   learning_announcement: 'posted a course announcement',
   learning_session_reminder: 'your live session starts soon',
   job_alert_match: 'new jobs match your job alert',
+  organization_review_decided: 'reviewed your organization',
+}
+
+/** Round GP (Part C): "Sea N Shore verified Harbour Crew." and the like; the reason stays on the email and the page. */
+export function organizationReviewMessage(details: unknown) {
+  const value = (details && typeof details === 'object' ? details : {}) as { decision?: unknown; companyName?: unknown }
+  const name = typeof value.companyName === 'string' && value.companyName.trim() ? value.companyName.trim() : 'your organization'
+  if (value.decision === 'approved') return `Sea N Shore verified ${name}. Its page is now public.`
+  if (value.decision === 'rejected') return `Sea N Shore could not verify ${name}. See the reason and resubmit.`
+  if (value.decision === 'changes_requested') return `Sea N Shore needs changes before it can verify ${name}.`
+  return `Sea N Shore reviewed ${name}.`
 }
 
 function learningCopy(row: NotificationRow) {
@@ -148,6 +159,11 @@ function destinationFor(row: NotificationRow, actor: ProfileSummary | null, tagg
   if (row.notification_type === 'event_cancelled') return '/events/my'
   if (row.notification_type === 'plan_trial_ending') return '/settings/billing'
   if (row.notification_type === 'job_alert_match') return '/jobs/alerts'
+  if (row.notification_type === 'organization_review_decided') {
+    const decision = (row.details && typeof row.details === 'object' ? row.details as { decision?: unknown } : {}).decision
+    if (decision === 'approved' && row.company_slug) return `/organizations/${row.company_slug}`
+    return decision === 'approved' ? '/organizations' : '/organizations#update-application'
+  }
   if (row.notification_type === 'group_join_request') return row.group_slug ? `/community/${row.group_slug}?tab=members&requests=1` : '/community'
   if (row.notification_type === 'group_join_approved') return row.group_slug ? `/community/${row.group_slug}` : '/community'
   if (row.notification_type === 'organization_member_left') return row.company_slug ? `/organizations/${row.company_slug}/manage` : '/organizations'
@@ -185,6 +201,8 @@ function mapNotifications(
           ? PLAN_TRIAL_ENDING_MESSAGE
           : row.notification_type === 'job_alert_match'
             ? jobAlertMatchMessage(row.details)
+          : row.notification_type === 'organization_review_decided'
+            ? organizationReviewMessage(row.details)
           : learningKindOf(row.notification_type)
             ? learningCopy(row)?.message ?? 'There is news about one of your courses.'
             : `${actorName} ${socialCopy(row)}.`,

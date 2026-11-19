@@ -7,9 +7,12 @@ import type { AdminOrganizationDecision, AdminOrganizationStatus } from '../repo
 export function OrganizationReviewActions({
   applicationId,
   status,
+  canSuspend = true,
 }: {
   applicationId: string
   status: AdminOrganizationStatus
+  /** Round GP (Part C): country admins approve, reject or ask for changes, and never suspend. */
+  canSuspend?: boolean
 }) {
   const [reviewerNote, setReviewerNote] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -22,7 +25,7 @@ export function OrganizationReviewActions({
         { decision: 'changes_requested', label: 'Request changes', className: 'bg-amber-100 text-amber-950 hover:bg-amber-200' },
         { decision: 'rejected', label: 'Reject application', className: 'bg-red-50 text-red-800 hover:bg-red-100' },
       ]
-    : status === 'approved'
+    : status === 'approved' && canSuspend
       ? [{ decision: 'suspended', label: 'Suspend hiring access', className: 'bg-red-700 text-white hover:bg-red-800' }]
       : []
 
@@ -62,7 +65,7 @@ export function OrganizationReviewActions({
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Decision</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">Organization review</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Approval activates the verified company and founding owner. Changes, rejection and suspension require a reviewer note for a clear audit trail.
+          Approval activates the verified company and founding owner. Changes, rejection and suspension require a reviewer note for a clear audit trail. The applicant is told of the decision in the app and by email, with your note when you reject or ask for changes.
         </p>
       </div>
 

@@ -1,7 +1,10 @@
 // Round P3 load test contract: read-only signed-out traffic, the approved ramp and stop rules, under the WAF's
 // per-IP limit, owner-armed, and no AWS credentials anywhere near the traffic.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { guardAction } from './guard-value.mjs'
 import { createStats, stopReason, percentile, summary, MIN_SAMPLES, P95_LIMIT_MS, ERROR_LIMIT } from '../load-test/stop-watch.mjs'
@@ -17,13 +20,21 @@ const jobOf = (id) => workflow.slice(workflow.indexOf(`\n  ${id}:\n`) + 1).split
 const envValue = (name) => new RegExp(`\\n  ${name}: "?([^"\\n]+)"?\\n`).exec(workflow)?.[1]
 
 test('the guard reads plan, run-once, run-signed-in-once or sessions-only-once', () => {
-  assert.ok(['plan', 'run-once', 'run-signed-in-once', 'sessions-only-once'].includes(guardAction(read('./load-test-action.txt'))))
+  assert.ok(['plan', 'run-once', 'run-signed-in-once', 'sessions-only-once', 'smoke-signed-in-once', 'run-signed-in-day-once'].includes(guardAction(read('./load-test-action.txt'))))
 })
 
 test('the approved ramp, steps and target', () => {
   assert.equal(envValue('LOAD_TEST_TOTAL_RPM'), '100,300,600,1000,2000,3000')
   assert.equal(envValue('LOAD_TEST_STEP_SECONDS'), '300')
-  assert.equal(envValue('LOAD_TEST_SHARDS'), '8')
+  assert.equal(envValue('LOAD_TEST_SHARDS'), '16')
+  assert.equal(envValue('LOAD_TEST_ACCOUNTS'), '1000')
+  // Owner (18 Nov): 25 -> 50 -> 100 -> 250 -> 500 -> 750 -> 1,000 members at once, 32 requests a minute each, 5 minutes
+  // a step; the smoke run is 10 members for 2 minutes.
+  assert.deepEqual(envValue('LOAD_TEST_DAY_RPM').split(',').map(Number), [25, 50, 100, 250, 500, 750, 1000].map((members) => members * 32))
+  assert.equal(envValue('LOAD_TEST_DAY_STEP_SECONDS'), '300')
+  assert.equal(envValue('LOAD_TEST_SMOKE_RPM'), String(10 * 32))
+  assert.equal(envValue('LOAD_TEST_SMOKE_STEP_SECONDS'), '120')
+  assert.equal(jobOf('load').match(/shard: \[([0-9, ]+)\]/)[1], Array.from({ length: 16 }, (_, i) => i).join(', '))
   assert.equal(envValue('LOAD_TEST_BASE_URL'), 'https://seanshore.in')
 })
 
@@ -40,6 +51,21 @@ test('every shard stays under the WAF limit of 2,000 requests per 5 minutes per 
     assert.equal(sum, total)
   }
   assert.match(read('../../infra/aws/app/edge.tf'), /evaluation_window_sec = 300\n\s+limit\s+= 2000/)
+  // Signed in, the per-address limit does not count requests with a session; the ceiling of 20,000 per 5 minutes per
+  // address does: every shard stays at or under half of it at the daytime run's top step, and the smoke run's.
+  assert.match(read('../../infra/aws/app/edge.tf'), /evaluation_window_sec = 300\n\s+limit\s+= 20000/)
+  for (const name of ['LOAD_TEST_DAY_RPM', 'LOAD_TEST_SMOKE_RPM']) {
+    for (const total of envValue(name).split(',').map(Number)) {
+      for (let shard = 0; shard < shards; shard += 1) assert.ok(shardRate(total, shard) * 5 <= 10000, `${name} ${total}/min on one shard`)
+    }
+  }
+  // And every session stays far under the WAF's 1,000 requests per 5 minutes per session: each shard spreads its
+  // requests evenly over its share of the 1,000 accounts.
+  assert.match(read('../../infra/aws/app/edge.tf'), /aggregate_key_type    = "CUSTOM_KEYS"\n\s+evaluation_window_sec = 300\n\s+limit                 = 1000/)
+  const topPerSession = Math.max(...envValue('LOAD_TEST_DAY_RPM').split(',').map(Number)) / Number(envValue('LOAD_TEST_ACCOUNTS'))
+  assert.ok(topPerSession * 5 <= 1000 / 4, `${topPerSession}/min per session`)
+  assert.match(script, /const slot = sessionSlot\(exec\.scenario\.iterationInInstance, SESSIONS\.length\)/)
+  assert.doesNotMatch(script, /SESSIONS\[\(__VU/)
 })
 
 test('signed-out: only GETs of public pages; signed-in: reads, plus only the two read-only actions and the realtime ticket', () => {
@@ -57,7 +83,9 @@ test('signed-out: only GETs of public pages; signed-in: reads, plus only the two
   assert.match(script, /headers: path\.startsWith\('\/api\/'\) \? base : \{ \.\.\.base, \.\.\.BROWSER_PAGE_LOAD \}/)
   assert.match(script, /redirects: 0/)
   assert.match(script, /discardResponseBodies: true/)
-  assert.match(script, /maxVUs: 100/)
+  assert.match(script, /maxVUs: 150/)
+  // Profiles visited are the test accounts' own (four digits, 1-1000).
+  assert.match(script, /\/people\/sns-load-test-\$\{String\(1 \+ Math\.floor\(Math\.random\(\) \* 1000\)\)\.padStart\(4, '0'\)\}/)
   // The only POSTs: the two read-only server actions (ids from the deployed build) and the realtime ticket.
   const posts = [...script.matchAll(/http\.post\(([^,]+),/g)].map((match) => match[1].trim())
   assert.deepEqual(posts, ['`${BASE_URL}/home`', '`${BASE_URL}/api/realtime/ticket`'])
@@ -134,19 +162,31 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   assert.match(window, /needs\.apply-approval\.result == 'success'/)
   // Merging a traffic arm (a push) sends no traffic: only the nightly start reaches the window with one. The only push
   // that reaches it is the sessions-only proof's own arm, which sends no traffic.
-  assert.match(window, /\(github\.event_name == 'workflow_dispatch' \|\| \(github\.event_name == 'push' && needs\.apply-gate\.outputs\.action == 'sessions-only-once'\)\) \}\}/)
-  assert.match(window, /\[\[ "\$MIX" == sessions-only && "\$GITHUB_EVENT_NAME" == push \]\]/)
+  assert.match(window, /\(github\.event_name == 'workflow_dispatch' \|\| \(github\.event_name == 'push' && contains\(fromJSON\('\["sessions-only-once","smoke-signed-in-once","run-signed-in-day-once"\]'\), needs\.apply-gate\.outputs\.action\)\)\) \}\}/)
+  // Owner (18 Nov): the merge-started arms (proof, smoke, daytime) start only from their own merge, once; the nightly
+  // arms never from a merge.
+  assert.match(window, /\[\[ "\$START" == merge && "\$GITHUB_EVENT_NAME" == push \]\]/)
   assert.match(window, /\[\[ "\$GITHUB_RUN_ATTEMPT" == 1 \]\]/)
+  for (const action of ['run-once', 'run-signed-in-once']) assert.match(window, new RegExp(`${action}\\) MIX=[a-z-]+ RPM="\\$LOAD_TEST_TOTAL_RPM" STEP="\\$LOAD_TEST_STEP_SECONDS" START=nightly ;;`))
+  assert.match(window, /smoke-signed-in-once\) MIX=signed-in RPM="\$LOAD_TEST_SMOKE_RPM" STEP="\$LOAD_TEST_SMOKE_STEP_SECONDS" START=merge ;;/)
+  assert.match(window, /run-signed-in-day-once\) MIX=signed-in RPM="\$LOAD_TEST_DAY_RPM" STEP="\$LOAD_TEST_DAY_STEP_SECONDS" START=merge ;;/)
+  // The shards and the report use the armed action's ramp.
+  for (const id of ['load', 'report']) {
+    assert.match(jobOf(id), /LOAD_TEST_TOTAL_RPM: \$\{\{ needs\.window\.outputs\.rpm \}\}\n\s+LOAD_TEST_STEP_SECONDS: \$\{\{ needs\.window\.outputs\.step_seconds \}\}/, id)
+  }
+  // The nightly start knows only the two nightly arms, and is disabled for now (owner, 18 Nov).
+  assert.match(read('../../.github/workflows/load-test-nightly.yml'), /\^\(run-once\|run-signed-in-once\)\\ \[0-9a-f\]\{40\}\$/)
   assert.ok(window.indexOf('exit 0\n          fi\n          [[ "$TRIGGERING_ACTOR"') > 0, 'every other start still needs the nightly start')
   assert.match(window, /\[\[ "\$TRIGGERING_ACTOR" == "github-actions\[bot\]" \]\]/)
-  assert.match(window, /\$\(date -u \+%F\) 19:30:00/)
+  // 19:30 UTC today by arithmetic (Ubuntu 26.04's Rust date is not relied on to parse a date string).
+  assert.match(window, /START=\$\(\( NOW - NOW % 86400 \+ 70200 \)\)/)
   assert.match(window, /NOW < START \|\| NOW > START \+ 2700/)
   assert.doesNotMatch(window, /sleep/)
   assert.match(window, /event=workflow_dispatch&head_sha=\$GITHUB_SHA/)
   assert.match(window, /select\(\.id != \$GITHUB_RUN_ID\)\] \| length/)
   assert.match(window, /\[\[ "\$EARLIER" == 0 \]\]/)
-  assert.match(window, /run-once\) echo "mix=signed-out"/)
-  assert.match(window, /run-signed-in-once\) echo "mix=signed-in"/)
+  assert.match(window, /run-once\) MIX=signed-out /)
+  assert.match(window, /run-signed-in-once\) MIX=signed-in /)
   assert.match(window, /\*\) echo "Not armed for a run." >&2; exit 1 ;;/)
   assert.match(window, /Branch moved after the load test was approved/)
   for (const id of ['plan', 'window', 'load']) assert.doesNotMatch(jobOf(id), /configure-aws-credentials|AWS_ROLE_TO_ASSUME/, id)
@@ -161,7 +201,8 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   assert.match(sessions, /aws s3api get-object --bucket "\$LOAD_TEST_HANDOFF_BUCKET" --key "\$LOAD_TEST_HANDOFF_OBJECT" "\$WORK\/sealed" > "\$WORK\/object\.json"/)
   assert.match(sessions, /\.ServerSideEncryption == "aws:kms" and \.BucketKeyEnabled == true/)
   assert.match(sessions, /\[\[ "\$LEFT" == 0 \]\] \|\| \{ echo "The hand-off bucket still holds sessions objects\." >&2; exit 1; \}/)
-  assert.match(sessions, /length == 50/)
+  assert.match(sessions, /jq -e --argjson n "\$LOAD_TEST_ACCOUNTS" 'type == "array" and length == \$n and all/)
+  assert.match(sessions, /grep -E "\^LOAD_TEST_SESSIONS_STORED count=\$LOAD_TEST_ACCOUNTS bytes=\[0-9\]\+\\\$" <<<"\$OUTPUT"/)
   assert.doesNotMatch(workflow, /curl [^\n]*\$URL|LOAD_TEST_SESSIONS_URL|ci-checkouts\/load-test-sessions|SEALED_PART/)
   // The get-object metadata and the object itself stay in files: never printed.
   assert.doesNotMatch(sessions, /cat "\$WORK\/(sealed|object\.json)"|jq [^\n]*object\.json[^\n]*\| tee/)
@@ -169,15 +210,20 @@ test('owner-armed, started only by the nightly schedule inside 01:00-01:45 IST, 
   // The opened sessions only ever go from one file into seal-shards: never printed, never an output.
   assert.doesNotMatch(sessions, /cat "\$WORK|echo "\$\(cat|tee [^|]*sessions/)
   assert.deepEqual([...sessions.matchAll(/[^\n]*\$WORK\/sessions\.json[^\n]*/g)].map((m) => m[0].trim().split(' ').slice(0, 3).join(' ')), [
-    'node scripts/load-test/sessions.mjs open', "jq -e 'type", 'SEALED="$(node scripts/load-test/sessions.mjs seal-shards',
+    'node scripts/load-test/sessions.mjs open', 'jq -e --argjson', 'node scripts/load-test/sessions.mjs seal-shards',
   ])
-  assert.match(sessions, /jq -e '[^']*' "\$WORK\/sessions\.json" >\/dev\/null \|\|/)
-  assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\$LOAD_TEST_SESSIONS_FILE"/)
+  assert.match(sessions, /jq -e --argjson n "\$LOAD_TEST_ACCOUNTS" '[^']*' "\$WORK\/sessions\.json" >\/dev\/null \|\|/)
+  assert.match(jobOf('load'), /node scripts\/load-test\/sessions\.mjs open-shard "\/tmp\/sealed-handoff\/shard-\$LOAD_TEST_SHARD\.sealed" "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('load'), /rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
   assert.match(jobOf('report'), /load-test-host-command\.sh sign-out/)
   // Accounts exist only for the run: created before the sessions, deleted (with counts) after the sign-out.
   assert.match(sessions, /load-test-host-command\.sh create-once[\s\S]*sessions\.mjs keypair/)
   assert.match(jobOf('report'), /sign-out[\s\S]*load-test-host-command\.sh delete-once[\s\S]*DELETE_ONCE_VERIFIED=true/)
+  // Run 44328902760: a failed sign-out must not skip the deletion, and a failed task shows its own failure line.
+  assert.match(jobOf('report'), /OUTPUT="\$\(bash scripts\/aws\/load-test-host-command\.sh sign-out "\$GITHUB_SHA" "\$GITHUB_RUN_ID"\)" \|\| FAILED=1\n/)
+  assert.match(jobOf('report'), /DELETED="\$\(bash scripts\/aws\/load-test-host-command\.sh delete-once "\$GITHUB_SHA" "\$GITHUB_RUN_ID"\)" \|\| FAILED=1\n/)
+  assert.match(jobOf('report'), /grep -E '\^LOAD_TEST_ACCOUNTS_' <<<"\$\{OUTPUT:-\}" >&2 \|\| true/)
+  assert.match(jobOf('report'), /exit "\$FAILED"/)
   // Run 42479008102: when the run stops before any traffic, the report step fails on missing shards; the sign-out and
   // deletion must still get AWS credentials, so both credential steps run whatever happened above.
   const report = jobOf('report')
@@ -272,6 +318,74 @@ test('sessions move from the sessions job to the shards sealed end to end', () =
   assert.throws(() => handoffKey('short'), /32 random bytes/)
 })
 
+test('public repository: no sealed session, k6 log or relative date in the run; the hand-off artifact is deleted', () => {
+  // Ubuntu 26.04 (ubuntu-latest) ships the Rust coreutils: no date string parsing anywhere in the run.
+  assert.doesNotMatch(workflow, /date (-u )?-d |date --date/)
+  // A job output or an environment value is printed in the public log: the sealed parts never travel that way.
+  assert.doesNotMatch(workflow, /outputs\.sealed|LOAD_TEST_SHARD_SEALED|sealed=\$|echo "sealed=/)
+  const sessions = jobOf('sessions')
+  assert.match(sessions, /node scripts\/load-test\/sessions\.mjs seal-shards "\$WORK\/sessions\.json" "\$LOAD_TEST_SHARDS" \/tmp\/sealed-handoff\n/)
+  assert.match(sessions, /- name: Hand the sealed parts to the shards\n\s+uses: actions\/upload-artifact@[0-9a-f]{40} # v4\.6\.2\n\s+with:\n\s+name: sealed-handoff\n\s+path: \/tmp\/sealed-handoff\n\s+retention-days: 1\n\s+if-no-files-found: error\n/)
+  assert.match(sessions, /- name: Delete the sealed parts from this runner\n\s+if: always\(\)\n\s+shell: bash\n\s+run: rm -rf \/tmp\/sealed-handoff\n/)
+  const load = jobOf('load')
+  assert.match(load, /uses: actions\/download-artifact@[0-9a-f]{40} # v4\.3\.0\n\s+with:\n\s+name: sealed-handoff\n\s+path: \/tmp\/sealed-handoff\n/)
+  assert.match(load, /open-shard [^\n]*\n\s+rm -rf \/tmp\/sealed-handoff\n/)
+  // The monitor deletes it once every shard has opened its part; the report job again, whatever happened.
+  const monitor = jobOf('monitor')
+  assert.match(monitor, /"\$SHARDS" == "\$LOAD_TEST_SHARDS" && "\$OPENED" == "\$SHARDS"[^\n]*\n\s+bash scripts\/load-test\/delete-handoff-artifact\.sh/)
+  const report = jobOf('report')
+  assert.match(report, /permissions:\n\s+id-token: write\n\s+contents: read\n\s+actions: write\n/)
+  assert.match(report, /- name: Delete the sealed hand-off artifact and count what is left\n\s+if: always\(\) && \(needs\.window\.outputs\.mix == 'signed-in' \|\| needs\.window\.outputs\.mix == 'sessions-only'\)\n[\s\S]*?run: bash scripts\/load-test\/delete-handoff-artifact\.sh/)
+  // The report downloads only the numbers (load-test-*), never the sealed hand-off.
+  assert.match(report, /pattern: load-test-\*\n/)
+  assert.ok(!'sealed-handoff'.startsWith('load-test-'))
+  const remover = read('../load-test/delete-handoff-artifact.sh')
+  assert.match(remover, /actions\/runs\/\$\{GITHUB_RUN_ID\}\/artifacts\?name=sealed-handoff/)
+  assert.match(remover, /\[\[ "\$LEFT" == 0 \]\]$/m)
+  assert.equal((remover.match(/-X DELETE/g) ?? []).length, 1)
+  // k6's own log and summary (they name request URLs) stay on the runner: only their counts are printed.
+  assert.match(load, /k6 run --quiet --summary-mode=disabled --log-output=file=\/tmp\/k6\.log --out csv=\/tmp\/k6\.csv scripts\/load-test\/p3-load-test\.js &/)
+  assert.match(load, /echo "LOAD_TEST_K6_LOG warnings=\$\(grep -c 'level=warning' \/tmp\/k6\.log/)
+  assert.doesNotMatch(load, /cat \/tmp\/k6\.log|tee [^\n]*k6\.log/)
+})
+
+test('seal-shards and open-shard hand sessions over as 0600 files and print counts only', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'handoff-'))
+  try {
+    const key = randomBytes(32).toString('base64')
+    const sessions = Array.from({ length: 50 }, (_, i) => ({ index: i + 1, accessToken: `access-${i + 1}`, refreshToken: `refresh-${i + 1}` }))
+    const input = join(dir, 'sessions.json')
+    execFileSync('node', ['-e', `require('fs').writeFileSync(${JSON.stringify(input)}, ${JSON.stringify(JSON.stringify(sessions))})`])
+    const sealedDir = join(dir, 'sealed')
+    execFileSync('mkdir', [sealedDir])
+    const cli = new URL('../load-test/sessions.mjs', import.meta.url).pathname
+    const env = { ...process.env, LOAD_TEST_HANDOFF_KEY: key }
+    const sealedOut = execFileSync('node', [cli, 'seal-shards', input, '8', sealedDir], { env, encoding: 'utf8' })
+    assert.equal(sealedOut, 'LOAD_TEST_SESSIONS_SEALED shards=8\n')
+    assert.deepEqual(readdirSync(sealedDir).sort(), Array.from({ length: 8 }, (_, i) => `shard-${i}.sealed`).sort())
+    const opened = []
+    for (let i = 0; i < 8; i += 1) {
+      const file = join(sealedDir, `shard-${i}.sealed`)
+      assert.equal(statSync(file).mode & 0o777, 0o600)
+      assert.doesNotMatch(readFileSync(file, 'utf8'), /access-|refresh-/)
+      const out = join(dir, `open-${i}.json`)
+      const printed = execFileSync('node', [cli, 'open-shard', file, out], { env, encoding: 'utf8' })
+      // Every token is masked in the job log before anything else; the only other line is the count.
+      const lines = printed.trim().split('\n')
+      assert.ok(lines.slice(0, -1).every((line) => line.startsWith('::add-mask::')))
+      assert.match(lines.at(-1), /^LOAD_TEST_SHARD_SESSIONS count=[67]$/)
+      assert.equal(statSync(out).mode & 0o777, 0o600)
+      opened.push(...JSON.parse(readFileSync(out, 'utf8')))
+    }
+    assert.deepEqual(opened.map((s) => s.index).sort((a, b) => a - b), sessions.map((s) => s.index))
+    assert.throws(() => execFileSync('node', [cli, 'open-shard', join(sealedDir, 'shard-0.sealed'), join(dir, 'x.json')], {
+      env: { ...process.env, LOAD_TEST_HANDOFF_KEY: randomBytes(32).toString('base64') }, stdio: 'pipe',
+    }))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('the monitor stop rules need 3 one-minute values all over one limit: CPU >= 90%, DB load >= 1.5, server p95 > 2 s', () => {
   assert.equal(MONITOR_MINUTES, 3)
   assert.deepEqual(MONITOR_RULES.map((rule) => [rule.key, rule.limit]), [['cpu', 90], ['dbLoad', 1.5], ['p95', 2]])
@@ -291,7 +405,7 @@ test('the monitor stop rules need 3 one-minute values all over one limit: CPU >=
 
 test('the sessions-only proof sends no traffic and cleans up everything, whatever happens', () => {
   const window = jobOf('window')
-  assert.match(window, /sessions-only-once\) echo "mix=sessions-only"/)
+  assert.match(window, /sessions-only-once\) MIX=sessions-only [^\n]* START=merge ;;/)
   // No page lookup, no Aurora monitor, no k6, no site metrics wait.
   assert.match(window, /id: pages\n\s+if: steps\.mix\.outputs\.mix != 'sessions-only'/)
   assert.match(jobOf('monitor'), /needs\.window\.outputs\.mix != 'sessions-only' \}\}/)
@@ -305,7 +419,7 @@ test('the sessions-only proof sends no traffic and cleans up everything, whateve
   assert.match(load, /- name: Sessions-only proof \(no traffic\)\n\s+if: env\.LOAD_TEST_MIX == 'sessions-only'\n[\s\S]*?rm -f "\$LOAD_TEST_SESSIONS_FILE"/)
   const report = jobOf('report')
   assert.match(report, /- name: Site metrics during the test \(read-only\)\n\s+if: needs\.window\.outputs\.mix != 'sessions-only'/)
-  assert.match(report, /\[\[ "\$\{#COUNTS\[@\]\}" == "\$LOAD_TEST_SHARDS" && "\$SUM" == 50 \]\]/)
+  assert.match(report, /\[\[ "\$\{#COUNTS\[@\]\}" == "\$LOAD_TEST_SHARDS" && "\$SUM" == "\$LOAD_TEST_ACCOUNTS" \]\]/)
   // Sign-out, deletion (with what is left), the hand-off object and the host bundle: always, for both mixes.
   for (const name of ['Sign out and delete every test account (signed-in mix)', 'Delete the hand-off object and count what is left', 'Delete the host checkout bundle']) {
     assert.match(report, new RegExp(`- name: ${name.replace(/[()]/g, '\\$&')}\\n\\s+if: always\\(\\) && \\(needs\\.window\\.outputs\\.mix == 'signed-in' \\|\\| needs\\.window\\.outputs\\.mix == 'sessions-only'\\)`), name)

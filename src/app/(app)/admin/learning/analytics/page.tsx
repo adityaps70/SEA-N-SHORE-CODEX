@@ -12,9 +12,9 @@ import {
   UserRoundCheck,
   Users,
 } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminLearningAnalyticsRepository } from '@/features/learning/admin-analytics-repository'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Learning analytics · Admin' }
 
@@ -23,7 +23,7 @@ function statusLabel(value: string) {
 }
 
 export default async function AdminLearningAnalyticsPage() {
-  const user = await requireAwsUser()
+  const user = (await requireAdminAccess('platform')).user
   const analytics = await adminLearningAnalyticsRepository.getPlatformAnalytics(user.id)
   const { summary } = analytics
 

@@ -51,15 +51,15 @@ beforeEach(() => {
 describe('createUnclaimedOrganization action', () => {
   it('validates before signing in or writing', async () => {
     const result = await createUnclaimedOrganization({ name: '', organizationType: '', location: '', website: '' })
-    expect(result).toMatchObject({ ok: false, fieldErrors: { name: expect.any(Array), organizationType: expect.any(Array), location: expect.any(Array) } })
+    expect(result).toMatchObject({ ok: false, fieldErrors: { name: expect.any(Array), organizationType: expect.any(Array), location: expect.any(Array), country: expect.any(Array) } })
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
     expect(mocks.createUnclaimedOrganization).not.toHaveBeenCalled()
   })
 
   it('adds the organization for the signed-in member', async () => {
-    await expect(createUnclaimedOrganization({ name: 'Blue Anchor', organizationType: 'ship_manager', location: 'Kochi', website: '' }))
+    await expect(createUnclaimedOrganization({ name: 'Blue Anchor', organizationType: 'ship_manager', location: 'Kochi', website: '', country: 'IN' }))
       .resolves.toEqual({ ok: true, organization })
-    expect(mocks.createUnclaimedOrganization).toHaveBeenCalledWith('user-1', { name: 'Blue Anchor', organizationType: 'ship_manager', location: 'Kochi', website: null })
+    expect(mocks.createUnclaimedOrganization).toHaveBeenCalledWith('user-1', { name: 'Blue Anchor', organizationType: 'ship_manager', location: 'Kochi', website: null, country: 'IN' })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations')
   })
 
@@ -67,18 +67,18 @@ describe('createUnclaimedOrganization action', () => {
     const existing = { id: 'other', slug: 'oceanic', name: 'Oceanic', logoUrl: null, verified: true }
     mocks.createUnclaimedOrganization.mockRejectedValueOnce(new UnclaimedOrganizationError('organization_duplicate_name', existing))
 
-    const result = await createUnclaimedOrganization({ name: 'oceanic', organizationType: 'ship_manager', location: 'Kochi', website: '' })
+    const result = await createUnclaimedOrganization({ name: 'oceanic', organizationType: 'ship_manager', location: 'Kochi', website: '', country: 'IN' })
 
     expect(result).toMatchObject({ ok: false, existing, fieldErrors: { name: [expect.stringContaining('Oceanic is already on Sea N Shore')] } })
   })
 
   it('explains the daily limit and connection problems', async () => {
     mocks.createUnclaimedOrganization.mockRejectedValueOnce(new UnclaimedOrganizationError('unclaimed_organization_rate_limited'))
-    await expect(createUnclaimedOrganization({ name: 'Blue Anchor', organizationType: 'other', location: 'Kochi', website: '' }))
+    await expect(createUnclaimedOrganization({ name: 'Blue Anchor', organizationType: 'other', location: 'Kochi', website: '', country: 'IN' }))
       .resolves.toMatchObject({ ok: false, error: expect.stringContaining('up to 5 organizations a day') })
 
     mocks.createUnclaimedOrganization.mockRejectedValueOnce(new Error('timeout'))
-    await expect(createUnclaimedOrganization({ name: 'Blue Anchor', organizationType: 'other', location: 'Kochi', website: '' }))
+    await expect(createUnclaimedOrganization({ name: 'Blue Anchor', organizationType: 'other', location: 'Kochi', website: '', country: 'IN' }))
       .resolves.toMatchObject({ ok: false, error: expect.stringContaining('could not add') })
   })
 })

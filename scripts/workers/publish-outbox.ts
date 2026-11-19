@@ -20,6 +20,7 @@ import { SESSION_REMINDER_SWEEP_MS, sweepSessionReminders } from '../../src/feat
 import { createRankingSweeps } from '../../src/features/ranking/worker'
 import { SITE_HEALTH_PROBE_MS, runSiteHealthProbe } from '../../src/features/ops/site-health-probe'
 import { createSupportEmailSweep } from '../../src/features/support/support-email-sending'
+import { createOrganizationReviewEmailSweep } from '../../src/features/organizations/organization-review-email-sending'
 import { createNotificationEmailWorker } from '../../src/features/notification-emails/sending'
 import { createProductionAccountSecurityEmailWorker } from '../../src/features/account-security/security-email-runtime'
 import { createMediaTranscodeSweep } from '../../src/features/learning/media-transcode-worker'
@@ -100,6 +101,10 @@ let nextSiteHealthProbeAt = 0
 // sender), every minute. Idempotent (one email per queue row); waits quietly until migration 0089 is applied.
 const supportEmailSweep = createSupportEmailSweep()
 let nextSupportEmailSweepAt = 0
+// Round GP (Part C): organization review emails (approved / rejected / changes requested) to the applicant, every
+// minute. Idempotent (one email per queue row); waits quietly until migration 0110 is applied.
+const organizationReviewEmailSweep = createOrganizationReviewEmailSweep()
+let nextOrganizationReviewEmailSweepAt = 0
 // Round H (H3): member activity emails. Every minute: queue emails for new connection requests, comments and
 // mentions (from the in-app notification rows) and send due ones. Every 5 minutes: queue the unread messages digest
 // for members due one (each member at most once an hour, under a row lock). Both are idempotent; counts-only logs.
@@ -387,6 +392,19 @@ async function runSupportEmailSweepIfDue() {
   }
 }
 
+async function runOrganizationReviewEmailSweepIfDue() {
+  const now = Date.now()
+  if (now < nextOrganizationReviewEmailSweepAt) return
+  nextOrganizationReviewEmailSweepAt = now + organizationReviewEmailSweep.everyMs
+  try {
+    // Counts only: no names, addresses or reasons in the logs.
+    const result = await organizationReviewEmailSweep.run()
+    if (result) console.info('[organization_review_email_sweep]', result)
+  } catch (error) {
+    console.error('[organization_review_email_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function runNotificationEmailSweepIfDue() {
   const now = Date.now()
   if (now >= nextMessageDigestSweepAt) {
@@ -462,6 +480,7 @@ async function main() {
       await runSessionReminderSweepIfDue()
       await rankingSweeps.runDue()
       await runSupportEmailSweepIfDue()
+      await runOrganizationReviewEmailSweepIfDue()
       await runSiteHealthProbeIfDue()
       await runNotificationEmailSweepIfDue()
       await runAccountSecurityEmailSweepIfDue()

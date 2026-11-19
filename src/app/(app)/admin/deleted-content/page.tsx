@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
 import { DeletedPostRecoveryPanel } from '@/features/admin/components/deleted-post-recovery-panel'
 import { AdminChip, AdminEmptyState, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminRepository } from '@/features/admin/repository'
 import { pluralize } from '@/lib/format'
+import { requireAdminAccess } from '@/features/admin/admin-access'
 
 export const metadata: Metadata = { title: 'Deleted content · Admin' }
 
@@ -15,7 +15,7 @@ function categoryLabel(value: string) {
 }
 
 export default async function DeletedContentPage() {
-  const admin = await requireAwsUser()
+  const admin = (await requireAdminAccess('platform')).user
   const deletedPosts = await adminRepository.listDeletedPosts(admin.id, 100)
 
   return (

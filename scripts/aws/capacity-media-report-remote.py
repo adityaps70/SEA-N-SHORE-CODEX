@@ -944,14 +944,20 @@ def session_statements(start, end):
         return "%s between %s - interval '%s' and %s + interval '%s'" % (col, at, before, at, after)
 
     admin = "s.profile_id in (select user_id from admins)"
+    # Owner (18 Nov): the load-test accounts are never counted (they exist only during a run, then are deleted).
+    real = "not exists (select 1 from public.profiles lt where lt.id = s.profile_id and lt.is_load_test)"
+
+    def inside_real(col):
+        return "%s and %s" % (inside(col), real)
+
     started_ended = (
         "with %s select kind, day, is_admin, detail, count(*)::int as n from ("
         "select 'started' as kind, %s as day, %s as is_admin, s.sign_in_method as detail from public.auth_sessions s where %s "
         "union all select 'signed_out', %s, %s, s.revoke_reason from public.auth_sessions s where %s "
         "union all select 'reuse_ended', %s, %s, s.sign_in_method from public.auth_sessions s where %s"
         ") x group by 1, 2, 3, 4 order by 2, 1, 3, 4"
-    ) % (SESSION_ADMINS_SQL, day("s.created_at"), admin, inside("s.created_at"), day("s.revoked_at"), admin,
-         inside("s.revoked_at"), day("s.reuse_detected_at"), admin, inside("s.reuse_detected_at"))
+    ) % (SESSION_ADMINS_SQL, day("s.created_at"), admin, inside_real("s.created_at"), day("s.revoked_at"), admin,
+         inside_real("s.revoked_at"), day("s.reuse_detected_at"), admin, inside_real("s.reuse_detected_at"))
     other_active = (
         "exists (select 1 from public.auth_sessions o where o.profile_id = e.profile_id and o.id <> e.id and (%s or %s or %s "
         "or exists (select 1 from minted m where m.origin_hash = o.token_origin_hash and %s)))"
@@ -971,7 +977,7 @@ def session_statements(start, end):
         "and o.created_at > e.end_at and o.created_at <= e.end_at + interval '30 minutes'))::int as signed_in_again_30min, "
         "count(*) filter (where %s)::int as had_parallel_renewal "
         "from e group by 1, 2, 3 order by 1, 2, 3"
-    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside("coalesce(s.reuse_detected_at, s.revoked_at)"),
+    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside_real("coalesce(s.reuse_detected_at, s.revoked_at)"),
          day("e.end_at"), other_active, parallel_before_end)
     # A sign-in started while an older one on the same kind of device (browser and system, the user agent summary)
     # never ended and was not used after it: the device lost its sign-in without our record of it ending.
@@ -991,7 +997,7 @@ def session_statements(start, end):
         "select %s as day, n.is_admin, count(*)::int as sign_ins, count(*) filter (where %s)::int as replaced_unended, "
         "count(*) filter (where %s and %s)::int as replaced_after_other_device "
         "from n group by 1, 2 order by 1, 2"
-    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside("s.created_at"), day("n.created_at"), replaced, replaced, other_before)
+    ) % (SESSION_ADMINS_SQL, SESSION_MINTED_SQL, admin, inside_real("s.created_at"), day("n.created_at"), replaced, replaced, other_before)
     renewals = (
         "with %s, m as (select t.token_hash, t.origin_hash, t.created_at, t.superseded_at from public.auth_refresh_tokens t "
         "where (t.superseded_at is null or t.superseded_at > t.created_at) and t.created_at >= %s - interval '1 minute' and t.created_at < %s) "
@@ -1002,7 +1008,7 @@ def session_statements(start, end):
         "count(*) filter (where m.superseded_at is null and exists (select 1 from m m2 where m2.origin_hash = m.origin_hash "
         "and m2.created_at > m.created_at))::int as never_used_again "
         "from m join public.auth_sessions s on s.token_origin_hash = m.origin_hash where %s group by 1, 2 order by 1, 2"
-    ) % (SESSION_ADMINS_SQL, a, b, day("m.created_at"), inside("m.created_at"))
+    ) % (SESSION_ADMINS_SQL, a, b, day("m.created_at"), inside_real("m.created_at"))
     step_up = (
         "select kind, day, count(*)::int as n from ("
         "select case when succeeded then 'step_up_ok' else 'step_up_failed' end as kind, %s as day from public.admin_step_up_attempts where %s "
@@ -1071,6 +1077,162 @@ def section_sessmetric():
                 "--filter-pattern", '"auth_refresh_ledger_unavailable"', "--query", "length(events)")
         out("SESS_LEDGER_UNAVAILABLE", day.date().isoformat(), "events=%s" % (n if n is not None else "UNAVAILABLE"))
         day = nxt
+
+
+# Owner (18 Nov): the phone-and-laptop sign-outs left after the 15 Nov single-renewal fix. For every sign-in ended by a
+# reused (stale) token in the sessions window: how long after its sign-in's last renewal the stale token came back,
+# which request carried that last renewal and whether the viewer went away before its answer arrived (load balancer
+# status 460, "client closed": the new token's cookie may never have reached the browser), which requests presented
+# the stale token, and the device kind. Requests are matched to the database rows by time only (the load balancer
+# sees CloudFront, not the member). Route shapes, kinds, statuses and counts only: no ids, tokens or addresses.
+SESS_FIX_DEPLOYED = dt.datetime(2026, 11, 15, 12, 0, tzinfo=dt.timezone.utc)
+STALE_AGE_BUCKETS = ((120, "under_2m"), (600, "2_10m"), (3600, "10_60m"), (6 * 3600, "1_6h"), (24 * 3600, "6_24h"))
+
+
+def stale_age_bucket(seconds):
+    if seconds is None:
+        return "no_renewal_in_window"
+    for limit, name in STALE_AGE_BUCKETS:
+        if seconds < limit:
+            return name
+    return "over_24h"
+
+
+def ua_kind(ua):
+    """phone, tablet, computer or unknown, as src/features/account-security/user-agent.ts reads a User-Agent."""
+    if re.search(r"\biPhone\b", ua) or (re.search(r"\bAndroid\b", ua) and re.search(r"\bMobile\b", ua)):
+        return "phone"
+    if re.search(r"\biPad\b|\bAndroid\b", ua):
+        return "tablet"
+    if re.search(r"\bCrOS\b|\bWindows\b|\bMacintosh\b|\bMac OS X\b|\bLinux\b", ua):
+        return "computer"
+    return "unknown"
+
+
+def summary_kind(summary):
+    """The device kind of a stored "Browser on Device" summary (deviceKindOfSummary), "app" for an installed app."""
+    summary = summary or ""
+    if re.search(r"Home Screen app|Installed app", summary):
+        return "app"
+    if re.search(r"iPhone|Android phone", summary):
+        return "phone"
+    if re.search(r"iPad|Android tablet", summary):
+        return "tablet"
+    if re.search(r"Windows|Mac|Linux|Chromebook", summary):
+        return "computer"
+    return "unknown"
+
+
+def stale_period(t):
+    return "after_fix" if t >= SESS_FIX_DEPLOYED else "before_fix"
+
+
+def stale_statements(start, end):
+    a, b = "timestamptz '%s'" % iso(start), "timestamptz '%s'" % iso(end)
+    real = "join public.profiles p on p.id = s.profile_id and not p.is_load_test"
+    rotations = ("select t.origin_hash, t.superseded_at as at from public.auth_refresh_tokens t "
+                 "join public.auth_sessions s on s.token_origin_hash = t.origin_hash %s "
+                 "where t.superseded_at is not null and t.superseded_at > t.created_at and t.superseded_at >= %s - interval '1 day' "
+                 "and t.superseded_at < %s" % (real, a, b))
+    ends = ("with %s select s.token_origin_hash as origin_hash, s.reuse_detected_at as at, s.user_agent_summary as summary, "
+            "s.profile_id in (select user_id from admins) as is_admin from public.auth_sessions s %s "
+            "where s.reuse_detected_at >= %s and s.reuse_detected_at < %s" % (SESSION_ADMINS_SQL, real, a, b))
+    return [rotations, ends]
+
+
+def data_api_time(value):
+    """A timestamptz from the Data API: UTC text without an offset ("2026-11-16 10:00:00.123456"), so it is marked UTC.
+    Run 44382835058 failed comparing those offset-free times with the UTC window."""
+    t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
+def section_sessstale():
+    out("=== STALE SIGN-IN TOKENS: WHAT RENEWED THEM, WHAT PRESENTED THEM, HOW OLD (owner 18 Nov; counts only) ===")
+    start, end = sessions_window()
+    rows = sql_rows(stale_statements(start, end))
+    if rows[0] is None or rows[1] is None:
+        out("STALE UNAVAILABLE")
+        return
+    renewals = defaultdict(list)
+    parse = data_api_time
+    for r in rows[0]:
+        renewals[r["origin_hash"]].append(parse(r["at"]))
+    for times in renewals.values():
+        times.sort()
+    ends = [(parse(r["at"]), r["origin_hash"], summary_kind(r.get("summary")), bool(r.get("is_admin"))) for r in rows[1]]
+    # The seconds the load balancer log is read for: each renewal and the 5 seconds after it (its answer), and 2
+    # seconds either side of each sign-out (the request that presented the stale token).
+    wanted = set()
+    window_renewals = [t for times in renewals.values() for t in times if start <= t < end]
+    for t in window_renewals:
+        for d in range(0, 6):
+            wanted.add((t + dt.timedelta(seconds=d)).strftime("%Y-%m-%dT%H:%M:%S"))
+    for t, _o, _k, _a in ends:
+        for d in range(-2, 3):
+            wanted.add((t + dt.timedelta(seconds=d)).strftime("%Y-%m-%dT%H:%M:%S"))
+    by_second = defaultdict(list)
+    bot = re.compile(BOT_PATTERN, re.I)
+    totals, budget = Counter(), {"bytes": 0}
+    day = start.date()
+    while day <= end.date():
+        for line in alb_day_lines(day, totals, budget):
+            m = LOG_LINE.match(line)
+            if not m or m.group(2)[:19] not in wanted or bot.search(m.group(14)):
+                continue
+            request = m.group(13).split(" ")
+            method = request[0] if request else "-"
+            url = request[1] if len(request) > 1 else ""
+            path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0] or "/"
+            query = url.split("?", 1)[1] if "?" in url else ""
+            kind = cap_request_type(method, path, query, m.group(9))
+            if kind in ("static", "image", "non_person"):
+                continue
+            by_second[m.group(2)[:19]].append((kind, route_shape(path), m.group(9), ua_kind(m.group(14))))
+        day += dt.timedelta(days=1)
+    out("STALE_ALB_LOGS", "scannedMB=%s" % mb(budget["bytes"]), "seconds_matched=%d" % len(by_second))
+
+    def first_after(t, seconds):
+        for d in range(0, seconds + 1):
+            hit = by_second.get((t + dt.timedelta(seconds=d)).strftime("%Y-%m-%dT%H:%M:%S"))
+            if hit:
+                return hit[0]
+        return None
+
+    # Every renewal in the window: the request that carried it (the first logged within 5 seconds) and its status.
+    renewal_counts = Counter()
+    for t in window_renewals:
+        hit = first_after(t, 5)
+        if hit is None:
+            renewal_counts[(stale_period(t), "unmatched", "-", "-", "-")] += 1
+        else:
+            renewal_counts[(stale_period(t),) + hit] += 1
+    out("STALE_RENEWALS_TOTAL", "before_fix=%d" % sum(n for k, n in renewal_counts.items() if k[0] == "before_fix"),
+        "after_fix=%d" % sum(n for k, n in renewal_counts.items() if k[0] == "after_fix"),
+        "client_closed_460=%d" % sum(n for k, n in renewal_counts.items() if k[3] == "460"))
+    for key, n in sorted(renewal_counts.items(), key=lambda kv: (kv[0][0], -kv[1]))[:40]:
+        out("STALE_RENEWAL", "period=%s" % key[0], "kind=%s" % key[1], "route=%s" % key[2], "elb=%s" % key[3], "device=%s" % key[4], "n=%d" % n)
+    # Every sign-out by a stale token: its age bucket, its device kind, admin or member, and its last renewal's request.
+    end_counts, last_renewal, presented = Counter(), Counter(), Counter()
+    for t, origin, kind, is_admin in ends:
+        period = stale_period(t)
+        before = [r for r in renewals.get(origin, []) if r <= t]
+        last = before[-1] if before else None
+        age = (t - last).total_seconds() if last else None
+        who = "admin" if is_admin else "member"
+        end_counts[(period, who, stale_age_bucket(age), kind)] += 1
+        hit = first_after(last, 5) if last else None
+        last_renewal[(period, who) + (hit if hit else ("unmatched", "-", "-", "-"))] += 1
+        for d in range(-2, 3):
+            for req in by_second.get((t + dt.timedelta(seconds=d)).strftime("%Y-%m-%dT%H:%M:%S"), []):
+                presented[(period, req[0], req[1], req[2], req[3])] += 1
+    out("STALE_ENDS_TOTAL", "before_fix=%d" % sum(1 for e in ends if e[0] < SESS_FIX_DEPLOYED), "after_fix=%d" % sum(1 for e in ends if e[0] >= SESS_FIX_DEPLOYED))
+    for key, n in sorted(end_counts.items()):
+        out("STALE_END", "period=%s" % key[0], "who=%s" % key[1], "age=%s" % key[2], "device=%s" % key[3], "n=%d" % n)
+    for key, n in sorted(last_renewal.items(), key=lambda kv: (kv[0][0], kv[0][1], -kv[1])):
+        out("STALE_END_LAST_RENEWAL", "period=%s" % key[0], "who=%s" % key[1], "kind=%s" % key[2], "route=%s" % key[3], "elb=%s" % key[4], "device=%s" % key[5], "n=%d" % n)
+    for key, n in sorted(presented.items(), key=lambda kv: (kv[0][0], -kv[1]))[:40]:
+        out("STALE_PRESENTED_NEAR_END", "period=%s" % key[0], "kind=%s" % key[1], "route=%s" % key[2], "elb=%s" % key[3], "device=%s" % key[4], "n=%d" % n)
 
 
 def section_dbcompare():
@@ -2204,7 +2366,7 @@ def main():
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
      "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit,
-     "sessdb": section_sessdb, "sessmetric": section_sessmetric}[SECTION]()
+     "sessdb": section_sessdb, "sessmetric": section_sessmetric, "sessstale": section_sessstale}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 
