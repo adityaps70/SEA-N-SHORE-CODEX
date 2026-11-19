@@ -79,11 +79,13 @@ resource "aws_route53_zone" "seanshore_net" {
 resource "aws_route53_zone" "console" {
   for_each = local.console_zone_ids
 
-  name    = each.key
-  comment = ""
+  name = each.key
 
+  # These zones were made in the console with no comment. The provider cannot hold an empty comment (it falls back to
+  # "Managed by Terraform"), so the import would plan a comment change; the comment is only a label.
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [comment]
   }
 }
 

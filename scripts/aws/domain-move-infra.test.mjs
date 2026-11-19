@@ -144,6 +144,9 @@ test('Terraform: imported resources are kept, the import blocks never live under
     const block = tf.slice(tf.indexOf(`resource "${resource}"`))
     assert.match(block.slice(0, block.indexOf('\n}\n')), /prevent_destroy\s+= true/, resource)
   }
+  // The console zones have no comment; the provider would plan "Managed by Terraform" on import.
+  const consoleZone = tf.slice(tf.indexOf('resource "aws_route53_zone" "console"'))
+  assert.match(consoleZone.slice(0, consoleZone.indexOf('\n}\n')), /ignore_changes\s+= \[comment\]/)
   // The import ids are exactly the Phase 0 report's.
   assert.match(imports, /id = "E2MCZ79G101LLD"/)
   assert.match(tf, /seanshore_net_zone_id = "Z09758912UIE2T2PK09U"/)
@@ -168,6 +171,11 @@ test('the runner: account and branch checks, host lock, one classified apply, ve
   assert.match(script, /create-once\) \[\[ "\$STEP" == create \]\]/)
   assert.match(script, /\[\[ "\$APP_DISTRIBUTION_ID" == EF1K45UVP11XZ && "\$REDIRECT_DISTRIBUTION_ID" == EK1KQZWPWQZNQ \]\]/)
   assert.match(script, /\[\[ "\$status" == ISSUED \]\]/)
+  // Run 44479432280: a refused plan or a Terraform error must say why, not stop silently.
+  assert.match(script, /CLASSIFICATION="\$\(classify "\$WORK_DIR\/before\.json"\)" \|\| CLASSIFY_STATUS=\$\?\necho "\$CLASSIFICATION"/)
+  assert.match(script, /terraform_errors "terraform plan \(\$1\)" "\$WORK_DIR\/\$1\.log"/)
+  assert.match(script, /terraform_errors "terraform apply" "\$WORK_DIR\/apply\.log"/)
+  assert.match(script, /grep -E -A12 '\^\(│ \)\?Error' "\$2"/)
   // The edge-logs bucket is never listed or read (logs hold visitor IP addresses).
   assert.doesNotMatch(script, /list-objects|get-object[^\n]*edge-logs|s3 (ls|cp)/)
   const calls = [...script.matchAll(/\baws ([a-z0-9]+) ([a-z-]+)/g)].map((m) => `${m[1]} ${m[2]}`)
