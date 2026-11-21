@@ -17,13 +17,14 @@ vi.mock('@/lib/db/client', () => ({
     db.transaction((query) => work({ query: async (text, values) => ({ rows: await query(text, values) }) })),
 }))
 
-const { createLoadTestAccounts, LOAD_TEST_FOLLOWS_PER_ACCOUNT, loadTestEmail } = await import('./accounts')
+const { createLoadTestAccounts, LOAD_TEST_FOLLOWS_PER_ACCOUNT, loadTestActivation, loadTestEmail, loadTestLocation } = await import('./accounts')
 // The real worker makes 1,000 (LOAD_TEST_ACCOUNT_COUNT, checked in accounts.test.ts); 60 here keeps every rule
 // (more accounts than each one's 49 follows) at a fraction of the time.
 const LOAD_TEST_ACCOUNT_COUNT = 60
 const { provisionProfileForCognitoPrincipal } = await import('@/features/auth/identity-repository')
 const { createOnboardingService } = await import('@/features/profiles/onboarding-service')
 const { createOnboardingRepositoryForClient } = await import('@/features/profiles/onboarding-repository')
+const { createPeopleSuggestions } = await import('@/features/ranking/people-suggestions')
 
 beforeAll(async () => {
   db = await createTestDatabase()
@@ -66,6 +67,7 @@ function accountsDeps(): Parameters<typeof createLoadTestAccounts>[0] {
     },
     provisionProfile: (principal) => provisionProfileForCognitoPrincipal(principal),
     completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
+    refreshPeopleSuggestions: (profileId) => createPeopleSuggestions().refreshForViewer(profileId),
     accountCount: LOAD_TEST_ACCOUNT_COUNT,
     cognitoCallsPerSecond: 100000,
     log: (line) => lines.push(line),
@@ -76,6 +78,14 @@ describe('load-test accounts (Round ARCH)', () => {
   it('creates the onboarded, flagged accounts, each following the next 49 test accounts only, in one hidden community with one post', async () => {
     const realRows = await db.query(`insert into public.profiles (id, full_name) values (gen_random_uuid(), 'Placeholder Real Member') returning id`)
     const realId = realRows[0]!.id as string
+    // A real, onboarded member with the test accounts' persona: the one suggestion they can get.
+    const eligibleId = await provisionProfileForCognitoPrincipal({
+      sub: '00000000-0000-4000-9000-000000000001', email: 'eligible.member@example.com', emailVerified: true, name: 'Placeholder Eligible Member',
+    })
+    await accountsDeps().completeActivation(eligibleId, {
+      ...loadTestActivation(1), fullName: 'Placeholder Eligible Member', slug: 'placeholder-eligible-member',
+    })
+    await db.query(`update public.profiles set location = 'Mumbai' where id = $1`, [eligibleId])
     await accounts().create()
     const counts = await accounts().counts()
     expect(counts).toEqual({ profiles: LOAD_TEST_ACCOUNT_COUNT, communities: 1, follows: LOAD_TEST_ACCOUNT_COUNT * LOAD_TEST_FOLLOWS_PER_ACCOUNT, mixedFollows: 0, posts: 1 })
@@ -85,6 +95,19 @@ describe('load-test accounts (Round ARCH)', () => {
     expect(group[0]!.visibility).toBe('private')
     const real = await db.query(`select is_load_test from public.profiles where id = $1`, [realId])
     expect(real[0]!.is_load_test).toBe(false)
+    // Owner (18 Nov): every test account gets People you may know prepared, as onboarding does for a member, and no
+    // test account is ever anyone's suggestion.
+    // The test accounts in Mumbai (every fifth) get the real member there; nobody gets a test account.
+    const inMumbai = Array.from({ length: LOAD_TEST_ACCOUNT_COUNT }, (_, i) => loadTestLocation(i + 1)).filter((city) => city === 'Mumbai').length
+    expect(lines).toContain(`LOAD_TEST_ACCOUNTS_PYMK viewers=${LOAD_TEST_ACCOUNT_COUNT} with_suggestions=${inMumbai} rows=${inMumbai}`)
+    const eligibleRow = await db.query(`select location from public.profiles where id = $1`, [eligibleId])
+    expect(eligibleRow[0]!.location).toBe('Mumbai')
+    const stored = await db.query(`select distinct candidate_id from public.people_suggestions`)
+    expect(stored.map((row) => row.candidate_id)).toEqual([eligibleId])
+    const testCandidates = await db.query(
+      `select count(*)::int as n from public.people_suggestions s join public.profiles c on c.id = s.candidate_id where c.is_load_test`,
+    )
+    expect(testCandidates[0]!.n).toBe(0)
     // Running it again changes nothing.
     await accounts().create()
     expect(await accounts().counts()).toEqual(counts)

@@ -62,9 +62,13 @@ test('every shard stays under the WAF limit of 2,000 requests per 5 minutes per 
   // And every session stays far under the WAF's 1,000 requests per 5 minutes per session: each shard spreads its
   // requests evenly over its share of the 1,000 accounts.
   assert.match(read('../../infra/aws/app/edge.tf'), /aggregate_key_type    = "CUSTOM_KEYS"\n\s+evaluation_window_sec = 300\n\s+limit                 = 1000/)
+  // Owner (18 Nov): each step uses as many accounts as members it stands for, at a member's 32 requests a minute, so
+  // one session sends at most 32 a minute (plus a feed visit's next pages), far under the session limit.
   const topPerSession = Math.max(...envValue('LOAD_TEST_DAY_RPM').split(',').map(Number)) / Number(envValue('LOAD_TEST_ACCOUNTS'))
   assert.ok(topPerSession * 5 <= 1000 / 4, `${topPerSession}/min per session`)
-  assert.match(script, /const slot = sessionSlot\(exec\.scenario\.iterationInInstance, SESSIONS\.length\)/)
+  assert.match(script, /export const MEMBER_RPM = 32\n/)
+  assert.ok(32 * 2 * 5 <= 1000 / 2, 'a session stays under half the limit even at twice a member rate')
+  assert.match(script, /const slot = sessionSlot\(exec\.scenario\.iterationInInstance, activeSessions\(shardRate\(TOTAL_RPM\[step - 1\], SHARD, SHARDS\), SESSIONS\.length\)\)/)
   assert.doesNotMatch(script, /SESSIONS\[\(__VU/)
 })
 
@@ -447,4 +451,16 @@ test('the monitor reads the ALB metric dimension read-only through the bootstrap
   assert.match(lookup, /\[\[ "\$DIMENSION" =~ \^app\/sea-n-shore-staging-alb\/\[0-9a-f\]\{16\}\$ \]\] \|\| \{ echo "Could not read the ALB's metric dimension\." >&2; exit 1; \}/)
   assert.match(lookup, /printf '%s\\n' "\$DIMENSION"$/m)
   assert.match(jobOf('monitor'), /sparse-checkout: \|\n\s+scripts\/load-test\n\s+scripts\/aws\/alb-metric-dimension\.sh\n/)
+})
+
+test('each step uses as many accounts as members it stands for, at 32 requests a minute each', () => {
+  const body = script.match(/export function activeSessions\(shardRpm, sessions\) \{\n([\s\S]*?)\n\}/)[1]
+  const activeSessions = new Function('shardRpm', 'sessions', 'MEMBER_RPM', body)
+  const perShard = (total) => Math.floor(total / 16)
+  // 800 a minute over 16 shards is 50 per shard: 2 accounts each, 32 in all (about the 25 members it stands for).
+  assert.equal(activeSessions(perShard(800), 63, 32), 2)
+  // The top step uses every account the shard has, and never more.
+  assert.equal(activeSessions(perShard(32000), 63, 32), 63)
+  assert.equal(activeSessions(perShard(64000), 63, 32), 63)
+  assert.equal(activeSessions(1, 63, 32), 1)
 })
