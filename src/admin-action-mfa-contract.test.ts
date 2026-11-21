@@ -36,6 +36,8 @@ const ADMIN_ACTION_MODULES: Array<[path: string, exports: string[]]> = [
   ['src/features/countries/admin-country-actions.ts', ['setOrganizationCountryAction']],
   // Round GP (Part C): Admin › Country admins (platform administrators only).
   ['src/features/country-admins/admin-actions.ts', ['grantCountryAdminAction', 'updateCountryAdminAction', 'removeCountryAdminAction']],
+  // Admin two-step (owner, 21 Nov): a platform administrator resets a locked-out member's two-step verification.
+  ['src/features/admin/mfa-reset-actions.ts', ['resetMemberTwoStepAction']],
   ['src/features/legacy-invites/admin-actions.ts', ['prepareLegacyInviteBatch', 'startPreparedLegacyInvites', 'cancelPreparedLegacyInvites', 'stopUnsentLegacyInvites', 'prepareLegacyReminderBatch', 'startPreparedLegacyReminders', 'cancelPreparedLegacyReminders', 'stopUnsentLegacyReminders', 'sendLegacyReminderTest']],
   // P4: the final legacy reminder (Resume also needs the admin step-up).
   ['src/features/legacy-invites/final-reminder-admin-actions.ts', ['prepareLegacyFinalReminderBatch', 'startPreparedLegacyFinalReminders', 'cancelPreparedLegacyFinalReminders', 'stopUnsentLegacyFinalReminders', 'resumeLegacyFinalReminders', 'sendLegacyFinalReminderTest']],
@@ -109,7 +111,7 @@ describe('platform-admin server actions are MFA-gated (Round 15)', () => {
 
   it('lists every exported action of the admin-only modules', () => {
     const adminOnly = ADMIN_ACTION_MODULES.filter(([path]) => /(^src\/features\/admin\/|admin-actions\.ts$)/.test(path))
-    expect(adminOnly.length).toBe(17)
+    expect(adminOnly.length).toBe(18)
     for (const [path, names] of adminOnly) {
       const exported = [...read(path).matchAll(/^export async function (\w+)\(/gm)].map((match) => match[1])
       expect(exported.sort(), path).toEqual([...names].sort())
