@@ -54,11 +54,12 @@ function createAfter() {
     'aws_route53_record.seanshore_net_resend_return_path["rsend"]': { name: 'rsend.mail.seanshore.net', type: 'CNAME', records: ['rsend-apne1.forge.rmta.net'] },
     'aws_route53_record.seanshore_net_resend_return_path["send"]': { name: 'send.mail.seanshore.net', type: 'CNAME', records: ['send.forge.rmta.net'] },
     'aws_route53_record.seanshore_net_dmarc': { name: '_dmarc.seanshore.net', type: 'TXT', records: ['v=DMARC1; p=quarantine; adkim=r; aspf=r'] },
-    'aws_acm_certificate.site_edge': { domain_name: 'seanshore.in', subject_alternative_names: ['www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], validation_method: 'DNS' },
+    // As the AWS provider 6.62.0 plans it (run 44904143142): the domain name is in subject_alternative_names too.
+    'aws_acm_certificate.site_edge': { domain_name: 'seanshore.in', subject_alternative_names: ['seanshore.in', 'seanshore.net', 'www.seanshore.in', 'www.seanshore.net'], validation_method: 'DNS' },
     'aws_route53_record.site_edge_validation["seanshore.net"]': {},
     'aws_route53_record.site_edge_validation["www.seanshore.net"]': {},
     'aws_acm_certificate_validation.site_edge': {},
-    'aws_acm_certificate.legacy_redirect': { domain_name: 'seaandshore.in', subject_alternative_names: LEGACY_NAMES.slice(1), validation_method: 'DNS' },
+    'aws_acm_certificate.legacy_redirect': { domain_name: 'seaandshore.in', subject_alternative_names: [...LEGACY_NAMES].sort(), validation_method: 'DNS' },
     'aws_acm_certificate_validation.legacy_redirect': {},
     'aws_s3_bucket.edge_logs': { bucket: 'sea-n-shore-staging-310356785722-edge-logs' },
     'aws_s3_bucket_public_access_block.edge_logs': { block_public_acls: true, block_public_policy: true, ignore_public_acls: true, restrict_public_buckets: true },
@@ -140,8 +141,14 @@ test('create: exactly the approved new resources with the approved settings, not
     assert.notEqual(result.status, 0, why)
     assert.match(result.stdout, /DOMAIN_MOVE_PLAN_REFUSED/, why)
   }
-  refused(createPlan({ 'aws_acm_certificate.site_edge': { domain_name: 'seanshore.in', subject_alternative_names: ['www.seanshore.in', 'seanshore.net'], validation_method: 'DNS' } }), 'a certificate missing www.seanshore.net')
-  refused(createPlan({ 'aws_acm_certificate.legacy_redirect': { domain_name: 'seaandshore.in', subject_alternative_names: LEGACY_NAMES.slice(1, 8), validation_method: 'DNS' } }), 'a redirect certificate missing names')
+  // Without the domain name in the list (older provider shape) the same names still pass.
+  const plain = run(createArgs(createPlan({ 'aws_acm_certificate.site_edge': { domain_name: 'seanshore.in', subject_alternative_names: ['www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], validation_method: 'DNS' } })))
+  assert.equal(plain.status, 0, plain.stdout)
+  refused(createPlan({ 'aws_acm_certificate.site_edge': { domain_name: 'seanshore.in', subject_alternative_names: ['seanshore.in', 'www.seanshore.in', 'seanshore.net'], validation_method: 'DNS' } }), 'a certificate missing www.seanshore.net')
+  refused(createPlan({ 'aws_acm_certificate.site_edge': { domain_name: 'seanshore.in', subject_alternative_names: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net', 'evil.example'], validation_method: 'DNS' } }), 'a certificate with an extra name')
+  refused(createPlan({ 'aws_acm_certificate.site_edge': { domain_name: 'seanshore.net', subject_alternative_names: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], validation_method: 'DNS' } }), 'a certificate whose main name is not seanshore.in')
+  refused(createPlan({ 'aws_acm_certificate.legacy_redirect': { domain_name: 'seaandshore.in', subject_alternative_names: LEGACY_NAMES.slice(0, 8), validation_method: 'DNS' } }), 'a redirect certificate missing names')
+  refused(createPlan({ 'aws_acm_certificate.legacy_redirect': { domain_name: 'www.seaandshore.in', subject_alternative_names: [...LEGACY_NAMES].sort(), validation_method: 'DNS' } }), 'a redirect certificate whose main name is not seaandshore.in')
   refused(createPlan({ 'aws_route53_record.seanshore_net_dmarc': { name: '_dmarc.seanshore.net', records: ['v=DMARC1; p=none'] } }), 'a weaker DMARC')
   refused(createPlan({ 'aws_s3_bucket_public_access_block.edge_logs': { block_public_acls: true, block_public_policy: false, ignore_public_acls: true, restrict_public_buckets: true } }), 'a bucket that can be public')
   refused(createPlan({ 'aws_s3_bucket_lifecycle_configuration.edge_logs': { rule: [{ status: 'Enabled', expiration: [{ days: 90 }] }] } }), 'logs kept 90 days')
@@ -154,6 +161,8 @@ test('create: exactly the approved new resources with the approved settings, not
   refused(createPlan({}, [functionUpdate({ code: renderedFunction().replace("'x-sns-viewer-host'", "'x-other'") })]), 'function code that is not the template')
   refused(createPlan({}, [functionUpdate({ code: renderedFunction() + '\nhandler = function (e) { return e.request }' })]), 'function code with more appended')
   refused(createPlan({}, [functionUpdate({ comment: 'changed' })]), 'a function update beyond its code')
+  const withStatus = run(createArgs(createPlan({}, [functionUpdate({}, { etag: true, live_stage_etag: true, status: true })])))
+  assert.equal(withStatus.status, 0, withStatus.stdout)
   refused(createPlan({}, [functionUpdate({ publish: false })]), 'an unpublished function')
   refused(createPlan({}, [{ ...functionUpdate(), change: { ...functionUpdate().change, actions: ['delete', 'create'] } }]), 'a replaced function')
   refused(createPlan({}, [{ ...functionUpdate(), address: 'aws_cloudfront_function.legacy_domain_redirect' }]), 'another function')

@@ -68,7 +68,8 @@ EXPECTED_CREATES = sorted([
 FUNCTION_ADDRESS = "aws_cloudfront_function.canonical_host_redirect"
 FUNCTION_NAME = "sea-n-shore-staging-canonical-host-redirect"
 FUNCTION_TEMPLATE = Path(__file__).resolve().parents[2] / "infra" / "aws" / "app" / "cloudfront" / "canonical-host-redirect.js.tftpl"
-FUNCTION_UPDATABLE = {"code", "etag", "live_stage_etag"}
+# code, plus what CloudFront computes from it (never set from configuration).
+FUNCTION_UPDATABLE = {"code", "etag", "live_stage_etag", "status"}
 
 EDGE_LOGS_BUCKET = f"sea-n-shore-staging-{ACCOUNT}-edge-logs"
 SITE_EDGE_NAMES = ["seanshore.in", "www.seanshore.in", "seanshore.net", "www.seanshore.net"]
@@ -168,11 +169,14 @@ def check_create(plan, app_id, redirect_id):
     by = {c["address"]: after(c) for c in changes}
 
     def names(cert):
-        return sorted([cert.get("domain_name")] + list(cert.get("subject_alternative_names") or []))
+        # Run 44904143142: the AWS provider (6.62.0) plans subject_alternative_names with the domain name included, so
+        # the names are compared as a set.
+        return sorted(set([cert.get("domain_name")] + list(cert.get("subject_alternative_names") or [])))
 
-    if names(by["aws_acm_certificate.site_edge"]) != sorted(SITE_EDGE_NAMES):
+    site_edge, legacy = by["aws_acm_certificate.site_edge"], by["aws_acm_certificate.legacy_redirect"]
+    if site_edge.get("domain_name") != "seanshore.in" or names(site_edge) != sorted(SITE_EDGE_NAMES):
         refuse("site_edge names")
-    if names(by["aws_acm_certificate.legacy_redirect"]) != sorted(LEGACY_NAMES) or len(LEGACY_NAMES) != 10:
+    if legacy.get("domain_name") != "seaandshore.in" or names(legacy) != sorted(LEGACY_NAMES) or len(LEGACY_NAMES) != 10:
         refuse("legacy_redirect names")
     for address in ("aws_acm_certificate.site_edge", "aws_acm_certificate.legacy_redirect"):
         if by[address].get("validation_method") != "DNS":
