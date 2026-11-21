@@ -27,7 +27,10 @@ jq -e '[.resources[] | select(.type == "aws_wafv2_web_acl" and .name == "edge") 
 aws cloudfront list-distributions --no-paginate --output json > "$RECOVERY_DIR/distributions.json"
 [[ -s "$RECOVERY_DIR/distributions.json" ]]
 jq -e '.DistributionList.IsTruncated == false' "$RECOVERY_DIR/distributions.json" >/dev/null
-jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort == ["app", "seaandshore_redirect"]' "$RECOVERY_DIR/state.json" >/dev/null
+# Domain move (Phase 1, import step): the console redirect distribution may also be in state, by its exact id only
+# (infra/aws/app/domain-move.tf). This runner still never plans it.
+jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort | (. == ["app", "seaandshore_redirect"] or . == ["app", "console_redirect", "seaandshore_redirect"])' "$RECOVERY_DIR/state.json" >/dev/null
+jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution" and .name == "console_redirect") | .instances[].attributes.id] | (. == [] or . == ["E2MCZ79G101LLD"])' "$RECOVERY_DIR/state.json" >/dev/null
 STATE_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "app" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one app distribution in state") end' "$RECOVERY_DIR/state.json")"
 LEGACY_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "seaandshore_redirect" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one legacy redirect distribution in state") end' "$RECOVERY_DIR/state.json")"
 # Round P3: one more distribution, made outside Terraform for the seanshore.nl/.ph/.si and seaandshore.si

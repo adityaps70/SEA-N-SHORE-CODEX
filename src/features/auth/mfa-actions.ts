@@ -2,7 +2,7 @@
 
 import QRCode from 'qrcode'
 import { revalidatePath } from 'next/cache'
-import { adminRepository } from '@/features/admin/repository'
+import { holdsAdminRole } from '@/features/admin/admin-roles'
 import { MFA_SETTINGS_PATH } from '@/lib/auth/admin-mfa-paths'
 import { requireAwsUser } from './aws-queries'
 import {
@@ -17,7 +17,8 @@ function productionMfaActions() {
     api: productionCognitoApi(),
     getAccessToken: currentAccessToken,
     getProfileId: async () => (await requireAwsUser()).id,
-    isPlatformAdministrator: (profileId) => adminRepository.isPlatformAdministrator(profileId),
+    // Round GP (Part C follow-up): country admins must keep two-step verification on too.
+    isPlatformAdministrator: (profileId) => holdsAdminRole(profileId),
     renderQr: (uri) => QRCode.toDataURL(uri, { errorCorrectionLevel: 'M', margin: 1, width: 240 }),
   })
 }
@@ -34,7 +35,7 @@ export async function confirmAuthenticatorSetup(state: MfaChangeState, formData:
   return result
 }
 
-/** Turns authenticator MFA off. Refused for platform administrators. */
+/** Turns authenticator MFA off. Refused for platform administrators and country admins. */
 export async function disableAuthenticator(): Promise<MfaChangeState> {
   const result = await productionMfaActions().disable()
   if (result.status === 'disabled') revalidatePath(MFA_SETTINGS_PATH)

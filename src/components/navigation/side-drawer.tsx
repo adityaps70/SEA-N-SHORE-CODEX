@@ -20,7 +20,7 @@ import {
 import { useEffect, useId, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { useSheetScrollLock } from '@/components/ui/mobile-sheet'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
-import { AccountMenuSignOut, type HeaderOrganization } from './account-menu'
+import { AccountMenuSignOut, adminMenuLink, type HeaderOrganization } from './account-menu'
 import { FooterSocialIcons, footerBottomLine, footerLinks } from './app-footer'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
 
@@ -75,6 +75,8 @@ export type SideDrawerProps = {
   organizations?: HeaderOrganization[]
   organizationCount?: number
   canAccessAdmin?: boolean
+  /** Round GP: a country admin's countries; their Admin row opens the organization review queue. */
+  adminCountries?: readonly string[] | null
 }
 
 /**
@@ -90,8 +92,10 @@ export function SideDrawer({
   organizations = [],
   organizationCount = organizations.length,
   canAccessAdmin = false,
+  adminCountries = null,
 }: SideDrawerProps) {
   const titleId = useId()
+  const adminLink = adminMenuLink({ canAccessAdmin, adminCountries })
   const panelRef = useRef<HTMLDivElement | null>(null)
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const onCloseRef = useRef(onClose)
@@ -255,7 +259,7 @@ export function SideDrawer({
             <ul>
               <DrawerRow href="/hiring" icon={BriefcaseBusiness} label="Hiring" />
               <DrawerRow href="/learn/teach" icon={GraduationCap} label="Teach on Sea N Shore" />
-              {canAccessAdmin ? <DrawerRow href="/admin" icon={ShieldCheck} label="Admin" /> : null}
+              {adminLink ? <DrawerRow href={adminLink.href} icon={ShieldCheck} label="Admin" /> : null}
             </ul>
           </section>
 

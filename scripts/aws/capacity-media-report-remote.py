@@ -1140,6 +1140,13 @@ def stale_statements(start, end):
     return [rotations, ends]
 
 
+def data_api_time(value):
+    """A timestamptz from the Data API: UTC text without an offset ("2026-11-16 10:00:00.123456"), so it is marked UTC.
+    Run 44382835058 failed comparing those offset-free times with the UTC window."""
+    t = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
+    return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
+
+
 def section_sessstale():
     out("=== STALE SIGN-IN TOKENS: WHAT RENEWED THEM, WHAT PRESENTED THEM, HOW OLD (owner 18 Nov; counts only) ===")
     start, end = sessions_window()
@@ -1147,8 +1154,8 @@ def section_sessstale():
     if rows[0] is None or rows[1] is None:
         out("STALE UNAVAILABLE")
         return
-    parse = lambda value: dt.datetime.fromisoformat(str(value).replace("Z", "+00:00").replace(" ", "T"))
     renewals = defaultdict(list)
+    parse = data_api_time
     for r in rows[0]:
         renewals[r["origin_hash"]].append(parse(r["at"]))
     for times in renewals.values():
@@ -2284,6 +2291,110 @@ def section_dbhealth():
             out(label, json.dumps(row, sort_keys=True)[:400])
 
 
+# ---------------------------------------------------------------- owner 21 Nov: one latency spike (read-only)
+
+ECS_EVENT_KINDS = [("started", r"has started \d+ tasks?"), ("stopped", r"has stopped \d+ (running )?tasks?"),
+                   ("unhealthy", r"unhealthy|failed (container|elb|load balancer)? ?health checks?"),
+                   ("deregistered", r"deregistered \d+ targets?"), ("registered", r"registered \d+ targets?"),
+                   ("draining", r"draining connections"), ("steady", r"reached a steady state"), ("deployment", r"deployment")]
+
+
+def ecs_event_kind(message):
+    for kind, pattern in ECS_EVENT_KINDS:
+        if re.search(pattern, message or "", re.I):
+            return kind
+    return "other"
+
+
+def section_incident():
+    out("=== OWNER 21 NOV: ONE LATENCY SPIKE, MINUTE BY MINUTE (counts, AWS status words and route shapes only) ===")
+    start, end = db_window()
+    clusters = (aws("ecs", "list-clusters") or {}).get("clusterArns", [])
+    cluster = next((a.split("/")[-1] for a in clusters if PREFIX in a), None)
+    names = [a.split("/")[-1] for a in ((aws("ecs", "list-services", "--cluster", cluster) or {}).get("serviceArns", []) if cluster else [])]
+    services = (aws("ecs", "describe-services", "--cluster", cluster, "--services", *names) or {}).get("services", []) if names else []
+    for svc in services:
+        name = svc.get("serviceName")
+        events = Counter()
+        for e in svc.get("events", []):
+            at = dt.datetime.fromisoformat(str(e.get("createdAt")).replace("Z", "+00:00"))
+            if start <= at < end:
+                events[(at.strftime("%H:%M"), ecs_event_kind(e.get("message")))] += 1
+        for (minute, kind), n in sorted(events.items()):
+            out("ECS_EVENT", name, minute, kind, "n=%d" % n)
+        for d in svc.get("deployments", []):
+            created = dt.datetime.fromisoformat(str(d.get("createdAt")).replace("Z", "+00:00"))
+            updated = dt.datetime.fromisoformat(str(d.get("updatedAt")).replace("Z", "+00:00"))
+            if created < end and updated >= start - dt.timedelta(hours=6):
+                out("ECS_DEPLOYMENT", name, "status=%s" % d.get("status"), "rollout=%s" % d.get("rolloutState"),
+                    "created=%s" % created.strftime("%Y-%m-%dT%H:%M"), "updated=%s" % updated.strftime("%Y-%m-%dT%H:%M"),
+                    "desired=%s running=%s failed=%s" % (d.get("desiredCount"), d.get("runningCount"), d.get("failedTasks")))
+        out("ECS_SERVICE_NOW", name, "desired=%s running=%s pending=%s" % (svc.get("desiredCount"), svc.get("runningCount"), svc.get("pendingCount")))
+    acts = (aws("application-autoscaling", "describe-scaling-activities", "--service-namespace", "ecs") or {}).get("ScalingActivities", [])
+    for a in acts:
+        at = dt.datetime.fromisoformat(str(a.get("StartTime")).replace("Z", "+00:00"))
+        if start - dt.timedelta(minutes=30) <= at < end:
+            desc = re.sub(r"arn:aws:\S+", "[ARN]", a.get("Description") or "")[:120]
+            out("ECS_SCALING", a.get("ResourceId", "").split("/")[-1], at.strftime("%H:%M"), "status=%s" % a.get("StatusCode"), json.dumps(desc))
+    for kind in ("db-cluster", "db-instance"):
+        events = (aws("rds", "describe-events", "--source-type", kind, "--start-time", iso(start - dt.timedelta(hours=1)),
+                      "--end-time", iso(end)) or {}).get("Events", [])
+        out("RDS_EVENTS", kind, "count=%d" % len(events))
+        for e in events:
+            at = dt.datetime.fromisoformat(str(e.get("Date")).replace("Z", "+00:00"))
+            out("RDS_EVENT", kind, at.strftime("%H:%M"), ",".join(e.get("EventCategories") or []), json.dumps((e.get("Message") or "")[:160]))
+    # Target health and server response time per minute (CloudWatch), for every target group of the load balancer.
+    rows = defaultdict(dict)
+    for dims in search_dims("AWS/ApplicationELB", "UnHealthyHostCount", PREFIX):
+        tag = str(dims.get("TargetGroup", "tg"))[-6:]
+        for metric, stat in (("UnHealthyHostCount", "Maximum"), ("HealthyHostCount", "Minimum")):
+            for t, v in metric_points("AWS/ApplicationELB", metric, dims, stat, 60, start, end):
+                rows[t.strftime("%H:%M")]["%s_%s" % (tag, metric.replace("HostCount", ""))] = v
+    for dims in search_dims("AWS/ApplicationELB", "TargetResponseTime", PREFIX + "-alb"):
+        if set(dims) != {"LoadBalancer"}:
+            continue
+        for stat in ("p50", "p95", "p99", "Maximum"):
+            for t, v in metric_points("AWS/ApplicationELB", "TargetResponseTime", dims, stat, 60, start, end):
+                rows[t.strftime("%H:%M")]["target_s_" + stat] = v
+    for minute in sorted(rows):
+        out("ALB_MINUTE", minute, *["%s=%s" % (k, round(v, 3)) for k, v in sorted(rows[minute].items())])
+    # The load balancer's own log over the window: per minute, and the slowest route shapes (no paths, addresses or agents).
+    per_minute, by_route, errors, totals, budget = defaultdict(list), defaultdict(list), Counter(), Counter(), {"bytes": 0}
+    day = start.date()
+    while day <= end.date():
+        for line in alb_day_lines(day, totals, budget):
+            m = LOG_LINE.match(line)
+            if not m or not (iso(start)[:19] <= m.group(2)[:19] < iso(end)[:19]):
+                continue
+            request = m.group(13).split(" ")
+            method, url = (request[0] if request else "-"), (request[1] if len(request) > 1 else "")
+            path = re.sub(r"^https?://[^/]+(:\d+)?", "", url).split("?")[0] or "/"
+            query = url.split("?", 1)[1] if "?" in url else ""
+            if STATIC.search(path):
+                continue
+            took = float(m.group(7))
+            key = "%s %s" % (request_kind(method, path, query), route_shape(path))
+            if took >= 0:
+                per_minute[m.group(2)[11:16]].append(took)
+                by_route[key].append(took)
+            if m.group(9).startswith("5"):
+                errors[key] += 1
+                totals["5xx"] += 1
+            if m.group(9) == "460":
+                totals["client_closed_460"] += 1
+            if took < 0:
+                totals["no_target_answer"] += 1
+        day += dt.timedelta(days=1)
+    out("ALB_LOG_TOTALS", json.dumps(dict(totals), sort_keys=True), "scannedMB=%s" % mb(budget["bytes"]))
+    for minute in sorted(per_minute):
+        v = per_minute[minute]
+        out("ALB_LOG_MINUTE", minute, "requests=%d" % len(v), "p50_s=%.3f" % pct(v, 50), "p95_s=%.3f" % pct(v, 95), "max_s=%.3f" % max(v))
+    slowest = sorted(by_route.items(), key=lambda kv: -pct(kv[1], 95))[:15]
+    for key, v in slowest:
+        out("ALB_SLOW_ROUTE", json.dumps(key), "n=%d" % len(v), "p50_s=%.3f" % pct(v, 50), "p95_s=%.3f" % pct(v, 95),
+            "max_s=%.3f" % max(v), "over_5s=%d" % sum(1 for x in v if x > 5), "5xx=%d" % errors[key])
+
+
 # ---------------------------------------------------------------- Round DB: cost (read-only)
 
 def section_cost():
@@ -2359,7 +2470,7 @@ def main():
      "db": section_db, "dbstats": section_dbstats, "dbplans": section_dbplans, "dbhealth": section_dbhealth, "cost": section_cost,
      "dbwindow": section_dbwindow, "dbminutes": section_dbminutes, "edgeminutes": section_edgeminutes,
      "dbcompare": section_dbcompare, "online": section_online, "capminutes": section_capminutes, "capwrites": section_capwrites, "cap7d": section_cap7d, "caponline": section_caponline, "legacysplit": section_legacysplit,
-     "sessdb": section_sessdb, "sessmetric": section_sessmetric, "sessstale": section_sessstale}[SECTION]()
+     "sessdb": section_sessdb, "sessmetric": section_sessmetric, "sessstale": section_sessstale, "incident": section_incident}[SECTION]()
     out("ACTION_SUMMARY", json.dumps(dict(COUNTS)))
     out("READ_ONLY_REPORT_COMPLETE=true")
 

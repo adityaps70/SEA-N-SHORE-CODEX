@@ -1,5 +1,6 @@
 import { learningNotificationCopy } from './learning-notification-copy'
 import type { LearningNotificationDetails, LearningNotificationKind } from './learning-notifications'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * The learning notification email (learning round A, A6): one short message, one button and an
@@ -10,7 +11,7 @@ import type { LearningNotificationDetails, LearningNotificationKind } from './le
 export const LEARNING_EMAIL_FROM = 'Sea N Shore Learning <learning@mail.seanshore.in>'
 
 export function learningEmailSiteUrl(siteUrl?: string) {
-  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || 'https://seanshore.in').trim().replace(/\/+$/, '')
+  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
 }
 
 export function learningUnsubscribeLinks(siteUrl: string, emailId: string) {

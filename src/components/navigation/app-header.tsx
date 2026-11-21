@@ -55,6 +55,7 @@ export function AppHeader({
   unreadCount,
   messagingUnreadCount = 0,
   canAccessAdmin = false,
+  adminCountries = null,
   viewer = { name: 'Member', avatarUrl: null },
   organizations = [],
   organizationCount = organizations.length,
@@ -63,6 +64,8 @@ export function AppHeader({
   unreadCount: number
   messagingUnreadCount?: number
   canAccessAdmin?: boolean
+  /** Round GP: a country admin's countries, for their Admin entry. */
+  adminCountries?: readonly string[] | null
   viewer?: HeaderViewer
   /** The first few organizations the member belongs to (owners and administrators first). */
   organizations?: HeaderOrganization[]
@@ -70,7 +73,7 @@ export function AppHeader({
   /** Round G (G4): search as you type with a results dropdown. */
   liveSearch?: boolean
 }) {
-  const accountItems = accountMenuItems({ canAccessAdmin, organizations, organizationCount })
+  const accountItems = accountMenuItems({ canAccessAdmin, adminCountries, organizations, organizationCount })
 
   return (
     <header data-app-header="" className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">

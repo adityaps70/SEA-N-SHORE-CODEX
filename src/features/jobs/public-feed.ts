@@ -1,4 +1,5 @@
 import type { JobListing } from './types'
+import { siteOrigin } from '@/lib/site-url'
 
 export type PublicJobFeedEntry = {
   id: string
@@ -26,7 +27,7 @@ function salaryDescription(job: JobListing): string | null {
     .join(' ')
 }
 
-export function mapPublicJobsFeed(jobs: readonly JobListing[], now = new Date()): PublicJobFeedEntry[] {
+export function mapPublicJobsFeed(jobs: readonly JobListing[], now = new Date(), origin = siteOrigin()): PublicJobFeedEntry[] {
   const today = now.toISOString().slice(0, 10)
 
   return jobs
@@ -44,6 +45,6 @@ export function mapPublicJobsFeed(jobs: readonly JobListing[], now = new Date())
       joining_date: job.joiningFrom,
       expires_at: job.applyUntil,
       status: 'published' as const,
-      public_url: 'https://seanshore.in/jobs/' + encodeURIComponent(job.id),
+      public_url: origin + '/jobs/' + encodeURIComponent(job.id),
     }))
 }

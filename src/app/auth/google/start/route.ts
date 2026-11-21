@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createCognitoCookieManager } from '@/lib/auth/cognito-cookies'
 import { createCognitoOAuth } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
-import { siteUrlFor } from '@/lib/site-url'
+import { siteOriginFor, siteUrlForRequest } from '@/lib/site-url'
 import { DISPLAY_MODE_COOKIE, isStandaloneCookie } from '@/lib/pwa/display-mode'
 
 function fallbackPath(request: NextRequest) {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const environment = getCognitoEnvironment()
   const intent = request.nextUrl.searchParams.get('intent') === 'sign-up' ? 'sign-up' : 'sign-in'
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) {
-    return NextResponse.redirect(siteUrlFor(fallbackPath(request)))
+    return NextResponse.redirect(siteUrlForRequest(request.headers, fallbackPath(request)))
   }
 
   // Round I (I3): from the iPhone Home Screen app (marker cookie), Google would finish in Safari, not in the app. A
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const iosAgent = /\b(iPhone|iPad|iPod)\b/.test(request.headers.get('user-agent') ?? '')
   if ((requestedIntent === 'sign-in' || requestedIntent === 'sign-up') && iosAgent
     && isStandaloneCookie(request.cookies.get(DISPLAY_MODE_COOKIE)?.value)) {
-    const response = NextResponse.redirect(siteUrlFor(`/auth/${requestedIntent}?oauthError=home-screen-app`))
+    const response = NextResponse.redirect(siteUrlForRequest(request.headers, `/auth/${requestedIntent}?oauthError=home-screen-app`))
     response.headers.set('Cache-Control', 'private, no-store')
     return response
   }
@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
   const oauth = createCognitoOAuth({
     domain: environment.AWS_COGNITO_DOMAIN,
     clientId: environment.AWS_COGNITO_CLIENT_ID,
-    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    // Domain move: Google returns the visitor to the host they started on (the callback is registered for each).
+    siteUrl: siteOriginFor(request.headers),
   })
   const authorization = oauth.createAuthorizationRequest()
   const response = NextResponse.redirect(authorization.url)

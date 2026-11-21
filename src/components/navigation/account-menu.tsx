@@ -1,5 +1,6 @@
 import { Building2, LogOut, Settings, ShieldCheck, UserRound } from 'lucide-react'
 import { signOut } from '@/features/auth/actions'
+import { countryName } from '@/features/countries/catalog'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
 import type { HeaderMenuItem } from './header-menu'
 
@@ -36,24 +37,43 @@ export function organizationMenuItems(organizations: HeaderOrganization[], total
 }
 
 /**
+ * Round GP (Part C follow-up): where the Admin entry goes. Platform administrators open the whole console; a country
+ * admin (adminCountries) opens the organization review queue, with their countries named. Nobody else gets one.
+ */
+export function adminMenuLink({ canAccessAdmin = false, adminCountries = null }: {
+  canAccessAdmin?: boolean
+  adminCountries?: readonly string[] | null
+}): { href: string; description: string } | null {
+  if (canAccessAdmin) return { href: '/admin', description: 'Platform administration' }
+  if (!adminCountries?.length) return null
+  const names = adminCountries.map((code) => countryName(code) ?? code)
+  const shown = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')
+  return { href: '/admin/organizations?view=queue', description: `Organization reviews · ${shown}` }
+}
+
+/**
  * The desktop account menu. On phones the side drawer (side-drawer.tsx) carries these
  * entries, and more, instead.
  */
 export function accountMenuItems({
   canAccessAdmin = false,
+  adminCountries = null,
   organizations = [],
   organizationCount = organizations.length,
 }: {
   canAccessAdmin?: boolean
+  /** Round GP: a country admin's countries (null for everyone else). */
+  adminCountries?: readonly string[] | null
   organizations?: HeaderOrganization[]
   organizationCount?: number
 }): HeaderMenuItem[] {
+  const admin = adminMenuLink({ canAccessAdmin, adminCountries })
   return [
     { href: '/profile', label: 'Profile', description: 'View and edit your Maritime Passport', icon: <UserRound className="size-4" /> },
     { href: '/organizations', label: 'Organizations', description: ORGANIZATIONS_DESCRIPTION, icon: <Building2 className="size-4" /> },
     ...organizationMenuItems(organizations, organizationCount),
-    ...(canAccessAdmin
-      ? [{ href: '/admin', label: 'Admin', description: 'Platform administration', icon: <ShieldCheck className="size-4" /> }]
+    ...(admin
+      ? [{ href: admin.href, label: 'Admin', description: admin.description, icon: <ShieldCheck className="size-4" /> }]
       : []),
     { href: '/settings', label: 'Settings', description: 'Account, privacy, activity and data', icon: <Settings className="size-4" /> },
   ]

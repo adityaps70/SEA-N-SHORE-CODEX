@@ -23,12 +23,15 @@ const badgeClass = 'absolute right-0.5 top-0.5 inline-flex min-w-5 items-center 
 export function MobileAppHeader({
   notificationUnreadCount = 0,
   canAccessAdmin = false,
+  adminCountries = null,
   viewer = { name: 'Member', avatarUrl: null },
   organizations = [],
   organizationCount = organizations.length,
 }: {
   notificationUnreadCount?: number
   canAccessAdmin?: boolean
+  /** Round GP: a country admin's countries, for their Admin entry in the drawer. */
+  adminCountries?: readonly string[] | null
   viewer?: HeaderViewer
   organizations?: HeaderOrganization[]
   organizationCount?: number
@@ -83,6 +86,7 @@ export function MobileAppHeader({
         organizations={organizations}
         organizationCount={organizationCount}
         canAccessAdmin={canAccessAdmin}
+        adminCountries={adminCountries}
       />
     </>
   )

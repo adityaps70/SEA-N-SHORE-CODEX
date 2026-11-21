@@ -12,6 +12,7 @@ import { COGNITO_COOKIE_NAMES, cognitoCookieOptions, createCognitoCookieManager 
 import { createCognitoOAuth } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
+import { siteOriginFor } from '@/lib/site-url'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
 
 export const runtime = 'nodejs'
@@ -27,7 +28,7 @@ function json(body: Record<string, unknown>, status = 200) {
   return NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } })
 }
 
-function oauthClient() {
+function oauthClient(request: NextRequest) {
   const environment = getCognitoEnvironment()
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) return null
   return {
@@ -35,13 +36,14 @@ function oauthClient() {
     oauth: createCognitoOAuth({
       domain: environment.AWS_COGNITO_DOMAIN,
       clientId: environment.AWS_COGNITO_CLIENT_ID,
-      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+      // Domain move: the app starts and finishes the handoff on the same host, so both use its redirect_uri.
+      siteUrl: siteOriginFor(request.headers),
     }),
   }
 }
 
 export async function POST(request: NextRequest) {
-  const client = oauthClient()
+  const client = oauthClient(request)
   if (!client) return json({ status: 'unavailable' }, 503)
   if (!allowStart(trustedClientIp(request.headers) ?? 'unknown')) return json({ status: 'busy' }, 429)
 
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const client = oauthClient()
+  const client = oauthClient(request)
   if (!client) return json({ status: 'unavailable' }, 503)
   const handoff = parseHandoffCookie(request.cookies.get(APP_HANDOFF_COOKIE)?.value)
   // If iOS kept the Google window on the app's own cookies, the normal callback has signed the app in already.
