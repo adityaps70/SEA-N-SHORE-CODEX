@@ -23,7 +23,9 @@ import {
 } from 'lucide-react'
 import { ActiveNavLink } from '@/components/navigation/active-nav-link'
 import { requireAdminAccess, type AdminAccess } from '@/features/admin/admin-access'
+import Link from 'next/link'
 import { AdminMobileBar } from '@/features/admin/components/admin-mobile-bar'
+import { BACKUP_CODES_HREF, BACKUP_CODES_REMINDER, needsBackupCodes } from '@/features/account-security/backup-code-reminder'
 import { adminRepository, type AdminDashboardMetrics } from '@/features/admin/repository'
 
 type Section = {
@@ -86,6 +88,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     ? await adminRepository.getAdminDashboardMetrics(access.user.id).catch(() => null)
     : null
   const visibleSections = access.kind === 'platform' ? sections : countryAdminSections
+  // Admin two-step (owner, 21 Nov): a reminder for admins with no unused backup codes.
+  const remindBackupCodes = await needsBackupCodes(access.user.id)
 
   return (
     <>
@@ -126,7 +130,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           })}
         </nav>
       </aside>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0">
+        {remindBackupCodes ? (
+          <p role="note" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {BACKUP_CODES_REMINDER} <Link href={BACKUP_CODES_HREF} className="font-semibold underline">Create backup codes</Link>
+          </p>
+        ) : null}
+        {children}
+      </div>
     </div>
     </>
   )

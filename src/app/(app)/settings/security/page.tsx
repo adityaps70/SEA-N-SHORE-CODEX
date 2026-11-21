@@ -12,6 +12,8 @@ import { hasAdminStepUp } from '@/features/account-security/admin-step-up-runtim
 import { AdminStepUpForm } from '@/features/account-security/components/admin-step-up-form'
 import { getCurrentMfaStatus } from '@/features/auth/mfa-status'
 import { safeAdminReturnPath } from '@/lib/auth/admin-mfa-paths'
+import { ReplaceAuthenticatorPanel } from '@/features/account-security/components/replace-authenticator-panel'
+import { BACKUP_CODES_HREF, BACKUP_CODES_REMINDER, needsBackupCodes } from '@/features/account-security/backup-code-reminder'
 
 export const metadata: Metadata = { title: 'Two-step verification · Settings' }
 export const dynamic = 'force-dynamic'
@@ -64,6 +66,8 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
   const steppedUp = stepUpPossible ? await hasAdminStepUp(user.id) : false
   const adminReady = sentByAdminGate && (satisfiesAdminMfa(status) || steppedUp)
   const showStepUp = sentByAdminGate && stepUpPossible && !steppedUp
+  // Admin two-step (owner, 21 Nov): admins and country admins with the app on but no unused backup codes.
+  const remindBackupCodes = isAdministrator && status?.enabled === true && await needsBackupCodes(user.id)
 
   return (
     <div className="mx-auto w-full max-w-page-narrow space-y-6 py-2 max-md:space-y-3 max-md:py-0 sm:py-5">
@@ -103,11 +107,20 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
         </p>
       ) : null}
 
+      {remindBackupCodes ? (
+        <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+          {BACKUP_CODES_REMINDER} <Link href={BACKUP_CODES_HREF} className="font-semibold underline">Create backup codes</Link>
+        </p>
+      ) : null}
+
       <TwoStepPanel
         status={status ? { kind: status.kind, enabled: status.enabled } : null}
         isAdministrator={isAdministrator}
         returnTo={returnTo}
       />
+
+      {/* Admin two-step (owner, 21 Nov): a new phone, without turning two-step verification off. Off until switched on. */}
+      {process.env.AUTHENTICATOR_REPLACE_ENABLED === 'true' && status?.kind === 'eligible' && status.enabled ? <ReplaceAuthenticatorPanel /> : null}
 
       {/* Round H (H3): backup codes for a lost authenticator app live with the other account security settings. */}
       <p className="text-sm leading-6 text-muted">

@@ -68,7 +68,7 @@ export type AdminStepUpDeps = {
  * Counts this attempt as a failure before anything is checked (so attempts sent in parallel all count), and says
  * whether the member was already at the limit. A successful attempt is turned into a success afterwards.
  */
-async function startAttempt(query: AccountQuery, profileId: string): Promise<{ attemptId: string; allowed: boolean }> {
+export async function startAttempt(query: AccountQuery, profileId: string): Promise<{ attemptId: string; allowed: boolean }> {
   const rows = await query(
     `with recent as (
        select count(*)::int as failures from public.admin_step_up_attempts
