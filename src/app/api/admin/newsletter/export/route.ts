@@ -3,6 +3,7 @@ import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
 import { subscribersToCsv } from '@/features/newsletter/csv'
 import { newsletterRepository } from '@/features/newsletter/repository'
 import { isNewsletterTopic, NEWSLETTER_STATUSES, type NewsletterStatus } from '@/features/newsletter/topics'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,8 @@ function jsonError(error: string, status: number) {
 
 /** CSV export of newsletter subscribers for platform administrators only. */
 export async function GET(request: Request) {
+  // Owner (21 Nov): a prefetch never builds or records a subscriber export; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   let adminId: string
   try {
     adminId = (await requirePlatformAdministratorUser()).id
