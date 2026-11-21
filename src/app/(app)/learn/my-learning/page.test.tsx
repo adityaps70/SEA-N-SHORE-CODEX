@@ -185,6 +185,8 @@ describe('/learn/my-learning', () => {
       'href',
       `/api/learn/certificates/enrollment/${enrollment.enrollmentId}`,
     )
+    // Owner (21 Nov): a plain download link, so the PDF route is never prefetched.
+    expect(within(card).getByRole('link', { name: 'Download certificate' })).toHaveAttribute('download')
     expect(within(card).getByRole('link', { name: 'Verify certificate' })).toHaveAttribute(
       'href',
       `/certificates/${verificationCode}`,
