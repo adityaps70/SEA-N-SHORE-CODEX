@@ -3,7 +3,8 @@ import { LIVE_JOB_SQL } from '@/features/jobs/repository'
 import { memberCountryCtes, memberCountryValues } from '@/features/countries/member-country-sql'
 import { CountrySchemaMissingError, countrySchemaReady } from '@/features/countries/country-schema'
 import { queueOrganizationReviewNotice } from '@/features/organizations/organization-review-notice'
-import { resolveSectionScope, type SectionScope } from '@/features/country-admins/scope'
+import { eventCountrySql, reportTargetCountrySql } from '@/features/country-admins/item-country-sql'
+import { resolveSectionScope, scopeCoversCountry, SectionForbiddenError, type SectionScope } from '@/features/country-admins/scope'
 import { actorRoleFor, recordAdminAudit } from './admin-audit'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
@@ -456,6 +457,19 @@ type LockedOrganizationApplicationRow = QueryResultRow & {
 
 /** Round GP (Part C): a platform administrator sees every country; a country admin only theirs. */
 export type AdminScope = SectionScope
+
+/** Round GP Part E: one event on Admin > Events. */
+export type AdminEventRow = {
+  id: string
+  title: string
+  status: string
+  startAt: string | null
+  eventType: string | null
+  city: string | null
+  organizerName: string
+  country: string | null
+  openReports: number
+}
 type CompanyAccessRequestRow = QueryResultRow & {
   request_id: string
   request_status: string
@@ -908,16 +922,89 @@ export function createAdminRepository(input: {
     return rows.map((row) => ({ text: row.text, profileCount: numberValue(row.profile_count), jobCount: numberValue(row.job_count) }))
   }
 
+  /**
+   * Round GP Part E: who may act on a report. Platform administrators always. A country admin needs Moderation
+   * ("act"); for an event, Events ("act") also allows cancelling (remove) and restoring it, and nothing else. A member
+   * profile (remove = suspend) is never a country admin's to act on.
+   */
+  async function moderationScope(
+    query: AdminQuery,
+    adminId: string,
+    targetType: ModerationTargetType,
+    action: ModerationAction,
+  ): Promise<{ scope: AdminScope; section: 'moderation' | 'events' }> {
+    let scope: AdminScope
+    let section: 'moderation' | 'events' = 'moderation'
+    try {
+      scope = await resolveSectionScope(query, adminId, 'moderation', 'act', { lock: true })
+    } catch (error) {
+      if (!(error instanceof SectionForbiddenError) || targetType !== 'event') throw error
+      scope = await resolveSectionScope(query, adminId, 'events', 'act', { lock: true })
+      section = 'events'
+      if (action !== 'remove' && action !== 'restore') throw new Error('admin_forbidden')
+    }
+    if (scope.kind === 'country' && targetType === 'profile') throw new Error('moderation_profile_platform_only')
+    return { scope, section }
+  }
+
+  /**
+   * Round GP Part E: Admin > Events. Published and recently cancelled events, with their open report counts; a country
+   * admin sees their countries' events only (the organizer organization's country, or else the host's residence).
+   */
+  async function listCountryEvents(adminId: string, options: { reportedOnly?: boolean; limit?: number } = {}): Promise<AdminEventRow[]> {
+    const scope = await resolveSectionScope(queryRows, adminId, 'events', 'view')
+    const values: unknown[] = [Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 200)]
+    const where = [`(e.status = 'published' or (e.status = 'cancelled' and e.updated_at > now() - interval '30 days'))`]
+    if (scope.kind === 'country') {
+      values.push(scope.countries)
+      where.push(`${eventCountrySql('e')} = any($${values.length}::text[])`)
+    }
+    if (options.reportedOnly) where.push(`exists (select 1 from public.content_reports r where r.target_type = 'event' and r.target_id = e.id and r.status in ('open', 'reviewing'))`)
+    const rows = await queryRows(
+      `select e.id, e.title, e.status, e.start_at, e.event_type, e.city,
+              coalesce(c.name, host.full_name) as organizer_name,
+              ${eventCountrySql('e')} as country,
+              (select count(*) from public.content_reports r where r.target_type = 'event' and r.target_id = e.id and r.status in ('open', 'reviewing')) as open_reports
+       from public.events e
+       left join public.companies c on c.id = e.company_id
+       left join public.profiles host on host.id = e.host_user_id
+       where ${where.join(' and ')}
+       order by open_reports desc, e.start_at asc nulls last, e.id asc
+       limit $1`,
+      values,
+    ) as Array<QueryResultRow & Record<string, unknown>>
+    return rows.map((row) => ({
+      id: String(row.id),
+      title: String(row.title ?? 'Untitled event'),
+      status: String(row.status),
+      startAt: row.start_at instanceof Date ? row.start_at.toISOString() : row.start_at ? String(row.start_at) : null,
+      eventType: typeof row.event_type === 'string' ? row.event_type : null,
+      city: typeof row.city === 'string' ? row.city : null,
+      organizerName: typeof row.organizer_name === 'string' ? row.organizer_name : 'Unknown organizer',
+      country: typeof row.country === 'string' ? row.country : null,
+      openReports: numberValue(row.open_reports),
+    }))
+  }
+
   async function listModerationCases(
     userId: string,
     filter: AdminModerationFilter,
+    options: { section?: 'moderation' | 'events' } = {},
   ): Promise<AdminModerationCase[]> {
-    await requirePlatformAdministrator(queryRows, userId)
+    // Round GP Part E: a country admin with Moderation sees reports on their countries' items; with Events, reports
+    // on their countries' events only. The item's country follows item-country-sql.ts (none = platform only).
+    const section = options.section ?? 'moderation'
+    const scope = await resolveSectionScope(queryRows, userId, section, 'view')
     const values: unknown[] = [filter.status]
     const where = ['cr.status = $1']
-    if (filter.targetType !== 'all') {
-      values.push(filter.targetType)
+    const targetType = section === 'events' ? 'event' : filter.targetType
+    if (targetType !== 'all') {
+      values.push(targetType)
       where.push(`cr.target_type = $${values.length}`)
+    }
+    if (scope.kind === 'country') {
+      values.push(scope.countries)
+      where.push(`${reportTargetCountrySql('cr.target_type', 'cr.target_id')} = any($${values.length}::text[])`)
     }
     values.push(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
     const limitParameter = values.length
@@ -1204,7 +1291,7 @@ export function createAdminRepository(input: {
     },
   ) {
     return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
+      const { scope, section } = await moderationScope(txQuery, adminId, input.targetType, input.action)
 
       const reportRows = await txQuery(
         `select id, status
@@ -1214,6 +1301,14 @@ export function createAdminRepository(input: {
         [input.targetType, input.targetId],
       ) as ModerationReportLockRow[]
       if (!reportRows.length) throw new Error('moderation_case_not_found')
+
+      // Round GP Part E: the reported item's country; a country admin acts only inside their countries.
+      const countryRows = await txQuery(
+        `select ${reportTargetCountrySql('$1::text', '$2::uuid')} as country`,
+        [input.targetType, input.targetId],
+      ) as Array<QueryResultRow & { country?: string | null }>
+      const targetCountry = countryRows[0]?.country ?? null
+      if (!scopeCoversCountry(scope, targetCountry)) throw new Error('moderation_out_of_scope')
 
       const targetRows = await txQuery(targetStateQuery(input.targetType), [input.targetId]) as ModerationTargetStateRow[]
       const target = targetRows[0]
@@ -1304,6 +1399,9 @@ export function createAdminRepository(input: {
             note: input.note,
             previousState,
             reportCount: reportRows.length,
+            actorRole: actorRoleFor(scope),
+            section,
+            country: targetCountry,
           }),
         ],
       )
@@ -2183,6 +2281,7 @@ export function createAdminRepository(input: {
     getOrganizationCountryTarget,
     setOrganizationCountry,
     resolveAdminScope: (userId: string) => resolveAdminScope(queryRows, userId),
+    listCountryEvents,
   }
 }
 
