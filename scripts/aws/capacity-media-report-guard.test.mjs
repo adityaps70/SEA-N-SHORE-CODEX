@@ -765,3 +765,69 @@ for secret in ("originAAAA", "originBBBB", "originCCCC", "abc123", "1.2.3.4", "S
   assert.equal(run.status, 0, run.stderr || run.stdout)
 })
 
+
+// Owner (21 Nov): the 05:36-05:38 UTC latency spike, read-only. Counts, AWS status words and route shapes only.
+test('the incident window runs four read-only sections over at most 3 hours', () => {
+  const wrapper = readFileSync(wrapperPath, 'utf8')
+  assert.match(wrapper, /const INCIDENT_SECTIONS = \['dbminutes', 'dbwindow', 'edgeminutes', 'incident'\]/)
+  assert.match(wrapper, /return \{ incident: true, runStart: incident\[1\], runEnd: incident\[2\] \}/)
+  assert.match(wrapper, /<= 3 \* 3600_000, 'the incident window must be/)
+  assert.match(readFileSync(remotePath, 'utf8'), /"incident": section_incident/)
+})
+
+test('the incident section reads ECS events, scaling, RDS events, target health and the ALB log without ids, paths or addresses', () => {
+  const run = spawnSync('python3', ['-I', '-c', `
+import importlib.util, io, contextlib, datetime as dt
+spec = importlib.util.spec_from_file_location("r", "${remotePath}")
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+r.DB_RUN_START, r.DB_RUN_END = "2026-11-21T05:30:00Z", "2026-11-21T05:45:00Z"
+def fake_aws(service, action, *args, **kw):
+    if action == "list-clusters":
+        return {"clusterArns": ["arn:aws:ecs:x:1:cluster/sea-n-shore-staging"]}
+    if action == "list-services":
+        return {"serviceArns": ["arn:aws:ecs:x:1:service/c/sea-n-shore-staging-web"]}
+    if action == "describe-services":
+        return {"services": [{"serviceName": "sea-n-shore-staging-web", "desiredCount": 2, "runningCount": 2, "pendingCount": 0,
+            "events": [
+                {"createdAt": "2026-11-21T05:36:10+00:00", "message": "(service web) has stopped 1 running tasks: (task 0123456789abcdef)."},
+                {"createdAt": "2026-11-21T05:36:20+00:00", "message": "(service web) (task 0123456789abcdef) failed container health checks."},
+                {"createdAt": "2026-11-21T05:37:00+00:00", "message": "(service web) has started 1 tasks: (task fedcba9876543210)."},
+                {"createdAt": "2026-11-21T04:00:00+00:00", "message": "(service web) has reached a steady state."}],
+            "deployments": [{"status": "PRIMARY", "rolloutState": "COMPLETED", "createdAt": "2026-11-19T10:00:00+00:00",
+                "updatedAt": "2026-11-19T10:10:00+00:00", "desiredCount": 2, "runningCount": 2, "failedTasks": 0}]}]}
+    if action == "describe-scaling-activities":
+        return {"ScalingActivities": [{"ResourceId": "service/c/sea-n-shore-staging-web", "StartTime": "2026-11-21T05:35:00+00:00",
+            "StatusCode": "Successful", "Description": "Setting desired count to 3."}]}
+    if action == "describe-events":
+        return {"Events": [{"Date": "2026-11-21T05:36:00+00:00", "EventCategories": ["configuration change"], "Message": "Scaling DB cluster from 0.5 capacity units to 2 capacity units"}]} if "db-cluster" in args else {"Events": []}
+    return {}
+r.aws = fake_aws
+r.search_dims = lambda *a, **k: [{"LoadBalancer": "app/sea-n-shore-staging-alb/1"}]
+r.metric_points = lambda ns, name, dims, stat, period, start, end, **k: [(dt.datetime(2026, 11, 21, 5, 36, tzinfo=dt.timezone.utc), 14.6 if name == "TargetResponseTime" else 1.0)]
+def line(t, took, status, url, ua="Mozilla/5.0 (iPhone)"):
+    return 'h2 %s app/x 203.0.113.9:5 10.0.0.1:3000 0.001 %s 0.000 %s %s 100 0 "GET https://seanshore.in:443%s HTTP/2.0" "%s"' % (t, took, status, status, url, ua)
+LINES = [line("2026-11-21T05:36:01.000000Z", "14.600", "200", "/home"), line("2026-11-21T05:36:02.000000Z", "0.100", "200", "/people/someone-private"),
+         line("2026-11-21T05:37:00.000000Z", "-1", "502", "/jobs/abc"), line("2026-11-21T05:20:00.000000Z", "9.000", "200", "/home"),
+         line("2026-11-21T05:38:00.000000Z", "0.050", "200", "/_next/static/x.js")]
+r.alb_day_lines = lambda day, totals, budget: iter(LINES)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    r.section_incident()
+text = buf.getvalue()
+print(text)
+assert "ECS_EVENT sea-n-shore-staging-web 05:36 stopped n=1" in text, text
+assert "ECS_EVENT sea-n-shore-staging-web 05:36 unhealthy n=1" in text, text
+assert "ECS_EVENT sea-n-shore-staging-web 05:37 started n=1" in text, text
+assert "04:00" not in text.split("ECS_SCALING")[0], text
+assert 'ECS_SCALING sea-n-shore-staging-web 05:35 status=Successful "Setting desired count to 3."' in text, text
+assert "RDS_EVENT db-cluster 05:36 configuration change" in text, text
+assert "ALB_MINUTE 05:36" in text and "target_s_p95=14.6" in text, text
+assert "ALB_LOG_MINUTE 05:36 requests=2" in text, text
+assert '"no_target_answer": 1' in text and '"5xx": 1' in text, text
+assert "ALB_SLOW_ROUTE" in text, text
+for secret in ("0123456789abcdef", "fedcba9876543210", "203.0.113.9", "someone-private", "iPhone", "arn:aws"):
+    assert secret not in text, secret
+`], { encoding: 'utf8' })
+  assert.equal(run.status, 0, run.stderr || run.stdout)
+})
