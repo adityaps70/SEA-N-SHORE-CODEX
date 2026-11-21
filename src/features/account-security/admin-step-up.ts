@@ -29,7 +29,7 @@ export type AdminStepUpResult =
   | { status: 'error'; error: string; field?: 'password' | 'code' }
 
 export const ADMIN_STEP_UP_MESSAGES = {
-  notAdmin: 'Only Sea N Shore platform administrators can do this.',
+  notAdmin: 'Only Sea N Shore administrators and country admins can do this.',
   signedOut: 'Your session has ended. Sign in again, then try again.',
   federated: "Your Google sign-in isn't linked to your email-and-password account yet, so we can't confirm your authenticator app from it. Sign in with your email and password for now.",
   noAuthenticator: 'Set up an authenticator app first. Admin pages always need one.',
