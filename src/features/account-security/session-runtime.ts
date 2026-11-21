@@ -1,6 +1,8 @@
 import { cookies, headers } from 'next/headers'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
+import { wasRenewedInRequest } from '@/lib/auth/session-renewed-header'
 import { query } from '@/lib/db/client'
+import { cacheClearHub } from '@/lib/cache/runtime'
 import { accountSecurityKey, hashSessionIp } from './keys'
 import { sessionRequestContext } from './request-context'
 import { createSessionControls } from './session-controls'
@@ -13,6 +15,7 @@ export const sessionRepository = createSessionRepository({ query: (text, values)
 export const sessionGuard = createSessionGuard({
   repository: sessionRepository,
   hashIp: (ip) => hashSessionIp(ip, accountSecurityKey('session-ip')),
+  clearHub: cacheClearHub,
 })
 
 export const sessionControls = createSessionControls({ repository: sessionRepository, guard: sessionGuard })
@@ -21,10 +24,13 @@ export const sessionControls = createSessionControls({ repository: sessionReposi
 export async function checkCurrentSession(profileId: string): Promise<SessionCheck> {
   const accessToken = (await cookies()).get(COGNITO_COOKIE_NAMES.access)?.value
   if (!accessToken) return { status: 'untracked' }
+  const requestHeaders = await headers()
   return sessionGuard.check({
     accessToken,
     profileId,
-    context: async () => sessionRequestContext(await headers()),
+    context: () => sessionRequestContext(requestHeaders),
+    // Owner (19 Nov): the proxy renewed this sign-in in this request, so the device has not shown it has the token.
+    renewedInRequest: wasRenewedInRequest(requestHeaders),
   })
 }
 

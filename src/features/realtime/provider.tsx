@@ -49,13 +49,19 @@ const MessagingRealtimeContext = createContext<MessagingRealtimeContextValue | n
 /** Feed and network refreshes from realtime signals are coalesced into one per window. */
 export const REALTIME_REFRESH_DEBOUNCE_MS = 2_000
 
+/** Owner (19 Nov): a ticket asked for while the tab is hidden never renews the sign-in (lib/auth/cognito-proxy). */
+const REALTIME_BACKGROUND_HEADER = 'X-SNS-Background'
+
 async function requestRealtimeTicket() {
+  const background = isHidden()
   const response = await fetch('/api/realtime/ticket', {
     method: 'POST',
     cache: 'no-store',
+    ...(background ? { headers: { [REALTIME_BACKGROUND_HEADER]: '1' } } : {}),
   })
-  // Round ARCH: a refusal (the session ended) is not retried on the fast backoff (connection.ts).
-  if (response.status === 401 || response.status === 403) throw new RealtimeTicketRefusedError(response.status)
+  // Round ARCH: a refusal (the session ended) is not retried on the fast backoff (connection.ts). One received while
+  // hidden is marked, so the tab asks again (and renews) when it is shown.
+  if (response.status === 401 || response.status === 403) throw new RealtimeTicketRefusedError(response.status, { background })
   if (!response.ok) throw new Error('realtime_ticket_request_failed')
 
   const payload = await response.json() as unknown
@@ -172,6 +178,7 @@ function acquireSharedRealtime(viewerProfileId: string) {
     state.connection = createMessagingRealtimeConnection({
       requestTicket: requestRealtimeTicket,
       requestTypingToken,
+      isHidden,
       createSocket: (url) => new WebSocket(url),
       onConnected: () => {
         if (!state.connectedListeners.size) {

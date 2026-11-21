@@ -10,6 +10,7 @@ import { getNewsletterConfig } from '@/features/newsletter/config'
  * Rotating NEWSLETTER_TOKEN_SECRET makes existing backup codes stop working (members generate new ones).
  */
 export type AccountSecurityKeyPurpose = 'mfa-backup-codes' | 'session-ip' | 'mfa-challenge-binding' | 'app-handoff' | 'refresh-renewal'
+  | 'refresh-recovery'
 
 export function deriveAccountSecurityKey(secret: string | null | undefined, purpose: AccountSecurityKeyPurpose): Buffer | null {
   const value = secret?.trim()

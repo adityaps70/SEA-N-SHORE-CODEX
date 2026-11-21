@@ -4,6 +4,7 @@ import { COGNITO_COOKIE_NAMES } from './cognito-cookies'
 import { createCognitoSessionManager, type RefreshTokenLedger } from './cognito-session'
 import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { createRefreshSingleFlight, type RefreshRenewal } from './refresh-single-flight'
+import { SESSION_RENEWED_HEADER } from './session-renewed-header'
 import { getCognitoEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { createPublicPageRateLimiter } from '@/lib/http/public-page-rate-limit'
@@ -117,6 +118,17 @@ export function isRealtimeTicketRoute(pathname: string) {
   return pathname === REALTIME_TICKET_PATH
 }
 
+/**
+ * Owner (19 Nov): the realtime client marks a ticket request it sends while its tab is hidden. A background tab never
+ * renews the sign-in: about a third of renewals came from such requests, and a hidden tab (a sleeping laptop) is the
+ * likeliest to lose the response. The route answers 401 as for an unrenewable session, and the client asks again,
+ * and renews, when the tab is visible (src/features/realtime/connection.ts).
+ */
+export const BACKGROUND_REQUEST_HEADER = 'x-sns-background'
+export function isBackgroundRequest(request: Pick<NextRequest, 'headers'>) {
+  return request.headers.get(BACKGROUND_REQUEST_HEADER) === '1'
+}
+
 export function isCognitoProtectedRoute(pathname: string) {
   if (isPublicLearnRoute(pathname) || isSoftAuthRoute(pathname)) return false
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
@@ -129,23 +141,32 @@ type RouteSession = {
 
 export function createCognitoProxyHandler(session: RouteSession, options: { allowSignedOutView?: (key: string) => boolean } = {}) {
   const allowSignedOutView = options.allowSignedOutView ?? allowPublicPostView
+  /**
+   * Owner (19 Nov): a renewal (or recovery) made here is passed on with the request (SESSION_RENEWED_HEADER), so the
+   * session check does not take this request's new access token as proof that the device received it.
+   */
+  async function renew(request: NextRequest) {
+    const renewed = await session.refreshSession()
+    if (renewed) request.headers.set(SESSION_RENEWED_HEADER, '1')
+    return renewed
+  }
   return async function handle(request: NextRequest) {
     if (isRealtimeTicketRoute(request.nextUrl.pathname)) {
       const principal = await session.getVerifiedPrincipal().catch(() => null)
-      if (!principal?.sub) await session.refreshSession().catch(() => false)
+      if (!principal?.sub && !isBackgroundRequest(request)) await renew(request).catch(() => false)
       return NextResponse.next({ request })
     }
     const soft = isSoftAuthRoute(request.nextUrl.pathname)
     if (!soft && !isCognitoProtectedRoute(request.nextUrl.pathname)) {
       // A failed renewal never blocks a public page: it renders signed out, as before.
-      if (renewsSessionOnPublicRoute(request)) await session.refreshSession().catch(() => false)
+      if (renewsSessionOnPublicRoute(request)) await renew(request).catch(() => false)
       return AUTH_ENTRY_PATHS.has(request.nextUrl.pathname) ? rememberReturnPath(request) : NextResponse.next({ request })
     }
 
     const principal = await session.getVerifiedPrincipal()
     if (principal?.sub) return NextResponse.next({ request })
 
-    if (await session.refreshSession()) {
+    if (await renew(request)) {
       return NextResponse.next({ request })
     }
 
@@ -238,6 +259,11 @@ export async function updateCognitoRouteSession(request: NextRequest) {
     renew: refreshRenewal,
     // Round ARCH: a count per reused refresh token (namespace SeaNShore/App, Area=auth), so a spike shows.
     onRefreshReuse: (source) => emitMetric({ dimensions: { Area: 'auth', Source: source }, metrics: { RefreshTokenReuse: { value: 1 } } }),
+    // Owner (19 Nov): a count per lost renewal recovered instead of signing the device out (counts only, no ids).
+    onRefreshRecovered: () => {
+      emitMetric({ dimensions: { Area: 'auth' }, metrics: { RefreshTokenRecovered: { value: 1 } } })
+      console.info('[auth_refresh_recovered]', { action: 'renewed' })
+    },
   })
 
   const response = await createCognitoProxyHandler(session)(request)
