@@ -48,7 +48,7 @@ test('the SSM wrapper only sends the report and reads its result', async () => {
 test('the committed window reads none or one compare window in whole UTC minutes', () => {
   const line = readFileSync(windowPath, 'utf8').trim()
   const minute = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00Z`
-  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|plans|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute}|sessions ${minute} ${minute})$`))
+  assert.match(line, new RegExp(String.raw`^(none|checks|compare ${minute} (now|${minute})( split ${minute})?|plans|db ${minute} ${minute}|cap ${minute} ${minute}|legacy ${minute} ${minute} ${minute} ${minute}|sessions ${minute} ${minute}|incident ${minute} ${minute})$`))
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /- scripts\/aws\/capacity-media-report-window\.txt\n/)
   assert.match(workflow, /RUNNER_FILES: "scripts\/aws\/capacity-media-report-window\.txt /)
