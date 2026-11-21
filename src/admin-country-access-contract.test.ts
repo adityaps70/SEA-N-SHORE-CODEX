@@ -9,14 +9,17 @@ import { describe, expect, it } from 'vitest'
  */
 const root = process.cwd()
 const adminDirectory = join(root, 'src/app/(app)/admin')
-const COUNTRY_ADMIN_ENTRY_POINTS = [
-  'src/app/(app)/admin/countries/[country]/page.tsx',
-  'src/app/(app)/admin/countries/page.tsx',
-  'src/app/(app)/admin/layout.tsx',
-  'src/app/(app)/admin/organizations/[applicationId]/page.tsx',
-  'src/app/(app)/admin/organizations/page.tsx',
-  'src/app/(app)/admin/page.tsx',
-]
+// Round GP Part E: each country admin entry point and the area it checks ('console' = any country admin with a
+// section; otherwise the section that must have been given to them).
+const COUNTRY_ADMIN_ENTRY_POINTS: Record<string, string> = {
+  'src/app/(app)/admin/countries/[country]/page.tsx': 'members',
+  'src/app/(app)/admin/countries/page.tsx': 'members',
+  'src/app/(app)/admin/layout.tsx': 'console',
+  'src/app/(app)/admin/organizations/[applicationId]/page.tsx': 'organizations',
+  'src/app/(app)/admin/organizations/page.tsx': 'organizations',
+  'src/app/(app)/admin/page.tsx': 'console',
+}
+const AREA = /requireAdminAccess\('([a-z]+)'\)/
 
 function files(directory: string, pattern: RegExp): string[] {
   return readdirSync(directory).flatMap((entry) => {
@@ -30,11 +33,14 @@ describe('Admin access for country admins (Round GP, Part C)', () => {
   const entryPoints = files(adminDirectory, /^(page|layout)\.tsx$/).sort()
 
   it.each(entryPoints)('%s checks admin access itself', (path) => {
-    expect(readFileSync(join(root, path), 'utf8')).toMatch(/requireAdminAccess\('(platform|country)'\)/)
+    expect(readFileSync(join(root, path), 'utf8')).toMatch(/requireAdminAccess\('(platform|console|overview|organizations|members|learning|events|moderation|communities|verification|access)'\)/)
   })
 
-  it('lets country admins into the organization review and country pages only', () => {
-    const countryPages = entryPoints.filter((path) => readFileSync(join(root, path), 'utf8').includes("requireAdminAccess('country')"))
+  it('lets country admins into the listed pages only, each checking its own section', () => {
+    const countryPages = Object.fromEntries(entryPoints.flatMap((path) => {
+      const area = readFileSync(join(root, path), 'utf8').match(AREA)?.[1]
+      return area && area !== 'platform' ? [[path, area]] : []
+    }))
     expect(countryPages).toEqual(COUNTRY_ADMIN_ENTRY_POINTS)
   })
 
