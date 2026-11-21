@@ -66,8 +66,17 @@ export function createSessionRepository(input: { query: AccountQuery }) {
   const { query } = input
 
   return {
-    /** The row for this sign-in, created on first sight (at sign-in, or for a session older than this release). */
+    /**
+     * The row for this sign-in, created on first sight (at sign-in, or for a session older than this release). Owner
+     * (18 Nov): read first, so an existing sign-in costs one read instead of an insert that does nothing plus a read
+     * (about 10,500 inserts in 9 minutes of the 18 Nov load test); only a new sign-in is inserted.
+     */
     async findOrCreate(session: NewSessionInput): Promise<SessionState> {
+      const found = await query(
+        `select id, profile_id, revoked_at, reuse_detected_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
+        [session.originHash],
+      )
+      if (found[0]) return stateOf(found[0])
       const inserted = await query(
         `insert into public.auth_sessions
            (profile_id, token_origin_hash, sign_in_method, user_agent_summary, approx_city, approx_country, ip_hash)

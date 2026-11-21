@@ -19,6 +19,8 @@ export type TestDatabase = {
   transaction: TestTransaction
   /** A `pg`-shaped client, for helpers that take a DatabaseQueryClient. */
   client: { query<T extends QueryResultRow = QueryResultRow>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }> }
+  /** LISTEN on a channel (migration 0111's cache clears); resolves to an unlisten function. */
+  listen(channel: string, onMessage: (payload: string) => void): Promise<() => Promise<void>>
   close(): Promise<void>
 }
 
@@ -69,6 +71,10 @@ export async function createTestDatabase(options: { skipMigrations?: readonly st
       async query<T extends QueryResultRow = QueryResultRow>(text: string, values?: readonly unknown[]) {
         return { rows: await query(text, values) as T[] }
       },
+    },
+    listen: async (channel, onMessage) => {
+      const unlisten = await db.listen(channel, onMessage)
+      return async () => { await unlisten() }
     },
     close: () => db.close(),
   }

@@ -8,6 +8,8 @@ import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
 import { createProfileMediaRepository, profileMediaRepository } from './profile-media-repository'
 import { DECLINED_REQUEST_SUGGESTION_WINDOW, RECOMMENDATION_WEIGHTS } from '@/features/network/recommendations'
 import { createProfileRepository } from './repository'
+import { createClearableCache } from '@/lib/cache/cache-clear'
+import { cacheClearHub } from '@/lib/cache/runtime'
 import type { PublicProfile } from './types'
 
 type GetVerifiedUser = () => Promise<AwsVerifiedUser | null>
@@ -127,10 +129,33 @@ export function createAwsProfileQueries(input: {
   }
 }
 
+/**
+ * Owner (18 Nov): a member's own profile (the header avatar and name on every page) is kept for a minute per server and
+ * cleared everywhere the moment it changes (profile, maritime profile, skills, account status: p:<id>; the linked
+ * company: co:<id>). Unsigned rows only: the avatar and cover links are still signed per request.
+ */
+export const OWN_PROFILE_CACHE_MS = 60_000
+const productionRepository = createProfileRepository()
+const ownProfileCache = createClearableCache<Awaited<ReturnType<typeof productionRepository.getOwnProfile>>>({
+  hub: cacheClearHub, ttlMs: OWN_PROFILE_CACHE_MS, maxEntries: 5000,
+})
+
+export function ownProfileCacheTags(profileId: string, profile: unknown): string[] | null {
+  if (!profile) return null
+  const row = profile as { currentCompanyId?: string | null; maritime_profiles?: { current_company_id?: string | null } | null }
+  const companyId = row.maritime_profiles?.current_company_id ?? row.currentCompanyId ?? null
+  return companyId ? [`p:${profileId}`, `co:${companyId}`] : [`p:${profileId}`]
+}
+
 const productionQueries = createAwsProfileQueries({
   getVerifiedUser: getAwsVerifiedUser,
   requireUser: requireAwsUser,
-  repository: createProfileRepository(),
+  repository: {
+    ...productionRepository,
+    getOwnProfile: (profileId: string) => ownProfileCache.getOrLoad(
+      profileId, () => productionRepository.getOwnProfile(profileId), (profile) => ownProfileCacheTags(profileId, profile),
+    ),
+  },
 })
 
 export const getAwsOwnProfile = productionQueries.getAwsOwnProfile
