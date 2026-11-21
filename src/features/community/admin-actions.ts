@@ -4,6 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
+import { actorRoleFor } from '@/features/admin/admin-audit'
+import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from '@/features/admin/mfa-gate'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { resolveSectionScope, scopeCoversCountry } from '@/features/country-admins/scope'
+import { adminQuery, communityGroupCountry } from './admin-scope'
 import { communityErrorMessage } from './actions'
 import { communityService } from './service'
 import { categoryIdSchema } from './category-field'
@@ -61,6 +66,27 @@ async function requireAdmin() {
   }
 }
 
+/**
+ * Round GP Part E: who may edit, archive or unarchive a group. Platform administrators, as before; or a country admin
+ * with Communities "act" (after the admin MFA check) for a group in their countries (the owner organization's
+ * country, or else the owner member's residence). Returns the actor and the audit details, or an error message.
+ * Creating groups, changing owners and categories stay with platform administrators.
+ */
+async function requireGroupAdmin(groupId: string): Promise<{ id: string; audit: Record<string, unknown> } | { error: string }> {
+  const country = await communityGroupCountry(groupId).catch(() => null)
+  const platform = await requireAdmin()
+  if (platform) return { id: platform.id, audit: { actorRole: 'platform_admin', section: 'communities', country } }
+  try {
+    const user = await requireAwsUser()
+    if (await adminActionMfaMissing(user.id)) return { error: ADMIN_MFA_REQUIRED_MESSAGE }
+    const scope = await resolveSectionScope(adminQuery, user.id, 'communities', 'act')
+    if (!scopeCoversCountry(scope, country)) return { error: 'This group is not in your countries. A Sea N Shore administrator handles it.' }
+    return { id: user.id, audit: { actorRole: actorRoleFor(scope), section: 'communities', country } }
+  } catch {
+    return { error: 'Only Sea N Shore administrators can change this group.' }
+  }
+}
+
 export async function createGroupAsAdmin(_previous: AdminGroupFormState, formData: FormData): Promise<AdminGroupFormState> {
   const admin = await requireAdmin()
   if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can create groups.' }
@@ -79,13 +105,13 @@ export async function createGroupAsAdmin(_previous: AdminGroupFormState, formDat
 }
 
 export async function updateGroupAsAdmin(_previous: AdminGroupFormState, formData: FormData): Promise<AdminGroupFormState> {
-  const admin = await requireAdmin()
-  if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can edit groups.' }
   const parsed = updateSchema.safeParse(readForm(formData, ['groupId', ...GROUP_FIELD_KEYS]))
   if (!parsed.success) return { ok: false, error: firstPlainIssue(parsed.error, 'Check the group details and try again.') }
   const { groupId, ...group } = parsed.data
+  const admin = await requireGroupAdmin(groupId)
+  if ('error' in admin) return { ok: false, error: admin.error }
   try {
-    await communityService.updateGroupAsAdmin(admin.id, groupId, group)
+    await communityService.updateGroupAsAdmin(admin.id, groupId, group, admin.audit)
   } catch (error) {
     return { ok: false, error: await communityErrorMessage(error, 'We could not save the group. Please try again.') }
   }
@@ -109,19 +135,19 @@ export async function setGroupOwnerAsAdmin(_previous: AdminGroupFormState, formD
 }
 
 export async function archiveGroupAsAdmin(formData: FormData): Promise<void> {
-  const admin = await requireAdmin()
-  if (!admin) return
   const parsed = groupIdSchema.safeParse(readForm(formData, ['groupId']))
   if (!parsed.success) return
-  await communityService.archiveGroup(admin.id, parsed.data.groupId).catch(() => undefined)
+  const admin = await requireGroupAdmin(parsed.data.groupId)
+  if ('error' in admin) return
+  await communityService.archiveGroup(admin.id, parsed.data.groupId, admin.audit).catch(() => undefined)
   revalidateCommunities()
 }
 
 export async function unarchiveGroupAsAdmin(formData: FormData): Promise<void> {
-  const admin = await requireAdmin()
-  if (!admin) return
   const parsed = groupIdSchema.safeParse(readForm(formData, ['groupId']))
   if (!parsed.success) return
-  await communityService.unarchiveGroup(admin.id, parsed.data.groupId).catch(() => undefined)
+  const admin = await requireGroupAdmin(parsed.data.groupId)
+  if ('error' in admin) return
+  await communityService.unarchiveGroup(admin.id, parsed.data.groupId, admin.audit).catch(() => undefined)
   revalidateCommunities()
 }

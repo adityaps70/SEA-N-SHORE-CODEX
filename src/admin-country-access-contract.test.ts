@@ -27,6 +27,8 @@ const COUNTRY_ADMIN_ENTRY_POINTS: Record<string, string> = {
   // Round GP Part E (E4).
   'src/app/(app)/admin/moderation/page.tsx': 'moderation',
   'src/app/(app)/admin/events/page.tsx': 'events',
+  // Round GP Part E (E5).
+  'src/app/(app)/admin/communities/page.tsx': 'communities',
 }
 const AREA = /requireAdminAccess\('([a-z]+)'\)/
 
