@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { useState, useTransition } from 'react'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { enrollInFreeCourse } from '../enrollment-actions'

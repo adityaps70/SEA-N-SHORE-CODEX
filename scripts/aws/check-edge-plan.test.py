@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import re
 import unittest
 from pathlib import Path
 spec = importlib.util.spec_from_file_location('guard', Path(__file__).with_name('check-edge-plan.py'))
@@ -326,6 +327,28 @@ def image_policy_after(cookie_behavior='none', headers=('Accept',), queries=('ur
     return {'id':'image-policy-id','min_ttl':0,'default_ttl':86400,'max_ttl':31536000,'parameters_in_cache_key_and_forwarded_to_origin':[{'cookies_config':[{'cookie_behavior':cookie_behavior}],'headers_config':[{'header_behavior':'whitelist','headers':[{'items':list(headers)}]}],'query_strings_config':[{'query_string_behavior':'whitelist','query_strings':[{'items':list(queries)}]}]}]}
 
 
+def public_logo_policy_after(policy_id='logo-policy-id', **overrides):
+    after = {
+        'id': policy_id, 'min_ttl': 0, 'default_ttl': 0, 'max_ttl': 3600,
+        'parameters_in_cache_key_and_forwarded_to_origin': [{
+            'enable_accept_encoding_brotli': True, 'enable_accept_encoding_gzip': True,
+            'cookies_config': [{'cookie_behavior': overrides.pop('cookie_behavior', 'none'), 'cookies': overrides.pop('cookies', [])}],
+            'headers_config': [{'header_behavior': overrides.pop('header_behavior', 'none'), 'headers': overrides.pop('headers', [])}],
+            'query_strings_config': [{'query_string_behavior': overrides.pop('query', 'whitelist'), 'query_strings': [{'items': list(overrides.pop('queries', ['v']))}]}],
+        }],
+    }
+    after.update(overrides)
+    return after
+
+
+def logo_policy_change(actions=('no-op',), after=None):
+    return {'address':guard.PUBLIC_LOGO_POLICY_ADDRESS,'mode':'managed','change':{'actions':list(actions),'after':after or public_logo_policy_after()}}
+
+
+def behavior_policy_id(policy, image_policy='image-policy-id', logo_policy='logo-policy-id'):
+    return {'optimized': guard.CACHING_OPTIMIZED_POLICY_ID, 'next_image': image_policy, 'public_logo': logo_policy}[policy]
+
+
 class EdgeCachingTests(unittest.TestCase):
     """Round 14 (3.1): only hashed assets, public brand images and optimized images are cached."""
 
@@ -340,10 +363,11 @@ class EdgeCachingTests(unittest.TestCase):
             {'address':'aws_cloudfront_distribution.app','mode':'managed','change':change},
             function_change(),
             {'address':guard.NEXT_IMAGE_POLICY_ADDRESS,'mode':'managed','change':{'actions':list(policy_actions),'after':policy_after or image_policy_after()}},
+            logo_policy_change(),
         ]}
 
     def expected(self, image_policy='image-policy-id'):
-        return [ordered_behavior(path, guard.CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy) for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
+        return [ordered_behavior(path, behavior_policy_id(policy, image_policy=image_policy)) for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
 
     def errors(self, plan):
         return guard.validate(plan, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET)
@@ -446,6 +470,109 @@ class PublicPagesCachePolicyTests(unittest.TestCase):
         self.assertIn('Page cache policy must be create/update/no-op', self.errors(self.plan('pages-policy-id', policy_actions=('delete', 'create'))))
 
 
+class PublicLogoCachingTests(unittest.TestCase):
+    """Request cuts (owner-approved 18 Nov): verified organizations' logos are cached once, never keyed on cookies."""
+
+    def plan(self, behaviors=None, policy_actions=('no-op',), policy_after=None, unknown=None, include_policy=True):
+        cf = cloudfront_after()
+        cf['ordered_cache_behavior'] = behaviors if behaviors is not None else self.expected()
+        change = {'actions':['update'],'after':cf}
+        if unknown is not None:
+            change['after_unknown'] = {'ordered_cache_behavior':unknown}
+        resources = [
+            {'address':'aws_wafv2_web_acl.edge','mode':'managed','change':{'actions':['no-op'],'after':{'id':guard.WAF_ID}}},
+            {'address':'aws_cloudfront_distribution.app','mode':'managed','change':change},
+            function_change(),
+            {'address':guard.NEXT_IMAGE_POLICY_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':image_policy_after()}},
+        ]
+        if include_policy:
+            resources.append(logo_policy_change(policy_actions, policy_after))
+        return {'resource_changes':resources}
+
+    def expected(self, logo_policy='logo-policy-id'):
+        return [ordered_behavior(path, behavior_policy_id(policy, logo_policy=logo_policy)) for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
+
+    def logo_index(self):
+        return [path for path, _ in guard.EXPECTED_ORDERED_BEHAVIORS].index(guard.PUBLIC_LOGO_PATH)
+
+    def errors(self, plan):
+        return guard.validate(plan, ORIGIN_HOST, CERT_ARN, origin_verify=SECRET)
+
+    def test_the_logo_behavior_is_last_and_only_for_the_public_logo_route(self):
+        self.assertEqual(guard.EXPECTED_ORDERED_BEHAVIORS[-1], ('/api/public/company-logo/*', 'public_logo'))
+        self.assertNotIn('/api/company-logo/*', [path for path, _ in guard.EXPECTED_ORDERED_BEHAVIORS])
+
+    def test_accepts_the_logo_policy_updated_or_created(self):
+        self.assertEqual(self.errors(self.plan()), [])
+        self.assertEqual(self.errors(self.plan(policy_actions=('update',))), [])
+        created = self.expected(logo_policy=None)
+        unknown = [{} for _ in created]
+        unknown[self.logo_index()] = {'cache_policy_id': True, 'default_ttl': True, 'max_ttl': True}
+        self.assertEqual(self.errors(self.plan(created, policy_actions=('create',), policy_after=public_logo_policy_after(policy_id=None), unknown=unknown)), [])
+
+    def test_an_unknown_logo_policy_id_needs_the_policy_to_be_created(self):
+        unknown = [{} for _ in self.expected()]
+        unknown[self.logo_index()] = {'cache_policy_id': True}
+        self.assertIn('Unknown safety field in ordered behavior /api/public/company-logo/*: cache_policy_id=true', self.errors(self.plan(unknown=unknown)))
+        self.assertIn('Cache policy mismatch for /api/public/company-logo/*', self.errors(self.plan(self.expected(logo_policy=None))))
+
+    def test_refuses_the_logo_path_on_any_other_policy_or_without_its_policy(self):
+        for policy in [guard.CACHING_OPTIMIZED_POLICY_ID, guard.CACHE_POLICY_ID, 'pages-policy-id', 'image-policy-id']:
+            self.assertIn('Cache policy mismatch for /api/public/company-logo/*', self.errors(self.plan(self.expected(logo_policy=policy))))
+        self.assertIn('Cache policy mismatch for /api/public/company-logo/*', self.errors(self.plan(include_policy=False)))
+        self.assertIn('Cache policy mismatch for /api/public/company-logo/*', self.errors(self.plan(self.expected(logo_policy=None), include_policy=False)))
+        self.assertIn('Public logo cache policy must be create/update/no-op', self.errors(self.plan(policy_actions=('delete', 'create'))))
+
+    def test_refuses_forwarding_cookies_to_the_origin_or_other_methods(self):
+        message = 'Ordered behavior must be GET/HEAD, HTTPS, compressed, without origin request policy: /api/public/company-logo/*'
+        with_cookies = self.expected(); with_cookies[self.logo_index()]['origin_request_policy_id'] = guard.ORIGIN_POLICY_ID
+        self.assertIn(message, self.errors(self.plan(with_cookies)))
+        post = self.expected(); post[self.logo_index()]['allowed_methods'] = ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS']
+        self.assertIn(message, self.errors(self.plan(post)))
+        no_redirect = self.expected(); no_redirect[self.logo_index()]['function_association'] = []
+        self.assertIn('Ordered behavior must keep the canonical-host redirect: /api/public/company-logo/*', self.errors(self.plan(no_redirect)))
+
+    def test_refuses_dropping_moving_or_widening_the_logo_path(self):
+        message = 'Ordered cache behaviors must be exactly the static asset and image paths'
+        self.assertIn(message, self.errors(self.plan(self.expected()[:-1])))
+        self.assertIn(message, self.errors(self.plan([self.expected()[-1]] + self.expected()[:-1])))
+        wider = self.expected(); wider[self.logo_index()]['path_pattern'] = '/api/*'
+        self.assertIn(message, self.errors(self.plan(wider)))
+        signed_in = self.expected(); signed_in[self.logo_index()]['path_pattern'] = '/api/company-logo/*'
+        self.assertIn(message, self.errors(self.plan(signed_in)))
+
+    def test_logo_policy_never_keys_on_or_forwards_cookies_and_honours_the_origin(self):
+        message = 'Public logo cache policy must key only on the path and v (no cookies or headers), storing only origin-marked public responses for at most an hour (TTL 0/0/3600)'
+        for after in [
+            public_logo_policy_after(cookie_behavior='all'),
+            public_logo_policy_after(cookie_behavior='whitelist', cookies=[{'items': ['sns_cognito_access']}]),
+            public_logo_policy_after(header_behavior='whitelist', headers=[{'items': ['Cookie']}]),
+            public_logo_policy_after(query='all'),
+            public_logo_policy_after(queries=['v', 'token']),
+            public_logo_policy_after(default_ttl=3600),
+            public_logo_policy_after(min_ttl=60),
+            public_logo_policy_after(max_ttl=86400),
+        ]:
+            self.assertIn(message, self.errors(self.plan(policy_actions=('update',), policy_after=after)))
+        # Checked on a no-op too: the live policy must already be safe.
+        self.assertIn(message, self.errors(self.plan(policy_after=public_logo_policy_after(cookie_behavior='all'))))
+
+    def test_the_terraform_matches_the_checker(self):
+        tf = (Path(__file__).resolve().parents[2] / 'infra' / 'aws' / 'app' / 'edge.tf').read_text()
+        policy = tf[tf.index('resource "aws_cloudfront_cache_policy" "public_company_logo" {'):]
+        policy = policy[:policy.index('\n}\n')]
+        for needle in ['min_ttl     = 0\n', 'default_ttl = 0\n', 'max_ttl     = 3600\n', 'cookie_behavior = "none"', 'header_behavior = "none"',
+                       'query_string_behavior = "whitelist"', 'items = ["v"]']:
+            self.assertIn(needle, policy)
+        self.assertNotIn('whitelist"\n      cookies', policy)
+        paths = re.findall(r'path_pattern\s+= "([^"]+)"', tf)
+        self.assertEqual(paths, ['/m/*'] + [path for path, _ in guard.EXPECTED_ORDERED_BEHAVIORS])
+        logo = tf[tf.index('path_pattern           = "/api/public/company-logo/*"'):]
+        logo = logo[:logo.index('\n  }\n')]
+        self.assertIn('cache_policy_id        = aws_cloudfront_cache_policy.public_company_logo.id', logo)
+        self.assertNotIn('origin_request_policy_id', logo)
+
+
 def media_origin(**overrides):
     origin = {'domain_name':guard.MEDIA_ORIGIN_DOMAIN,'origin_id':guard.MEDIA_ORIGIN_ID,'origin_path':'','origin_access_control_id':'oac-id','custom_header':[],'custom_origin_config':[],'s3_origin_config':[]}
     origin.update(overrides)
@@ -492,13 +619,14 @@ class SignedMediaTests(unittest.TestCase):
             {'address':'aws_cloudfront_distribution.app','mode':'managed','change':change},
             function_change(),
             {'address':guard.NEXT_IMAGE_POLICY_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':image_policy_after()}},
+            logo_policy_change(),
             {'address':guard.MEDIA_POLICY_ADDRESS,'mode':'managed','change':{'actions':list(policy_actions),'after':policy_after or media_policy_after()}},
             {'address':guard.MEDIA_KEY_GROUP_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':{'id':'key-group-id'}}},
             {'address':guard.MEDIA_OAC_ADDRESS,'mode':'managed','change':{'actions':['no-op'],'after':{'id':'oac-id'}}},
         ]}
 
     def behaviors(self, media=None):
-        rest = [ordered_behavior(path, guard.CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else 'image-policy-id') for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
+        rest = [ordered_behavior(path, behavior_policy_id(policy)) for path, policy in guard.EXPECTED_ORDERED_BEHAVIORS]
         return [media or media_behavior()] + rest
 
     def errors(self, plan):

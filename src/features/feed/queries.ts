@@ -391,7 +391,7 @@ export function createFeedQueries(input: {
       id: company.id,
       slug: company.slug,
       name: company.name,
-      logoUrl: organizationLogoUrl(company.id, company.logoPath),
+      logoUrl: organizationLogoUrl(company.id, company.logoPath, company.verified),
     }))
   }
 

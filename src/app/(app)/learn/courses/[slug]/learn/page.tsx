@@ -1,6 +1,6 @@
 import { cache } from 'react'
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { notFound, redirect } from 'next/navigation'
 import { BookOpen, CheckCircle2, ChevronRight, GraduationCap } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'

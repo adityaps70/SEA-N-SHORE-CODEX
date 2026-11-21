@@ -91,7 +91,7 @@ describe('JobPosting structured data (round H, H5)', () => {
       hiringOrganization: {
         name: 'Harbour Line Shipping',
         sameAs: `${ORIGIN}/organizations/harbour-line`,
-        logo: `${ORIGIN}/api/company-logo/22222222-2222-4222-8222-222222222222?v=logo-abc123.webp`,
+        logo: `${ORIGIN}/api/public/company-logo/22222222-2222-4222-8222-222222222222?v=logo-abc123.webp`,
       },
       jobLocation: { '@type': 'Place', address: { '@type': 'PostalAddress', addressLocality: 'Mumbai', addressCountry: 'IN' } },
       baseSalary: { '@type': 'MonetaryAmount', currency: 'USD', value: { '@type': 'QuantitativeValue', minValue: 90000, maxValue: 120000, unitText: 'YEAR' } },

@@ -55,7 +55,7 @@ export function JobListRow({
   return (
     <li className={`relative flex gap-3 px-4 py-3.5 hover:bg-mist-50/70 ${className}`} data-job-row>
       {/* Round H (H5): the logo route serves signed-in members only, so visitors see the initials. */}
-      <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} size="md" />
+      <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} verified={job.companyVerified} size="md" />
       <div className="min-w-0 flex-1">
         <Link
           href={source ? `/jobs/${job.id}?src=${source}` : `/jobs/${job.id}`}

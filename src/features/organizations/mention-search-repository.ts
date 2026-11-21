@@ -76,7 +76,7 @@ export function createOrganizationMentionSearchRepository(input: { query?: Menti
       id: row.id,
       slug: row.slug,
       name: row.name,
-      logoUrl: organizationLogoUrl({ id: row.id, logoPath: row.logo_path ?? null }),
+      logoUrl: organizationLogoUrl({ id: row.id, logoPath: row.logo_path ?? null, verified: row.is_verified === true }),
       subtitle: organizationMentionSubtitle(row),
       verified: Boolean(row.is_verified),
     }))

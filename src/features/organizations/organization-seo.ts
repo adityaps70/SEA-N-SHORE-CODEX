@@ -10,7 +10,7 @@ import type { OrganizationWorkspace } from './workspace-repository'
 type OrganizationSeoInput = Pick<
   OrganizationWorkspace,
   'id' | 'slug' | 'name' | 'logoPath' | 'website' | 'description' | 'tagline' | 'officeLocations'
->
+> & Partial<Pick<OrganizationWorkspace, 'verified'>>
 
 export function organizationPath(slug: string) {
   return `/organizations/${slug}`

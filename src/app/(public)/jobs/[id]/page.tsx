@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
@@ -106,7 +106,7 @@ export default async function JobDetailPage({ params, searchParams }: { params: 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <article className="min-w-0 rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-8">
           <div className="flex items-start gap-4 max-md:flex-col max-md:items-center max-md:gap-3 max-md:text-center">
-            <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} size="lg" />
+            <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} verified={job.companyVerified} size="lg" />
             <div className="min-w-0 flex-1 max-md:flex max-md:w-full max-md:flex-col">
               <div className="flex flex-wrap items-center gap-2 max-md:order-2 max-md:mt-1 max-md:justify-center">{companyHref ? <Link href={companyHref} className="min-w-0 break-words text-xs font-semibold uppercase tracking-[.14em] text-ocean-700 hover:underline max-md:text-[15px] max-md:normal-case max-md:tracking-normal max-md:text-ink">{job.companyName}</Link> : <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700 max-md:text-[15px] max-md:normal-case max-md:tracking-normal max-md:text-ink">{job.companyName}</p>}{job.companyVerified ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800"><BadgeCheck aria-hidden="true" className="size-3.5" />Verified employer</span> : null}{job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Urgent joining</span> : null}</div>
               <h1 className="mt-1 break-words text-2xl font-semibold tracking-[-.035em] text-navy-950 max-md:order-1 max-md:mt-0 max-md:text-[22px] max-md:font-bold max-md:leading-tight max-md:tracking-normal sm:text-4xl">{job.title}</h1>

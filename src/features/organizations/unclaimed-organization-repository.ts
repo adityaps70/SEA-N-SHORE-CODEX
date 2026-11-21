@@ -111,7 +111,7 @@ function mapLinked(row: Pick<DuplicateRow, 'id' | 'slug' | 'name' | 'has_logo' |
     id: row.id,
     slug: row.slug,
     name: row.name,
-    logoUrl: organizationLogoUrl(row.id, row.has_logo === true),
+    logoUrl: organizationLogoUrl(row.id, row.has_logo === true, row.is_verified === true),
     verified: row.is_verified === true,
     unclaimed: row.claim_status === 'unclaimed',
   }

@@ -19,7 +19,7 @@ type PostManagementRow = QueryResultRow & {
   post_type: FeedPostType
   body: string
 }
-type CompanyIdentityRow = QueryResultRow & { id: string; slug: string; name: string; logo_path: string | null }
+type CompanyIdentityRow = QueryResultRow & { id: string; slug: string; name: string; logo_path: string | null; is_verified: boolean | null }
 type CompanyIdRow = QueryResultRow & { company_id: string | null }
 type CommentInteractionRow = QueryResultRow & {
   id: string
@@ -135,7 +135,8 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
       'id', post_company.id,
       'slug', post_company.slug,
       'name', post_company.name,
-      'logo_path', post_company.logo_path
+      'logo_path', post_company.logo_path,
+      'is_verified', post_company.is_verified
     ) end as organization,
     (post_company.id is not null and exists (
       select 1 from public.organization_follows viewer_org_follow
@@ -214,7 +215,8 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
         'company_id', mentioned_company.id,
         'slug', mentioned_company.slug,
         'name', mentioned_company.name,
-        'logo_path', mentioned_company.logo_path
+        'logo_path', mentioned_company.logo_path,
+        'is_verified', mentioned_company.is_verified
       ) order by org_mention.created_at asc)
       from public.content_organization_mentions org_mention
       join public.companies mentioned_company on mentioned_company.id = org_mention.company_id
@@ -968,7 +970,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            where mention.comment_id = c.id
          ), '[]'::json) else '[]'::json end as mentions,
          case when c.deleted_at is null then coalesce((
-           select json_agg(json_build_object('company_id', mentioned_company.id, 'slug', mentioned_company.slug, 'name', mentioned_company.name, 'logo_path', mentioned_company.logo_path) order by org_mention.created_at asc)
+           select json_agg(json_build_object('company_id', mentioned_company.id, 'slug', mentioned_company.slug, 'name', mentioned_company.name, 'logo_path', mentioned_company.logo_path, 'is_verified', mentioned_company.is_verified) order by org_mention.created_at asc)
            from public.content_organization_mentions org_mention
            join public.companies mentioned_company on mentioned_company.id = org_mention.company_id
            where org_mention.comment_id = c.id
@@ -1209,13 +1211,13 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   async function listCompanyIdentities(companyIds: string[]) {
     if (!companyIds.length) return []
     const rows = await queryRows(
-      `select c.id, c.slug, c.name, c.logo_path
+      `select c.id, c.slug, c.name, c.logo_path, c.is_verified
        from public.companies c
        where c.id = any($1::uuid[])
        order by c.name asc, c.id asc`,
       [companyIds],
     ) as CompanyIdentityRow[]
-    return rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name, logoPath: row.logo_path }))
+    return rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name, logoPath: row.logo_path, verified: row.is_verified === true }))
   }
 
   async function deleteOwnPost(ownerProfileId: string, postId: string) {
@@ -1572,6 +1574,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
          company.slug as company_slug,
          company.name as company_name,
          company.logo_path as company_logo_path,
+         company.is_verified as company_is_verified,
          source.body as source_body,
          first_media.storage_path as media_path,
          first_media.mime_type as media_mime_type

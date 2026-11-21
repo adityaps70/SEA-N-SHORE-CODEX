@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { AlertTriangle, ArrowRight, CheckCircle2, LockKeyhole } from 'lucide-react'
 import { CoursePlanCheckout, type CoursePlanOffer } from './course-plan-checkout'
 import { CoursePaymentPendingNotice } from './course-payment-pending-notice'

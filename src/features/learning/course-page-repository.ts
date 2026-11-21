@@ -85,6 +85,7 @@ export function createCoursePageRepository(input: { query?: Query } = {}) {
          creator.avatar_path,
          company.id as company_id,
          company.logo_path,
+         company.is_verified,
          company.tagline,
          company.description,
          course.mentor_id,
@@ -126,7 +127,7 @@ export function createCoursePageRepository(input: { query?: Query } = {}) {
       href: row.slug ? (organization ? `/organizations/${row.slug}` : `/people/${row.slug}`) : null,
       bio: shortBio(organization ? organizationTagline({ tagline: row.tagline, description: row.description }) : row.short_bio),
       photoPath: organization ? null : (row.avatar_path ? String(row.avatar_path) : null),
-      logoUrl: organization && row.company_id ? organizationLogoUrl({ id: String(row.company_id), logoPath: row.logo_path ?? null }) : null,
+      logoUrl: organization && row.company_id ? organizationLogoUrl({ id: String(row.company_id), logoPath: row.logo_path ?? null, verified: row.is_verified === true }) : null,
       otherCourses: others.map((other) => ({ id: String(other.id), slug: String(other.slug), title: String(other.title) })),
     }
   }
