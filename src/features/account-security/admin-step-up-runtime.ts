@@ -1,7 +1,7 @@
 import { CognitoApiError } from '@/lib/auth/cognito-api'
 import { describeMfaStatus } from '@/features/auth/mfa'
 import { currentAccessToken, productionCognitoApi } from '@/features/auth/mfa-status'
-import { adminRepository } from '@/features/admin/repository'
+import { holdsAdminRole } from '@/features/admin/admin-roles'
 import { createAdminStepUp, sessionHasAdminStepUp } from './admin-step-up'
 import { recordAccountSecurityAudit } from './audit'
 import { createBackupCodeRepository } from './backup-codes'
@@ -26,7 +26,9 @@ export function productionAdminStepUp(user: { id: string }) {
   const api = productionCognitoApi()
   return createAdminStepUp({
     profileId: user.id,
-    isPlatformAdministrator: () => adminRepository.isPlatformAdministrator(user.id),
+    // Round GP (Part C follow-up): a country admin on a Google sign-in confirms the same way. The step-up only proves
+    // the authenticator was answered; what each role may open is decided elsewhere.
+    isPlatformAdministrator: () => holdsAdminRole(user.id),
     getAccount: async () => {
       const accessToken = await currentAccessToken()
       if (!accessToken) return null
