@@ -3,10 +3,13 @@
 //   - www.seanshore.in            -> 301 https://seanshore.in (same path and query)
 //   - d3prih0q6jofyr.cloudfront.net -> 301 https://seanshore.in (same path and query) only while
 //     REDIRECT_EDGE_HOST is true, and never for /api/* (payment webhooks keep answering here).
+//   - every request it passes on: x-sns-viewer-host is the Host CloudFront answered on. Whatever a client sent in
+//     that header is dropped first (src/lib/site-url.ts trusts it to pick the origin a visitor is sent back to).
 var CANONICAL_HOST = '${canonical_host}';
 var WWW_HOST = 'www.${canonical_host}';
 var EDGE_HOST = '${edge_host}';
 var REDIRECT_EDGE_HOST = ${redirect_edge_host};
+var VIEWER_HOST_HEADER = 'x-sns-viewer-host';
 
 function encodeQueryPart(value) {
   // Keep already percent-encoded octets and literal plus signs as they arrived.
@@ -44,7 +47,12 @@ function handler(event) {
   var request = event.request;
   var host = requestHost(request);
   var redirect = host === WWW_HOST || (REDIRECT_EDGE_HOST && host === EDGE_HOST && !isApiPath(request.uri));
-  if (!redirect) return request;
+  if (!redirect) {
+    if (!request.headers) request.headers = {};
+    delete request.headers[VIEWER_HOST_HEADER];
+    if (host) request.headers[VIEWER_HOST_HEADER] = { value: host };
+    return request;
+  }
   return {
     statusCode: 301,
     statusDescription: 'Moved Permanently',

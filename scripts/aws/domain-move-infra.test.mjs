@@ -81,6 +81,15 @@ function createPlan(overrides = {}, extra = []) {
     ...extra,
   ]
 }
+// The viewer-request function update (owner, 21 Nov): x-sns-viewer-host from the real Host, never from the client.
+const FUNCTION = 'aws_cloudfront_function.canonical_host_redirect'
+const renderedFunction = () => read('../../infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl')
+  .replaceAll('${canonical_host}', 'seanshore.in').replaceAll('${edge_host}', 'd3prih0q6jofyr.cloudfront.net').replaceAll('${redirect_edge_host}', 'true')
+const functionUpdate = (afterOverrides = {}, unknown = { etag: true, live_stage_etag: true }) => {
+  const before = { name: 'sea-n-shore-staging-canonical-host-redirect', runtime: 'cloudfront-js-2.0', publish: true, comment: 'c', code: 'OLDCODE', etag: 'E1', live_stage_etag: 'E1' }
+  const afterValue = { ...before, code: renderedFunction(), etag: null, live_stage_etag: null, ...afterOverrides }
+  return { address: FUNCTION, mode: 'managed', change: { actions: ['update'], before, after: afterValue, after_unknown: unknown } }
+}
 const createArgs = (changes) => ['create', planFile(changes), 'EF1K45UVP11XZ', 'EK1KQZWPWQZNQ']
 
 test('the guard reads plan, import-once or create-once with the exact SHA it arms', () => {
@@ -121,7 +130,11 @@ test('import: exactly the console-made resources, every one a no-op', () => {
 test('create: exactly the approved new resources with the approved settings, nothing else', () => {
   const ok = run(createArgs(createPlan()))
   assert.equal(ok.status, 0, ok.stdout)
-  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=CREATE creates=21$/m)
+  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=CREATE creates=21 updates=0$/m)
+  const withFunction = run(createArgs(createPlan({}, [functionUpdate()])))
+  assert.equal(withFunction.status, 0, withFunction.stdout)
+  assert.match(withFunction.stdout, /^DOMAIN_MOVE_PLAN=CREATE creates=21 updates=1$/m)
+  assert.doesNotMatch(withFunction.stdout, /OLDCODE|x-sns-viewer-host/)
   const refused = (changes, why) => {
     const result = run(createArgs(changes))
     assert.notEqual(result.status, 0, why)
@@ -138,8 +151,18 @@ test('create: exactly the approved new resources with the approved settings, not
   refused(createPlan({}, [{ address: 'aws_cloudfront_distribution.app', mode: 'managed', change: { actions: ['update'] } }]), 'a change to the main distribution')
   refused(createPlan({}, [importing('aws_route53_zone.other')]), 'an import in the create step')
   refused(createPlan({ 'aws_cloudwatch_log_delivery.edge["redirect"]': null }), 'a missing create')
+  refused(createPlan({}, [functionUpdate({ code: renderedFunction().replace("'x-sns-viewer-host'", "'x-other'") })]), 'function code that is not the template')
+  refused(createPlan({}, [functionUpdate({ code: renderedFunction() + '\nhandler = function (e) { return e.request }' })]), 'function code with more appended')
+  refused(createPlan({}, [functionUpdate({ comment: 'changed' })]), 'a function update beyond its code')
+  refused(createPlan({}, [functionUpdate({ publish: false })]), 'an unpublished function')
+  refused(createPlan({}, [{ ...functionUpdate(), change: { ...functionUpdate().change, actions: ['delete', 'create'] } }]), 'a replaced function')
+  refused(createPlan({}, [{ ...functionUpdate(), address: 'aws_cloudfront_function.legacy_domain_redirect' }]), 'another function')
   const done = run(createArgs([noop('aws_acm_certificate.site_edge'), ...Object.keys(createAfter()).map((a) => noop(a))]))
   assert.match(done.stdout, /^DOMAIN_MOVE_PLAN=NO_CHANGES$/m)
+  // Everything created already, the function not yet: only the function update is left to apply.
+  const functionOnly = run(createArgs([...Object.keys(createAfter()).map((a) => noop(a)), functionUpdate()]))
+  assert.equal(functionOnly.status, 0, functionOnly.stdout)
+  assert.match(functionOnly.stdout, /^DOMAIN_MOVE_PLAN=CREATE creates=0 updates=1$/m)
 })
 
 test('Terraform: imported resources are kept, the import blocks never live under infra/aws/app', () => {
@@ -184,6 +207,16 @@ test('the runner: account and branch checks, host lock, one classified apply, ve
   assert.match(script, /create-once\) \[\[ "\$STEP" == create \]\]/)
   assert.match(script, /\[\[ "\$APP_DISTRIBUTION_ID" == EF1K45UVP11XZ && "\$REDIRECT_DISTRIBUTION_ID" == EK1KQZWPWQZNQ \]\]/)
   assert.match(script, /\[\[ "\$status" == ISSUED \]\]/)
+  // The create step updates the main distribution's viewer function (never the distribution itself) and then checks
+  // live, after create-once only, that a faked x-sns-viewer-host still lands on https://seanshore.in.
+  assert.match(script, /CREATE_TARGETS=\([^)]*"aws_cloudfront_function\.canonical_host_redirect"\n\)/)
+  assert.doesNotMatch(script, /-target=aws_cloudfront_distribution\.app|"aws_cloudfront_distribution\.app"/)
+  const live = script.slice(script.indexOf('if [[ "$ACTION" == create-once ]]; then\n  viewer_host_location()'))
+  assert.ok(live.length < script.length, 'the live check runs only after create-once')
+  assert.match(live, /viewer_host_location -H 'x-sns-viewer-host: seanshore\.net'\)" == "https:\/\/seanshore\.in\/auth\/sign-in"/)
+  assert.match(live, /https:\/\/seanshore\.in\/auth\/session-ended\?viewer_host_check=/)
+  assert.match(live, /\[\[ "\$FAKED_OK" == true && "\$PLAIN_OK" == true && "\$WWW_OK" == true \]\]/)
+  assert.ok(script.indexOf('viewer_host_location()') > script.indexOf('apply -input=false'))
   // Run 44479432280: a refused plan or a Terraform error must say why, not stop silently.
   assert.match(script, /CLASSIFICATION="\$\(classify "\$WORK_DIR\/before\.json"\)" \|\| CLASSIFY_STATUS=\$\?\necho "\$CLASSIFICATION"/)
   assert.match(script, /terraform_errors "terraform plan \(\$1\)" "\$WORK_DIR\/\$1\.log"/)
@@ -200,6 +233,11 @@ test('the workflow runs the guarded host runner from the exact armed commit, wit
   assert.match(workflow, /GUARD_FILE: scripts\/aws\/domain-move-infra-action\.txt/)
   assert.match(workflow, /export DOMAIN_MOVE_INFRA_EXPECTED_SHA=\{sha\}\n\s+bash scripts\/aws\/domain-move-infra\.sh/)
   assert.match(workflow, /"executionTimeout": \["3600"\]/)
+  // A change to the viewer function the create step updates re-runs this plan.
+  for (const path of ['infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl', 'infra/aws/app/edge.tf']) {
+    assert.match(workflow, new RegExp(`^      - ${path.replaceAll('.', '\\.')}$`, 'm'), path)
+    assert.match(workflow, new RegExp(`RUNNER_FILES: "[^"]*${path.replaceAll('.', '\\.')}[^"]*"`), path)
+  }
   assert.match(workflow, /plan\|discover\) echo "approval=false"/)
   assert.ok(existsSync(new URL('../../infra/aws/app/domain-move.tf', import.meta.url)))
 })

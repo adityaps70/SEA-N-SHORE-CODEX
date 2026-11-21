@@ -5,7 +5,10 @@
 #                      create) and checks it with check-domain-move-plan.py.
 #   import-once <sha>  imports the console-made resources; the plan must be exactly those imports, all no-op.
 #   create-once <sha>  creates the new certificates (waits until both are ISSUED), the seanshore.net Resend and DMARC
-#                      records and the private edge-logs bucket with CloudFront log delivery; nothing else.
+#                      records and the private edge-logs bucket with CloudFront log delivery, and updates the main
+#                      distribution's viewer-request function so x-sns-viewer-host is always the real Host (owner,
+#                      21 Nov: the first edge change, before seanshore.net is served); nothing else. Then checks live
+#                      that a faked x-sns-viewer-host still lands on https://seanshore.in.
 #
 # Prints addresses, counts and true/false only (the edge-logs bucket is never listed: logs hold visitor IPs).
 set -euo pipefail
@@ -50,6 +53,7 @@ CREATE_TARGETS=(
   "aws_cloudwatch_log_delivery_source.edge"
   "aws_cloudwatch_log_delivery_destination.edge_logs"
   "aws_cloudwatch_log_delivery.edge"
+  "aws_cloudfront_function.canonical_host_redirect"
 )
 
 [[ "${DOMAIN_MOVE_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
@@ -200,6 +204,30 @@ if [[ "$ACTION" == create-once ]]; then
     | jq '[.deliveries[]? | select(.deliverySourceName | startswith("sea-n-shore-staging-edge-"))] | length')"
   echo "DOMAIN_MOVE_EDGE_LOGS public_blocked=$public lifecycle_30_days=$lifecycle deliveries=$deliveries"
   [[ "$public" == true && "$lifecycle" == true && "$deliveries" == 2 ]]
+fi
+# Live, after create-once only (the import changes nothing at the edge): a browser that fakes x-sns-viewer-host must
+# still be sent to https://seanshore.in. /auth/session-ended without a session redirects to sign-in on the origin the
+# app picks, and is never cached. The function was published at the start of the apply and reaches every edge
+# location within minutes; this retries for about 10 more. Prints true/false and the attempt count only.
+if [[ "$ACTION" == create-once ]]; then
+  viewer_host_location() {
+    curl --silent --show-error --max-time 30 -o /dev/null -w '%{redirect_url}' "$@" \
+      "https://seanshore.in/auth/session-ended?viewer_host_check=$(date +%s)" || true
+  }
+  FAKED_OK=false
+  for attempt in $(seq 1 20); do
+    if [[ "$(viewer_host_location -H 'x-sns-viewer-host: seanshore.net')" == "https://seanshore.in/auth/sign-in" ]]; then
+      FAKED_OK=true
+      break
+    fi
+    sleep 30
+  done
+  PLAIN_OK=false
+  [[ "$(viewer_host_location)" == "https://seanshore.in/auth/sign-in" ]] && PLAIN_OK=true
+  WWW_OK=false
+  [[ "$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.seanshore.in/help?viewer_host_check=1" || true)" == "301 https://seanshore.in/help?viewer_host_check=1" ]] && WWW_OK=true
+  echo "DOMAIN_MOVE_VIEWER_HOST_CHECK faked_lands_on_canonical=$FAKED_OK attempts=$attempt plain=$PLAIN_OK www_redirect=$WWW_OK"
+  [[ "$FAKED_OK" == true && "$PLAIN_OK" == true && "$WWW_OK" == true ]]
 fi
 echo "DOMAIN_MOVE_INFRA_VERIFIED=true"
 echo "DOMAIN_MOVE_INFRA_APPLY_COMPLETE"
