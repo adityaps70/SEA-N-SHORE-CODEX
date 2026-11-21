@@ -158,13 +158,15 @@ function EnrollmentCard({ enrollment, now }: { enrollment: LearnerCourseEnrollme
           )}
 
           {certificateAvailable ? (
-            <Link
+            // Owner (21 Nov): a plain download link, never a Next.js <Link>, so nothing prefetches the PDF route.
+            <a
               href={`/api/learn/certificates/enrollment/${enrollment.enrollmentId}`}
+              download
               className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-bold text-teal-900 transition hover:bg-teal-100"
             >
               <Download aria-hidden="true" className="size-4" />
               {enrollment.certificateId ? 'Download certificate' : 'Generate certificate'}
-            </Link>
+            </a>
           ) : null}
 
           {certificateAvailable && enrollment.certificateVerificationCode ? (

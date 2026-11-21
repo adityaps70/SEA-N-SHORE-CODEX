@@ -58,4 +58,20 @@ describe('GET /api/learn/certificates/enrollment/[enrollmentId]', () => {
     )
     expect(response.status).toBe(404)
   })
+
+  it('owner 21 Nov: answers a background prefetch at once, without issuing a certificate or building a PDF', async () => {
+    const { GET } = await import('./route')
+    const prefetches: Array<Record<string, string>> = [{ rsc: '1' }, { 'next-router-prefetch': '1' }, { 'sec-purpose': 'prefetch' }, { purpose: 'prefetch' }]
+    for (const headers of prefetches) {
+      const response = await GET(
+        new Request(`https://example.com/api/learn/certificates/enrollment/${enrollmentId}`, { headers }),
+        { params: Promise.resolve({ enrollmentId }) },
+      )
+      expect(response.status).toBe(204)
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(response.headers.get('content-type')).toBeNull()
+    }
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.ensureCertificateForEnrollment).not.toHaveBeenCalled()
+  })
 })

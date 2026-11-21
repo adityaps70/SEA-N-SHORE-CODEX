@@ -4,6 +4,7 @@ import { certificateRepository } from '@/features/learning/certificate-repositor
 import { certificateDisplayNumber } from '@/features/learning/certificate-settings'
 import { getMediaObject } from '@/lib/aws/storage'
 import { siteUrlFor } from '@/lib/site-url'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 /** The logo or signature copied onto the certificate; a missing picture never stops the download. */
 async function readImage(path: string | null | undefined): Promise<CertificateImage | null> {
@@ -17,9 +18,11 @@ async function readImage(path: string | null | undefined): Promise<CertificateIm
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ enrollmentId: string }> },
 ) {
+  // Owner (21 Nov): a prefetch never issues a certificate or builds a PDF; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   const user = await requireAwsUser()
   const { enrollmentId } = await params
 

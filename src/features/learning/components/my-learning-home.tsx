@@ -114,13 +114,15 @@ export function LearnerCertificatesList({ certificates }: { certificates: Learne
               <span className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${validity.tone}`}>{validity.label}</span>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link
+              {/* Owner (21 Nov): a plain download link, never a Next.js <Link>, so nothing prefetches the PDF route. */}
+              <a
                 href={`/api/learn/certificates/enrollment/${certificate.enrollmentId}`}
+                download
                 aria-label={`Download certificate for ${certificate.courseTitle}`}
                 className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 text-sm font-bold text-teal-900 transition hover:bg-teal-100"
               >
                 <Download aria-hidden="true" className="size-4" /> Download
-              </Link>
+              </a>
               <Link
                 href={`/certificates/${certificate.verificationCode}`}
                 aria-label={`Verify certificate for ${certificate.courseTitle}`}
