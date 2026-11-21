@@ -18,7 +18,7 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
-function ReplyCard({ reply }: { reply: ModerationCourseReviewReply }) {
+function ReplyCard({ reply, canDecide }: { reply: ModerationCourseReviewReply; canDecide: boolean }) {
   const router = useRouter()
   const id = useId()
   const [status, setStatus] = useState<CourseReviewReplyStatus>(reply.status)
@@ -74,19 +74,20 @@ function ReplyCard({ reply }: { reply: ModerationCourseReviewReply }) {
             onChange={(event) => setNote(event.target.value)}
             rows={2}
             maxLength={4000}
-            disabled={pending}
+            disabled={pending || !canDecide}
             placeholder="Why you hid or restored it, for the audit log."
             className="w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-ocean-500"
           />
           {hidden ? (
-            <Button variant="secondary" size="sm" disabled={pending} onClick={() => change('visible')} className="max-md:w-full">
+            <Button variant="secondary" size="sm" disabled={pending || !canDecide} onClick={() => change('visible')} className="max-md:w-full">
               <Eye aria-hidden="true" className="size-4" /> Restore reply
             </Button>
           ) : (
-            <Button size="sm" disabled={pending} onClick={() => change('hidden')} className="bg-red-700 hover:bg-red-800 disabled:bg-red-700 max-md:w-full">
+            <Button size="sm" disabled={pending || !canDecide} onClick={() => change('hidden')} className="bg-red-700 hover:bg-red-800 disabled:bg-red-700 max-md:w-full">
               <EyeOff aria-hidden="true" className="size-4" /> Hide reply
             </Button>
           )}
+          {canDecide ? null : <p className="text-xs font-semibold text-muted">View only: decisions are not part of your country admin access.</p>}
           {message ? (
             <p role="status" aria-live="polite" className={`rounded-xl px-3 py-2 text-xs font-semibold ${message.tone === 'error' ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}>
               {message.text}
@@ -98,7 +99,7 @@ function ReplyCard({ reply }: { reply: ModerationCourseReviewReply }) {
   )
 }
 
-export function CourseReviewRepliesPanel({ replies }: { replies: ModerationCourseReviewReply[] }) {
+export function CourseReviewRepliesPanel({ replies, canDecide = true }: { replies: ModerationCourseReviewReply[]; canDecide?: boolean }) {
   const hiddenCount = replies.filter((reply) => reply.status === 'hidden').length
   return (
     <section aria-labelledby="course-review-replies-heading" className="space-y-3">
@@ -110,7 +111,7 @@ export function CourseReviewRepliesPanel({ replies }: { replies: ModerationCours
             : 'No course owner has replied to a review yet.'}
         </p>
       </div>
-      {replies.map((reply) => <ReplyCard key={`${reply.reviewId}-${reply.repliedAt}`} reply={reply} />)}
+      {replies.map((reply) => <ReplyCard key={`${reply.reviewId}-${reply.repliedAt}`} reply={reply} canDecide={canDecide} />)}
     </section>
   )
 }

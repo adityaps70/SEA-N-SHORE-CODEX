@@ -10,6 +10,10 @@ import type { MentorApplicationStatus } from '@/features/learning/mentor-applica
 import { MentorReviewControls } from '@/features/learning/components/mentor-review-controls'
 import { formatYears } from '@/lib/format'
 import { requireAdminAccess } from '@/features/admin/admin-access'
+import { PendingCourseReviewsPanel } from '@/features/admin/components/pending-course-reviews-panel'
+import { CourseReviewRepliesPanel } from '@/features/admin/components/course-review-replies-panel'
+import { allows } from '@/features/country-admins/sections'
+import { courseRatingRepository } from '@/features/learning/course-rating-repository'
 
 export const metadata: Metadata = { title: 'Learning review · Admin' }
 
@@ -36,7 +40,7 @@ function Chip({ children }: { children: React.ReactNode }) {
   return <span className="rounded-full border border-mist-100 bg-mist-50 px-2.5 py-1 text-xs font-semibold text-navy-900">{children}</span>
 }
 
-function ApplicationCard({ application }: { application: MentorApplicationReviewItem }) {
+function ApplicationCard({ application, canDecide }: { application: MentorApplicationReviewItem; canDecide: boolean }) {
   return (
     <article className="rounded-xl border border-mist-100 bg-white p-5">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -109,7 +113,7 @@ function ApplicationCard({ application }: { application: MentorApplicationReview
 
         {application.status === 'pending' ? (
           <div className="w-full shrink-0 xl:w-[22rem]">
-            <MentorReviewControls applicationId={application.applicationId} />
+            {canDecide ? <MentorReviewControls applicationId={application.applicationId} /> : <p className="text-xs font-semibold text-muted">View only: decisions are not part of your country admin access.</p>}
           </div>
         ) : null}
       </div>
@@ -122,10 +126,18 @@ export default async function LearningAdminPage({
 }: {
   searchParams: Promise<{ status?: string | string[] }>
 }) {
-  const user = (await requireAdminAccess('platform')).user
+  // Round GP Part E: country admins with Learning see their countries' trainer applications, course ratings and owner
+  // replies here (platform administrators also have them on Moderation); decisions need "act".
+  const access = await requireAdminAccess('learning')
+  const user = access.user
+  const canDecide = access.kind === 'platform' || allows(access.permissions, 'learning', 'act')
   const params = await searchParams
   const status = selectedStatus(params.status)
-  const applications = await learningAdminRepository.listMentorApplications(user.id, status)
+  const [applications, pendingReviews, reviewReplies] = await Promise.all([
+    learningAdminRepository.listMentorApplications(user.id, status),
+    access.kind === 'country' ? courseRatingRepository.listPendingReviews(user.id) : Promise.resolve([]),
+    access.kind === 'country' ? courseRatingRepository.listReviewReplies(user.id) : Promise.resolve([]),
+  ])
 
   return (
     <div className="space-y-4">
@@ -142,9 +154,12 @@ export default async function LearningAdminPage({
         <Link href="/admin/learning/courses" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:border-mist-300 hover:text-navy-950">
           Course review
         </Link>
-        <Link href="/admin/learning/analytics" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:border-mist-300 hover:text-navy-950">
-          Analytics
-        </Link>
+        {/* Learning analytics covers every course, so it stays with platform administrators. */}
+        {access.kind === 'platform' ? (
+          <Link href="/admin/learning/analytics" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:border-mist-300 hover:text-navy-950">
+            Analytics
+          </Link>
+        ) : null}
       </nav>
 
       <nav aria-label="Trainer application status" className="flex flex-wrap gap-1.5">
@@ -163,7 +178,7 @@ export default async function LearningAdminPage({
       <section className="space-y-3">
 
         {applications.length ? applications.map((application) => (
-          <ApplicationCard key={application.applicationId} application={application} />
+          <ApplicationCard key={application.applicationId} application={application} canDecide={canDecide} />
         )) : (
           <div className="rounded-xl border border-dashed border-mist-200 bg-white p-8 text-center">
             <p className="mt-3 font-bold text-navy-950">No trainer applications in this queue.</p>
@@ -171,6 +186,13 @@ export default async function LearningAdminPage({
           </div>
         )}
       </section>
+
+      {access.kind === 'country' ? (
+        <>
+          <PendingCourseReviewsPanel reviews={pendingReviews} canDecide={canDecide} />
+          <CourseReviewRepliesPanel replies={reviewReplies} canDecide={canDecide} />
+        </>
+      ) : null}
     </div>
   )
 }
