@@ -57,6 +57,10 @@ describe('refresh token rotation and reuse (auth_refresh_tokens)', () => {
 
     await db.query(`update public.auth_refresh_tokens set superseded_at = now() - interval '2 minutes' where token_hash = $1`, [refreshTokenHash('refresh-a')])
     await expect(ledger.check('refresh-a')).resolves.toBe('reused')
+    // Owner (19 Nov): check only reports; with nothing to recover (no recovery key here), endReused ends the sign-in.
+    expect(warnings).toEqual([])
+    await expect(ledger.recover('refresh-a')).resolves.toBeNull()
+    await ledger.endReused('refresh-a')
     expect(warnings).toEqual(['[auth_refresh_reuse]'])
 
     // Every token of that sign-in is refused now, on every server: the member's current one too.

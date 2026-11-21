@@ -317,6 +317,56 @@ describe('Cognito protected route proxy', () => {
     expect(tolerated.status).toBe(200)
   })
 
+  it('owner 19 Nov: a ticket request from a hidden tab never renews; only the ticket route reads the background mark', async () => {
+    const backgroundTicket = () => new NextRequest('https://staging.seaandshore.in/api/realtime/ticket', { method: 'POST', headers: { 'X-SNS-Background': '1' } })
+    const rejected = vi.fn(async () => null)
+    const renewal = vi.fn(async () => true)
+    const response = await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: renewal })(backgroundTicket())
+    // The route then answers 401 itself, as for a session that cannot be renewed; never a redirect.
+    expect(response.status).toBe(200)
+    expect(response.headers.get('location')).toBeNull()
+    expect(renewal).not.toHaveBeenCalled()
+
+    // Without the mark (or with another value) the ticket route renews as before.
+    const headerSets: Array<Record<string, string>> = [{}, { 'X-SNS-Background': '0' }]
+    for (const headers of headerSets) {
+      const visibleRenewal = vi.fn(async () => true)
+      await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: visibleRenewal })(
+        new NextRequest('https://staging.seaandshore.in/api/realtime/ticket', { method: 'POST', headers }),
+      )
+      expect(visibleRenewal).toHaveBeenCalledTimes(1)
+    }
+
+    // The mark is ignored everywhere else: a protected page still renews (it is not a background ticket).
+    const pageRenewal = vi.fn(async () => true)
+    const page = await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: pageRenewal })(
+      new NextRequest('https://staging.seaandshore.in/home', { headers: { 'X-SNS-Background': '1' } }),
+    )
+    expect(page.status).toBe(200)
+    expect(pageRenewal).toHaveBeenCalledTimes(1)
+  })
+
+  it('owner 19 Nov: a renewal made here is passed on to the route as renewed-in-this-request, and only then', async () => {
+    const rejected = vi.fn(async () => null)
+    const accepted = vi.fn(async () => ({ sub: 'member-1' }))
+    const passedOn = (response: Response) => response.headers.get('x-middleware-request-x-sns-session-renewed')
+
+    for (const path of ['/home', '/api/realtime/ticket', '/']) {
+      const renewedRequest = new NextRequest(`https://staging.seaandshore.in${path}`, {
+        method: path === '/api/realtime/ticket' ? 'POST' : 'GET',
+        headers: { cookie: `${COGNITO_COOKIE_NAMES.refresh}=refresh-1` },
+      })
+      const renewed = await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: vi.fn(async () => true) })(renewedRequest)
+      expect(passedOn(renewed)).toBe('1')
+    }
+    const notRenewed = await createCognitoProxyHandler({ getVerifiedPrincipal: rejected, refreshSession: vi.fn(async () => false) })(
+      new NextRequest('https://staging.seaandshore.in/api/realtime/ticket', { method: 'POST' }),
+    )
+    expect(passedOn(notRenewed)).toBeNull()
+    const signedIn = await createCognitoProxyHandler({ getVerifiedPrincipal: accepted, refreshSession: vi.fn(async () => true) })(request('/home'))
+    expect(passedOn(signedIn)).toBeNull()
+  })
+
   it('a reused refresh token signs the visitor out cleanly: sign-in on a protected page, the route answers on the ticket route (Round ARCH)', async () => {
     function sessionFor() {
       const values = new Map<string, string>([[COGNITO_COOKIE_NAMES.access, 'expired'], [COGNITO_COOKIE_NAMES.refresh, 'reused']])

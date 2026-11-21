@@ -32,7 +32,8 @@ type CognitoCookiePolicy = {
   allowInsecureHttp?: boolean
 }
 
-const REFRESH_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+/** The refresh cookie lives 30 days from each renewal (it is written again, with this Max-Age, on every refresh). */
+export const REFRESH_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 const CHALLENGE_MAX_AGE_SECONDS = 10 * 60
 
 export function cognitoCookieOptions(

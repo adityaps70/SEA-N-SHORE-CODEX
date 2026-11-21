@@ -9,6 +9,7 @@ import { createRefreshTokenLedger } from '@/features/account-security/refresh-to
 import { query } from '@/lib/db/client'
 import { arrivedAtReturnPath, RETURN_PATH_COOKIE } from '@/lib/auth/return-path'
 import { publicPageCacheControl } from '@/lib/http/public-page-cache'
+import { SESSION_RENEWED_HEADER } from '@/lib/auth/session-renewed-header'
 import {
   API_CONTENT_SECURITY_POLICY,
   CONTENT_SECURITY_POLICY_HEADER,
@@ -19,7 +20,8 @@ import {
 } from '@/lib/security/content-security-policy'
 
 // Round I (I3): refresh token reuse detection (Node.js runtime, the default for Proxy in Next 16).
-setRefreshTokenLedger(createRefreshTokenLedger({ query: (text, values) => query(text, values) }))
+// Owner (19 Nov): with its own key, the ledger also keeps each renewal sealed for recovery (migration 0112).
+setRefreshTokenLedger(createRefreshTokenLedger({ query: (text, values) => query(text, values), recoveryKey: accountSecurityKey('refresh-recovery') }))
 // Owner-approved 15 Nov: requests carrying the same refresh token share one renewal, on this server and (through
 // public.auth_refresh_renewals, sealed, 60 seconds at most) on the others. Without the key or table: as before.
 setRefreshRenewal(createRefreshSingleFlight({
@@ -39,6 +41,9 @@ export async function proxy(incoming: NextRequest) {
   const responsePolicy = policy ?? (wantsApiContentSecurityPolicy(incoming) ? API_CONTENT_SECURITY_POLICY : null)
   // Round 14 (2.11): admin page loads (GET/HEAD only) tell the admin MFA gate which page to return to.
   const adminReturnPath = adminReturnPathForRequest(incoming)
+  // Owner (19 Nov): only this proxy says a sign-in was renewed in this request; a copy from the browser is dropped
+  // here, in place (a POST keeps its body), and every response below passes the request headers on without it.
+  incoming.headers.delete(SESSION_RENEWED_HEADER)
   if (policy || adminReturnPath) {
     const headers = new Headers(incoming.headers)
     if (policy) headers.set(CONTENT_SECURITY_POLICY_HEADER, policy)

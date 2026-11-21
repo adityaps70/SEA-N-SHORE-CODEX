@@ -283,6 +283,54 @@ describe('ticket refusals and repeated failures (Round ARCH realtime ticket fix)
     connection.stop()
   })
 
+  it('owner 19 Nov: a refusal received while hidden never counts toward the stop; it waits, idle, for the tab to be shown', async () => {
+    let hidden = true
+    const requestTicket = vi.fn(async (): Promise<{ ticket: string; webSocketUrl: string }> => { throw new RealtimeTicketRefusedError(401, { background: true }) })
+    const connection = createMessagingRealtimeConnection({ requestTicket, createSocket: (url) => new FakeSocket(url), random: () => 0, isHidden: () => hidden })
+
+    // Several background refusals (each after the tab was briefly woken by a dropped socket or a network change).
+    await connection.start()
+    for (let i = 1; i < MAX_TICKET_REFUSALS + 2; i += 1) {
+      connection.reconnectNow()
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    expect(requestTicket).toHaveBeenCalledTimes(MAX_TICKET_REFUSALS + 2)
+    // Idle, not on a timer: nothing is asked while hidden, and a shown tab is not left to a pending retry.
+    expect(connection.getStatus()).toBe('disconnected')
+    expect(connection.retryScheduled()).toBe(false)
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000)
+    expect(requestTicket).toHaveBeenCalledTimes(MAX_TICKET_REFUSALS + 2)
+
+    // Shown: the next ask carries no background mark, the server renews, and the socket opens.
+    hidden = false
+    requestTicket.mockImplementation(async () => ({ ticket: 'fresh', webSocketUrl: URL }))
+    connection.reconnectNow()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.instances[0]?.open()
+    expect(connection.getStatus()).toBe('connected')
+    connection.stop()
+  })
+
+  it('owner 19 Nov: a background refusal that arrives after the tab was shown asks again at once, and a visible 401 still counts', async () => {
+    let hidden = false
+    let calls = 0
+    const requestTicket = vi.fn(async (): Promise<{ ticket: string; webSocketUrl: string }> => {
+      calls += 1
+      if (calls === 1) throw new RealtimeTicketRefusedError(401, { background: true })
+      throw new RealtimeTicketRefusedError(401)
+    })
+    const connection = createMessagingRealtimeConnection({ requestTicket, createSocket: (url) => new FakeSocket(url), random: () => 0, isHidden: () => hidden })
+    await connection.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // The second (visible) ask went out at once; its 401 is a real refusal, on the 5-minute wait and counted.
+    expect(requestTicket).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(TICKET_REFUSED_RETRY_MS * MAX_TICKET_REFUSALS)
+    expect(requestTicket).toHaveBeenCalledTimes(1 + MAX_TICKET_REFUSALS)
+    expect(connection.getStatus()).toBe('disconnected')
+    hidden = true
+    connection.stop()
+  })
+
   it('a 403 counts as a refusal too; other errors keep the fast backoff', async () => {
     let calls = 0
     const requestTicket = vi.fn(async (): Promise<{ ticket: string; webSocketUrl: string }> => {
