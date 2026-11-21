@@ -12,6 +12,8 @@ on:
     paths:
       - infra/aws/app/domain-move.tf
       - infra/aws/app/cloudfront/console-redirect-domains.js.tftpl
+      - infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl
+      - infra/aws/app/edge.tf
       - scripts/aws/check-domain-move-plan.py
       - scripts/aws/domain-move-imports.tf.tpl
       - scripts/aws/domain-move-infra.sh
@@ -91,7 +93,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/domain-move-infra-action.txt
-          RUNNER_FILES: "infra/aws/app/domain-move.tf infra/aws/app/cloudfront/console-redirect-domains.js.tftpl scripts/aws/check-domain-move-plan.py scripts/aws/domain-move-imports.tf.tpl scripts/aws/domain-move-infra.sh scripts/aws/domain-move-infra.test.mjs"
+          RUNNER_FILES: "infra/aws/app/domain-move.tf infra/aws/app/cloudfront/console-redirect-domains.js.tftpl infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl infra/aws/app/edge.tf scripts/aws/check-domain-move-plan.py scripts/aws/domain-move-imports.tf.tpl scripts/aws/domain-move-infra.sh scripts/aws/domain-move-infra.test.mjs"
         shell: bash
         run: |
           set -euo pipefail

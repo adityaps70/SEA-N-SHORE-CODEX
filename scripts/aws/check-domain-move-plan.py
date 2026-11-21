@@ -6,13 +6,16 @@
       all: every import is a no-op, nothing is created, updated, replaced or destroyed. Prints
       DOMAIN_MOVE_PLAN=IMPORT imports=<n>, or DOMAIN_MOVE_PLAN=NO_CHANGES once they are in state.
   check-domain-move-plan.py create PLAN_JSON APP_DISTRIBUTION_ID REDIRECT_DISTRIBUTION_ID
-      Exits 0 only if the plan creates exactly EXPECTED_CREATES with the approved settings and changes nothing else.
-      Prints DOMAIN_MOVE_PLAN=CREATE creates=<n>, or DOMAIN_MOVE_PLAN=NO_CHANGES once they exist.
+      Exits 0 only if the plan creates exactly EXPECTED_CREATES with the approved settings and changes nothing else,
+      except one update: the main distribution's viewer-request function, to the repository template rendered as
+      edge.tf renders it (it sets x-sns-viewer-host from the real Host; owner, 21 Nov). Prints
+      DOMAIN_MOVE_PLAN=CREATE creates=<n> updates=<0|1>, or DOMAIN_MOVE_PLAN=NO_CHANGES once nothing is left.
 
 Prints addresses and counts only.
 """
 import json
 import sys
+from pathlib import Path
 
 ACCOUNT = "310356785722"
 CONSOLE_ZONES = ["seaandshore.si", "seanshore.nl", "seanshore.ph", "seanshore.si"]
@@ -59,6 +62,13 @@ EXPECTED_CREATES = sorted([
     'aws_cloudwatch_log_delivery.edge["app"]',
     'aws_cloudwatch_log_delivery.edge["redirect"]',
 ])
+
+# The main distribution's viewer-request function (edge.tf). The only change the create step may make to anything that
+# already exists: x-sns-viewer-host is set from the Host CloudFront answered on, never kept from the client.
+FUNCTION_ADDRESS = "aws_cloudfront_function.canonical_host_redirect"
+FUNCTION_NAME = "sea-n-shore-staging-canonical-host-redirect"
+FUNCTION_TEMPLATE = Path(__file__).resolve().parents[2] / "infra" / "aws" / "app" / "cloudfront" / "canonical-host-redirect.js.tftpl"
+FUNCTION_UPDATABLE = {"code", "etag", "live_stage_etag"}
 
 EDGE_LOGS_BUCKET = f"sea-n-shore-staging-{ACCOUNT}-edge-logs"
 SITE_EDGE_NAMES = ["seanshore.in", "www.seanshore.in", "seanshore.net", "www.seanshore.net"]
@@ -112,21 +122,44 @@ def after(change):
     return (change.get("change") or {}).get("after") or {}
 
 
+def rendered_function_code():
+    """The repository template rendered exactly as edge.tf's templatefile() renders it (cloudfront.net -> apex on)."""
+    return (FUNCTION_TEMPLATE.read_text()
+            .replace("${canonical_host}", "seanshore.in")
+            .replace("${edge_host}", "d3prih0q6jofyr.cloudfront.net")
+            .replace("${redirect_edge_host}", "true"))
+
+
+def check_function_update(change):
+    attributes = changed_attributes(change)
+    if "code" not in attributes or not set(attributes) <= FUNCTION_UPDATABLE:
+        refuse(f"address={FUNCTION_ADDRESS} attributes={','.join(attributes) or '-'}")
+    body = after(change)
+    if body.get("name") != FUNCTION_NAME or body.get("runtime") != "cloudfront-js-2.0" or body.get("publish") is not True:
+        refuse(f"address={FUNCTION_ADDRESS} name, runtime or publish")
+    if body.get("code") != rendered_function_code():
+        refuse(f"address={FUNCTION_ADDRESS} code is not the repository template")
+
+
 def check_create(plan, app_id, redirect_id):
     changes = managed_changes(plan)
     created = sorted(c["address"] for c in changes if (c.get("change") or {}).get("actions") == ["create"])
+    updated = 0
     for change in changes:
         actions = (change.get("change") or {}).get("actions")
         if (change.get("change") or {}).get("importing"):
             refuse(f"address={change['address']} imports in the create step")
-        if actions not in (["no-op"], ["create"]):
+        if change["address"] == FUNCTION_ADDRESS and actions == ["update"]:
+            check_function_update(change)
+            updated += 1
+        elif actions not in (["no-op"], ["create"]):
             refuse(f"address={change['address']} actions={'+'.join(actions or [])}")
     if not created:
         in_plan = {c["address"] for c in changes}
         missing = [a for a in EXPECTED_CREATES if a not in in_plan]
         if missing:
             refuse(f"missing from the plan: {len(missing)}")
-        print("DOMAIN_MOVE_PLAN=NO_CHANGES")
+        print(f"DOMAIN_MOVE_PLAN=CREATE creates=0 updates={updated}" if updated else "DOMAIN_MOVE_PLAN=NO_CHANGES")
         return
     if created != EXPECTED_CREATES:
         extra = sorted(set(created) - set(EXPECTED_CREATES))
@@ -173,7 +206,7 @@ def check_create(plan, app_id, redirect_id):
         source = by[f'aws_cloudwatch_log_delivery_source.edge["{key}"]']
         if source.get("resource_arn") != f"arn:aws:cloudfront::{ACCOUNT}:distribution/{dist}" or source.get("log_type") != "ACCESS_LOGS":
             refuse(f"log source {key}")
-    print(f"DOMAIN_MOVE_PLAN=CREATE creates={len(created)}")
+    print(f"DOMAIN_MOVE_PLAN=CREATE creates={len(created)} updates={updated}")
 
 
 def main(argv):

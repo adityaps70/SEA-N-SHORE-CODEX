@@ -99,3 +99,31 @@ test('query strings survive: repeated keys, empty values, encoded octets and plu
   )
   assert.equal(handler(event('www.seanshore.in', '/x', {})).headers.location.value, 'https://seanshore.in/x')
 })
+
+// Domain move (21 Nov live check after #562): the app picks the origin to send a visitor back to from
+// x-sns-viewer-host (src/lib/site-url.ts), so the edge must never pass on what a browser sent in it.
+test('x-sns-viewer-host is always the Host CloudFront answered on, never what the client sent', async () => {
+  for (const redirectEdgeHost of [false, true]) {
+    const handler = await loadHandler({ redirectEdgeHost })
+    const faked = event('seanshore.in', '/auth/session-ended')
+    faked.request.headers['x-sns-viewer-host'] = { value: 'seanshore.net' }
+    assert.deepEqual(handler(faked).headers['x-sns-viewer-host'], { value: 'seanshore.in' })
+    const plain = event('SEANSHORE.IN:443', '/home')
+    assert.deepEqual(handler(plain).headers['x-sns-viewer-host'], { value: 'seanshore.in' })
+    const api = event(EDGE_HOST, '/api/payments/cashfree/webhook')
+    api.request.headers['x-sns-viewer-host'] = { value: 'seanshore.net' }
+    assert.deepEqual(handler(api).headers['x-sns-viewer-host'], { value: EDGE_HOST })
+    // No Host at all: the header is removed, never kept from the client.
+    const hostless = event(undefined, '/home')
+    hostless.request.headers['x-sns-viewer-host'] = { value: 'seanshore.net' }
+    assert.equal(handler(hostless).headers['x-sns-viewer-host'], undefined)
+    assert.ok(!('x-sns-viewer-host' in hostless.request.headers))
+    // Redirects are unchanged and carry no such header.
+    const www = event('www.seanshore.in', '/jobs')
+    www.request.headers['x-sns-viewer-host'] = { value: 'seanshore.net' }
+    const redirected = handler(www)
+    assert.equal(redirected.statusCode, 301)
+    assert.equal(redirected.headers.location.value, 'https://seanshore.in/jobs')
+    assert.equal(redirected.headers['x-sns-viewer-host'], undefined)
+  }
+})
