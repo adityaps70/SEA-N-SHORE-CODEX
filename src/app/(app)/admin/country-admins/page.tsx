@@ -6,6 +6,14 @@ import { countryName } from '@/features/countries/catalog'
 import { CountryAdminError, countryAdminRepository, type CountryAdminEntry } from '@/features/country-admins/repository'
 import { EditCountryAdminForm, GrantCountryAdminForm } from '@/features/country-admins/components/country-admin-forms'
 import { pluralize } from '@/lib/format'
+import { COUNTRY_ADMIN_SECTION_INFO, COUNTRY_ADMIN_SECTIONS, type CountryAdminPermissions } from '@/features/country-admins/sections'
+
+/** Round GP Part E: "Organizations (act), Members by country (view)". */
+function sectionSummary(permissions: CountryAdminPermissions) {
+  const parts = COUNTRY_ADMIN_SECTIONS.filter((section) => permissions[section])
+    .map((section) => `${COUNTRY_ADMIN_SECTION_INFO[section].label} (${permissions[section] === 'act' ? 'view and act' : 'view'})`)
+  return parts.length ? `Sections: ${parts.join(', ')}` : 'No sections: they cannot open the admin console.'
+}
 
 export const metadata: Metadata = { title: 'Country admins · Admin' }
 
@@ -28,7 +36,7 @@ export default async function AdminCountryAdminsPage() {
       <AdminPageHeader
         title="Country admins"
         meta={entries ? pluralize(entries.length, 'country admin') : undefined}
-        description="Country admins review and approve organizations from their own countries, and see those countries’ numbers in Members by country. They cannot see member lists, emails or phone numbers, payments, plans, ranks, site settings or any other admin page, and every decision they make is in the audit log. They must use an authenticator app to sign in, like administrators."
+        description="Country admins use only the sections you give them, each limited to their own countries: view, or view and act. A new country admin starts with Organizations. They never suspend or delete members, see payments or refunds, site settings, ranks, other admins, exports or member emails and phone numbers, and every decision they make is in the audit log. They must use an authenticator app to sign in, like administrators."
       />
 
       {entries === null ? (
@@ -55,6 +63,7 @@ export default async function AdminCountryAdminsPage() {
                         {entry.slug ? <span className="ml-2 text-sm font-normal text-muted">@{entry.slug}</span> : null}
                       </p>
                       <p className="mt-1 text-sm text-navy-900">{entry.countries.map((code) => countryName(code) ?? code).join(', ')}</p>
+                      <p className="mt-1 text-xs text-muted">{sectionSummary(entry.permissions)}</p>
                       <p className="mt-1 text-xs text-muted">
                         Country admin since {formatAdminDate(entry.grantedAt)} · Last active {entry.lastActiveAt ? formatAdminDate(entry.lastActiveAt, true) : 'never'}
                       </p>
@@ -62,7 +71,7 @@ export default async function AdminCountryAdminsPage() {
                         <Link href={`/admin/audit?actor=${entry.profileId}`} className="font-semibold text-ocean-700 hover:underline">Their actions in the audit log</Link>
                       </p>
                     </div>
-                    <EditCountryAdminForm profileId={entry.profileId} name={entry.fullName} countries={entry.countries} />
+                    <EditCountryAdminForm profileId={entry.profileId} name={entry.fullName} countries={entry.countries} permissions={entry.permissions} />
                   </li>
                 ))}
               </ul>
