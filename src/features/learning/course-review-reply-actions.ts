@@ -99,6 +99,7 @@ const statusSchema = z.object({
 const STATUS_ERRORS: Record<string, string> = {
   admin_forbidden: 'You do not have permission to moderate platform content.',
   reply_review_not_found: 'This review no longer exists.',
+  learning_out_of_scope: 'This is not in your countries. A Sea N Shore administrator handles it.',
   reply_not_found: 'The course owner has deleted this reply. Refresh the page to see the current list.',
   reply_status_unchanged: 'Someone has already changed this reply. Refresh the page to see the current list.',
 }

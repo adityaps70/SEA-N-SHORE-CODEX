@@ -56,9 +56,9 @@ describe('requireAdminAccess', () => {
   })
 
   it('keeps a country admin with no section that the console can open out of it entirely', async () => {
-    const { gate, enforceMfa } = access({ countries: ['PH'], permissions: { learning: 'act' } })
+    const { gate, enforceMfa } = access({ countries: ['PH'], permissions: { communities: 'act' } })
     await expect(gate('console')).rejects.toBeInstanceOf(Denied)
-    await expect(gate('learning')).rejects.toBeInstanceOf(Denied)
+    await expect(gate('communities')).rejects.toBeInstanceOf(Denied)
     expect(enforceMfa).not.toHaveBeenCalled()
   })
 

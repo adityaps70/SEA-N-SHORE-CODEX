@@ -87,9 +87,9 @@ describe('country admin sections', () => {
   })
 
   it('never saves a section that is not live yet, and refuses an empty choice', async () => {
-    const result = await countryAdmins().grant(platformAdmin, partner, ['PH'], { organizations: 'act', learning: 'act' })
+    const result = await countryAdmins().grant(platformAdmin, partner, ['PH'], { organizations: 'act', communities: 'act' })
     expect(result.permissions).toEqual({ organizations: 'act' })
-    await expect(countryAdmins().grant(platformAdmin, partner, ['PH'], { learning: 'act' })).rejects.toBeInstanceOf(CountryAdminError)
+    await expect(countryAdmins().grant(platformAdmin, partner, ['PH'], { communities: 'act' })).rejects.toBeInstanceOf(CountryAdminError)
     await expect(countryAdmins().grant(partner, partner, ['PH'], { organizations: 'act' })).rejects.toThrow('admin_forbidden')
   })
 

@@ -65,6 +65,7 @@ const decisionSchema = z.object({
 const DECISION_ERRORS: Record<string, string> = {
   admin_forbidden: 'You do not have permission to moderate platform content.',
   review_not_found: 'This review no longer exists.',
+  learning_out_of_scope: 'This is not in your countries. A Sea N Shore administrator handles it.',
   review_not_pending: 'Someone has already decided on this review. Refresh the page to see the current list.',
   review_changed: 'The learner changed this review after you opened the page. Refresh to read the new version before deciding.',
 }
