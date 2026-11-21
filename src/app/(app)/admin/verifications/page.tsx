@@ -9,6 +9,7 @@ import { creatorVerificationRepository } from '@/features/verifications/reposito
 import { CreatorVerificationReviewActions } from '@/features/verifications/components/creator-verification-review-actions'
 import { formatYears } from '@/lib/format'
 import { requireAdminAccess } from '@/features/admin/admin-access'
+import { allows } from '@/features/country-admins/sections'
 
 export const metadata: Metadata = { title: 'Verifications · Admin' }
 
@@ -46,7 +47,10 @@ export default async function AdminCreatorVerificationsPage({
   const params = await searchParams
   const status = readStatus(params.status)
   const type = readType(params.type)
-  const user = (await requireAdminAccess('platform')).user
+  // Round GP Part E: country admins with Verification see their countries' applicants; decisions need "act".
+  const access = await requireAdminAccess('verification')
+  const user = access.user
+  const canDecide = access.kind === 'platform' || allows(access.permissions, 'verification', 'act')
   const applications = await creatorVerificationRepository.listAdminApplications(user.id, status, type)
 
   return (
@@ -154,7 +158,7 @@ export default async function AdminCreatorVerificationsPage({
 
               <div>
                 {application.status === 'pending' ? (
-                  <CreatorVerificationReviewActions verificationId={application.id} />
+                  canDecide ? <CreatorVerificationReviewActions verificationId={application.id} /> : <p className="text-sm text-muted">View only: decisions are not part of your country admin access.</p>
                 ) : (
                   <div className="rounded-xl bg-mist-50 p-4 text-sm text-muted">
                     This application has already been reviewed.

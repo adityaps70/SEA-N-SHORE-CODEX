@@ -19,6 +19,7 @@ import { CompanyAccessReviewActions } from '@/features/admin/components/company-
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { requestAgeDays, type PlatformFallbackReason } from '@/features/organizations/access-request-policy'
 import { requireAdminAccess } from '@/features/admin/admin-access'
+import { allows } from '@/features/country-admins/sections'
 
 export const metadata: Metadata = { title: 'Access requests · Admin' }
 
@@ -70,7 +71,10 @@ function decidedBy(request: AdminCompanyAccessRequest) {
 export default async function AdminOrganizationAccessPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const filter = readFilter(params.status)
-  const user = (await requireAdminAccess('platform')).user
+  // Round GP Part E: country admins with Access requests see their countries' organizations; decisions need "act".
+  const access = await requireAdminAccess('access')
+  const user = access.user
+  const canDecide = access.kind === 'platform' || allows(access.permissions, 'access', 'act')
   const [requests, counts] = await Promise.all([
     adminRepository.listCompanyAccessRequests(user.id, filter),
     adminRepository.countCompanyAccessRequests(user.id),
@@ -154,7 +158,9 @@ export default async function AdminOrganizationAccessPage({ searchParams }: { se
 
                   <div>
                     {canAct ? (
-                      <CompanyAccessReviewActions requestId={request.id} requestedRole={request.requestedRole} />
+                      canDecide ? (
+                        <CompanyAccessReviewActions requestId={request.id} requestedRole={request.requestedRole} allowAdministratorRole={access.kind === 'platform'} />
+                      ) : <p className="rounded-lg bg-mist-50 px-3 py-2 text-sm text-muted">View only: decisions are not part of your country admin access.</p>
                     ) : request.status === 'pending' ? (
                       <p className="rounded-lg bg-mist-50 px-3 py-2 text-sm text-muted">
                         Read-only. The organization decides this request. Sea N Shore can step in after 7 days or if the requester escalates.

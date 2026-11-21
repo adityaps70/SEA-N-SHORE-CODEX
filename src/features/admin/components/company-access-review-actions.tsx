@@ -12,12 +12,16 @@ import { reviewCompanyAccessRequest } from '../actions'
 export function CompanyAccessReviewActions({
   requestId,
   requestedRole = 'member',
+  allowAdministratorRole = true,
 }: {
   requestId: string
   requestedRole?: CompanyAccessRequestRole
+  /** Round GP Part E: false for country admins; the organization Administrator role stays with platform administrators. */
+  allowAdministratorRole?: boolean
 }) {
+  const roles = COMPANY_ACCESS_REQUEST_ROLES.filter((value) => allowAdministratorRole || value !== 'administrator')
   const [note, setNote] = useState('')
-  const [role, setRole] = useState<CompanyAccessRequestRole>(requestedRole)
+  const [role, setRole] = useState<CompanyAccessRequestRole>(roles.includes(requestedRole) ? requestedRole : 'member')
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -47,7 +51,7 @@ export function CompanyAccessReviewActions({
           onChange={(event) => setRole(event.target.value as CompanyAccessRequestRole)}
           className="min-h-10 rounded-xl border border-mist-100 bg-white px-3 text-sm font-normal"
         >
-          {COMPANY_ACCESS_REQUEST_ROLES.map((value) => <option key={value} value={value}>{ACCESS_ROLE_LABELS[value]}</option>)}
+          {roles.map((value) => <option key={value} value={value}>{ACCESS_ROLE_LABELS[value]}</option>)}
         </select>
       </label>
       <label className="grid gap-1.5 text-sm font-semibold text-navy-900" htmlFor={`admin-note-${requestId}`}>

@@ -36,7 +36,7 @@ export const COUNTRY_ADMIN_SECTION_INFO: Record<CountryAdminSection, SectionInfo
  * The sections whose country-admin pages exist in this release. A platform administrator can only tick these; the
  * database allows every section, so a later release just adds to this list.
  */
-export const LIVE_COUNTRY_ADMIN_SECTIONS: readonly CountryAdminSection[] = ['overview', 'organizations', 'members']
+export const LIVE_COUNTRY_ADMIN_SECTIONS: readonly CountryAdminSection[] = ['overview', 'organizations', 'members', 'verification', 'access']
 
 /** Sections that only ever have "view" (no decisions). */
 export const VIEW_ONLY_SECTIONS: readonly CountryAdminSection[] = ['overview', 'members']
