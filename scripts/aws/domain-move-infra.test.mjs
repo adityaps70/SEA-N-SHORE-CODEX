@@ -153,6 +153,10 @@ test('Terraform: imported resources are kept, the import blocks never live under
     const block = tf.slice(tf.indexOf(`resource "${resource}"`))
     assert.match(block.slice(0, block.indexOf('\n}\n')), /prevent_destroy\s+= true/, resource)
   }
+  // Run 44876340470: the console function imports with its code identical; publish and comment would plan a change.
+  const consoleFunction = tf.slice(tf.indexOf('resource "aws_cloudfront_function" "console_redirect"'))
+  assert.match(consoleFunction.slice(0, consoleFunction.indexOf('\n}\n')), /ignore_changes\s+= \[comment, publish\]/)
+  assert.doesNotMatch(consoleFunction.slice(0, consoleFunction.indexOf('\n}\n')), /ignore_changes\s+= \[[^\]]*code/)
   // The console zones have no comment; the provider would plan "Managed by Terraform" on import.
   const consoleZone = tf.slice(tf.indexOf('resource "aws_route53_zone" "console"'))
   assert.match(consoleZone.slice(0, consoleZone.indexOf('\n}\n')), /ignore_changes\s+= \[comment\]/)

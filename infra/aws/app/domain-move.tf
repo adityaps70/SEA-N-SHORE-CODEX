@@ -107,12 +107,15 @@ resource "aws_acm_certificate" "console_redirect" {
 resource "aws_cloudfront_function" "console_redirect" {
   name    = "seanshore-redirect-domains"
   runtime = "cloudfront-js-2.0"
-  comment = ""
   publish = true
   code    = file("${path.module}/cloudfront/console-redirect-domains.js.tftpl")
 
+  # Imported unchanged (run 44876340470: code identical). AWS does not report publish, and the console left the
+  # comment empty, so both would plan a change on import. Nothing changes this function later: Phase 2 moves its
+  # domains to the Terraform redirect distribution and only disables the console one.
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [comment, publish]
   }
 }
 
