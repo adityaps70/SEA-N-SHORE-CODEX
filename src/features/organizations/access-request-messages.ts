@@ -16,6 +16,11 @@ export function accessRequestErrorMessage(code: string): string {
       return 'Only the owner or an administrator of this organization can decide its access requests.'
     case 'company_access_request_role_invalid':
       return 'Choose a valid role to grant.'
+    // Round GP Part E: country admins.
+    case 'company_access_request_out_of_scope':
+      return 'This organization is not in your countries. A Sea N Shore administrator handles it.'
+    case 'company_access_request_admin_role_platform_only':
+      return 'Only Sea N Shore administrators can grant the organization Administrator role. Choose another role, or leave it to them.'
     case 'company_access_request_already_escalated':
       return 'You have already asked Sea N Shore to review this request. We will update the status here.'
     case 'company_access_request_escalation_too_early':
