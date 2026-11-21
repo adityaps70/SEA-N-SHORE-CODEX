@@ -1,6 +1,7 @@
 import { joinState } from '@/features/learning/sessions/session-rules'
 import { sessionRepository } from '@/features/learning/sessions/session-repository'
 import { SESSION_UUID, sessionTextResponse, sessionViewer } from '@/features/learning/sessions/session-viewer'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 import { siteUrlForRequest } from '@/lib/site-url'
 
 export const runtime = 'nodejs'
@@ -16,6 +17,8 @@ function redirect(location: string) {
  * returns to their Sessions tab, which says why Join is not open.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ sessionId: string }> }) {
+  // Owner (21 Nov): a prefetch never records attendance; only a person's own click on Join does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   const viewer = await sessionViewer()
   if (!viewer) return redirect(siteUrlForRequest(request.headers, '/auth/sign-in').toString())
   const { sessionId } = await params
