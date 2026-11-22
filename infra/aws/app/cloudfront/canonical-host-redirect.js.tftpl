@@ -1,12 +1,15 @@
 // Sea N Shore canonical host redirect (CloudFront Functions, runtime cloudfront-js-2.0).
-// Rendered by Terraform templatefile(); the four placeholders below are the only interpolations.
+// Rendered by Terraform templatefile(); the five placeholders below are the only interpolations.
 //   - www.seanshore.in            -> 301 https://seanshore.in (same path and query)
+//   - www.<alias host>            -> 301 https://<alias host> (same path and query), for each domain the site also
+//     answers on during the domain move (seanshore.net)
 //   - d3prih0q6jofyr.cloudfront.net -> 301 https://seanshore.in (same path and query) only while
 //     REDIRECT_EDGE_HOST is true, and never for /api/* (payment webhooks keep answering here).
 //   - every request it passes on: x-sns-viewer-host is the Host CloudFront answered on. Whatever a client sent in
 //     that header is dropped first (src/lib/site-url.ts trusts it to pick the origin a visitor is sent back to).
 var CANONICAL_HOST = '${canonical_host}';
 var WWW_HOST = 'www.${canonical_host}';
+var ALIAS_HOSTS = ${alias_hosts};
 var EDGE_HOST = '${edge_host}';
 var REDIRECT_EDGE_HOST = ${redirect_edge_host};
 var VIEWER_HOST_HEADER = 'x-sns-viewer-host';
@@ -43,10 +46,19 @@ function requestHost(request) {
   return header.value.toLowerCase().split(':')[0];
 }
 
+// The apex to send a www.<alias host> request to, or '' when the host is not one of them.
+function aliasApex(host) {
+  for (var i = 0; i < ALIAS_HOSTS.length; i++) {
+    if (host === 'www.' + ALIAS_HOSTS[i]) return ALIAS_HOSTS[i];
+  }
+  return '';
+}
+
 function handler(event) {
   var request = event.request;
   var host = requestHost(request);
-  var redirect = host === WWW_HOST || (REDIRECT_EDGE_HOST && host === EDGE_HOST && !isApiPath(request.uri));
+  var target = aliasApex(host);
+  var redirect = target !== '' || host === WWW_HOST || (REDIRECT_EDGE_HOST && host === EDGE_HOST && !isApiPath(request.uri));
   if (!redirect) {
     if (!request.headers) request.headers = {};
     delete request.headers[VIEWER_HOST_HEADER];
@@ -57,7 +69,7 @@ function handler(event) {
     statusCode: 301,
     statusDescription: 'Moved Permanently',
     headers: {
-      location: { value: 'https://' + CANONICAL_HOST + request.uri + buildQueryString(request.querystring) },
+      location: { value: 'https://' + (target || CANONICAL_HOST) + request.uri + buildQueryString(request.querystring) },
       'cache-control': { value: 'public, max-age=3600' },
     },
   };
