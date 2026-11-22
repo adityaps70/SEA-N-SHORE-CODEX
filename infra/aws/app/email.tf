@@ -12,6 +12,12 @@ resource "aws_sesv2_configuration_set" "transactional" {
   reputation_options {
     reputation_metrics_enabled = true
   }
+
+  # Owner, 22 Nov (domain move serve plan, run 45033109467): the live configuration set has delivery options that
+  # were set outside Terraform; Terraform leaves them as they are instead of removing them.
+  lifecycle {
+    ignore_changes = [delivery_options]
+  }
 }
 
 resource "aws_sesv2_email_identity" "transactional_domain" {

@@ -263,15 +263,23 @@ const OLD_ORIGINS = ['https://seanshore.in', 'https://d3prih0q6jofyr.cloudfront.
 const NET_RECORDS = ['seanshore.net', 'www.seanshore.net'].flatMap((host) => ['A', 'AAAA'].map((kind) => [host, kind]))
 const cert = (arn) => [{ acm_certificate_arn: arn, ssl_support_method: 'sni-only', minimum_protocol_version: 'TLSv1.2_2021', cloudfront_default_certificate: false }]
 const pagesKey = (headers) => [{ cookies_config: [{ cookie_behavior: 'whitelist' }], headers_config: [{ header_behavior: 'whitelist', headers: [{ items: headers }] }] }]
+// The distribution's current ordered behaviors, and #549's logo behavior (request cuts 4c), last.
+const FUNCTION_ARN = 'arn:aws:cloudfront::310356785722:function/sea-n-shore-staging-canonical-host-redirect'
+const behavior = (path, policy) => ({ path_pattern: path, target_origin_id: 'sea-n-shore-staging-alb', viewer_protocol_policy: 'redirect-to-https', allowed_methods: ['GET', 'HEAD'], cached_methods: ['GET', 'HEAD'], compress: true, cache_policy_id: policy, origin_request_policy_id: '', trusted_key_groups: [], lambda_function_association: [], function_association: [{ event_type: 'viewer-request', function_arn: FUNCTION_ARN }] })
+const BEHAVIORS = [behavior('/_next/static/*', 'optimized'), behavior('/favicon.ico', 'optimized')]
+const LOGO_BEHAVIOR = { ...behavior('/api/public/company-logo/*', null) }
+const behaviorsUnknown = (extra = {}) => [...BEHAVIORS.map(() => ({})), { cache_policy_id: true, ...extra }]
+const logoPolicy = (fields = {}) => ({ name: 'sea-n-shore-staging-public-company-logo', min_ttl: 0, default_ttl: 0, max_ttl: 3600, parameters_in_cache_key_and_forwarded_to_origin: [{ cookies_config: [{ cookie_behavior: 'none' }], headers_config: [{ header_behavior: 'none' }], query_strings_config: [{ query_string_behavior: 'whitelist', query_strings: [{ items: ['v'] }] }] }], ...fields })
 const update = (address, before, afterValue, unknown = {}) => ({ address, mode: 'managed', change: { actions: ['update'], before, after: afterValue, after_unknown: unknown } })
 function servePlan(overrides = {}) {
   const pick = (key, value) => (key in overrides ? overrides[key] : value)
   const env = (origins) => [{ variables: { REALTIME_TICKET_AUDIENCE: 'sea-n-shore', REALTIME_TICKET_SECRET_ARN: 'arn:secret', REALTIME_ALLOWED_ORIGINS: origins.join(',') } }]
   const changes = [
     update('aws_cloudfront_distribution.app',
-      { aliases: ['seanshore.in', 'www.seanshore.in'], viewer_certificate: cert(OLD_EDGE_ARN), web_acl_id: 'acl', origin: [{ id: 'alb' }] },
-      pick('distribution', { aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], viewer_certificate: cert(SITE_EDGE_ARN), web_acl_id: 'acl', origin: [{ id: 'alb' }] }),
-      { etag: true, last_modified_time: true }),
+      { aliases: ['seanshore.in', 'www.seanshore.in'], viewer_certificate: cert(OLD_EDGE_ARN), web_acl_id: 'acl', origin: [{ id: 'alb' }], ordered_cache_behavior: BEHAVIORS },
+      pick('distribution', { aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], viewer_certificate: cert(SITE_EDGE_ARN), web_acl_id: 'acl', origin: [{ id: 'alb' }], ordered_cache_behavior: [...BEHAVIORS, pick('logoBehavior', LOGO_BEHAVIOR)] }),
+      { etag: true, last_modified_time: true, ordered_cache_behavior: pick('behaviorsUnknown', behaviorsUnknown()) }),
+    { address: 'aws_cloudfront_cache_policy.public_company_logo', mode: 'managed', change: { actions: ['create'], after: pick('logoPolicy', logoPolicy()), after_unknown: { id: true, etag: true } } },
     functionUpdate(),
     update('aws_cloudfront_cache_policy.public_pages',
       { name: 'pages', parameters_in_cache_key_and_forwarded_to_origin: pagesKey(['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch']) },
@@ -295,9 +303,16 @@ const serveArgs = (changes, arn = SITE_EDGE_ARN) => ['serve', planFile(changes),
 test('serve: exactly the approved edge, DNS and origin changes, with the approved values', () => {
   const ok = run(serveArgs(servePlan()))
   assert.equal(ok.status, 0, ok.stdout)
-  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=5 creates=4$/m)
+  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=5 creates=5$/m)
   assert.doesNotMatch(ok.stdout, /arn:|seanshore\.net|cloudfront\.net/)
   const done = run(serveArgs([...servePlan().map((c) => noop(c.address))]))
+  // The logo rule already applied (by another edge run): serve without it, and its behavior must not change.
+  const withoutLogo = servePlan().filter((c) => c.address !== 'aws_cloudfront_cache_policy.public_company_logo').map((c) => c.address === 'aws_cloudfront_distribution.app'
+    ? update(c.address, { ...c.change.before, ordered_cache_behavior: [...BEHAVIORS, { ...LOGO_BEHAVIOR, cache_policy_id: 'logo' }] }, { ...c.change.after, ordered_cache_behavior: [...BEHAVIORS, { ...LOGO_BEHAVIOR, cache_policy_id: 'logo' }] }, { etag: true })
+    : c)
+  const logoLive = run(serveArgs([...withoutLogo, noop('aws_cloudfront_cache_policy.public_company_logo')]))
+  assert.equal(logoLive.status, 0, logoLive.stdout)
+  assert.match(logoLive.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=5 creates=4$/m)
   assert.equal(done.status, 0, done.stdout)
   assert.match(done.stdout, /^DOMAIN_MOVE_PLAN=NO_CHANGES$/m)
 
@@ -306,7 +321,17 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
     assert.notEqual(result.status, 0, why)
     assert.match(result.stdout, /DOMAIN_MOVE_PLAN_REFUSED/, why)
   }
-  const distribution = (fields) => ({ aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], viewer_certificate: cert(SITE_EDGE_ARN), web_acl_id: 'acl', origin: [{ id: 'alb' }], ...fields })
+  const distribution = (fields) => ({ aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net'], viewer_certificate: cert(SITE_EDGE_ARN), web_acl_id: 'acl', origin: [{ id: 'alb' }], ordered_cache_behavior: [...BEHAVIORS, LOGO_BEHAVIOR], ...fields })
+  // #549's logo rule: exactly the new last behavior and its policy (owner, 22 Nov).
+  refused(servePlan({ logoBehavior: { ...LOGO_BEHAVIOR, path_pattern: '/api/company-logo/*' } }), 'the logo behavior on another path')
+  refused(servePlan({ logoBehavior: { ...LOGO_BEHAVIOR, origin_request_policy_id: 'all-viewer' } }), 'the logo behavior forwarding cookies')
+  refused(servePlan({ logoBehavior: { ...LOGO_BEHAVIOR, cache_policy_id: 'optimized' }, behaviorsUnknown: [...BEHAVIORS.map(() => ({})), {}] }), 'the logo behavior on an existing policy')
+  refused(servePlan({ distribution: distribution({ ordered_cache_behavior: [BEHAVIORS[0], LOGO_BEHAVIOR] }) }), 'an existing behavior dropped')
+  refused(servePlan({ distribution: distribution({ ordered_cache_behavior: [{ ...BEHAVIORS[0], compress: false }, BEHAVIORS[1], LOGO_BEHAVIOR] }) }), 'an existing behavior changed')
+  refused(servePlan({ behaviorsUnknown: behaviorsUnknown({ target_origin_id: true }) }), 'the logo behavior with an unknown origin')
+  refused(servePlan({ logoPolicy: logoPolicy({ max_ttl: 86400 }) }), 'logos cached for a day')
+  refused(servePlan({ logoPolicy: logoPolicy({ parameters_in_cache_key_and_forwarded_to_origin: [{ cookies_config: [{ cookie_behavior: 'all' }], headers_config: [{ header_behavior: 'none' }], query_strings_config: [{ query_string_behavior: 'whitelist', query_strings: [{ items: ['v'] }] }] }] }) }), 'a logo policy keyed on cookies')
+  assert.equal(run(serveArgs(servePlan({ behaviorsUnknown: behaviorsUnknown({ grpc_config: true }) }))).status, 0, 'a provider-computed gRPC block on the new behavior')
   refused(servePlan({ distribution: distribution({ aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net'] }) }), 'www.seanshore.net missing')
   refused(servePlan({ distribution: distribution({ aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net', 'seaandshore.in'] }) }), 'an extra alias')
   refused(servePlan({ distribution: distribution({ viewer_certificate: cert(OLD_EDGE_ARN) }) }), 'the old certificate')
@@ -391,6 +416,10 @@ test('serve: Terraform serves the alias hosts of scripts/aws/site-alias-hosts.tx
   assert.match(edge, /acm_certificate_arn\s+= aws_acm_certificate\.site_edge\.arn/)
   assert.match(edge, /alias_hosts\s+= jsonencode\(local\.site_alias_hosts\)/)
   assert.match(edge, /"next-router-segment-prefetch", "x-sns-viewer-host"\]/)
+  // Owner, 22 Nov (option A): the SES configuration set keeps the delivery options set outside Terraform; only those.
+  const ses = read('../../infra/aws/app/email.tf')
+  const configurationSet = ses.slice(ses.indexOf('resource "aws_sesv2_configuration_set" "transactional"'))
+  assert.match(configurationSet.slice(0, configurationSet.indexOf('\n}\n')), /lifecycle \{\n\s+ignore_changes = \[delivery_options\]\n\s+\}/)
   // The previous certificate stays.
   assert.match(read('../../infra/aws/app/seanshore_domain.tf'), /resource "aws_acm_certificate" "seanshore_edge" \{[^]*?prevent_destroy\s+= true/)
 })
