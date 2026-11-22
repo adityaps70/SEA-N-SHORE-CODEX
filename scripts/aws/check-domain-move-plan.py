@@ -215,6 +215,9 @@ def split_attributes(change):
 def check_logo_policy(policy):
     """#549's policy: key on the path and v only (no cookies or headers), public responses at most an hour."""
     params = (policy.get("parameters_in_cache_key_and_forwarded_to_origin") or [{}])[0]
+    # Owner, 22 Nov (after the serve run): compressed copies stay cacheable, as on every other policy.
+    if params.get("enable_accept_encoding_brotli") is not True or params.get("enable_accept_encoding_gzip") is not True:
+        refuse(f"address={LOGO_POLICY_ADDRESS} compression")
     cookies = (params.get("cookies_config") or [{}])[0]
     headers = (params.get("headers_config") or [{}])[0]
     queries = (params.get("query_strings_config") or [{}])[0]
@@ -254,6 +257,11 @@ def check_logo_behavior(change, logo_created):
             or logo.get("trusted_key_groups") not in (None, []) or logo.get("lambda_function_association") not in (None, [])
             or len(functions) != 1 or functions[0].get("event_type") != "viewer-request" or functions[0].get("function_arn") != VIEWER_FUNCTION_ARN):
         refuse("logo behavior settings")
+    # Owner, 22 Nov (after the serve run): nothing else may ride on the logo behavior.
+    if (logo.get("response_headers_policy_id") not in (None, "") or logo.get("field_level_encryption_id") not in (None, "")
+            or logo.get("realtime_log_config_arn") not in (None, "") or logo.get("smooth_streaming") not in (None, False)
+            or logo.get("trusted_signers") not in (None, [])):
+        refuse("logo behavior extras")
     # The policy is created in the same apply, so its id is unknown in the plan; a known id would be another policy.
     if logo_unknown.get("cache_policy_id") is not True:
         refuse("logo behavior must use the new logo cache policy")
