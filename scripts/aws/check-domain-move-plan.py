@@ -13,8 +13,8 @@
   check-domain-move-plan.py serve PLAN_JSON APP_DISTRIBUTION_ID SITE_EDGE_CERTIFICATE_ARN
       Exits 0 only if the plan serves seanshore.net next to seanshore.in and changes nothing else: the main
       distribution's aliases and certificate, the viewer function's code, the page cache key, the four seanshore.net
-      alias records (created), and the browser origins in the Cognito client and the realtime authorizer, each
-      with exactly the approved values. The media bucket's CORS rule is the staging deploy's and is never changed here. Prints DOMAIN_MOVE_PLAN=SERVE updates=<n>
+      alias records (created), #549's logo cache policy (created) and its behavior, and the browser origins in the
+      Cognito client and the realtime authorizer, each with exactly the approved values. The media bucket's CORS rule is the staging deploy's and is never changed here. Prints DOMAIN_MOVE_PLAN=SERVE updates=<n>
       creates=<n>, or DOMAIN_MOVE_PLAN=NO_CHANGES once it is applied.
 
 Prints addresses and counts only.
@@ -86,12 +86,19 @@ SEANSHORE_NET_ZONE_ID = "Z09758912UIE2T2PK09U"
 SERVE_ALIASES = sorted([CANONICAL_HOST, "www." + CANONICAL_HOST] + [h for host in ALIAS_HOSTS for h in (host, "www." + host)])
 BROWSER_ORIGINS = ["https://" + CANONICAL_HOST] + ["https://" + host for host in ALIAS_HOSTS] + ["https://" + EDGE_HOST]
 PAGE_KEY_HEADERS = sorted(["rsc", "next-router-prefetch", "next-router-state-tree", "next-router-segment-prefetch", "x-sns-viewer-host"])
+# Owner, 22 Nov: serve also carries #549's logo cache (request cuts 4c): one new cache policy and one new last
+# ordered behavior on the main distribution, exactly as check-edge-plan.py validates them.
+LOGO_POLICY_ADDRESS = "aws_cloudfront_cache_policy.public_company_logo"
+LOGO_POLICY_NAME = "sea-n-shore-staging-public-company-logo"
+LOGO_PATH = "/api/public/company-logo/*"
+APP_ORIGIN_ID = "sea-n-shore-staging-alb"
+VIEWER_FUNCTION_ARN = f"arn:aws:cloudfront::{ACCOUNT}:function/sea-n-shore-staging-canonical-host-redirect"
 NET_ALIAS_RECORDS = sorted(f'aws_route53_record.site_net_alias["{host} {kind}"]' for host in ("seanshore.net", "www.seanshore.net") for kind in ("A", "AAAA"))
 # For each update: (attributes whose known value may change, computed attributes that may become unknown).
 SERVE_UPDATES = {
-    "aws_cloudfront_distribution.app": ({"aliases", "viewer_certificate"},
+    "aws_cloudfront_distribution.app": ({"aliases", "viewer_certificate", "ordered_cache_behavior"},
                                         {"etag", "last_modified_time", "status", "in_progress_validation_batches",
-                                         "trusted_key_groups", "trusted_signers"}),
+                                         "trusted_key_groups", "trusted_signers", "ordered_cache_behavior"}),
     FUNCTION_ADDRESS: ({"code"}, {"etag", "live_stage_etag", "status"}),
     "aws_cloudfront_cache_policy.public_pages": ({"parameters_in_cache_key_and_forwarded_to_origin"}, {"etag"}),
     "aws_cognito_user_pool_client.web": ({"callback_urls", "logout_urls"}, set()),
@@ -205,6 +212,53 @@ def split_attributes(change):
     return known, unknown_names
 
 
+def check_logo_policy(policy):
+    """#549's policy: key on the path and v only (no cookies or headers), public responses at most an hour."""
+    params = (policy.get("parameters_in_cache_key_and_forwarded_to_origin") or [{}])[0]
+    cookies = (params.get("cookies_config") or [{}])[0]
+    headers = (params.get("headers_config") or [{}])[0]
+    queries = (params.get("query_strings_config") or [{}])[0]
+    items = ((queries.get("query_strings") or [{}])[0] or {}).get("items") or []
+    if (policy.get("name") != LOGO_POLICY_NAME or policy.get("min_ttl") != 0 or policy.get("default_ttl") != 0
+            or policy.get("max_ttl") != 3600 or cookies.get("cookie_behavior") != "none"
+            or headers.get("header_behavior") != "none" or queries.get("query_string_behavior") != "whitelist"
+            or sorted(items) != ["v"]):
+        refuse(f"address={LOGO_POLICY_ADDRESS} settings")
+
+
+def check_logo_behavior(change, logo_created):
+    """The distribution's ordered behaviors are the current ones plus #549's logo behavior, last; nothing else."""
+    body = change.get("change") or {}
+    before = (body.get("before") or {}).get("ordered_cache_behavior") or []
+    later = (body.get("after") or {}).get("ordered_cache_behavior") or []
+    unknown = (body.get("after_unknown") or {}).get("ordered_cache_behavior")
+    unknown = unknown if isinstance(unknown, list) else []
+    if not logo_created:
+        # Already there: the behaviors must not change at all.
+        if later != before or has_unknown(unknown):
+            refuse("distribution ordered behaviors")
+        return
+    if len(later) != len(before) + 1 or later[:-1] != before:
+        refuse("distribution ordered behaviors")
+    if any(has_unknown(u) for u in unknown[:-1]):
+        refuse("distribution ordered behaviors unknown")
+    logo, logo_unknown = later[-1], (unknown[-1] if len(unknown) == len(later) else {}) or {}
+    # As check-edge-plan.py allows for a new behavior: the new policy's id, and the provider-computed gRPC block.
+    if not isinstance(logo_unknown, dict) or {k for k, v in logo_unknown.items() if has_unknown(v)} - {"cache_policy_id", "grpc_config"}:
+        refuse("logo behavior unknown")
+    functions = logo.get("function_association") or []
+    if (logo.get("path_pattern") != LOGO_PATH or logo.get("target_origin_id") != APP_ORIGIN_ID
+            or logo.get("viewer_protocol_policy") != "redirect-to-https"
+            or sorted(logo.get("allowed_methods") or []) != ["GET", "HEAD"] or sorted(logo.get("cached_methods") or []) != ["GET", "HEAD"]
+            or logo.get("compress") is not True or logo.get("origin_request_policy_id") not in (None, "")
+            or logo.get("trusted_key_groups") not in (None, []) or logo.get("lambda_function_association") not in (None, [])
+            or len(functions) != 1 or functions[0].get("event_type") != "viewer-request" or functions[0].get("function_arn") != VIEWER_FUNCTION_ARN):
+        refuse("logo behavior settings")
+    # The policy is created in the same apply, so its id is unknown in the plan; a known id would be another policy.
+    if logo_unknown.get("cache_policy_id") is not True:
+        refuse("logo behavior must use the new logo cache policy")
+
+
 def check_serve(plan, app_id, certificate_arn):
     if app_id != "EF1K45UVP11XZ" or not certificate_arn.startswith(f"arn:aws:acm:us-east-1:{ACCOUNT}:certificate/"):
         refuse("distribution or certificate")
@@ -217,7 +271,7 @@ def check_serve(plan, app_id, certificate_arn):
             refuse(f"address={address} imports in the serve step")
         if actions == ["no-op"]:
             continue
-        if actions == ["create"] and address in NET_ALIAS_RECORDS:
+        if actions == ["create"] and address in [*NET_ALIAS_RECORDS, LOGO_POLICY_ADDRESS]:
             created.append(address)
             continue
         known, unknown = split_attributes(change)
@@ -237,13 +291,15 @@ def check_serve(plan, app_id, certificate_arn):
     if unexpected:
         refuse(f"changes={len(unexpected)}")
     if not updated and not created:
-        missing = [a for a in [*SERVE_UPDATES, *NET_ALIAS_RECORDS] if a not in by]
+        missing = [a for a in [*SERVE_UPDATES, *NET_ALIAS_RECORDS, LOGO_POLICY_ADDRESS] if a not in by]
         if missing:
             refuse(f"missing from the plan: {len(missing)}")
         print("DOMAIN_MOVE_PLAN=NO_CHANGES")
         return
     # Partly applied is never expected: the step is one apply.
-    if sorted(updated) != sorted(SERVE_UPDATES) or sorted(created) != NET_ALIAS_RECORDS:
+    # #549's logo policy is created here unless something already applied it (then its behavior must not change).
+    logo_created = LOGO_POLICY_ADDRESS in created
+    if sorted(updated) != sorted(SERVE_UPDATES) or sorted(created) != sorted([*NET_ALIAS_RECORDS, *([LOGO_POLICY_ADDRESS] if logo_created else [])]):
         refuse(f"serve changes differ: updates={len(updated)} creates={len(created)}")
 
     dist = after(by["aws_cloudfront_distribution.app"])
@@ -253,6 +309,9 @@ def check_serve(plan, app_id, certificate_arn):
     if (len(cert) != 1 or cert[0].get("acm_certificate_arn") != certificate_arn or cert[0].get("ssl_support_method") != "sni-only"
             or cert[0].get("minimum_protocol_version") != "TLSv1.2_2021" or cert[0].get("cloudfront_default_certificate")):
         refuse("distribution certificate")
+    check_logo_behavior(by["aws_cloudfront_distribution.app"], logo_created)
+    if logo_created:
+        check_logo_policy(after(by[LOGO_POLICY_ADDRESS]))
     check_function_update(by[FUNCTION_ADDRESS])
 
     pages = (after(by["aws_cloudfront_cache_policy.public_pages"]).get("parameters_in_cache_key_and_forwarded_to_origin") or [{}])[0]
