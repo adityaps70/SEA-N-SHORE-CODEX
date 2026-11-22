@@ -183,6 +183,20 @@ def has_unknown(value):
     return False
 
 
+def differing_paths(before, later, prefix="", depth=0):
+    """Dotted key paths (names only, never values) where before and after differ, up to four levels deep."""
+    if before == later:
+        return []
+    if depth < 4 and isinstance(before, list) and isinstance(later, list) and len(before) == len(later) == 1:
+        return differing_paths(before[0], later[0], prefix, depth)
+    if depth < 4 and isinstance(before, dict) and isinstance(later, dict):
+        out = []
+        for key in sorted(set(before) | set(later)):
+            out += differing_paths(before.get(key), later.get(key), f"{prefix}{key}.", depth + 1)
+        return out
+    return [prefix.rstrip(".") or "-"]
+
+
 def split_attributes(change):
     """(known attributes that change, attributes left unknown): names only, never values."""
     body = change.get("change") or {}
@@ -213,9 +227,14 @@ def check_serve(plan, app_id, certificate_arn):
             unexpected.append((address, actions, known | unknown))
             continue
         updated.append(address)
-    # Run 44995638740 named only the first: every unexpected change is listed (attribute names, never values).
+    # Run 44995638740 named only the first: every unexpected change is listed (attribute names, never values), with
+    # the nested keys that differ (run 45004263159: "environment" alone did not say which variable).
+    by_address = {c["address"]: c for c in changes}
     for address, actions, names in unexpected:
-        print(f"DOMAIN_MOVE_PLAN_DIFF address={address} actions={'+'.join(actions or [])} attributes={','.join(sorted(names)) or '-'}")
+        body = by_address[address].get("change") or {}
+        paths = sorted(set(differing_paths(body.get("before"), body.get("after"))))
+        print(f"DOMAIN_MOVE_PLAN_DIFF address={address} actions={'+'.join(actions or [])} attributes={','.join(sorted(names)) or '-'}"
+              + (f" paths={','.join(paths[:12])}" if paths and actions == ["update"] else ""))
     if unexpected:
         refuse(f"changes={len(unexpected)}")
     if not updated and not created:

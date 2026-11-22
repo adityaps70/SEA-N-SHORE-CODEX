@@ -238,7 +238,7 @@ test('the runner: account and branch checks, host lock, one classified apply, ve
   // The edge-logs bucket is never listed or read (logs hold visitor IP addresses).
   assert.doesNotMatch(script, /list-objects|get-object[^\n]*edge-logs|s3 (ls|cp)/)
   const calls = [...script.matchAll(/\baws ([a-z0-9]+) ([a-z-]+)/g)].map((m) => `${m[1]} ${m[2]}`)
-  for (const call of calls) assert.match(call, /^(sts get-caller-identity|s3api (get-object|get-public-access-block|get-bucket-lifecycle-configuration)|acm describe-certificate|logs describe-deliveries|route53 list-resource-record-sets)$/, call)
+  for (const call of calls) assert.match(call, /^(sts get-caller-identity|s3api (get-object|get-public-access-block|get-bucket-lifecycle-configuration)|acm describe-certificate|logs describe-deliveries|route53 list-resource-record-sets|s3api get-bucket-cors)$/, call)
 })
 
 test('the workflow runs the guarded host runner from the exact armed commit, with room for ACM validation', () => {
@@ -330,10 +330,19 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
     ? update(c.address, { ...c.change.before, source_code_hash: 'OLDHASH' }, { ...c.change.after, source_code_hash: 'NEWHASH' }, c.change.after_unknown)
     : c)))
   assert.notEqual(lambdas.status, 0)
-  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=source_code_hash$/m)
-  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.realtime_authorizer actions=update attributes=environment,last_modified,qualified_arn,source_code_hash,version$/m)
+  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=source_code_hash paths=source_code_hash$/m)
+  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.realtime_authorizer actions=update attributes=environment,last_modified,qualified_arn,source_code_hash,version paths=environment\.variables\.REALTIME_ALLOWED_ORIGINS,source_code_hash$/m)
   assert.match(lambdas.stdout, /DOMAIN_MOVE_PLAN_REFUSED changes=2/)
   assert.doesNotMatch(lambdas.stdout, /OLDHASH|NEWHASH|seanshore\.net/)
+  // Nested keys are named too, never their values (run 45004263159 said only "environment").
+  const nested = run(serveArgs(servePlan({ extra: [
+    update('aws_lambda_function.cognito_resend_email_sender', { environment: [{ variables: { SITE_URL: 'OLDVALUE', EMAIL_FROM: 'same' } }] }, { environment: [{ variables: { SITE_URL: 'NEWVALUE', EMAIL_FROM: 'same' } }] }),
+    update('aws_sesv2_configuration_set.transactional', { delivery_options: [{ tls_policy: 'OPTIONAL', max_delivery_seconds: 0 }] }, { delivery_options: [] }),
+  ] })))
+  assert.notEqual(nested.status, 0)
+  assert.match(nested.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=environment paths=environment\.variables\.SITE_URL$/m)
+  assert.match(nested.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_sesv2_configuration_set\.transactional actions=update attributes=delivery_options paths=delivery_options$/m)
+  assert.doesNotMatch(nested.stdout, /OLDVALUE|NEWVALUE|OPTIONAL/)
   refused(servePlan({ extra: [{ address: 'aws_acm_certificate.seanshore_edge', mode: 'managed', change: { actions: ['delete'] } }] }), 'the old certificate deleted')
   refused(servePlan().filter((c) => c.address !== 'aws_lambda_function.realtime_authorizer'), 'partly applied')
   refused(servePlan().map((c) => c.address === FUNCTION ? functionUpdate({ code: renderedFunction().replace("'www.' + ALIAS_HOSTS[i]", "'w.' + ALIAS_HOSTS[i]") }) : c), 'function code that is not the template')
@@ -363,6 +372,18 @@ test('serve: the runner plans it only after the create step, refuses existing re
   assert.match(live, /== "https:\/\/seanshore\.net\/auth\/sign-in" \]\] && NET_STAYS=true/)
   assert.match(live, /-H 'x-sns-viewer-host: seanshore\.net' "https:\/\/seanshore\.in\/auth\/session-ended/)
   assert.match(live, /"\$NET_RECORDS" == 4 \]\]/)
+})
+
+test('serve: the runner passes site_url as the Cognito runners do, and reads the live media CORS facts only', () => {
+  // Run 45004263159: the email-sender Lambda's SITE_URL comes from var.site_url; the Cognito runners pass
+  // scripts/aws/public-site-url.txt, so this runner does too (never the task definition).
+  assert.match(script, /with open\('scripts\/aws\/public-site-url\.txt'\) as f:\n    site_url = f\.read\(\)\.strip\(\)/)
+  assert.doesNotMatch(script, /NEXT_PUBLIC_SITE_URL/)
+  for (const runner of ['refresh-rotation-infra.sh', 'account-security-infra.sh']) assert.match(read(`./${runner}`), /PUBLIC_SITE_URL="\$\(tr -d '\[:space:\]' < scripts\/aws\/public-site-url\.txt\)"/)
+  // The media CORS facts are read before the plan, in the serve step only, and print counts and true/false.
+  const cors = script.slice(script.indexOf('if [[ "$STEP" == serve ]]; then\n  if [[ -n "$MEDIA_BUCKET" ]]'))
+  assert.ok(cors.length < script.length && script.indexOf('aws s3api get-bucket-cors') < script.indexOf('plan before\n'))
+  assert.doesNotMatch(cors.slice(0, cors.indexOf('\nfi\n')), /cat |AllowedOrigins \|/)
 })
 
 test('serve: Terraform serves the alias hosts of scripts/aws/site-alias-hosts.txt, and nothing is deleted', () => {
