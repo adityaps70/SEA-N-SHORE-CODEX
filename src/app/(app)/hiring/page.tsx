@@ -111,7 +111,7 @@ export default async function HiringPage() {
             return (
               <article key={job.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
-                  <JobCompanyLogo name={job.publisherName} companyId={job.companyId} logoPath={job.companyLogoPath} size="sm" />
+                  <JobCompanyLogo name={job.publisherName} companyId={job.companyId} logoPath={job.companyLogoPath} verified={job.companyVerified} size="sm" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/hiring/jobs/${job.id}/edit`} className="font-bold text-navy-950 hover:underline">{job.title}</Link>

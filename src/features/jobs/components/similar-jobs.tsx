@@ -18,7 +18,7 @@ export function SimilarJobs({ jobs, signedOut = false }: { jobs: readonly JobLis
           return (
             <li key={job.id} className="relative flex min-w-0 gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] hover:border-ocean-200">
               {/* The logo route serves signed-in members only, so visitors see initials (as on job cards). */}
-              <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} size="sm" />
+              <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} verified={job.companyVerified} size="sm" />
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/jobs/${job.id}`}

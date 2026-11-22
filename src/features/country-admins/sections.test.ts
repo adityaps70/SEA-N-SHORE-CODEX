@@ -23,6 +23,6 @@ describe('country admin sections', () => {
   it('lands a country admin on their Overview, or else their first section', () => {
     expect(countryAdminHome({ overview: 'view', organizations: 'act' })).toBe('/admin')
     expect(countryAdminHome({ members: 'view' })).toBe('/admin/countries')
-    expect(countryAdminHome({ learning: 'act' })).toBeNull()
+    expect(countryAdminHome({})).toBeNull()
   })
 })

@@ -116,11 +116,16 @@ describe('organization link helpers', () => {
       id: ORGANIZATION_ID,
       slug: 'o',
       name: 'O',
-      logoUrl: `/api/company-logo/${ORGANIZATION_ID}`,
+      // Request cuts: a verified organization's logo comes from the cookie-free public route.
+      logoUrl: `/api/public/company-logo/${ORGANIZATION_ID}`,
       verified: true,
       unclaimed: false,
     })
     expect(mapLinkedOrganization({ id: ORGANIZATION_ID, slug: 'o', name: 'O', has_logo: false, verified: false, unclaimed: true }))
       .toMatchObject({ verified: false, unclaimed: true })
+    // Anything but a verified flag of exactly true keeps the signed-in route.
+    for (const verified of [false, 'true', 1, undefined]) {
+      expect(mapLinkedOrganization({ id: ORGANIZATION_ID, slug: 'o', name: 'O', has_logo: true, verified })?.logoUrl).toBe(`/api/company-logo/${ORGANIZATION_ID}`)
+    }
   })
 })

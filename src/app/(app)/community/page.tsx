@@ -2,7 +2,7 @@ import { DismissibleSuggestion } from '@/features/ranking/components/dismissible
 import { getSuggestedCommunities } from '@/features/ranking/suggestions'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { ArrowLeft, ChevronRight, Plus, Search } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {

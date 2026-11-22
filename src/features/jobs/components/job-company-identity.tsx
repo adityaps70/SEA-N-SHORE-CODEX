@@ -1,5 +1,7 @@
 import Link from '@/components/navigation/intent-link'
 import { BadgeCheck, MapPin, UserRound } from 'lucide-react'
+import { companyLogoPath } from '@/features/organizations/company-logo-path'
+import { organizationLogoUrl } from '@/features/organizations/organization-page-profile'
 
 export type JobCompanyIdentityProps = {
   name: string
@@ -29,19 +31,25 @@ const LOGO_SIZES = {
   lg: 'size-14 rounded-2xl text-base',
 } as const
 
-/** Organization logo with its initials fallback. Logos are served by the first-party logo route. */
+/**
+ * Organization logo with its initials fallback. Logos are served by the first-party logo routes: a verified
+ * organization's from the cookie-free public route (cached once at CloudFront, versioned by the stored key), any
+ * other from the signed-in route.
+ */
 export function JobCompanyLogo({
   name,
   companyId,
   logoPath,
+  verified = false,
   size = 'md',
-}: Pick<JobCompanyIdentityProps, 'name' | 'companyId' | 'logoPath' | 'size'>) {
+}: Pick<JobCompanyIdentityProps, 'name' | 'companyId' | 'logoPath' | 'verified' | 'size'>) {
   const sizeClass = LOGO_SIZES[size]
   if (companyId && logoPath) {
+    const src = (verified ? organizationLogoUrl({ id: companyId, logoPath, verified: true }) : null) ?? companyLogoPath(companyId)
     return (
       // eslint-disable-next-line @next/next/no-img-element -- authenticated company media is served through a first-party route
       <img
-        src={`/api/company-logo/${companyId}`}
+        src={src}
         alt={`${name} logo`}
         loading="lazy"
         className={`${sizeClass} shrink-0 border border-mist-100 bg-white object-contain p-1 shadow-sm`}
@@ -77,7 +85,7 @@ export function JobCompanyIdentity({
   const details = [companyId ? companyType : personalLabel, location].filter((value): value is string => Boolean(value))
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <JobCompanyLogo name={name} companyId={companyId} logoPath={logoPath} size={size} />
+      <JobCompanyLogo name={name} companyId={companyId} logoPath={logoPath} verified={verified} size={size} />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {companyId && companySlug ? (

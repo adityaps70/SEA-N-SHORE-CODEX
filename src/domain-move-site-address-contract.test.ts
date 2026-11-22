@@ -19,6 +19,9 @@ const ALLOWED: { reason: string; files?: RegExp; line: RegExp }[] = [
   { reason: 'calendar UIDs must never change (a new UID duplicates the event in every calendar)', files: /^src\/(app\/\(app\)\/events\/\[eventId\]\/calendar\/route|features\/learning\/sessions\/session-calendar)\.ts$/, line: /(UID:\$\{event\.id\}@seaandshore\.in|learning-session-\$\{session\.id\}@seanshore\.in)/ },
   { reason: 'Instagram and Facebook account names, not our domain', line: /(instagram|facebook)\.com\/seaandshore\.in|instagram: 'seaandshore\.in'|e\.g\. seaandshore\.in|for example seaandshore\.in/ },
   { reason: 'the finished legacy seaandshore.in campaign (owner: leave as is)', files: /^src\/(features\/legacy-invites\/|app\/\(marketing\)\/email\/legacy\/)/, line: /./ },
+  // Run 44995638740: a Lambda's code hash covers its comments, so rewording one redeploys it. These two comments stay
+  // as deployed until each Lambda is next changed for its own reason (the serve step must not redeploy them).
+  { reason: 'comments kept byte for byte so the deployed Lambdas do not change', files: /^infra\/aws\/app\/lambda\/(cognito-resend-email-sender|realtime-authorizer)\.mjs$/, line: /^(\/\/ dependencies\), then send a branded email through Resend from the verified mail\.seanshore\.in|\/\*\* Comma-separated browser origins \(https:\/\/seanshore\.in,https:\/\/<edge>\.cloudfront\.net\); trailing slashes ignored\. \*\/)$/ },
 ]
 
 function sourceFiles(dir: string): string[] {

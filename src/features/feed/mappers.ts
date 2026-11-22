@@ -1,4 +1,5 @@
 import { displayName } from '@/features/profiles/display-name'
+import { companyLogoPath } from '@/features/organizations/company-logo-path'
 import type {
   FeedAuthor,
   FeedComment,
@@ -53,6 +54,8 @@ export type OrganizationIdentityRow = {
   slug: string
   name: string
   logo_path: string | null
+  /** `companies.is_verified`: only a verified organization's logo uses the cacheable public route. */
+  is_verified?: boolean | null
 }
 
 type ReactionCountsRow = Partial<Record<PostReactionType, number>> & { count?: number }
@@ -110,6 +113,7 @@ export type OrganizationMentionRow = {
   slug: string
   name: string
   logo_path?: string | null
+  is_verified?: boolean | null
 }
 
 type PhotoTagRow = {
@@ -192,7 +196,7 @@ export function mapOrganizationMentions(rows: OrganizationMentionRow[] | null | 
     companyId: row.company_id,
     slug: row.slug,
     name: row.name,
-    logoUrl: organizationLogoUrl(row.company_id, row.logo_path),
+    logoUrl: organizationLogoUrl(row.company_id, row.logo_path, row.is_verified),
   }] : [])
 }
 
@@ -271,9 +275,12 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, 
   }
 }
 
-/** Organization logos are served by the first-party, signed-in-only logo route. */
-export function organizationLogoUrl(companyId: string, logoPath: string | null | undefined) {
-  return logoPath?.trim() ? `/api/company-logo/${companyId}` : null
+/**
+ * Organization logos are served first-party: a verified organization's from the cookie-free public route (cached at
+ * the edge), every other one from the signed-in route. Only `verified === true` picks the public route.
+ */
+export function organizationLogoUrl(companyId: string, logoPath: string | null | undefined, verified?: boolean | null) {
+  return logoPath?.trim() ? companyLogoPath(companyId, { verified }) : null
 }
 
 export function mapOrganization(row: OrganizationIdentityRow | OrganizationIdentityRow[] | null | undefined): FeedOrganization | null {
@@ -283,7 +290,7 @@ export function mapOrganization(row: OrganizationIdentityRow | OrganizationIdent
     id: organization.id,
     slug: organization.slug,
     name: organization.name,
-    logoUrl: organizationLogoUrl(organization.id, organization.logo_path),
+    logoUrl: organizationLogoUrl(organization.id, organization.logo_path, organization.is_verified),
   }
 }
 
@@ -438,6 +445,7 @@ export type HiddenPostSourceRow = {
   company_slug: string | null
   company_name: string | null
   company_logo_path: string | null
+  company_is_verified?: boolean | null
   source_body: string | null
   media_path: string | null
   media_mime_type: string | null
@@ -466,7 +474,7 @@ export function mapHiddenPost(row: HiddenPostSourceRow, signedUrls: Map<string, 
       avatarUrl: row.author_avatar_path ? signedUrls.get(row.author_avatar_path) ?? null : null,
     },
     organization: mapOrganization(row.company_id && row.company_slug && row.company_name
-      ? { id: row.company_id, slug: row.company_slug, name: row.company_name, logo_path: row.company_logo_path }
+      ? { id: row.company_id, slug: row.company_slug, name: row.company_name, logo_path: row.company_logo_path, is_verified: row.company_is_verified }
       : null),
     thumbnail: thumbnailUrl && row.media_mime_type ? { url: thumbnailUrl, mimeType: row.media_mime_type } : null,
   }

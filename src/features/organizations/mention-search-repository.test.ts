@@ -32,7 +32,7 @@ describe('organization mention search repository', () => {
     expect(values).toEqual(['%si\\_re%', 'si\\_re%', 5])
 
     expect(results).toEqual([
-      { id: 'org-1', slug: 'sire-marine', name: 'SIRE Marine', logoUrl: expect.stringMatching(/^\/api\/company-logo\/org-1\?v=/), subtitle: expect.stringContaining('· Chennai'), verified: true },
+      { id: 'org-1', slug: 'sire-marine', name: 'SIRE Marine', logoUrl: expect.stringMatching(/^\/api\/public\/company-logo\/org-1\?v=/), subtitle: expect.stringContaining('· Chennai'), verified: true },
       { id: 'org-2', slug: 'oceanic', name: 'Oceanic Ship Management', logoUrl: null, subtitle: 'Crewing agency', verified: false },
     ])
   })

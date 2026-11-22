@@ -1,4 +1,5 @@
 import { loadTestGroupVisibleSql } from '@/features/load-test/load-test-sql'
+import { groupCountrySql } from '@/features/country-admins/item-country-sql'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import {
@@ -712,11 +713,14 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
   }
 
   /** Site admin: every group, live ones first, newest first within each block. */
-  async function listAdminGroups(options: { search?: string; archived?: 'all' | 'live' | 'archived' } = {}) {
+  async function listAdminGroups(options: { search?: string; archived?: 'all' | 'live' | 'archived'; countries?: readonly string[] | null } = {}) {
     const search = options.search?.trim() ?? ''
     const archived = options.archived ?? 'all'
     const values: unknown[] = []
     if (search) values.push(likePattern(search))
+    // Round GP Part E: a country admin's countries (the owner organization's, or else the owner member's residence).
+    if (options.countries) values.push([...options.countries])
+    const countriesParameter = values.length
     const rows = await queryRows(
       `select g.id, g.slug, g.name, g.description, g.rules, g.icon, g.icon_path, g.visibility, g.join_policy, g.archived_at, g.created_at,
               ${CATEGORY_SELECT},
@@ -738,6 +742,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
        where true
          ${archived === 'live' ? 'and g.archived_at is null' : archived === 'archived' ? 'and g.archived_at is not null' : ''}
          ${search ? `and (g.name ilike $1 escape '\\' or g.slug ilike $1 escape '\\')` : ''}
+         ${options.countries ? `and ${groupCountrySql('g')} = any($${countriesParameter}::text[])` : ''}
        order by (g.archived_at is not null), g.created_at desc, g.id`,
       values,
     ) as AdminGroupRow[]

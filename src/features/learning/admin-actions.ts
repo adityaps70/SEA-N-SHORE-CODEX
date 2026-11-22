@@ -67,6 +67,7 @@ function reviewError(error: unknown) {
   if (code === 'admin_forbidden') return 'You are not authorized to review trainer verification applications.'
   if (code === 'mentor_application_transition_forbidden') return 'This trainer verification application cannot move to that review state.'
   if (code === 'mentor_application_not_found') return 'This trainer verification application could not be found.'
+  if (code === 'learning_out_of_scope') return 'This is not in your countries. A Sea N Shore administrator handles it.'
   return 'The trainer verification application review could not be saved. Please try again.'
 }
 
@@ -74,6 +75,7 @@ function courseReviewError(error: unknown) {
   const code = error instanceof Error ? error.message : ''
   if (code === 'admin_forbidden') return 'You are not authorized to review learning courses.'
   if (code === 'course_not_found') return 'This learning course could not be found.'
+  if (code === 'learning_out_of_scope') return 'This is not in your countries. A Sea N Shore administrator handles it.'
   if (code === 'course_withdrawn') return 'The trainer withdrew this course from review to make more changes. It will come back to the Submitted queue when they resubmit.'
   if (code === 'course_transition_forbidden') return 'This course has already moved on from that review step. Reload the page to see its current status.'
   if (code === 'course_review_note_required') return 'A reviewer note is required when requesting course changes.'

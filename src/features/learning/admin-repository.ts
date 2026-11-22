@@ -1,4 +1,7 @@
 import type { QueryResultRow } from 'pg'
+import { actorRoleFor } from '@/features/admin/admin-audit'
+import { courseCountrySql, memberCountrySql } from '@/features/country-admins/item-country-sql'
+import { resolveSectionScope, scopeCoversCountry, type SectionScope } from '@/features/country-admins/scope'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canTransitionCourseStatus, type CourseStatus } from './course-workflow'
 import {
@@ -296,6 +299,11 @@ export function buildCourseReviewHistory(rows: CourseSubmissionHistoryRow[]): Co
   }
 }
 
+/** Round GP Part E: who decided (platform or country admin), the section and the item's country, for the audit log. */
+function learningAudit(scope: SectionScope, country: string | null) {
+  return { actorRole: actorRoleFor(scope), section: 'learning', country }
+}
+
 export function createLearningAdminRepository(input: {
   query?: LearningAdminQuery
   transaction?: LearningAdminTransaction
@@ -318,16 +326,13 @@ export function createLearningAdminRepository(input: {
     return row.allowed === undefined ? true : Boolean(row.allowed)
   }
 
-  async function requirePlatformAdministrator(query: LearningAdminQuery, userId: string, lock = false) {
-    if (!await isPlatformAdministratorWithQuery(query, userId, lock)) throw new Error('admin_forbidden')
-  }
-
   async function isPlatformAdministrator(userId: string) {
     return isPlatformAdministratorWithQuery(queryRows, userId)
   }
 
   async function listMentorApplications(adminId: string, status: MentorApplicationStatus): Promise<MentorApplicationReviewItem[]> {
-    await requirePlatformAdministrator(queryRows, adminId)
+    // Round GP Part E: a country admin with Learning sees applicants who live in their countries.
+    const scope = await resolveSectionScope(queryRows, adminId, 'learning', 'view')
     const rows = await queryRows(
       `select
          application.id as application_id,
@@ -348,8 +353,9 @@ export function createLearningAdminRepository(input: {
          application.admin_review_note
        from public.learning_mentor_applications application
        where application.status = $1
+         ${scope.kind === 'country' ? `and ${memberCountrySql('application.user_id')} = any($2::text[])` : ''}
        order by application.submitted_at asc, application.id asc`,
-      [status],
+      scope.kind === 'country' ? [status, scope.countries] : [status],
     ) as MentorApplicationReviewRow[]
 
     return rows.map((row) => ({
@@ -530,7 +536,8 @@ export function createLearningAdminRepository(input: {
   }
 
   async function listCoursesForReview(adminId: string, status: CourseStatus): Promise<CourseReviewItem[]> {
-    await requirePlatformAdministrator(queryRows, adminId)
+    // Round GP Part E: a country admin with Learning sees courses whose organization (or trainer) is in their countries.
+    const scope = await resolveSectionScope(queryRows, adminId, 'learning', 'view')
     // Organization courses have no trainer record, so trainer tables are left joined:
     // an inner join here hid every organization submission from the review queue.
     const rows = await queryRows(
@@ -576,8 +583,9 @@ export function createLearningAdminRepository(input: {
        where course.status = $1
          -- A closed revision (applied or discarded) is a record, not a course to review or list.
          and course.revision_closed_at is null
+         ${scope.kind === 'country' ? `and ${courseCountrySql('course')} = any($2::text[])` : ''}
        order by course.updated_at asc, course.id asc`,
-      [status],
+      scope.kind === 'country' ? [status, scope.countries] : [status],
     ) as CourseReviewRow[]
 
     const courseIds = rows.map((row) => row.course_id)
@@ -635,17 +643,19 @@ export function createLearningAdminRepository(input: {
     reviewerNote: string | null,
   ) {
     return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
+      const scope = await resolveSectionScope(txQuery, adminId, 'learning', 'act', { lock: true })
 
       const lockedRows = await txQuery(
-        `select id, user_id, status
+        `select id, user_id, status, ${memberCountrySql('user_id')} as applicant_country
          from public.learning_mentor_applications
          where id = $1
          for update`,
         [applicationId],
-      ) as LockedMentorApplicationRow[]
+      ) as Array<LockedMentorApplicationRow & { applicant_country?: string | null }>
       const application = lockedRows[0]
       if (!application) throw new Error('mentor_application_not_found')
+      const applicantCountry = application.applicant_country ?? null
+      if (!scopeCoversCountry(scope, applicantCountry)) throw new Error('learning_out_of_scope')
 
       const current = mentorApplicationStatus(application.status)
       if (!canTransitionMentorApplicationStatus({ actor: 'administrator', current, next: decision })) {
@@ -706,6 +716,7 @@ export function createLearningAdminRepository(input: {
             toStatus: decision,
             reviewerNote,
             mentorId,
+            ...learningAudit(scope, applicantCountry),
           }),
         ],
       )
@@ -725,17 +736,20 @@ export function createLearningAdminRepository(input: {
     reviewerNote: string | null,
   ) {
     return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
+      const scope = await resolveSectionScope(txQuery, adminId, 'learning', 'act', { lock: true })
 
       const lockedRows = await txQuery(
-        `select id, mentor_id, status, revision_of_course_id, revision_closed_at
+        `select id, mentor_id, status, revision_of_course_id, revision_closed_at,
+                ${courseCountrySql('public.learning_courses')} as course_country
          from public.learning_courses
          where id = $1
          for update`,
         [courseId],
-      ) as LockedCourseReviewRow[]
+      ) as Array<LockedCourseReviewRow & { course_country?: string | null }>
       const course = lockedRows[0]
       if (!course) throw new Error('course_not_found')
+      const courseCountry = course.course_country ?? null
+      if (!scopeCoversCountry(scope, courseCountry)) throw new Error('learning_out_of_scope')
       if (course.revision_closed_at) throw new Error('course_transition_forbidden')
       const isRevision = Boolean(course.revision_of_course_id)
       // Changes to a published course are approved or sent back; they are never published or
@@ -757,7 +771,7 @@ export function createLearningAdminRepository(input: {
       }
 
       if (isRevision && decision === 'approved') {
-        return approveCourseRevision(txQuery, adminId, course, reviewerNote)
+        return approveCourseRevision(txQuery, adminId, course, reviewerNote, learningAudit(scope, courseCountry))
       }
 
       const persistedStatus: CourseStatus = decision === 'approved' ? 'published' : decision
@@ -822,6 +836,7 @@ export function createLearningAdminRepository(input: {
             toStatus: persistedStatus,
             reviewDecision: decision,
             reviewerNote,
+            ...learningAudit(scope, courseCountry),
           }),
         ],
       )
@@ -843,6 +858,7 @@ export function createLearningAdminRepository(input: {
     adminId: string,
     revision: LockedCourseReviewRow,
     reviewerNote: string | null,
+    audit: ReturnType<typeof learningAudit>,
   ) {
     const current = courseStatus(revision.status)
     if (!canTransitionCourseStatus({ actor: 'administrator', current, next: 'approved' })) {
@@ -879,7 +895,7 @@ export function createLearningAdminRepository(input: {
         'learning.course.revision_approved',
         'learning_course',
         liveCourseId,
-        JSON.stringify({ revisionCourseId: revision.id, mentorId: revision.mentor_id, reviewerNote }),
+        JSON.stringify({ revisionCourseId: revision.id, mentorId: revision.mentor_id, reviewerNote, ...audit }),
       ],
     )
     await notifyCourseReviewed(txQuery, { reviewedCourseId: revision.id, liveCourseId, decision: 'approved' })

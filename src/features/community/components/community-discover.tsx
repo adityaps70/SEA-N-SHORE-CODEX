@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { Lock } from 'lucide-react'
 import { pluralize } from '@/lib/format'
 import { GroupIcon } from '../group-icons'

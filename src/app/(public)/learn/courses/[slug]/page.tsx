@@ -2,7 +2,7 @@ import { MainLandmark } from '@/components/layout/main-landmark'
 import type { Metadata } from 'next'
 import { cache } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
+import Link from '@/components/navigation/intent-link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeft,

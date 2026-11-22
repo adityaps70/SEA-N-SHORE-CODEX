@@ -376,6 +376,40 @@ resource "aws_cloudfront_cache_policy" "public_pages" {
   }
 }
 
+# Request cuts (owner-approved 18 Nov): verified organizations' logos (/api/public/company-logo/*) are public
+# brand images, so one cached copy serves everyone. The route never reads the session, and this policy keeps
+# cookies out of both the key and the origin request (the behavior has no origin request policy), keyed on the
+# path plus the logo version `v` only. Like the pages, it stores only what the origin marks public (default TTL
+# 0), at most an hour: the route's answer is usually a redirect to a signed media URL valid for at least six
+# hours, so a cached redirect never outlives its signature (src/features/organizations/company-logo-path.ts).
+resource "aws_cloudfront_cache_policy" "public_company_logo" {
+  name        = "${local.name_prefix}-public-company-logo"
+  comment     = "Verified organization logos: path and v only; no cookies or headers; at most one hour."
+  min_ttl     = 0
+  default_ttl = 0
+  max_ttl     = 3600
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "none"
+    }
+
+    query_strings_config {
+      query_string_behavior = "whitelist"
+      query_strings {
+        items = ["v"]
+      }
+    }
+  }
+}
+
 data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
@@ -552,6 +586,22 @@ resource "aws_cloudfront_distribution" "app" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
     cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
+  }
+  # Request cuts: verified organizations' logos, cookie-free (no origin request policy, so only the key's path and
+  # `v` reach the origin) and cached once for everyone. Unverified logos stay on /api/company-logo/* (default).
+  ordered_cache_behavior {
+    path_pattern           = "/api/public/company-logo/*"
+    target_origin_id       = "sea-n-shore-staging-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.public_company_logo.id
 
     function_association {
       event_type   = "viewer-request"

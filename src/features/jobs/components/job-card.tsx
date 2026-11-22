@@ -60,7 +60,7 @@ export function JobCard({
     <Card className="group flex h-full min-w-0 flex-col border border-mist-100 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-ocean-200 hover:shadow-lg">
       <div className="flex items-start gap-3.5">
         {/* Round H (H5): the logo route serves signed-in members only, so visitors see the initials. */}
-        <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} size="md" />
+        <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={signedOut && !job.companyVerified ? null : job.companyLogoPath} verified={job.companyVerified} size="md" />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">

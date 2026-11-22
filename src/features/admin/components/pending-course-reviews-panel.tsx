@@ -17,7 +17,7 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
-function PendingReviewCard({ review }: { review: PendingCourseReview }) {
+function PendingReviewCard({ review, canDecide }: { review: PendingCourseReview; canDecide: boolean }) {
   const router = useRouter()
   const [note, setNote] = useState('')
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
@@ -84,7 +84,7 @@ function PendingReviewCard({ review }: { review: PendingCourseReview }) {
               onChange={(event) => setNote(event.target.value)}
               rows={2}
               maxLength={4000}
-              disabled={pending || done}
+              disabled={pending || done || !canDecide}
               placeholder="Why you rejected it, for the audit log."
               className="mt-2 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-ocean-500"
             />
@@ -92,7 +92,7 @@ function PendingReviewCard({ review }: { review: PendingCourseReview }) {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={pending || done}
+              disabled={pending || done || !canDecide}
               onClick={() => decide('approved')}
               className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -100,13 +100,14 @@ function PendingReviewCard({ review }: { review: PendingCourseReview }) {
             </button>
             <button
               type="button"
-              disabled={pending || done}
+              disabled={pending || done || !canDecide}
               onClick={() => decide('rejected')}
               className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-red-700 px-3 text-sm font-bold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <XCircle aria-hidden="true" className="size-4" /> Reject
             </button>
           </div>
+          {canDecide ? null : <p className="text-xs font-semibold text-muted">View only: decisions are not part of your country admin access.</p>}
           {message ? (
             <p role="status" aria-live="polite" className={`rounded-xl px-3 py-2 text-xs font-semibold ${message.tone === 'error' ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}>
               {message.text}
@@ -118,7 +119,7 @@ function PendingReviewCard({ review }: { review: PendingCourseReview }) {
   )
 }
 
-export function PendingCourseReviewsPanel({ reviews }: { reviews: PendingCourseReview[] }) {
+export function PendingCourseReviewsPanel({ reviews, canDecide = true }: { reviews: PendingCourseReview[]; canDecide?: boolean }) {
   return (
     <section aria-labelledby="pending-course-reviews-heading" className="space-y-3">
       <div>
@@ -129,7 +130,7 @@ export function PendingCourseReviewsPanel({ reviews }: { reviews: PendingCourseR
             : 'No course reviews are waiting for approval.'}
         </p>
       </div>
-      {reviews.map((review) => <PendingReviewCard key={`${review.id}-${review.updatedAt}`} review={review} />)}
+      {reviews.map((review) => <PendingReviewCard key={`${review.id}-${review.updatedAt}`} review={review} canDecide={canDecide} />)}
     </section>
   )
 }

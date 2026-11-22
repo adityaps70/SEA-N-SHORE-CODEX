@@ -81,12 +81,20 @@ EXPECTED_SHIP_IP_RULES = {
         'limit': 20000,
     }),
 }
+# Request cuts (owner-approved 18 Nov): verified organizations' logos get a last ordered behavior with their own
+# policy, which never keys on or forwards cookies or headers (only the path and the logo version `v`) and stores
+# only what the origin marks public (default TTL 0) for at most an hour.
+PUBLIC_LOGO_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.public_company_logo'
+PUBLIC_LOGO_PATH = '/api/public/company-logo/*'
+PUBLIC_LOGO_QUERY_STRINGS = ['v']
+PUBLIC_LOGO_MAX_TTL = 3600
 EXPECTED_ORDERED_BEHAVIORS = [
     ('/_next/static/*', 'optimized'),
     ('/_next/image*', 'next_image'),
     ('/brand/*', 'optimized'),
     ('/landing/*', 'optimized'),
     ('/favicon.ico', 'optimized'),
+    (PUBLIC_LOGO_PATH, 'public_logo'),
 ]
 FORWARDED_HOST = 'd3prih0q6jofyr.cloudfront.net'
 # Round 14 (1.4): CloudFront reaches the ALB only over HTTPS on the origin hostname, sending the
@@ -467,6 +475,8 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Page cache policy must be create/update/no-op')
         elif address == MEDIA_POLICY_ADDRESS:
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Media cache policy must be create/update/no-op')
+        elif address == PUBLIC_LOGO_POLICY_ADDRESS:
+            if actions not in [['create'], ['update'], ['no-op']]: errors.append('Public logo cache policy must be create/update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
 
@@ -504,6 +514,9 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
     media_policy_change = changes.get(MEDIA_POLICY_ADDRESS, {}).get('change', {})
     if media_policy_change.get('actions') in [['create'], ['update']]:
         _validate_media_policy(media_policy_change.get('after') or {}, errors)
+    logo_policy_change = changes.get(PUBLIC_LOGO_POLICY_ADDRESS, {}).get('change', {})
+    if logo_policy_change:
+        _validate_public_logo_policy(logo_policy_change.get('after') or {}, errors)
     media = {
         'policy_created': media_policy_change.get('actions') == ['create'],
         'policy_id': (media_policy_change.get('after') or {}).get('id'),
@@ -579,7 +592,7 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             if arn != FUNCTION_ARN and not (arn in [None, ''] and function_created):
                 errors.append('Redirect association must reference the repository CloudFront function')
     if cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
-    _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors, media, bool(media_origins))
+    _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors, media, bool(media_origins), logo_policy_change)
     return errors
 
 
@@ -672,8 +685,30 @@ def _validate_public_pages_policy(after, errors):
         errors.append('Page cache policy must store only origin-marked public responses (TTL 0/0/300), keyed on the session cookies, RSC headers and query')
 
 
-def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors, media=None, has_media_origin=False):
+def _validate_public_logo_policy(after, errors):
+    params = (after.get('parameters_in_cache_key_and_forwarded_to_origin') or [{}])[0]
+    cookies = (params.get('cookies_config') or [{}])[0]
+    headers = (params.get('headers_config') or [{}])[0]
+    queries = (params.get('query_strings_config') or [{}])[0]
+    query_items = ((queries.get('query_strings') or [{}])[0] or {}).get('items') or []
+    if (
+        after.get('min_ttl') != 0 or after.get('default_ttl') != 0 or after.get('max_ttl') != PUBLIC_LOGO_MAX_TTL
+        or cookies.get('cookie_behavior') != 'none'
+        or headers.get('header_behavior') != 'none'
+        or queries.get('query_string_behavior') != 'whitelist' or sorted(query_items) != PUBLIC_LOGO_QUERY_STRINGS
+    ):
+        errors.append('Public logo cache policy must key only on the path and v (no cookies or headers), storing only origin-marked public responses for at most an hour (TTL 0/0/3600)')
+
+
+def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors, media=None, has_media_origin=False, logo_policy_change=None):
     media = media or {}
+    logo_policy_change = logo_policy_change or {}
+    # Policies this repository manages: (id from the plan, created by this plan). A created policy's id is unknown
+    # until apply, so only then may the behavior's cache_policy_id be empty or unknown.
+    managed_policies = {
+        'next_image': ((image_policy_change.get('after') or {}).get('id'), image_policy_created),
+        'public_logo': ((logo_policy_change.get('after') or {}).get('id'), logo_policy_change.get('actions') == ['create']),
+    }
     behaviors = cf.get('ordered_cache_behavior') or []
     if not behaviors:
         if has_media_origin:
@@ -695,13 +730,13 @@ def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_c
     if [b.get('path_pattern') for b in behaviors] != [path for path, _ in EXPECTED_ORDERED_BEHAVIORS]:
         errors.append('Ordered cache behaviors must be exactly the static asset and image paths')
         return
-    image_policy_id = (image_policy_change.get('after') or {}).get('id')
     for index, (behavior, (path, policy)) in enumerate(zip(behaviors, EXPECTED_ORDERED_BEHAVIORS)):
         u = unknown_behaviors[index] if index < len(unknown_behaviors) and isinstance(unknown_behaviors[index], dict) else {}
+        policy_id, policy_created = managed_policies.get(policy, (CACHING_OPTIMIZED_POLICY_ID, False))
         for f, value in u.items():
             if not has_unknown(value):
                 continue
-            if f == 'cache_policy_id' and policy == 'next_image' and image_policy_created:
+            if f == 'cache_policy_id' and policy_created:
                 continue
             if f == 'function_association' and function_created and _only_function_arn_unknown(value):
                 continue
@@ -713,8 +748,8 @@ def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_c
                 continue
             # The unknown markers are booleans only, so printing them exposes no values.
             errors.append('Unknown safety field in ordered behavior ' + path + ': ' + f + '=' + json.dumps(value))
-        expected_policy = CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy_id
-        if behavior.get('cache_policy_id') != expected_policy and not (policy == 'next_image' and image_policy_created and behavior.get('cache_policy_id') in [None, '']):
+        policy_matches = bool(policy_id) and behavior.get('cache_policy_id') == policy_id
+        if not policy_matches and not (policy_created and behavior.get('cache_policy_id') in [None, '']):
             errors.append('Cache policy mismatch for ' + path)
         if (
             behavior.get('target_origin_id') != 'sea-n-shore-staging-alb'

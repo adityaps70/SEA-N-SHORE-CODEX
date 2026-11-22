@@ -173,6 +173,28 @@ describe('learning marketplace repository', () => {
     expect(courses.map((course) => course.publisherLogoUrl)).toEqual(['/api/company-logo/c1?v=logo-123.png', undefined, undefined])
   })
 
+  it('links a verified publisher\'s logo through the cacheable public route and keeps every other one signed-in', async () => {
+    let seenText = ''
+    const repository = createMarketplaceRepository({
+      query: async (text: string) => {
+        seenText = text
+        return [
+          { ...publishedRow, id: 'verified', publisher_company_id: 'c1', publisher_logo_path: 'companies/c1/logo-123.png', publisher_is_verified: true },
+          { ...publishedRow, id: 'unverified', publisher_company_id: 'c2', publisher_logo_path: 'companies/c2/logo-456.png', publisher_is_verified: false },
+          { ...publishedRow, id: 'unknown', publisher_company_id: 'c3', publisher_logo_path: 'companies/c3/logo-789.png', publisher_is_verified: null },
+        ]
+      },
+    })
+
+    const courses = await repository.listPublishedCourses()
+    expect(seenText).toContain('company.is_verified as publisher_is_verified')
+    expect(courses.map((course) => course.publisherLogoUrl)).toEqual([
+      '/api/public/company-logo/c1?v=logo-123.png',
+      '/api/company-logo/c2?v=logo-456.png',
+      '/api/company-logo/c3?v=logo-789.png',
+    ])
+  })
+
   it('summarizes a published course for the phone page: published lessons per section, length, learners and publisher slug', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
