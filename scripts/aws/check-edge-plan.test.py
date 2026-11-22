@@ -14,7 +14,7 @@ ORIGIN_HOST = guard.ORIGIN_HOST
 
 
 def cloudfront_after():
-    return {'web_acl_id':guard.WAF_ARN,'enabled':True,'aliases':['www.seanshore.in','seanshore.in'], 'viewer_certificate':[{'acm_certificate_arn':CERT_ARN,'cloudfront_default_certificate':False,'iam_certificate_id':'','minimum_protocol_version':'TLSv1.2_2021','ssl_support_method':'sni-only'}], 'origin':[{'domain_name':ORIGIN_HOST,'origin_id':'sea-n-shore-staging-alb','origin_path':'','custom_header':guard.expected_custom_headers(SECRET),'custom_origin_config':[{'http_port':80,'https_port':443,'origin_protocol_policy':'https-only','origin_ssl_protocols':['TLSv1.2']}]}], 'default_cache_behavior':[{'target_origin_id':'sea-n-shore-staging-alb','viewer_protocol_policy':'redirect-to-https','cache_policy_id':guard.CACHE_POLICY_ID,'origin_request_policy_id':guard.ORIGIN_POLICY_ID,'allowed_methods':['DELETE','GET','HEAD','OPTIONS','PATCH','POST','PUT'],'function_association':[{'event_type':'viewer-request','function_arn':guard.FUNCTION_ARN}],'lambda_function_association':[]}]}
+    return {'web_acl_id':guard.WAF_ARN,'enabled':True,'aliases':['www.seanshore.in','seanshore.in','seanshore.net','www.seanshore.net'], 'viewer_certificate':[{'acm_certificate_arn':CERT_ARN,'cloudfront_default_certificate':False,'iam_certificate_id':'','minimum_protocol_version':'TLSv1.2_2021','ssl_support_method':'sni-only'}], 'origin':[{'domain_name':ORIGIN_HOST,'origin_id':'sea-n-shore-staging-alb','origin_path':'','custom_header':guard.expected_custom_headers(SECRET),'custom_origin_config':[{'http_port':80,'https_port':443,'origin_protocol_policy':'https-only','origin_ssl_protocols':['TLSv1.2']}]}], 'default_cache_behavior':[{'target_origin_id':'sea-n-shore-staging-alb','viewer_protocol_policy':'redirect-to-https','cache_policy_id':guard.CACHE_POLICY_ID,'origin_request_policy_id':guard.ORIGIN_POLICY_ID,'allowed_methods':['DELETE','GET','HEAD','OPTIONS','PATCH','POST','PUT'],'function_association':[{'event_type':'viewer-request','function_arn':guard.FUNCTION_ARN}],'lambda_function_association':[]}]}
 
 
 def function_after(redirect_edge_host=False):
@@ -258,6 +258,9 @@ class SeanshoreDomainEdgeTests(unittest.TestCase):
     def test_rejects_wrong_aliases_certificates_and_associations(self):
         for key,value in [
             ('aliases',[]),('aliases',None),('aliases',['seanshore.in']),('aliases',['seanshore.in','www.seanshore.in','seaandshore.in']),
+            # Domain move: the canonical names alone, or seanshore.net without its www name, are refused.
+            ('aliases',['seanshore.in','www.seanshore.in']),('aliases',['seanshore.in','www.seanshore.in','seanshore.net']),
+            ('aliases',['seanshore.in','www.seanshore.in','seanshore.net','www.seanshore.net','seaandshore.in']),
             ('viewer_certificate',[{'cloudfront_default_certificate':True}]),
             ('viewer_certificate',[{'acm_certificate_arn':CERT_ARN,'ssl_support_method':'vip','minimum_protocol_version':'TLSv1.2_2021'}]),
             ('viewer_certificate',[{'acm_certificate_arn':CERT_ARN,'ssl_support_method':'sni-only','minimum_protocol_version':'TLSv1'}]),
@@ -392,7 +395,7 @@ def public_pages_policy_after(policy_id='pages-policy-id', **overrides):
         'parameters_in_cache_key_and_forwarded_to_origin': [{
             'enable_accept_encoding_brotli': True, 'enable_accept_encoding_gzip': True,
             'cookies_config': [{'cookie_behavior': overrides.pop('cookie_behavior', 'whitelist'), 'cookies': [{'items': list(overrides.pop('cookies', ['sns_cognito_access', 'sns_cognito_refresh']))}]}],
-            'headers_config': [{'header_behavior': 'whitelist', 'headers': [{'items': list(overrides.pop('headers', ['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch']))}]}],
+            'headers_config': [{'header_behavior': 'whitelist', 'headers': [{'items': list(overrides.pop('headers', ['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch', 'x-sns-viewer-host']))}]}],
             'query_strings_config': [{'query_string_behavior': overrides.pop('query', 'all')}],
         }],
     }
@@ -440,6 +443,8 @@ class PublicPagesCachePolicyTests(unittest.TestCase):
             public_pages_policy_after(cookie_behavior='none'),
             public_pages_policy_after(cookies=['sns_cognito_access']),
             public_pages_policy_after(headers=['next-router-prefetch', 'next-router-state-tree']),
+            # Domain move: without the viewer host in the key, one domain's cached page could be served on the other.
+            public_pages_policy_after(headers=['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch']),
             public_pages_policy_after(query='none'),
         ]:
             self.assertIn(message, self.errors(self.plan('pages-policy-id', policy_after=after)))

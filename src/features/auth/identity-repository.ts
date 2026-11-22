@@ -6,6 +6,8 @@ import {
   withTransaction as databaseWithTransaction,
   type DatabaseQueryClient,
 } from '@/lib/db/client'
+import { createClearableCache } from '@/lib/cache/cache-clear'
+import { cacheClearHub } from '@/lib/cache/runtime'
 
 type IdentityRow = QueryResultRow & {
   profile_id: string
@@ -473,8 +475,22 @@ export function resolveProfileIdForCognitoSub(sub: string) {
   return identityRepository.resolveProfileIdForCognitoSub(sub)
 }
 
+/**
+ * Owner (18 Nov): the sign-in check's identity lookup (every signed-in request) is kept for a minute per server and
+ * cleared everywhere the moment the mapping (i:<subject>) or the profile, including its account status (p:<id>),
+ * changes, so a suspension still applies at once. "No mapping yet" is never kept (a sign-up creates it).
+ */
+export const IDENTITY_CACHE_MS = 60_000
+const identityCache = createClearableCache<Awaited<ReturnType<typeof identityRepository.resolveProfileWithStatusForCognitoSub>>>({
+  hub: cacheClearHub, ttlMs: IDENTITY_CACHE_MS, maxEntries: 5000,
+})
+
 export function resolveProfileWithStatusForCognitoSub(sub: string) {
-  return identityRepository.resolveProfileWithStatusForCognitoSub(sub)
+  return identityCache.getOrLoad(
+    sub,
+    () => identityRepository.resolveProfileWithStatusForCognitoSub(sub),
+    (found) => (found ? [`i:${sub}`, `p:${found.profileId}`] : null),
+  )
 }
 
 export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal, options: { signupCountry?: string | null } = {}) {
