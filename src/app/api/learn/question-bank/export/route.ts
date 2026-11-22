@@ -2,6 +2,7 @@ import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { questionBankRepository, QuestionBankError } from '@/features/learning/question-bank-repository'
 import { questionsToCsv } from '@/features/learning/quiz-csv'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,8 @@ function textError(message: string, status: number) {
 
 /** CSV export of a question bank: the trainer's own, or (platform admins) the trainer named by ?trainer=. */
 export async function GET(request: Request) {
+  // Owner (21 Nov): a prefetch never builds a question bank export; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   const user = await getVerifiedUser()
   if (!user) return textError('Sign in to export your question bank.', 401)
   const trainer = new URL(request.url).searchParams.get('trainer')

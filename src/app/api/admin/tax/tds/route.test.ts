@@ -46,6 +46,18 @@ beforeEach(() => {
 })
 
 describe('GET /api/admin/tax/tds', () => {
+  it('answers a router prefetch or a browser speculative prefetch with an empty 204 and audits nothing (owner 21 Nov)', async () => {
+    for (const headers of [{ rsc: '1' }, { 'next-router-prefetch': '1' }, { 'sec-purpose': 'prefetch' }, { purpose: 'prefetch' }] as Record<string, string>[]) {
+      const response = await GET(new Request('https://seanshore.example/api/admin/tax/tds?month=2026-10', { headers }))
+      expect(response.status).toBe(204)
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(await response.text()).toBe('')
+    }
+    expect(mocks.requirePlatformAdministratorUser).not.toHaveBeenCalled()
+    expect(mocks.listTdsReportRows).not.toHaveBeenCalled()
+    expect(mocks.recordPaymentAudit).not.toHaveBeenCalled()
+  })
+
   it('refuses signed-out visitors and non-administrators before reading any data', async () => {
     mocks.requirePlatformAdministratorUser.mockRejectedValueOnce(new AwsAuthenticationRequiredError())
     expect((await GET(new Request('https://seanshore.example/api/admin/tax/tds?month=2026-10'))).status).toBe(401)
