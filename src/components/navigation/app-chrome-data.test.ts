@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   canAccessPlatformAdmin: vi.fn(async () => false),
   getCountries: vi.fn(async (): Promise<string[] | null> => null),
+  permissions: vi.fn((): Record<string, string> => ({ organizations: 'act' })),
 }))
 
 vi.mock('@/features/ranking/switches', () => ({ isRankingEnabled: async () => false }))
 vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
-vi.mock('@/features/country-admins/repository', () => ({ countryAdminRepository: { getCountries: mocks.getCountries } }))
+vi.mock('@/features/country-admins/repository', () => ({ countryAdminRepository: { getAccess: async () => { const countries = await mocks.getCountries(); return countries ? { countries, permissions: mocks.permissions() } : null } } }))
 vi.mock('./chrome-counts', () => ({
   getChromeCountsForRequest: async () => ({ notificationUnreadCount: 0, messagingUnreadCount: 0, pendingConnectionRequestCount: 0 }),
 }))
@@ -47,6 +48,12 @@ describe('the Admin entry in the app chrome', () => {
   it('gives other members nothing, and shows nothing when the lookup fails', async () => {
     expect(await getAppChromeData(user)).toMatchObject({ canAccessAdmin: false, adminCountries: null })
     mocks.getCountries.mockRejectedValue(new Error('database unavailable'))
+    expect(await getAppChromeData(user)).toMatchObject({ canAccessAdmin: false, adminCountries: null })
+  })
+
+  it('gives no entry to a country admin whose sections the console cannot open yet (Round GP Part E)', async () => {
+    mocks.getCountries.mockResolvedValue(['PH'])
+    mocks.permissions.mockReturnValueOnce({ learning: 'act' })
     expect(await getAppChromeData(user)).toMatchObject({ canAccessAdmin: false, adminCountries: null })
   })
 })
