@@ -50,6 +50,7 @@ describe('feed repository: hidden posts', () => {
     expect(sql).toContain('p.deleted_at is null')
     expect(sql).toContain('public.user_blocks')
     expect(sql).toContain('left join public.companies company')
+    expect(sql).toContain('company.is_verified as company_is_verified')
     expect(sql).toContain('coalesce(p.repost_of_post_id, p.id)')
     expect(sql).toMatch(/order by hidden\.created_at desc, p\.id desc\s+limit \$2/)
     expect(values).toEqual([viewerId, 100])

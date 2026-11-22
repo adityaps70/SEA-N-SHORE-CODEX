@@ -54,7 +54,8 @@ describe('organization link repository', () => {
       id: ORGANIZATION_ID,
       slug: 'oceanic-ship-management',
       name: 'Oceanic Ship Management',
-      logoUrl: `/api/company-logo/${ORGANIZATION_ID}`,
+      // Request cuts: a verified organization's logo comes from the cookie-free public route.
+      logoUrl: `/api/public/company-logo/${ORGANIZATION_ID}`,
       verified: true,
       unclaimed: false,
       type: 'Ship manager',
@@ -109,7 +110,7 @@ describe('organization link repository', () => {
     const [text, values] = callsOf(query)[0] ?? []
     expect(text).toContain('cm.approved_at is not null')
     expect(values).toEqual([USER_ID])
-    expect(organizations[0]).toMatchObject({ slug: 'oceanic-ship-management', role: 'administrator', logoUrl: `/api/company-logo/${ORGANIZATION_ID}` })
+    expect(organizations[0]).toMatchObject({ slug: 'oceanic-ship-management', role: 'administrator', logoUrl: `/api/public/company-logo/${ORGANIZATION_ID}` })
     expect(organizations[1]?.role).toBe('member')
   })
 
@@ -121,6 +122,8 @@ describe('organization link repository', () => {
 
     expect(callsOf(query)[0]?.[0]).toContain("coalesce(to_jsonb(c) ->> 'claim_status', 'claimed') as claim_status")
     expect(result).toMatchObject({ verified: false, unclaimed: true })
+    // An unverified logo stays on the signed-in route (request cuts).
+    expect(result?.logoUrl).toBe(`/api/company-logo/${ORGANIZATION_ID}`)
   })
 
   it('lists profile organizations from approved memberships of listed organizations, managers first', async () => {

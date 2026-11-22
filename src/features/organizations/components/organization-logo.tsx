@@ -18,7 +18,8 @@ export function OrganizationLogo({
   size = 'md',
   className = '',
 }: {
-  company: { id: string; name: string; logoPath: string | null }
+  /** `verified` (companies.is_verified) picks the cookie-free public logo route; anything else stays signed-in. */
+  company: { id: string; name: string; logoPath: string | null; verified?: boolean | null }
   size?: keyof typeof sizes
   className?: string
 }) {

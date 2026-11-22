@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { companyLogoPath } from '@/features/organizations/company-logo-path'
 
 /** An organization page on Sea N Shore that a profile's current organization links to. */
 export type LinkedOrganization = {
@@ -26,8 +27,9 @@ export const ORGANIZATION_SEARCH_MIN_LENGTH = 2
 export const ORGANIZATION_SEARCH_MAX_LENGTH = 80
 export const ORGANIZATION_SEARCH_LIMIT = 8
 
-export function organizationLogoUrl(companyId: string, hasLogo: boolean) {
-  return hasLogo ? `/api/company-logo/${companyId}` : null
+/** Same-origin logo URL; `verified` (companies.is_verified) uses the cookie-free public route CloudFront caches. */
+export function organizationLogoUrl(companyId: string, hasLogo: boolean, verified = false) {
+  return hasLogo ? companyLogoPath(companyId, { verified }) : null
 }
 
 export function organizationPageHref(slug: string) {
@@ -108,7 +110,7 @@ export function mapLinkedOrganization(value: unknown): LinkedOrganization | null
     id: row.id,
     slug: row.slug,
     name: row.name,
-    logoUrl: organizationLogoUrl(row.id, row.has_logo === true),
+    logoUrl: organizationLogoUrl(row.id, row.has_logo === true, row.verified === true),
     verified: row.verified === true,
     unclaimed: row.unclaimed === true,
   }

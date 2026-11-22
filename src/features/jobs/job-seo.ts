@@ -155,7 +155,7 @@ export function jobPostingJsonLd(job: JobListing, origin: string): Record<string
   const description = [job.summary, job.description, job.requirements].map(plainText).filter(Boolean)
   const lastDay = jobLastDay(job)
   // Round H (H5): only a verified organization's logo is public (see /api/company-logo).
-  const logo = job.companyId && job.companyVerified ? organizationLogoUrl({ id: job.companyId, logoPath: job.companyLogoPath ?? null }) : null
+  const logo = job.companyId && job.companyVerified ? organizationLogoUrl({ id: job.companyId, logoPath: job.companyLogoPath ?? null, verified: true }) : null
   const salary = baseSalary(job)
   return {
     '@context': 'https://schema.org',
