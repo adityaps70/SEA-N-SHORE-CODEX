@@ -1,4 +1,7 @@
 import type { QueryResultRow } from 'pg'
+import { actorRoleFor, recordAdminAudit } from '@/features/admin/admin-audit'
+import { memberCountrySql } from '@/features/country-admins/item-country-sql'
+import { resolveSectionScope, scopeCoversCountry } from '@/features/country-admins/scope'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import {
   CREATOR_VERIFICATION_SOURCES,
@@ -90,19 +93,6 @@ function mapState(row: VerificationRow): CreatorVerificationState {
     reviewedAt: row.reviewed_at ?? null,
     reviewNote: row.review_note ?? null,
   }
-}
-
-async function requireAdministrator(query: VerificationQuery, adminId: string, lock = false) {
-  const rows = await query(
-    `select true as allowed
-     from public.user_roles
-     where user_id = $1
-       and role::text = 'administrator'
-     ${lock ? 'for update' : ''}
-     limit 1`,
-    [adminId],
-  )
-  if (!rows[0]) throw new Error('admin_forbidden')
 }
 
 export function createCreatorVerificationRepository(input: {
@@ -217,12 +207,20 @@ export function createCreatorVerificationRepository(input: {
     status: CreatorVerificationStatus,
     type?: CreatorVerificationType,
   ): Promise<AdminCreatorVerificationApplication[]> {
-    await requireAdministrator(queryRows, adminId)
+    // Round GP Part E: platform administrators see every application; a country admin with Verification only those
+    // whose applicant lives in one of their countries (country of residence; no country = platform only).
+    const scope = await resolveSectionScope(queryRows, adminId, 'verification', 'view')
     const values: unknown[] = [status]
     const typeFilter = type
       ? (() => {
           values.push(type)
-          return 'and verification.verification_type = $2'
+          return `and verification.verification_type = $${values.length}`
+        })()
+      : ''
+    const countryFilter = scope.kind === 'country'
+      ? (() => {
+          values.push(scope.countries)
+          return `and profile.country_of_residence = any($${values.length}::text[])`
         })()
       : ''
 
@@ -245,6 +243,7 @@ export function createCreatorVerificationRepository(input: {
        where verification.status = $1
          and verification.verification_type in ('recruiter', 'event_host')
          ${typeFilter}
+         ${countryFilter}
        order by coalesce(verification.submitted_at, verification.created_at) asc, verification.id asc
        limit 100`,
       values,
@@ -268,17 +267,21 @@ export function createCreatorVerificationRepository(input: {
     reviewNote: string | null,
   ) {
     return transaction(async (txQuery) => {
-      await requireAdministrator(txQuery, adminId, true)
+      const scope = await resolveSectionScope(txQuery, adminId, 'verification', 'act', { lock: true })
       const rows = await txQuery(
-        `select id, profile_id, verification_type, status, source
+        `select id, profile_id, verification_type, status, source,
+                ${memberCountrySql('profile_id')} as applicant_country
          from public.feature_verifications
          where id = $1
            and verification_type in ('recruiter', 'event_host')
          for update`,
         [verificationId],
-      ) as LockedVerificationRow[]
+      ) as Array<LockedVerificationRow & { applicant_country?: string | null }>
       const verification = rows[0]
       if (!verification) throw new Error('verification_application_not_found')
+      const country = verification.applicant_country ?? null
+      // Round GP Part E: a country admin decides only for applicants in their countries.
+      if (!scopeCoversCountry(scope, country)) throw new Error('verification_out_of_scope')
       if (verification.status !== 'pending') throw new Error('verification_review_forbidden')
 
       await txQuery(
@@ -292,20 +295,16 @@ export function createCreatorVerificationRepository(input: {
         [verificationId, decision, adminId, reviewNote],
       )
 
-      await txQuery(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, $2, 'feature_verification', $3, $4::jsonb)`,
-        [
-          adminId,
-          `verification.${decision}`,
-          verificationId,
-          JSON.stringify({
-            verificationType: verification.verification_type,
-            profileId: verification.profile_id,
-            reviewNote,
-          }),
-        ],
-      )
+      await recordAdminAudit(txQuery, {
+        actorId: adminId,
+        actorRole: actorRoleFor(scope),
+        section: 'verification',
+        country,
+        action: `verification.${decision}`,
+        targetType: 'feature_verification',
+        targetId: verificationId,
+        metadata: { verificationType: verification.verification_type, profileId: verification.profile_id, reviewNote },
+      })
 
       return true
     })

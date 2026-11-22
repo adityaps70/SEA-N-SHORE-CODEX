@@ -46,6 +46,8 @@ type Section = {
 const sections: Section[] = [
   { href: '/admin', label: 'Overview', icon: LayoutDashboard },
   { href: '/admin/moderation', label: 'Moderation', icon: ShieldAlert, count: (m) => m.openReports + m.reviewingReports },
+  // Round GP Part E: published events and the reports on them (cancel or restore through a report).
+  { href: '/admin/events', label: 'Events', icon: CalendarDays },
   { href: '/admin/users', label: 'Users', icon: UsersRound },
   // Round GP: registered members, organizations and jobs per country.
   { href: '/admin/countries', label: 'Members by country', icon: Globe2 },

@@ -164,7 +164,7 @@ describe('course owner replies to reviews (round H)', () => {
       ['learning.course_review_reply_added', course.owner],
       ['moderation.course_review_reply_restored', adminId],
     ])
-    expect(audit[1]!.metadata).toEqual({ courseId: course.courseId, note: 'Contains a phone number.' })
+    expect(audit[1]!.metadata).toEqual({ courseId: course.courseId, note: 'Contains a phone number.', actorRole: 'platform_admin', section: 'learning', country: null })
     // No reply text or names in the audit log.
     expect(JSON.stringify(audit.map((row) => row.metadata))).not.toContain('audio')
   }, 120_000)

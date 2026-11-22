@@ -51,9 +51,9 @@ describe('the Admin entry in the app chrome', () => {
     expect(await getAppChromeData(user)).toMatchObject({ canAccessAdmin: false, adminCountries: null })
   })
 
-  it('gives no entry to a country admin whose sections the console cannot open yet (Round GP Part E)', async () => {
+  it('gives no entry to a country admin with no sections (Round GP Part E)', async () => {
     mocks.getCountries.mockResolvedValue(['PH'])
-    mocks.permissions.mockReturnValueOnce({ learning: 'act' })
+    mocks.permissions.mockReturnValueOnce({})
     expect(await getAppChromeData(user)).toMatchObject({ canAccessAdmin: false, adminCountries: null })
   })
 })

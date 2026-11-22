@@ -22,6 +22,7 @@ import type { CourseReviewChange } from '@/features/learning/course-review-snaps
 import type { CourseStatus } from '@/features/learning/course-workflow'
 import { formatMoney } from '@/features/payments/currency'
 import { requireAdminAccess } from '@/features/admin/admin-access'
+import { allows } from '@/features/country-admins/sections'
 
 export const metadata: Metadata = { title: 'Course review · Admin' }
 
@@ -288,7 +289,7 @@ function CurriculumEvidence({ course }: { course: CourseReviewItem }) {
   )
 }
 
-function CourseCard({ course }: { course: CourseReviewItem }) {
+function CourseCard({ course, canDecide }: { course: CourseReviewItem; canDecide: boolean }) {
   return (
     <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -367,7 +368,7 @@ function CourseCard({ course }: { course: CourseReviewItem }) {
 
         {isActionable(course.status) ? (
           <div className="w-full shrink-0 xl:w-[22rem]">
-            <CourseReviewControls courseId={course.courseId} status={course.status} revision={Boolean(course.revisionOf)} />
+            {canDecide ? <CourseReviewControls courseId={course.courseId} status={course.status} revision={Boolean(course.revisionOf)} /> : <p className="text-xs font-semibold text-muted">View only: decisions are not part of your country admin access.</p>}
           </div>
         ) : null}
       </div>
@@ -380,7 +381,10 @@ export default async function LearningCoursesAdminPage({
 }: {
   searchParams: Promise<{ status?: string | string[] }>
 }) {
-  const user = (await requireAdminAccess('platform')).user
+  // Round GP Part E: country admins with Learning review their countries' courses; decisions need "act".
+  const access = await requireAdminAccess('learning')
+  const user = access.user
+  const canDecide = access.kind === 'platform' || allows(access.permissions, 'learning', 'act')
   const params = await searchParams
   const status = selectedStatus(params.status)
   const listed = await learningAdminRepository.listCoursesForReview(user.id, status)
@@ -441,12 +445,14 @@ export default async function LearningCoursesAdminPage({
         >
           Course review
         </Link>
-        <Link
-          href="/admin/learning/analytics"
-          className="rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
-        >
-          Analytics
-        </Link>
+        {access.kind === 'platform' ? (
+          <Link
+            href="/admin/learning/analytics"
+            className="rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
+          >
+            Analytics
+          </Link>
+        ) : null}
       </nav>
 
       <nav aria-label="Course review status" className="flex flex-wrap gap-2">
@@ -472,7 +478,7 @@ export default async function LearningCoursesAdminPage({
         </div>
 
         {courses.length ? courses.map((course) => (
-          <CourseCard key={course.courseId} course={course} />
+          <CourseCard key={course.courseId} course={course} canDecide={canDecide} />
         )) : (
           <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center">
             <Archive aria-hidden="true" className="mx-auto size-7 text-teal-700" />
