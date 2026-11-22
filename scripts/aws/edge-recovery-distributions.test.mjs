@@ -21,6 +21,15 @@ test('Round P3: the one known untracked distribution is allowed by exact id, and
   assert.match(script, /Unexpected CloudFront distributions: /)
   // The plan stays targeted at the app distribution; the known one is never a target.
   assert.doesNotMatch(script, /-target=[^ ]*E2MCZ79G101LLD/)
+  assert.doesNotMatch(script, /-target=aws_cloudfront_distribution\.console_redirect/)
+})
+
+test('domain move: after the import the console distribution may be in state, only under its exact id', async () => {
+  const script = await read('./edge-recovery.sh')
+  assert.ok(script.includes('sort | (. == ["app", "seaandshore_redirect"] or . == ["app", "console_redirect", "seaandshore_redirect"])'))
+  assert.ok(script.includes('.name == "console_redirect") | .instances[].attributes.id] | (. == [] or . == ["E2MCZ79G101LLD"])'))
+  // Any other set of distributions in state still stops the run.
+  assert.doesNotMatch(script, /\.name\] \| sort == \["app", "seaandshore_redirect"\]'/)
 })
 
 test('the edge health check sends the health check token to /api/health/home from a private file, never in argv or the log', async () => {

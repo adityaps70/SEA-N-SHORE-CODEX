@@ -1,4 +1,5 @@
 import type { JobAlertEmailPayload } from './job-alerts'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * Round G: the job alert email (G3) and the weekly digest email (G6). Plain, short, one button per
@@ -20,7 +21,7 @@ export const RANKING_EMAIL_TOPIC_LABELS: Record<RankingEmailTopic, string> = {
 }
 
 export function rankingEmailSiteUrl(siteUrl?: string) {
-  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || 'https://seanshore.in').trim().replace(/\/+$/, '')
+  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
 }
 
 export function rankingUnsubscribeLinks(siteUrl: string, emailId: string) {

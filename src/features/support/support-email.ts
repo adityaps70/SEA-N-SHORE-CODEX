@@ -1,4 +1,5 @@
 import { SUPPORT_OPERATIONS_EMAIL, supportTicketReference, supportTopicLabel, supportTopicShortLabel } from './topics'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * Round H (H7): the three ticket emails. Plain and short; each names the ticket reference.
@@ -29,7 +30,7 @@ export type SupportEmailInput = {
 export type RenderedSupportEmail = { to: string; subject: string; text: string; html: string; replyTo?: string }
 
 export function supportSiteUrl(siteUrl?: string) {
-  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || 'https://seanshore.in').trim().replace(/\/+$/, '')
+  return (siteUrl || process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
 }
 
 function escapeHtml(value: string) {

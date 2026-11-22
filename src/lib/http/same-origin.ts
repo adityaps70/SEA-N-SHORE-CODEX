@@ -6,7 +6,7 @@ import { getServerActionAllowedOrigins } from '@/lib/auth/server-action-origins'
  *
  * Behind CloudFront the request's Host is the ALB origin name and X-Forwarded-Host is the
  * distribution's own *.cloudfront.net name (edge.tf), so comparing the browser's Origin with those
- * headers alone rejected every real request from https://seanshore.in with a 403. The site's
+ * headers alone rejected every real request from the public site with a 403. The site's
  * public origins come from NEXT_PUBLIC_SITE_URL and SERVER_ACTION_ALLOWED_ORIGINS, the same list
  * Server Actions already trust.
  *

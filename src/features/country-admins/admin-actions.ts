@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from '@/features/admin/mfa-gate'
 import { CountryAdminError, countryAdminRepository } from './repository'
+import { COUNTRY_ADMIN_SECTIONS, LIVE_COUNTRY_ADMIN_SECTIONS, type CountryAdminPermissions } from './sections'
 
 /**
  * Round GP (Global Partners), Part C: Admin › Country admins. Platform administrators only (the repository checks the
@@ -17,6 +18,7 @@ const MESSAGES: Record<string, string> = {
   member_not_found: 'No active member has that username or email. Check it and try again.',
   member_is_platform_admin: 'That member is already a Sea N Shore administrator and can review every country.',
   countries_invalid: 'Choose between 1 and 50 countries from the list.',
+  permissions_invalid: 'Give at least one section.',
   country_admins_unavailable: 'Country admins are not switched on yet: the database update for them (migrations 0109 and 0110) has not been applied.',
   not_a_country_admin: 'That member is not a country admin.',
 }
@@ -38,6 +40,20 @@ async function adminUser() {
 
 const countriesSchema = z.array(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/)).min(1).max(50)
 
+/**
+ * Round GP Part E: the section tickboxes from the form ("view_<section>", "act_<section>"). Act includes view, so a
+ * ticked Act is enough. Unticked sections are no access.
+ */
+async function permissionsFromForm(formData: FormData): Promise<CountryAdminPermissions | null> {
+  const permissions: CountryAdminPermissions = {}
+  for (const section of COUNTRY_ADMIN_SECTIONS) {
+    if (!LIVE_COUNTRY_ADMIN_SECTIONS.includes(section)) continue
+    if (formData.get(`act_${section}`)) permissions[section] = 'act'
+    else if (formData.get(`view_${section}`)) permissions[section] = 'view'
+  }
+  return Object.keys(permissions).length ? permissions : null
+}
+
 function refresh() {
   revalidatePath('/admin/country-admins')
   revalidatePath('/admin/audit')
@@ -56,7 +72,9 @@ export async function grantCountryAdminAction(previous: CountryAdminActionState,
     const member = await countryAdminRepository.findMember(auth.user.id, identifier)
     if (!member) return { status: 'error', message: MESSAGES.member_not_found, revision }
     if (member.isPlatformAdministrator) return { status: 'error', message: MESSAGES.member_is_platform_admin, revision }
-    await countryAdminRepository.grant(auth.user.id, member.id, countries.data)
+    const permissions = await permissionsFromForm(formData)
+    if (!permissions) return { status: 'error', message: MESSAGES.permissions_invalid, revision }
+    await countryAdminRepository.grant(auth.user.id, member.id, countries.data, permissions)
     refresh()
     return { status: 'saved', message: `${member.fullName} is now a country admin.`, revision }
   } catch (error) {
@@ -64,7 +82,7 @@ export async function grantCountryAdminAction(previous: CountryAdminActionState,
   }
 }
 
-/** Changes a country admin's countries. */
+/** Changes a country admin's countries and sections. */
 export async function updateCountryAdminAction(previous: CountryAdminActionState, formData: FormData): Promise<CountryAdminActionState> {
   const revision = previous.revision + 1
   const profileId = z.string().uuid().safeParse(formData.get('profileId'))
@@ -74,10 +92,12 @@ export async function updateCountryAdminAction(previous: CountryAdminActionState
   const auth = await adminUser()
   if ('error' in auth) return { status: 'error', message: auth.error, revision }
   try {
+    const permissions = await permissionsFromForm(formData)
+    if (!permissions) return { status: 'error', message: MESSAGES.permissions_invalid, revision }
     if (!await countryAdminRepository.getCountries(profileId.data)) return { status: 'error', message: MESSAGES.not_a_country_admin, revision }
-    await countryAdminRepository.grant(auth.user.id, profileId.data, countries.data)
+    await countryAdminRepository.grant(auth.user.id, profileId.data, countries.data, permissions)
     refresh()
-    return { status: 'saved', message: 'Countries saved.', revision }
+    return { status: 'saved', message: 'Countries and sections saved.', revision }
   } catch (error) {
     return failure(error, revision)
   }

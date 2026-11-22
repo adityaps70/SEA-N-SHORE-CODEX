@@ -27,7 +27,10 @@ jq -e '[.resources[] | select(.type == "aws_wafv2_web_acl" and .name == "edge") 
 aws cloudfront list-distributions --no-paginate --output json > "$RECOVERY_DIR/distributions.json"
 [[ -s "$RECOVERY_DIR/distributions.json" ]]
 jq -e '.DistributionList.IsTruncated == false' "$RECOVERY_DIR/distributions.json" >/dev/null
-jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort == ["app", "seaandshore_redirect"]' "$RECOVERY_DIR/state.json" >/dev/null
+# Domain move (Phase 1, import step): the console redirect distribution may also be in state, by its exact id only
+# (infra/aws/app/domain-move.tf). This runner still never plans it.
+jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort | (. == ["app", "seaandshore_redirect"] or . == ["app", "console_redirect", "seaandshore_redirect"])' "$RECOVERY_DIR/state.json" >/dev/null
+jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution" and .name == "console_redirect") | .instances[].attributes.id] | (. == [] or . == ["E2MCZ79G101LLD"])' "$RECOVERY_DIR/state.json" >/dev/null
 STATE_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "app" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one app distribution in state") end' "$RECOVERY_DIR/state.json")"
 LEGACY_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "seaandshore_redirect" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one legacy redirect distribution in state") end' "$RECOVERY_DIR/state.json")"
 # Round P3: one more distribution, made outside Terraform for the seanshore.nl/.ph/.si and seaandshore.si
@@ -50,13 +53,14 @@ aws secretsmanager get-secret-value --region ap-south-1 --secret-id sea-n-shore-
   --query SecretString --output text > "$RECOVERY_DIR/origin-verify"
 grep -Eq '^[A-Za-z0-9]{48}$' "$RECOVERY_DIR/origin-verify" || { echo 'Origin verify secret is missing or malformed.' >&2; exit 1; }
 export EDGE_ORIGIN_VERIFY_FILE="$RECOVERY_DIR/origin-verify"
-# The custom domain rides on the tracked seanshore.in certificate, which must already be ISSUED.
-CERT_ARN="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_acm_certificate" and .name == "seanshore_edge") | .instances[0].attributes.arn][0] // empty' "$RECOVERY_DIR/state.json")"
+# The custom domains ride on the tracked seanshore.in + seanshore.net certificate (domain move, domain-move.tf),
+# which must already be ISSUED.
+CERT_ARN="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_acm_certificate" and .name == "site_edge") | .instances[0].attributes.arn][0] // empty' "$RECOVERY_DIR/state.json")"
 [[ "$CERT_ARN" == arn:aws:acm:us-east-1:310356785722:certificate/* ]]
 aws acm describe-certificate --region us-east-1 --certificate-arn "$CERT_ARN" --output json > "$RECOVERY_DIR/certificate.json"
-jq -e '.Certificate | .DomainName == "seanshore.in" and ((.SubjectAlternativeNames | sort) == ["seanshore.in", "www.seanshore.in"])' "$RECOVERY_DIR/certificate.json" >/dev/null
+jq -e '.Certificate | .DomainName == "seanshore.in" and ((.SubjectAlternativeNames | sort) == ["seanshore.in", "seanshore.net", "www.seanshore.in", "www.seanshore.net"])' "$RECOVERY_DIR/certificate.json" >/dev/null
 echo "ACM_CERTIFICATE_STATUS=$(jq -r '.Certificate.Status' "$RECOVERY_DIR/certificate.json")"
-jq -e '.Certificate.Status == "ISSUED"' "$RECOVERY_DIR/certificate.json" >/dev/null || { echo 'seanshore.in edge certificate is not ISSUED; refusing to plan the custom domain.' >&2; exit 1; }
+jq -e '.Certificate.Status == "ISSUED"' "$RECOVERY_DIR/certificate.json" >/dev/null || { echo 'seanshore.in + seanshore.net edge certificate is not ISSUED; refusing to plan the custom domains.' >&2; exit 1; }
 EXPECTED_FUNCTION_ARN="arn:aws:cloudfront::310356785722:function/sea-n-shore-staging-canonical-host-redirect"
 python3 - "$RECOVERY_DIR/state.json" "$RECOVERY_DIR/variables.json" <<'PY'
 import json, sys
@@ -217,7 +221,7 @@ CF_ID="$(jq -r '.resources[] | select(.type == "aws_cloudfront_distribution" and
 if [[ -n "$STATE_CF_ID" ]]; then [[ "$CF_ID" == "$STATE_CF_ID" ]]; fi
 aws cloudfront get-distribution --id "$CF_ID" > "$RECOVERY_DIR/live.json"
 jq -e '.Distribution | .Status == "Deployed" and .DistributionConfig.Enabled == true and .DistributionConfig.WebACLId == "arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0"' "$RECOVERY_DIR/live.json" >/dev/null
-jq -e '.Distribution.DistributionConfig | .Aliases.Quantity == 2 and ((.Aliases.Items | sort) == ["seanshore.in", "www.seanshore.in"])' "$RECOVERY_DIR/live.json" >/dev/null
+jq -e '.Distribution.DistributionConfig | .Aliases.Quantity == 4 and ((.Aliases.Items | sort) == ["seanshore.in", "seanshore.net", "www.seanshore.in", "www.seanshore.net"])' "$RECOVERY_DIR/live.json" >/dev/null
 jq -e --arg cert "$CERT_ARN" '.Distribution.DistributionConfig.ViewerCertificate | .ACMCertificateArn == $cert and .SSLSupportMethod == "sni-only" and .MinimumProtocolVersion == "TLSv1.2_2021" and (.CloudFrontDefaultCertificate // false) == false' "$RECOVERY_DIR/live.json" >/dev/null
 jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.Distribution.DistributionConfig.DefaultCacheBehavior | .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].EventType == "viewer-request" and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0' "$RECOVERY_DIR/live.json" >/dev/null
 IMAGE_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_cache_policy" and .name == "next_image") | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json")"

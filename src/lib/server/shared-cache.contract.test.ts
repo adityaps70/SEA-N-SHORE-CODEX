@@ -14,6 +14,8 @@ const SHARED_CACHES: Record<string, string[]> = {
   'src/features/site-settings/share-settings.ts': ['share_settings'],
   // Round GP: Admin › Members by country (counts only, read after the permission check).
   'src/features/countries/admin-country-repository.ts': ['admin_country_stats', 'admin_country_detail'],
+  // Round GP Part E: the admin Overview counts per set of countries (counts only, read after the permission check).
+  'src/features/country-admins/overview-repository.ts': ['admin_country_overview'],
 }
 const PERSONAL = /viewer|profileId|userId|memberId|session|cookies\(|headers\(|requireAwsUser|requireUser|getAwsVerifiedUser|role/i
 

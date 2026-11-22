@@ -24,7 +24,7 @@ export function resendConfirmationRedirectPath(email: string, result: AuthAction
 export function createAuthActionHandlers(input: {
   getActions: () => Promise<CognitoActions>
   redirect: Redirect
-  getSignOutDestination?: () => string
+  getSignOutDestination?: () => string | Promise<string>
 }) {
   return {
     async signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -92,7 +92,7 @@ export function createAuthActionHandlers(input: {
     async signOut() {
       const actions = await input.getActions()
       await actions.signOut()
-      input.redirect(input.getSignOutDestination?.() ?? '/')
+      input.redirect((await input.getSignOutDestination?.()) ?? '/')
     },
   }
 }

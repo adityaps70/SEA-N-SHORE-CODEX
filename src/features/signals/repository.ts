@@ -1,5 +1,6 @@
 import { isLoadTestProfileSql } from '@/features/load-test/load-test-sql'
 import { query as databaseQuery } from '@/lib/db/client'
+import { createMetricBatch, type MetricIncrement } from './metric-batch'
 
 /**
  * Round G (G0.2): the signals the rankings learn from. Privacy-light: ids and times only, no IP, no
@@ -160,7 +161,23 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
     )
   }
 
+  /** Owner (18 Nov, fix 3d): many increments in one statement, load-test accounts left out exactly as above. */
+  async function incrementMetrics(increments: readonly MetricIncrement[]) {
+    const kept = increments.filter((increment) => increment.amount > 0)
+    if (kept.length === 0) return
+    await queryRows(
+      `insert into public.ranking_metrics_daily (day, metric, value)
+       select (now() at time zone 'utc')::date, t.metric, sum(t.amount)::int
+       from unnest($1::text[], $2::int[], $3::uuid[]) as t(metric, amount, actor)
+       where t.actor is null or not ${isLoadTestProfileSql('t.actor')}
+       group by t.metric
+       on conflict (day, metric) do update set value = public.ranking_metrics_daily.value + excluded.value`,
+      [kept.map((i) => i.metric), kept.map((i) => i.amount), kept.map((i) => i.actorProfileId)],
+    )
+  }
+
   return {
+    incrementMetrics,
     recordImpressions,
     dismissSuggestion,
     undoDismissSuggestion,
@@ -176,11 +193,17 @@ export function createSignalsRepository(input: { query?: Query } = {}) {
 
 export const signalsRepository = createSignalsRepository()
 
-/** Metrics are best effort: a failure is logged without ids and never breaks the request. */
+const rankingMetricBatch = createMetricBatch({ write: (increments) => signalsRepository.incrementMetrics(increments) })
+
+/**
+ * Metrics are best effort: a failure is logged without ids and never breaks the request. Owner (18 Nov, fix 3d): summed
+ * in memory and written once a minute per server (metric-batch.ts).
+ */
 export async function incrementRankingMetric(metric: string, amount = 1, actorProfileId: string | null = null) {
-  try {
-    await signalsRepository.incrementMetric(metric, amount, actorProfileId)
-  } catch (error) {
-    console.warn('[ranking_metric_failed]', { metric, code: (error as { code?: string })?.code ?? null })
-  }
+  rankingMetricBatch.add(metric, amount, actorProfileId)
+}
+
+/** Writes the held increments now (tests, and a server that is about to stop). */
+export function flushRankingMetrics() {
+  return rankingMetricBatch.flush()
 }

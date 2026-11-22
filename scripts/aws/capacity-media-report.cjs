@@ -37,6 +37,14 @@ function compareWindow() {
   // Round DB: where the database time goes and what the stack costs, with Performance Insights over one load test
   // window (under 3 hours): "db <start> <end>". Runs the config, db, dbwindow, dbminutes, dbstats, dbhealth and cost
   // sections.
+  // Owner (21 Nov): one short latency spike, minute by minute: "incident <start> <end>", at most 3 hours. Runs the
+  // dbminutes, dbwindow, edgeminutes and incident sections (Aurora, Performance Insights, edge, ECS, RDS events, ALB).
+  const incident = line.match(/^incident (\S+) (\S+)$/)
+  if (incident) {
+    assert.ok(MINUTE.test(incident[1]) && MINUTE.test(incident[2]) && new Date(incident[2]) > new Date(incident[1]) &&
+      new Date(incident[2]) - new Date(incident[1]) <= 3 * 3600_000, 'the incident window must be "incident <start> <end>", at most 3 hours, in whole UTC minutes')
+    return { incident: true, runStart: incident[1], runEnd: incident[2] }
+  }
   const db = line.match(/^db (\S+) (\S+)$/)
   if (db) {
     assert.ok(MINUTE.test(db[1]) && MINUTE.test(db[2]) && new Date(db[2]) > new Date(db[1]) &&
@@ -90,12 +98,14 @@ const DB_SECTIONS = ['config', 'db', 'dbwindow', 'dbminutes', 'edgeminutes', 'db
 // Round DB (Option A): the compare window also prints the database cost per request (dbcompare).
 // Owner (14 Nov): the home feed's share needs the people-online counts over the same window (caponline).
 const CAP_SECTIONS = ['capminutes', 'capwrites', 'cap7d', 'caponline']
-const SESSION_SECTIONS = ['sessdb', 'sessmetric']
-const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
+// Owner (18 Nov): plus the stale-token look (what renewed the tokens that came back, what presented them, how old).
+const SESSION_SECTIONS = ['sessdb', 'sessmetric', 'sessstale']
+const INCIDENT_SECTIONS = ['dbminutes', 'dbwindow', 'edgeminutes', 'incident']
+const SECTIONS = COMPARE?.sessions ? SESSION_SECTIONS : COMPARE?.incident ? INCIDENT_SECTIONS : COMPARE?.plans ? ['dbplans'] : COMPARE?.legacy ? ['legacysplit'] : COMPARE?.cap ? CAP_SECTIONS : COMPARE?.db ? DB_SECTIONS : COMPARE?.checks ? ['checks'] : COMPARE ? ['compare', 'dbcompare', 'online'] : (process.env.REPORT_SECTIONS || ALL_SECTIONS.join(',')).split(',')
 assert.ok(SECTIONS.length > 0 && SECTIONS.every((s) => ALL_SECTIONS.includes(s) || (COMPARE?.db && DB_SECTIONS.includes(s)) ||
-  (COMPARE?.sessions && SESSION_SECTIONS.includes(s)) ||
+  (COMPARE?.sessions && SESSION_SECTIONS.includes(s)) || (COMPARE?.incident && INCIDENT_SECTIONS.includes(s)) ||
   (COMPARE?.cap && CAP_SECTIONS.includes(s)) || (COMPARE?.legacy && s === 'legacysplit') ||
-  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
+  (COMPARE?.plans && s === 'dbplans') || (COMPARE && !COMPARE.incident && !COMPARE.db && !COMPARE.cap && !COMPARE.legacy && !COMPARE.plans && !COMPARE.sessions && (COMPARE.checks ? s === 'checks' : ['compare', 'dbcompare', 'online'].includes(s)))), 'unknown report section')
 const WINDOW = { start: process.env.REPORT_START || '', end: process.env.REPORT_END || '' }
 for (const value of Object.values(WINDOW)) assert.ok(value === '' || MINUTE.test(value), 'REPORT_START and REPORT_END are whole UTC minutes')
 assert.ok(!WINDOW.start === !WINDOW.end, 'REPORT_START and REPORT_END go together')
