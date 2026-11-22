@@ -11,6 +11,8 @@ export type AccountSecurityAuditAction =
   | 'account.mfa_reset'
   /** Hotfix P1: a platform administrator signed in with Google confirmed it is them to open admin pages. */
   | 'account.admin_step_up'
+  /** Admin two-step (owner, 21 Nov): the member replaced their authenticator app after confirming it was them. */
+  | 'account.mfa_replaced'
 
 export async function recordAccountSecurityAudit(
   query: AccountQuery,

@@ -30,6 +30,17 @@ vi.mock('@/features/auth/mfa-actions', () => ({
   confirmAuthenticatorSetup: mocks.confirmAuthenticatorSetup,
   disableAuthenticator: mocks.disableAuthenticator,
 }))
+// Admin two-step (owner, 21 Nov): the backup-code reminder and the replacement panel's actions.
+const twoStep = vi.hoisted(() => ({ needsBackupCodes: vi.fn(async () => false) }))
+vi.mock('@/features/account-security/backup-code-reminder', async (original) => ({
+  ...(await original<typeof import('@/features/account-security/backup-code-reminder')>()),
+  needsBackupCodes: twoStep.needsBackupCodes,
+}))
+vi.mock('@/features/account-security/authenticator-replacement-actions', () => ({
+  confirmReplacementAction: vi.fn(),
+  startReplacementAction: vi.fn(),
+  finishReplacementAction: vi.fn(),
+}))
 
 import SecuritySettingsPage from './page'
 
@@ -255,5 +266,44 @@ describe('/settings/security for country admins (Round GP, Part C follow-up)', (
     mocks.countryAdminCountries.mockRejectedValue(new Error('database unavailable'))
     await renderPage({ required: 'admin', next: '/admin/organizations' })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})
+
+describe('/settings/security: backup-code reminder and replacing the app (admin two-step)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllEnvs()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'profile-1' })
+    mocks.isPlatformAdministrator.mockResolvedValue(true)
+    mocks.countryAdminCountries.mockResolvedValue(null)
+    mocks.getCurrentMfaStatus.mockResolvedValue(on)
+    twoStep.needsBackupCodes.mockResolvedValue(false)
+  })
+
+  it('reminds an administrator with the app on but no unused backup codes', async () => {
+    twoStep.needsBackupCodes.mockResolvedValue(true)
+    await renderPage()
+    expect(screen.getByRole('note')).toHaveTextContent('Create backup codes so a lost phone doesn’t lock you out of admin pages.')
+    expect(screen.getByRole('link', { name: 'Create backup codes' })).toHaveAttribute('href', '/settings/account#backup-codes-heading')
+  })
+
+  it('does not remind members who are not admins', async () => {
+    mocks.isPlatformAdministrator.mockResolvedValue(false)
+    twoStep.needsBackupCodes.mockResolvedValue(true)
+    await renderPage()
+    expect(screen.queryByRole('link', { name: 'Create backup codes' })).not.toBeInTheDocument()
+  })
+
+  it('offers to replace the authenticator app only when switched on and the app is on', async () => {
+    await renderPage()
+    expect(screen.queryByRole('heading', { name: 'Replace authenticator app' })).not.toBeInTheDocument()
+    cleanup()
+    vi.stubEnv('AUTHENTICATOR_REPLACE_ENABLED', 'true')
+    await renderPage()
+    expect(screen.getByRole('heading', { name: 'Replace authenticator app' })).toBeInTheDocument()
+    cleanup()
+    mocks.getCurrentMfaStatus.mockResolvedValue(off)
+    await renderPage()
+    expect(screen.queryByRole('heading', { name: 'Replace authenticator app' })).not.toBeInTheDocument()
   })
 })

@@ -6,6 +6,7 @@ import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react'
 import { capabilityLabel } from '@/features/access/capability-labels'
 import { AdminChip, formatAdminDate, looksLikeTestAccount, type AdminChipTone } from '@/features/admin/components/admin-ui'
 import { AdminUserControlPanel } from '@/features/admin/components/admin-user-control-panel'
+import { MfaResetPanel } from '@/features/admin/components/mfa-reset-panel'
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { adminRepository, type AdminUserStatus } from '@/features/admin/repository'
@@ -246,6 +247,9 @@ export default async function AdminUserDetailPage({
             status={user.status}
             isAdministrator={user.isAdministrator}
           />
+
+          {/* Admin two-step (owner, 21 Nov): never on your own account. */}
+          {user.id !== admin.id ? <MfaResetPanel profileId={user.id} username={user.slug ?? null} /> : null}
         </div>
       </div>
     </div>
