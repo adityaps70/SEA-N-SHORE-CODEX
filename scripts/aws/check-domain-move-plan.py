@@ -10,6 +10,12 @@
       except one update: the main distribution's viewer-request function, to the repository template rendered as
       edge.tf renders it (it sets x-sns-viewer-host from the real Host; owner, 21 Nov). Prints
       DOMAIN_MOVE_PLAN=CREATE creates=<n> updates=<0|1>, or DOMAIN_MOVE_PLAN=NO_CHANGES once nothing is left.
+  check-domain-move-plan.py serve PLAN_JSON APP_DISTRIBUTION_ID SITE_EDGE_CERTIFICATE_ARN
+      Exits 0 only if the plan serves seanshore.net next to seanshore.in and changes nothing else: the main
+      distribution's aliases and certificate, the viewer function's code, the page cache key, the four seanshore.net
+      alias records (created), and the browser origins in the Cognito client, the media upload CORS rule and the
+      realtime authorizer, each with exactly the approved values. Prints DOMAIN_MOVE_PLAN=SERVE updates=<n>
+      creates=<n>, or DOMAIN_MOVE_PLAN=NO_CHANGES once it is applied.
 
 Prints addresses and counts only.
 """
@@ -71,6 +77,30 @@ FUNCTION_TEMPLATE = Path(__file__).resolve().parents[2] / "infra" / "aws" / "app
 # code, plus what CloudFront computes from it (never set from configuration).
 FUNCTION_UPDATABLE = {"code", "etag", "live_stage_etag", "status"}
 
+# serve-once (owner-approved 18 Nov; owner 21 Nov: header fix first, then serve).
+CANONICAL_HOST = "seanshore.in"
+ALIAS_HOSTS = ["seanshore.net"]
+EDGE_HOST = "d3prih0q6jofyr.cloudfront.net"
+CLOUDFRONT_ZONE_ID = "Z2FDTNDATAQYW2"
+SEANSHORE_NET_ZONE_ID = "Z09758912UIE2T2PK09U"
+SERVE_ALIASES = sorted([CANONICAL_HOST, "www." + CANONICAL_HOST] + [h for host in ALIAS_HOSTS for h in (host, "www." + host)])
+BROWSER_ORIGINS = ["https://" + CANONICAL_HOST] + ["https://" + host for host in ALIAS_HOSTS] + ["https://" + EDGE_HOST]
+PAGE_KEY_HEADERS = sorted(["rsc", "next-router-prefetch", "next-router-state-tree", "next-router-segment-prefetch", "x-sns-viewer-host"])
+NET_ALIAS_RECORDS = sorted(f'aws_route53_record.site_net_alias["{host} {kind}"]' for host in ("seanshore.net", "www.seanshore.net") for kind in ("A", "AAAA"))
+# For each update: (attributes whose known value may change, computed attributes that may become unknown).
+SERVE_UPDATES = {
+    "aws_cloudfront_distribution.app": ({"aliases", "viewer_certificate"},
+                                        {"etag", "last_modified_time", "status", "in_progress_validation_batches",
+                                         "trusted_key_groups", "trusted_signers"}),
+    FUNCTION_ADDRESS: ({"code"}, {"etag", "live_stage_etag", "status"}),
+    "aws_cloudfront_cache_policy.public_pages": ({"parameters_in_cache_key_and_forwarded_to_origin"}, {"etag"}),
+    "aws_cognito_user_pool_client.web": ({"callback_urls", "logout_urls"}, set()),
+    "aws_s3_bucket_cors_configuration.media": ({"cors_rule"}, set()),
+    "aws_lambda_function.realtime_authorizer": ({"environment"},
+                                                {"last_modified", "qualified_arn", "qualified_invoke_arn", "version",
+                                                 "code_sha256", "source_code_size"}),
+}
+
 EDGE_LOGS_BUCKET = f"sea-n-shore-staging-{ACCOUNT}-edge-logs"
 SITE_EDGE_NAMES = ["seanshore.in", "www.seanshore.in", "seanshore.net", "www.seanshore.net"]
 LEGACY_NAMES = ["seaandshore.in", "www.seaandshore.in"] + CONSOLE_HOSTS
@@ -127,6 +157,7 @@ def rendered_function_code():
     """The repository template rendered exactly as edge.tf's templatefile() renders it (cloudfront.net -> apex on)."""
     return (FUNCTION_TEMPLATE.read_text()
             .replace("${canonical_host}", "seanshore.in")
+            .replace("${alias_hosts}", json.dumps(ALIAS_HOSTS, separators=(",", ":")))
             .replace("${edge_host}", "d3prih0q6jofyr.cloudfront.net")
             .replace("${redirect_edge_host}", "true"))
 
@@ -140,6 +171,102 @@ def check_function_update(change):
         refuse(f"address={FUNCTION_ADDRESS} name, runtime or publish")
     if body.get("code") != rendered_function_code():
         refuse(f"address={FUNCTION_ADDRESS} code is not the repository template")
+
+
+def has_unknown(value):
+    if value is True:
+        return True
+    if isinstance(value, dict):
+        return any(has_unknown(v) for v in value.values())
+    if isinstance(value, list):
+        return any(has_unknown(v) for v in value)
+    return False
+
+
+def split_attributes(change):
+    """(known attributes that change, attributes left unknown): names only, never values."""
+    body = change.get("change") or {}
+    before, later, unknown = body.get("before") or {}, body.get("after") or {}, body.get("after_unknown") or {}
+    unknown_names = {k for k, v in unknown.items() if has_unknown(v)}
+    known = {k for k in set(before) | set(later) if k not in unknown_names and before.get(k) != later.get(k)}
+    return known, unknown_names
+
+
+def check_serve(plan, app_id, certificate_arn):
+    if app_id != "EF1K45UVP11XZ" or not certificate_arn.startswith(f"arn:aws:acm:us-east-1:{ACCOUNT}:certificate/"):
+        refuse("distribution or certificate")
+    changes = managed_changes(plan)
+    by = {c["address"]: c for c in changes}
+    updated, created = [], []
+    for change in changes:
+        address, actions = change["address"], (change.get("change") or {}).get("actions")
+        if (change.get("change") or {}).get("importing"):
+            refuse(f"address={address} imports in the serve step")
+        if actions == ["no-op"]:
+            continue
+        if actions == ["create"] and address in NET_ALIAS_RECORDS:
+            created.append(address)
+            continue
+        if actions != ["update"] or address not in SERVE_UPDATES:
+            refuse(f"address={address} actions={'+'.join(actions or [])}")
+        known, unknown = split_attributes(change)
+        allowed_known, allowed_unknown = SERVE_UPDATES[address]
+        if not known or not known <= allowed_known or not unknown <= allowed_unknown:
+            refuse(f"address={address} attributes={','.join(sorted(known | unknown)) or '-'}")
+        updated.append(address)
+    if not updated and not created:
+        missing = [a for a in [*SERVE_UPDATES, *NET_ALIAS_RECORDS] if a not in by]
+        if missing:
+            refuse(f"missing from the plan: {len(missing)}")
+        print("DOMAIN_MOVE_PLAN=NO_CHANGES")
+        return
+    # Partly applied is never expected: the step is one apply.
+    if sorted(updated) != sorted(SERVE_UPDATES) or sorted(created) != NET_ALIAS_RECORDS:
+        refuse(f"serve changes differ: updates={len(updated)} creates={len(created)}")
+
+    dist = after(by["aws_cloudfront_distribution.app"])
+    if sorted(dist.get("aliases") or []) != SERVE_ALIASES:
+        refuse("distribution aliases")
+    cert = dist.get("viewer_certificate") or [{}]
+    if (len(cert) != 1 or cert[0].get("acm_certificate_arn") != certificate_arn or cert[0].get("ssl_support_method") != "sni-only"
+            or cert[0].get("minimum_protocol_version") != "TLSv1.2_2021" or cert[0].get("cloudfront_default_certificate")):
+        refuse("distribution certificate")
+    check_function_update(by[FUNCTION_ADDRESS])
+
+    pages = (after(by["aws_cloudfront_cache_policy.public_pages"]).get("parameters_in_cache_key_and_forwarded_to_origin") or [{}])[0]
+    headers = (pages.get("headers_config") or [{}])[0]
+    items = ((headers.get("headers") or [{}])[0]).get("items") or []
+    if headers.get("header_behavior") != "whitelist" or sorted(i.lower() for i in items) != PAGE_KEY_HEADERS:
+        refuse("page cache key headers")
+
+    client = after(by["aws_cognito_user_pool_client.web"])
+    if sorted(client.get("callback_urls") or []) != sorted(o + "/auth/google/callback" for o in BROWSER_ORIGINS):
+        refuse("cognito callback urls")
+    if sorted(client.get("logout_urls") or []) != sorted(BROWSER_ORIGINS):
+        refuse("cognito logout urls")
+
+    rules = after(by["aws_s3_bucket_cors_configuration.media"]).get("cors_rule") or []
+    if (len(rules) != 1 or sorted(rules[0].get("allowed_origins") or []) != sorted(BROWSER_ORIGINS)
+            or rules[0].get("allowed_methods") != ["PUT"] or rules[0].get("allowed_headers") != ["Content-Type"]):
+        refuse("media upload cors")
+
+    authorizer = by["aws_lambda_function.realtime_authorizer"]["change"]
+    before_vars = ((authorizer.get("before") or {}).get("environment") or [{}])[0].get("variables") or {}
+    after_vars = ((authorizer.get("after") or {}).get("environment") or [{}])[0].get("variables") or {}
+    if after_vars.get("REALTIME_ALLOWED_ORIGINS") != ",".join(BROWSER_ORIGINS):
+        refuse("realtime allowed origins")
+    if {k: v for k, v in before_vars.items() if k != "REALTIME_ALLOWED_ORIGINS"} != {k: v for k, v in after_vars.items() if k != "REALTIME_ALLOWED_ORIGINS"}:
+        refuse("realtime authorizer environment beyond its allowed origins")
+
+    for address in NET_ALIAS_RECORDS:
+        record = after(by[address])
+        host, kind = address.split('"')[1].split(" ")
+        alias = (record.get("alias") or [{}])[0]
+        if (record.get("name") != host or record.get("type") != kind or record.get("zone_id") != SEANSHORE_NET_ZONE_ID
+                or alias.get("name") != EDGE_HOST or alias.get("zone_id") != CLOUDFRONT_ZONE_ID
+                or alias.get("evaluate_target_health") is not False or record.get("records")):
+            refuse(f"address={address} record")
+    print(f"DOMAIN_MOVE_PLAN=SERVE updates={len(updated)} creates={len(created)}")
 
 
 def check_create(plan, app_id, redirect_id):
@@ -217,6 +344,10 @@ def main(argv):
     if len(argv) == 3 and argv[1] == "import":
         with open(argv[2]) as handle:
             check_import(json.load(handle))
+        return
+    if len(argv) == 5 and argv[1] == "serve":
+        with open(argv[2]) as handle:
+            check_serve(json.load(handle), argv[3], argv[4])
         return
     if len(argv) == 5 and argv[1] == "create":
         with open(argv[2]) as handle:
