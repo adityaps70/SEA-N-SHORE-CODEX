@@ -189,7 +189,10 @@ describe('replacing the authenticator app', () => {
     if (confirmed.status !== 'confirmed') throw new Error('expected a pass')
     expect(verifyReplacementPass(key, confirmed.pass, { profileId: person.id, sessionId: current, now: clock })).toBe(true)
     expect(verifyReplacementPass(key, confirmed.pass, { profileId: person.id, sessionId: 'another-session', now: clock })).toBe(false)
-    expect(verifyReplacementPass(key, `${confirmed.pass.slice(0, -1)}0`, { profileId: person.id, sessionId: current, now: clock })).toBe(false)
+    // Change the last character to a different one (a random pass can already end in '0').
+    const tampered = `${confirmed.pass.slice(0, -1)}${confirmed.pass.endsWith('0') ? '1' : '0'}`
+    expect(tampered).not.toBe(confirmed.pass)
+    expect(verifyReplacementPass(key, tampered, { profileId: person.id, sessionId: current, now: clock })).toBe(false)
     expect(await replacement.start(issueReplacementPass(randomBytes(32), { profileId: person.id, sessionId: current, expiresAt: clock + 60_000 }))).toEqual({ status: 'error', error: REPLACEMENT_MESSAGES.passExpired })
     clock += 11 * 60_000
     expect(await replacement.start(confirmed.pass)).toEqual({ status: 'error', error: REPLACEMENT_MESSAGES.passExpired })
