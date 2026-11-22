@@ -112,7 +112,7 @@ describe('load-test accounts (Round ARCH)', () => {
     await accounts().create()
     expect(await accounts().counts()).toEqual(counts)
     expect(lines.join('\n')).not.toMatch(/@|Load Test \d/)
-  })
+  }, 60_000) // Owner (18 Nov, L3): preparing People you may know for every test account takes several seconds in CI.
 
   it('seals sessions to the run\'s public key and hands them off as one stored object, with counts only in the log', async () => {
     const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
