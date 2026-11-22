@@ -14,7 +14,8 @@ import { SESSION_LIST_WINDOW_DAYS, type SessionRepository, type SessionSignInMet
  * before this release, on their first request after it.
  *
  * Each server keeps the answer for 30 seconds, so a device signed out elsewhere is refused within 30 seconds;
- * revocations made by this server apply at once. last_seen_at moves at most every 5 minutes.
+ * revocations made by this server apply at once. With the cache-clear hub (owner, 18 Nov) a sign-in ended on any
+ * server is dropped from every server's cache at once. last_seen_at moves at most every 5 minutes.
  *
  * Round I (I3): a sign-in also ends when it has not been used for 30 days (idle), or when one of its refresh tokens
  * was used again after it had been exchanged for a newer one (refresh_reuse, see refresh-token-ledger).
@@ -63,6 +64,12 @@ export function createSessionGuard(input: {
   idleLimitMs?: number
   hashIp?: (ip: string | null) => string | null
   warn?: (tag: string, context: Record<string, string>) => void
+  /**
+   * Owner (18 Nov): the cache-clear hub. A sign-in ended on any server (migration 0111: s:<origin hash>) is dropped
+   * here at once, so a sign-out applies everywhere immediately instead of within 30 seconds. If the hub's listener is
+   * lost, everything kept is dropped; the 30-second limit still applies as before.
+   */
+  clearHub?: { register(cache: { dropTag(tag: string): void; dropAll(): void }): unknown }
 }) {
   const now = input.now ?? Date.now
   const cacheTtlMs = input.cacheTtlMs ?? SESSION_CHECK_CACHE_MS
@@ -70,6 +77,14 @@ export function createSessionGuard(input: {
   const idleLimitMs = input.idleLimitMs ?? SESSION_IDLE_LIMIT_MS
   const warn = input.warn ?? ((tag, context) => console.warn(tag, context))
   const cache = new Map<string, CacheEntry>()
+  input.clearHub?.register({
+    dropTag(tag) {
+      if (tag.startsWith('s:')) cache.delete(tag.slice(2))
+    },
+    dropAll() {
+      cache.clear()
+    },
+  })
   let warnedUntracked = false
   let warnedMissingTable = false
 
