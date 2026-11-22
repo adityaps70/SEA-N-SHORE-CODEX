@@ -269,7 +269,7 @@ const behavior = (path, policy) => ({ path_pattern: path, target_origin_id: 'sea
 const BEHAVIORS = [behavior('/_next/static/*', 'optimized'), behavior('/favicon.ico', 'optimized')]
 const LOGO_BEHAVIOR = { ...behavior('/api/public/company-logo/*', null) }
 const behaviorsUnknown = (extra = {}) => [...BEHAVIORS.map(() => ({})), { cache_policy_id: true, ...extra }]
-const logoPolicy = (fields = {}) => ({ name: 'sea-n-shore-staging-public-company-logo', min_ttl: 0, default_ttl: 0, max_ttl: 3600, parameters_in_cache_key_and_forwarded_to_origin: [{ cookies_config: [{ cookie_behavior: 'none' }], headers_config: [{ header_behavior: 'none' }], query_strings_config: [{ query_string_behavior: 'whitelist', query_strings: [{ items: ['v'] }] }] }], ...fields })
+const logoPolicy = (fields = {}) => ({ name: 'sea-n-shore-staging-public-company-logo', min_ttl: 0, default_ttl: 0, max_ttl: 3600, parameters_in_cache_key_and_forwarded_to_origin: [{ enable_accept_encoding_brotli: true, enable_accept_encoding_gzip: true, cookies_config: [{ cookie_behavior: 'none' }], headers_config: [{ header_behavior: 'none' }], query_strings_config: [{ query_string_behavior: 'whitelist', query_strings: [{ items: ['v'] }] }] }], ...fields })
 const update = (address, before, afterValue, unknown = {}) => ({ address, mode: 'managed', change: { actions: ['update'], before, after: afterValue, after_unknown: unknown } })
 function servePlan(overrides = {}) {
   const pick = (key, value) => (key in overrides ? overrides[key] : value)
@@ -330,6 +330,17 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
   refused(servePlan({ distribution: distribution({ ordered_cache_behavior: [{ ...BEHAVIORS[0], compress: false }, BEHAVIORS[1], LOGO_BEHAVIOR] }) }), 'an existing behavior changed')
   refused(servePlan({ behaviorsUnknown: behaviorsUnknown({ target_origin_id: true }) }), 'the logo behavior with an unknown origin')
   refused(servePlan({ logoPolicy: logoPolicy({ max_ttl: 86400 }) }), 'logos cached for a day')
+  // Owner, 22 Nov: no extras on the logo behavior, and compressed copies stay on.
+  for (const [field, value] of [['response_headers_policy_id', 'headers-policy'], ['field_level_encryption_id', 'fle'], ['realtime_log_config_arn', 'arn:aws:cloudfront::310356785722:realtime-log-config/x'], ['smooth_streaming', true], ['trusted_signers', ['self']]]) {
+    refused(servePlan({ logoBehavior: { ...LOGO_BEHAVIOR, [field]: value } }), `the logo behavior with ${field}`)
+  }
+  for (const [field, value] of [['response_headers_policy_id', ''], ['field_level_encryption_id', ''], ['realtime_log_config_arn', ''], ['smooth_streaming', false], ['trusted_signers', []]]) {
+    assert.equal(run(serveArgs(servePlan({ logoBehavior: { ...LOGO_BEHAVIOR, [field]: value } }))).status, 0, `${field} empty`)
+  }
+  const params = logoPolicy().parameters_in_cache_key_and_forwarded_to_origin[0]
+  assert.equal(run(serveArgs(servePlan({ logoPolicy: logoPolicy({ parameters_in_cache_key_and_forwarded_to_origin: [{ ...params, enable_accept_encoding_brotli: true, enable_accept_encoding_gzip: true }] }) }))).status, 0, 'compression on')
+  refused(servePlan({ logoPolicy: logoPolicy({ parameters_in_cache_key_and_forwarded_to_origin: [{ ...params, enable_accept_encoding_brotli: false, enable_accept_encoding_gzip: true }] }) }), 'brotli off')
+  refused(servePlan({ logoPolicy: logoPolicy({ parameters_in_cache_key_and_forwarded_to_origin: [{ ...params, enable_accept_encoding_brotli: true, enable_accept_encoding_gzip: false }] }) }), 'gzip off')
   refused(servePlan({ logoPolicy: logoPolicy({ parameters_in_cache_key_and_forwarded_to_origin: [{ cookies_config: [{ cookie_behavior: 'all' }], headers_config: [{ header_behavior: 'none' }], query_strings_config: [{ query_string_behavior: 'whitelist', query_strings: [{ items: ['v'] }] }] }] }) }), 'a logo policy keyed on cookies')
   assert.equal(run(serveArgs(servePlan({ behaviorsUnknown: behaviorsUnknown({ grpc_config: true }) }))).status, 0, 'a provider-computed gRPC block on the new behavior')
   refused(servePlan({ distribution: distribution({ aliases: ['seanshore.in', 'www.seanshore.in', 'seanshore.net'] }) }), 'www.seanshore.net missing')
