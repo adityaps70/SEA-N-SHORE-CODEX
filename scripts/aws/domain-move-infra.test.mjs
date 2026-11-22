@@ -323,6 +323,17 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
   refused(servePlan({ authorizerEnv: [{ variables: { REALTIME_TICKET_AUDIENCE: 'other', REALTIME_TICKET_SECRET_ARN: 'arn:secret', REALTIME_ALLOWED_ORIGINS: ORIGINS.join(',') } }] }), 'another authorizer variable changed')
   refused(servePlan({ 'record www.seanshore.net A': { name: 'www.seanshore.net', type: 'A', zone_id: 'Z09758912UIE2T2PK09U', records: null, alias: [{ name: 'elsewhere.cloudfront.net', zone_id: 'Z2FDTNDATAQYW2', evaluate_target_health: false }] } }), 'a record pointing elsewhere')
   refused(servePlan({ extra: [{ address: 'aws_route53_record.seanshore_legacy_apex', mode: 'managed', change: { actions: ['update'] } }] }), 'a seanshore.in record changed')
+  // Every unexpected change is listed with its attribute names, never values (run 44995638740 showed only the first).
+  const lambdas = run(serveArgs(servePlan({ extra: [
+    update('aws_lambda_function.cognito_resend_email_sender', { source_code_hash: 'OLDHASH' }, { source_code_hash: 'NEWHASH' }),
+  ] }).map((c) => c.address === 'aws_lambda_function.realtime_authorizer'
+    ? update(c.address, { ...c.change.before, source_code_hash: 'OLDHASH' }, { ...c.change.after, source_code_hash: 'NEWHASH' }, c.change.after_unknown)
+    : c)))
+  assert.notEqual(lambdas.status, 0)
+  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=source_code_hash$/m)
+  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.realtime_authorizer actions=update attributes=environment,last_modified,qualified_arn,source_code_hash,version$/m)
+  assert.match(lambdas.stdout, /DOMAIN_MOVE_PLAN_REFUSED changes=2/)
+  assert.doesNotMatch(lambdas.stdout, /OLDHASH|NEWHASH|seanshore\.net/)
   refused(servePlan({ extra: [{ address: 'aws_acm_certificate.seanshore_edge', mode: 'managed', change: { actions: ['delete'] } }] }), 'the old certificate deleted')
   refused(servePlan().filter((c) => c.address !== 'aws_lambda_function.realtime_authorizer'), 'partly applied')
   refused(servePlan().map((c) => c.address === FUNCTION ? functionUpdate({ code: renderedFunction().replace("'www.' + ALIAS_HOSTS[i]", "'w.' + ALIAS_HOSTS[i]") }) : c), 'function code that is not the template')

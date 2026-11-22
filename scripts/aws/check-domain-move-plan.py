@@ -197,7 +197,7 @@ def check_serve(plan, app_id, certificate_arn):
         refuse("distribution or certificate")
     changes = managed_changes(plan)
     by = {c["address"]: c for c in changes}
-    updated, created = [], []
+    updated, created, unexpected = [], [], []
     for change in changes:
         address, actions = change["address"], (change.get("change") or {}).get("actions")
         if (change.get("change") or {}).get("importing"):
@@ -207,13 +207,17 @@ def check_serve(plan, app_id, certificate_arn):
         if actions == ["create"] and address in NET_ALIAS_RECORDS:
             created.append(address)
             continue
-        if actions != ["update"] or address not in SERVE_UPDATES:
-            refuse(f"address={address} actions={'+'.join(actions or [])}")
         known, unknown = split_attributes(change)
-        allowed_known, allowed_unknown = SERVE_UPDATES[address]
-        if not known or not known <= allowed_known or not unknown <= allowed_unknown:
-            refuse(f"address={address} attributes={','.join(sorted(known | unknown)) or '-'}")
+        allowed_known, allowed_unknown = SERVE_UPDATES.get(address, (set(), set()))
+        if actions != ["update"] or address not in SERVE_UPDATES or not known or not known <= allowed_known or not unknown <= allowed_unknown:
+            unexpected.append((address, actions, known | unknown))
+            continue
         updated.append(address)
+    # Run 44995638740 named only the first: every unexpected change is listed (attribute names, never values).
+    for address, actions, names in unexpected:
+        print(f"DOMAIN_MOVE_PLAN_DIFF address={address} actions={'+'.join(actions or [])} attributes={','.join(sorted(names)) or '-'}")
+    if unexpected:
+        refuse(f"changes={len(unexpected)}")
     if not updated and not created:
         missing = [a for a in [*SERVE_UPDATES, *NET_ALIAS_RECORDS] if a not in by]
         if missing:

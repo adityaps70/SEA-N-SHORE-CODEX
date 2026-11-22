@@ -7,7 +7,7 @@ const secretArn = process.env.REALTIME_TICKET_SECRET_ARN
 const allowedOrigins = parseAllowedOrigins(process.env.REALTIME_ALLOWED_ORIGINS ?? process.env.REALTIME_ALLOWED_ORIGIN)
 let cachedSecret
 
-/** Comma-separated browser origins (https://<site>,https://<edge>.cloudfront.net); trailing slashes ignored. */
+/** Comma-separated browser origins (https://seanshore.in,https://<edge>.cloudfront.net); trailing slashes ignored. */
 export function parseAllowedOrigins(value) {
   return [...new Set(
     (value ?? '')

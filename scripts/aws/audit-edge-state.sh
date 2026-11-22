@@ -176,8 +176,10 @@ while IFS=$'\t' read -r type state_name id live_name; do
       fi
       ;;
     aws_cloudfront_function)
-      case "$live_name" in
-        sea-n-shore-staging-canonical-host-redirect|sea-n-shore-staging-legacy-domain-redirect) ;;
+      case "$state_name:$live_name" in
+        canonical_host_redirect:sea-n-shore-staging-canonical-host-redirect|legacy_domain_redirect:sea-n-shore-staging-legacy-domain-redirect) ;;
+        # Domain move: the console-made redirect function, imported unchanged under its console name (domain-move.tf).
+        console_redirect:seanshore-redirect-domains) ;;
         *)
           LIVE_CHECK_FAILED=1
           echo "aws_cloudfront_function.$state_name LIVE_QUERY_REFUSED id=$id name=$live_name reason=unexpected-function-name"
