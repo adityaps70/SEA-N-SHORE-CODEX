@@ -220,4 +220,40 @@ describe('Aurora database client', () => {
     expect(fake.transactionQuery.mock.calls.map(([text]) => text)).toEqual(['BEGIN', 'ROLLBACK'])
     expect(fake.release).toHaveBeenCalledTimes(1)
   })
+
+  it('owner 18 Nov: after a write to a cached table commits, waits for the cache-clear barrier; never for reads or rollbacks', async () => {
+    const { createDatabaseClient, setDatabaseWriteHook, writesCachedTable } = await import('./client')
+    const order: string[] = []
+    setDatabaseWriteHook(async () => { order.push('barrier') })
+    try {
+      const fake = createFakePool()
+      fake.query.mockImplementation(async () => { order.push('query'); return { rows: [] } })
+      const database = createDatabaseClient({ environment, poolFactory: () => fake.pool })
+      await database.query('select id from public.profiles where id = $1', ['p'])
+      expect(order).toEqual(['query'])
+      await database.query('update public.notifications set read_at = now() where recipient_id = $1', ['p'])
+      expect(order).toEqual(['query', 'query', 'barrier'])
+
+      order.length = 0
+      fake.transactionQuery.mockImplementation(async (text: string) => { order.push(text.split(' ')[0]!); return { rows: [] } })
+      await database.withTransaction(async (client) => {
+        await client.query('insert into public.messages (id) values ($1)', ['m'])
+      })
+      expect(order).toEqual(['BEGIN', 'insert', 'COMMIT', 'barrier'])
+      expect(fake.release).toHaveBeenCalledTimes(1)
+
+      order.length = 0
+      await expect(database.withTransaction(async (client) => {
+        await client.query('update public.profiles set full_name = $2 where id = $1', ['p', 'x'])
+        throw new Error('changed my mind')
+      })).rejects.toThrow('changed my mind')
+      expect(order).toEqual(['BEGIN', 'update', 'ROLLBACK'])
+      expect(fake.release).toHaveBeenCalledTimes(2)
+    } finally {
+      setDatabaseWriteHook(null)
+    }
+    expect(writesCachedTable('delete from public.auth_sessions where id = $1')).toBe(true)
+    expect(writesCachedTable('insert into public.post_reactions (post_id) values ($1)')).toBe(false)
+    expect(writesCachedTable('select pg_notify($1, $2)')).toBe(false)
+  })
 })

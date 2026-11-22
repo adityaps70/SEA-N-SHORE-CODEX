@@ -1,6 +1,16 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { isCountryCode } from '@/features/countries/catalog'
+import { actorRoleFor, recordAdminAudit } from '@/features/admin/admin-audit'
+import { loadCountryAdminAccess, permissionsTableReady } from './scope'
+import {
+  DEFAULT_COUNTRY_ADMIN_PERMISSIONS,
+  LEGACY_COUNTRY_ADMIN_PERMISSIONS,
+  LIVE_COUNTRY_ADMIN_SECTIONS,
+  isCountryAdminSection,
+  normalisePermissions,
+  type CountryAdminPermissions,
+} from './sections'
 
 /**
  * Round GP (Global Partners), Part C: country admins. A platform administrator makes an existing member a country
@@ -24,6 +34,8 @@ export type CountryAdminEntry = {
   fullName: string
   slug: string | null
   countries: string[]
+  /** Round GP Part E: the sections a platform administrator opened to them, each "view" or "act". */
+  permissions: CountryAdminPermissions
   grantedAt: string
   updatedAt: string
   lastActiveAt: string | null
@@ -32,7 +44,7 @@ export type CountryAdminEntry = {
 export type CountryAdminMember = { id: string; fullName: string; slug: string | null; isPlatformAdministrator: boolean; countries: string[] | null }
 
 export class CountryAdminError extends Error {
-  constructor(code: 'admin_forbidden' | 'member_not_found' | 'member_is_platform_admin' | 'countries_invalid' | 'country_admins_unavailable' | 'not_a_country_admin') {
+  constructor(code: 'admin_forbidden' | 'member_not_found' | 'member_is_platform_admin' | 'countries_invalid' | 'permissions_invalid' | 'country_admins_unavailable' | 'not_a_country_admin') {
     super(code)
     this.name = 'CountryAdminError'
   }
@@ -54,6 +66,20 @@ export function normaliseCountryAdminCountries(input: readonly string[]): string
   return unique
 }
 
+/**
+ * The permissions a platform administrator may save: only sections that are live in this release, cleaned by
+ * normalisePermissions. Throws permissions_invalid when nothing is left.
+ */
+export function normaliseSavedPermissions(input: CountryAdminPermissions): CountryAdminPermissions {
+  const live: Partial<Record<string, unknown>> = {}
+  for (const [section, level] of Object.entries(input)) {
+    if (isCountryAdminSection(section) && LIVE_COUNTRY_ADMIN_SECTIONS.includes(section)) live[section] = level
+  }
+  const permissions = normalisePermissions(live)
+  if (!permissions) throw new CountryAdminError('permissions_invalid')
+  return permissions
+}
+
 function isMissingTable(error: unknown) {
   return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '42P01')
 }
@@ -73,6 +99,16 @@ export function createCountryAdminRepository(input: { query?: Query; transaction
       const rows = await query(`select countries from public.country_admins where profile_id = $1`, [profileId])
       const countries = codes(rows[0]?.countries)
       return countries.length ? countries : null
+    } catch (error) {
+      if (isMissingTable(error)) return null
+      throw error
+    }
+  }
+
+  /** Round GP Part E: a country admin's countries and sections, or null (also before migration 0110). */
+  async function getAccess(profileId: string) {
+    try {
+      return await loadCountryAdminAccess(query, profileId)
     } catch (error) {
       if (isMissingTable(error)) return null
       throw error
@@ -105,11 +141,26 @@ export function createCountryAdminRepository(input: { query?: Query; transaction
       if (isMissingTable(error)) throw new CountryAdminError('country_admins_unavailable')
       throw error
     }
+    const permissionsByProfile = new Map<string, CountryAdminPermissions>()
+    if (rows.length && await permissionsTableReady(query)) {
+      const permissionRows = await query(
+        `select profile_id, section, can_act from public.country_admin_permissions where profile_id = any($1::uuid[])`,
+        [rows.map((row) => String(row.profile_id))],
+      )
+      for (const row of permissionRows) {
+        if (!isCountryAdminSection(row.section)) continue
+        const entry = permissionsByProfile.get(String(row.profile_id)) ?? {}
+        entry[row.section] = row.can_act === true ? 'act' : 'view'
+        permissionsByProfile.set(String(row.profile_id), entry)
+      }
+    }
+    const tableReady = await permissionsTableReady(query)
     return rows.map((row) => ({
       profileId: String(row.profile_id),
       fullName: String(row.full_name),
       slug: typeof row.slug === 'string' ? row.slug : null,
       countries: codes(row.countries),
+      permissions: tableReady ? (permissionsByProfile.get(String(row.profile_id)) ?? {}) : { ...LEGACY_COUNTRY_ADMIN_PERMISSIONS },
       grantedAt: iso(row.granted_at),
       updatedAt: iso(row.updated_at),
       lastActiveAt: row.last_active_at ? iso(row.last_active_at) : null,
@@ -147,8 +198,15 @@ export function createCountryAdminRepository(input: { query?: Query; transaction
   }
 
   /** Makes a member a country admin, or changes their countries. Audited with the previous and new countries. */
-  async function grant(adminId: string, profileId: string, countries: readonly string[]) {
+  /**
+   * Makes a member a country admin, or changes their countries and sections. A new country admin starts with
+   * Organizations only unless sections are given (Round GP Part E). Audited with the previous and new countries and
+   * sections.
+   */
+  async function grant(adminId: string, profileId: string, countries: readonly string[], permissions?: CountryAdminPermissions) {
     const next = normaliseCountryAdminCountries(countries)
+    const requestedPermissions = permissions ? normaliseSavedPermissions(permissions) : null
+    const withPermissions = await permissionsTableReady(query)
     return transaction(async (run) => {
       await requirePlatformAdministrator(run, adminId)
       const members = await run(
@@ -173,12 +231,49 @@ export function createCountryAdminRepository(input: { query?: Query; transaction
          on conflict (profile_id) do update set countries = excluded.countries, updated_at = now()`,
         [profileId, next, adminId],
       )
-      await run(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, $2, 'profile', $3, $4::jsonb)`,
-        [adminId, previous.length ? 'country_admin.updated' : 'country_admin.granted', profileId, JSON.stringify({ countries: next, previousCountries: previous })],
-      )
-      return { countries: next, previousCountries: previous }
+
+      // Round GP Part E: sections. Before migration 0113 there is no table, and everyone has the legacy two sections.
+      let previousPermissions: CountryAdminPermissions = previous.length ? { ...LEGACY_COUNTRY_ADMIN_PERMISSIONS } : {}
+      let nextPermissions: CountryAdminPermissions = previousPermissions
+      if (withPermissions) {
+        previousPermissions = {}
+        for (const row of await run(`select section, can_act from public.country_admin_permissions where profile_id = $1`, [profileId])) {
+          if (isCountryAdminSection(row.section)) previousPermissions[row.section] = row.can_act === true ? 'act' : 'view'
+        }
+        const wanted = requestedPermissions ?? (previous.length ? null : DEFAULT_COUNTRY_ADMIN_PERMISSIONS)
+        if (wanted) {
+          // Only the live sections are replaced; a section a later release adds is kept as it was.
+          await run(
+            `delete from public.country_admin_permissions where profile_id = $1 and section = any($2::text[])`,
+            [profileId, [...LIVE_COUNTRY_ADMIN_SECTIONS]],
+          )
+          for (const [section, level] of Object.entries(wanted)) {
+            await run(
+              `insert into public.country_admin_permissions (profile_id, section, can_act, granted_by)
+               values ($1, $2, $3, $4)
+               on conflict (profile_id, section) do update set can_act = excluded.can_act, granted_by = excluded.granted_by, granted_at = now()`,
+              [profileId, section, level === 'act', adminId],
+            )
+          }
+          nextPermissions = { ...Object.fromEntries(Object.entries(previousPermissions).filter(([section]) => !LIVE_COUNTRY_ADMIN_SECTIONS.includes(section as never))), ...wanted }
+        } else {
+          nextPermissions = previousPermissions
+        }
+      } else if (requestedPermissions) {
+        throw new CountryAdminError('country_admins_unavailable')
+      }
+
+      await recordAdminAudit(run, {
+        actorId: adminId,
+        actorRole: actorRoleFor({ kind: 'platform' }),
+        section: 'country_admins',
+        country: null,
+        action: previous.length ? 'country_admin.updated' : 'country_admin.granted',
+        targetType: 'profile',
+        targetId: profileId,
+        metadata: { countries: next, previousCountries: previous, permissions: nextPermissions, previousPermissions },
+      })
+      return { countries: next, previousCountries: previous, permissions: nextPermissions, previousPermissions }
     })
   }
 
@@ -194,16 +289,21 @@ export function createCountryAdminRepository(input: { query?: Query; transaction
         throw error
       }
       if (!rows[0]) throw new CountryAdminError('not_a_country_admin')
-      await run(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, 'country_admin.removed', 'profile', $2, $3::jsonb)`,
-        [adminId, profileId, JSON.stringify({ previousCountries: codes(rows[0].countries) })],
-      )
+      await recordAdminAudit(run, {
+        actorId: adminId,
+        actorRole: 'platform_admin',
+        section: 'country_admins',
+        country: null,
+        action: 'country_admin.removed',
+        targetType: 'profile',
+        targetId: profileId,
+        metadata: { previousCountries: codes(rows[0].countries) },
+      })
       return true
     })
   }
 
-  return { getCountries, touchActive, list, findMember, grant, remove }
+  return { getCountries, getAccess, touchActive, list, findMember, grant, remove }
 }
 
 export type CountryAdminRepository = ReturnType<typeof createCountryAdminRepository>

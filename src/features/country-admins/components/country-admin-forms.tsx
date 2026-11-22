@@ -1,8 +1,15 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { COUNTRY_OPTIONS } from '@/features/countries/catalog'
+import {
+  COUNTRY_ADMIN_SECTION_INFO,
+  DEFAULT_COUNTRY_ADMIN_PERMISSIONS,
+  LIVE_COUNTRY_ADMIN_SECTIONS,
+  VIEW_ONLY_SECTIONS,
+  type CountryAdminPermissions,
+} from '../sections'
 import {
   grantCountryAdminAction,
   removeCountryAdminAction,
@@ -30,6 +37,76 @@ function CountriesSelect({ id, selected }: { id: string; selected?: readonly str
   )
 }
 
+/** One section's two tickboxes. Ticking Act also ticks View (act includes view); unticking View unticks Act. */
+function SectionRow({ idPrefix, section, initial }: { idPrefix: string; section: (typeof LIVE_COUNTRY_ADMIN_SECTIONS)[number]; initial: 'view' | 'act' | undefined }) {
+  const [view, setView] = useState(initial === 'view' || initial === 'act')
+  const [act, setAct] = useState(initial === 'act')
+  const info = COUNTRY_ADMIN_SECTION_INFO[section]
+  const viewOnly = VIEW_ONLY_SECTIONS.includes(section)
+  const viewId = `${idPrefix}-view-${section}`
+  const actId = `${idPrefix}-act-${section}`
+  return (
+    <tr>
+      <th scope="row" className="py-1.5 pr-3 text-left align-top font-normal">
+        <span className="font-semibold text-navy-950">{info.label}</span>
+        <span className="block text-xs text-muted">{info.act ? `View: ${info.view}. Act: ${info.act}.` : info.view}</span>
+      </th>
+      <td className="px-2 py-1.5 text-center align-top">
+        <input
+          id={viewId}
+          type="checkbox"
+          name={`view_${section}`}
+          value="1"
+          checked={view}
+          onChange={(event) => { setView(event.target.checked); if (!event.target.checked) setAct(false) }}
+          aria-label={`${info.label}: view`}
+          className="size-4"
+        />
+      </td>
+      <td className="px-2 py-1.5 text-center align-top">
+        {viewOnly ? <span className="text-xs text-muted" aria-label={`${info.label}: view only`}>—</span> : (
+          <input
+            id={actId}
+            type="checkbox"
+            name={`act_${section}`}
+            value="1"
+            checked={act}
+            onChange={(event) => { setAct(event.target.checked); if (event.target.checked) setView(true) }}
+            aria-label={`${info.label}: act`}
+            className="size-4"
+          />
+        )}
+      </td>
+    </tr>
+  )
+}
+
+/**
+ * Round GP Part E: what this country admin may use, as View and Act tickboxes per section. Every section is limited
+ * to their countries; their admin menu and Overview show only the sections ticked here.
+ */
+function SectionFields({ idPrefix, permissions }: { idPrefix: string; permissions: CountryAdminPermissions }) {
+  return (
+    <fieldset className="grid gap-1">
+      <legend className="mb-1 text-sm font-medium text-navy-900">Sections (limited to their countries)</legend>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-muted">
+            <th scope="col" className="pb-1 text-left font-semibold">Section</th>
+            <th scope="col" className="w-16 pb-1 font-semibold">View</th>
+            <th scope="col" className="w-16 pb-1 font-semibold">Act</th>
+          </tr>
+        </thead>
+        <tbody>
+          {LIVE_COUNTRY_ADMIN_SECTIONS.map((section) => (
+            <SectionRow key={section} idPrefix={idPrefix} section={section} initial={permissions[section]} />
+          ))}
+        </tbody>
+      </table>
+    </fieldset>
+  )
+}
+
 /** Round GP (Part C): make an existing member a country admin, by their exact username or sign-in email. */
 export function GrantCountryAdminForm() {
   const [state, formAction, pending] = useActionState(grantCountryAdminAction, idle)
@@ -48,13 +125,14 @@ export function GrantCountryAdminForm() {
       <div className="grid gap-2 md:pt-6">
         <Button type="submit" size="sm" disabled={pending}>{pending ? 'Saving…' : 'Make country admin'}</Button>
       </div>
+      <div className="md:col-span-3"><SectionFields idPrefix="country-admin-new" permissions={DEFAULT_COUNTRY_ADMIN_PERMISSIONS} /></div>
       <div className="md:col-span-3"><Status state={state} /></div>
     </form>
   )
 }
 
-/** Change a country admin's countries, or remove the role. */
-export function EditCountryAdminForm({ profileId, name, countries }: { profileId: string; name: string; countries: readonly string[] }) {
+/** Change a country admin's countries and sections, or remove the role. */
+export function EditCountryAdminForm({ profileId, name, countries, permissions }: { profileId: string; name: string; countries: readonly string[]; permissions: CountryAdminPermissions }) {
   const [updateState, updateAction, updating] = useActionState(updateCountryAdminAction, idle)
   const [removeState, removeAction, removing] = useActionState(removeCountryAdminAction, idle)
   const selectId = `country-admin-${profileId}`
@@ -64,8 +142,9 @@ export function EditCountryAdminForm({ profileId, name, countries }: { profileId
         <input type="hidden" name="profileId" value={profileId} />
         <label htmlFor={selectId} className="sr-only">Countries for {name}</label>
         <CountriesSelect id={selectId} selected={countries} />
+        <SectionFields idPrefix={selectId} permissions={permissions} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" size="sm" disabled={updating}>{updating ? 'Saving…' : 'Save countries'}</Button>
+          <Button type="submit" size="sm" disabled={updating}>{updating ? 'Saving…' : 'Save countries and sections'}</Button>
           <Status state={updateState} />
         </div>
       </form>

@@ -405,7 +405,7 @@ async function organizationDirectory({
 export default async function AdminOrganizationsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   // Round GP (Part C): country admins see (and review) organizations from their own countries only.
-  const access = await requireAdminAccess('country')
+  const access = await requireAdminAccess('organizations')
   const user = access.user
 
   if (readSingle(params.view) === 'queue') {

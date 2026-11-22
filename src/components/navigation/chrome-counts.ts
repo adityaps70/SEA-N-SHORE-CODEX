@@ -1,6 +1,8 @@
 import { cache } from 'react'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import { createClearableCache } from '@/lib/cache/cache-clear'
+import { cacheClearHub } from '@/lib/cache/runtime'
 import { messagingRepository, UNREAD_MESSAGE_COUNT_SQL } from '@/features/messaging/repository'
 import { INCOMING_REQUEST_COUNT_SQL, networkRepository } from '@/features/network/repository'
 import { countUnreadNotificationsFromAurora, UNREAD_NOTIFICATION_COUNT_SQL } from '@/features/notifications/repository'
@@ -59,7 +61,18 @@ export function createChromeCounts(input: { query?: CountsQuery; separate?: Sepa
 }
 
 /**
+ * Owner (18 Nov): the header counts are kept for a minute per server and cleared everywhere the moment one of them can
+ * change (migration 0111: c:<profile id> on a notification, a message or read state in one of their conversations, or
+ * a connection request). Nothing is kept while the cache-clear listener is down.
+ */
+export const CHROME_COUNTS_CACHE_MS = 60_000
+const loadChromeCountsFromDatabase = createChromeCounts()
+const chromeCountsCache = createClearableCache<ChromeCounts>({ hub: cacheClearHub, ttlMs: CHROME_COUNTS_CACHE_MS, maxEntries: 5000 })
+
+/**
  * Once per server render for a member: the chrome (app-chrome-data.ts) and the jobs layout's messaging dock share
  * it. React's cache() only shares within one render; actions and route handlers always read fresh.
  */
-export const getChromeCountsForRequest = cache(createChromeCounts())
+export const getChromeCountsForRequest = cache((profileId: string) => chromeCountsCache.getOrLoad(
+  profileId, () => loadChromeCountsFromDatabase(profileId), () => [`c:${profileId}`],
+))

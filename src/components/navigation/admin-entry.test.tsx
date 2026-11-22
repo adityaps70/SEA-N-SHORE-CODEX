@@ -80,24 +80,24 @@ describe('authorized admin navigation entry', () => {
     expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
   })
 
-  it('gives a country admin an Admin entry to the organization review queue, naming their countries (Round GP)', () => {
+  it('gives a country admin an Admin entry to their Overview or first section, naming their countries (Round GP)', () => {
     render(<AppHeader unreadCount={0} messagingUnreadCount={0} adminCountries={['PH']} />)
     fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
     const entry = screen.getByRole('menuitem', { name: /Admin/ })
-    expect(entry).toHaveAttribute('href', '/admin/organizations?view=queue')
-    expect(entry).toHaveTextContent('Organization reviews · Philippines')
+    expect(entry).toHaveAttribute('href', '/admin')
+    expect(entry).toHaveTextContent('Country admin · Philippines')
   })
 
   it('gives a country admin the same Admin row in the phone side drawer (Round GP)', () => {
     render(<MobileAppHeader adminCountries={['PH', 'SG']} />)
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
     const tools = screen.getByRole('region', { name: 'Work tools' })
-    expect(within(tools).getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin/organizations?view=queue')
+    expect(within(tools).getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin')
   })
 
   it('keeps administrators on the whole console, and names at most three countries', () => {
     expect(adminMenuLink({ canAccessAdmin: true, adminCountries: ['PH'] })).toEqual({ href: '/admin', description: 'Platform administration' })
-    expect(adminMenuLink({ adminCountries: ['PH', 'SG', 'IN', 'AE'] })?.description).toBe('Organization reviews · Philippines, Singapore, India and 1 more')
+    expect(adminMenuLink({ adminCountries: ['PH', 'SG', 'IN', 'AE'] })?.description).toBe('Country admin · Philippines, Singapore, India and 1 more')
     expect(adminMenuLink({ adminCountries: [] })).toBeNull()
     expect(adminMenuLink({})).toBeNull()
   })

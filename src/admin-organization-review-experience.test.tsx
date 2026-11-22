@@ -13,7 +13,7 @@ describe('platform admin organization review experience', () => {
     // Round GP (Part C): the layout checks access through requireAdminAccess, which lets platform administrators in
     // (and country admins into their pages only) and answers everyone else with notFound().
     const gate = source('src/features/admin/admin-access.ts')
-    expect(layout).toContain("requireAdminAccess('country')")
+    expect(layout).toContain("requireAdminAccess('console')")
     expect(gate).toContain('isPlatformAdministrator')
     expect(gate).toContain('enforcePlatformAdminMfa')
     expect(gate).toContain('notFound()')

@@ -24,13 +24,16 @@ test('media bucket exposes only restricted browser-to-S3 PUT CORS', () => {
   assert.match(corsSource, /bucket\s*=\s*aws_s3_bucket\.app\["media"\]\.id/)
 
   assert.deepEqual(listValues(corsSource, 'allowed_methods'), ['PUT'])
-  // Browser origins are the canonical domain plus the managed CloudFront hostname, defined once in edge.tf.
+  // Browser origins are the canonical domain, the domain-move alias domains and the managed CloudFront hostname,
+  // defined once in edge.tf.
   assert.match(corsSource, /allowed_origins\s*=\s*local\.browser_site_urls/)
   const edgeSource = readFileSync('infra/aws/app/edge.tf', 'utf8')
   assert.match(edgeSource, /canonical_site_host\s*=\s*"seanshore\.in"/)
   assert.match(edgeSource, /canonical_site_url\s*=\s*"https:\/\/\$\{local\.canonical_site_host\}"/)
   assert.match(edgeSource, /edge_site_url\s*=\s*"https:\/\/\$\{aws_cloudfront_distribution\.app\.domain_name\}"/)
-  assert.match(edgeSource, /browser_site_urls\s*=\s*\[local\.canonical_site_url, local\.edge_site_url\]/)
+  assert.match(edgeSource, /browser_site_urls\s*=\s*concat\(\[local\.canonical_site_url\], \[for host in local\.site_alias_hosts : "https:\/\/\$\{host\}"\], \[local\.edge_site_url\]\)/)
+  // Domain move: the one alias domain, seanshore.net, and nothing else (scripts/aws/domain-move-infra.test.mjs).
+  assert.match(edgeSource, /site_alias_hosts\s*=\s*\["seanshore\.net"\]/)
   assert.deepEqual(listValues(corsSource, 'allowed_headers'), ['Content-Type'])
 
   assert.doesNotMatch(corsSource, /allowed_methods\s*=\s*\[[^\]]*"(?:GET|DELETE)"/i)

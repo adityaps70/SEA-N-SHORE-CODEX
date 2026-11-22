@@ -3,6 +3,7 @@ import {
   Activity,
   BadgeCheck,
   Building2,
+  CalendarDays,
   CreditCard,
   Film,
   Globe2,
@@ -27,6 +28,13 @@ import Link from 'next/link'
 import { AdminMobileBar } from '@/features/admin/components/admin-mobile-bar'
 import { BACKUP_CODES_HREF, BACKUP_CODES_REMINDER, needsBackupCodes } from '@/features/account-security/backup-code-reminder'
 import { adminRepository, type AdminDashboardMetrics } from '@/features/admin/repository'
+import {
+  allows,
+  COUNTRY_ADMIN_SECTION_INFO,
+  LIVE_COUNTRY_ADMIN_SECTIONS,
+  type CountryAdminPermissions,
+  type CountryAdminSection,
+} from '@/features/country-admins/sections'
 
 type Section = {
   href: string
@@ -62,11 +70,28 @@ const sections: Section[] = [
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]
 
-// Round GP (Part C): all a country admin sees: their countries' organization reviews and numbers.
-const countryAdminSections: Section[] = [
-  { href: '/admin/organizations', label: 'Organizations', icon: Building2 },
-  { href: '/admin/countries', label: 'Members by country', icon: Globe2 },
-]
+// Round GP (Part C, sections in Part E): a country admin sees only the sections a platform administrator gave them.
+const COUNTRY_SECTION_ICONS: Record<CountryAdminSection, typeof LayoutDashboard> = {
+  overview: LayoutDashboard,
+  organizations: Building2,
+  members: Globe2,
+  learning: GraduationCap,
+  events: CalendarDays,
+  moderation: ShieldAlert,
+  communities: UsersRound,
+  verification: BadgeCheck,
+  access: KeyRound,
+}
+
+function countryAdminSections(permissions: CountryAdminPermissions): Section[] {
+  return LIVE_COUNTRY_ADMIN_SECTIONS
+    .filter((section) => allows(permissions, section))
+    .map((section) => ({
+      href: section === 'organizations' ? '/admin/organizations' : COUNTRY_ADMIN_SECTION_INFO[section].href,
+      label: COUNTRY_ADMIN_SECTION_INFO[section].label,
+      icon: COUNTRY_SECTION_ICONS[section],
+    }))
+}
 
 // Phones (round 8): the section nav is a scrolling chip row, selected = navy-950 filled.
 const linkClass = 'group flex min-h-10 shrink-0 items-center gap-2.5 rounded-lg px-3 text-sm font-semibold text-navy-900 transition hover:bg-mist-50 max-md:min-h-9 max-md:gap-1.5 max-md:rounded-full max-md:border max-md:border-mist-300 max-md:bg-white max-md:px-3.5 max-md:focus-visible:outline max-md:focus-visible:outline-2 max-md:focus-visible:outline-offset-2 max-md:focus-visible:outline-ocean-500'
@@ -77,7 +102,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // (admin-access.ts), so a country admin who types another admin address still gets nothing.
   let access: AdminAccess
   try {
-    access = await requireAdminAccess('country')
+    access = await requireAdminAccess('console')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error
@@ -87,7 +112,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const metrics = access.kind === 'platform'
     ? await adminRepository.getAdminDashboardMetrics(access.user.id).catch(() => null)
     : null
-  const visibleSections = access.kind === 'platform' ? sections : countryAdminSections
+  const visibleSections = access.kind === 'platform' ? sections : countryAdminSections(access.permissions)
   // Admin two-step (owner, 21 Nov): a reminder for admins with no unused backup codes.
   const remindBackupCodes = await needsBackupCodes(access.user.id)
 
