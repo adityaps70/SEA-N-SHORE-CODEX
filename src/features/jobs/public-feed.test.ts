@@ -41,7 +41,7 @@ function job(overrides: Partial<JobListing> = {}): JobListing {
 
 describe('public Sea N Shore vacancies feed', () => {
   it('publishes a minimal job card without private fields', () => {
-    const [entry] = mapPublicJobsFeed([job()], new Date('2026-10-10T00:00:00Z'))
+    const [entry] = mapPublicJobsFeed([job()], new Date('2026-10-10T00:00:00Z'), 'https://example.test')
     expect(entry).toEqual({
       id: 'job-101',
       title: 'Chief Officer',
@@ -54,7 +54,7 @@ describe('public Sea N Shore vacancies feed', () => {
       joining_date: '2026-10-15',
       expires_at: null,
       status: 'published',
-      public_url: 'https://seanshore.in/jobs/job-101',
+      public_url: 'https://example.test/jobs/job-101',
     })
     expect(JSON.stringify(entry)).not.toContain('description')
     expect(JSON.stringify(entry)).not.toContain('requirements')

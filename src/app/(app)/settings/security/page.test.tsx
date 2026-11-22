@@ -5,6 +5,7 @@ import type { CurrentMfaStatus } from '@/features/auth/mfa'
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   isPlatformAdministrator: vi.fn(),
+  countryAdminCountries: vi.fn(async (): Promise<string[] | null> => null),
   getCurrentMfaStatus: vi.fn(),
   startAuthenticatorSetup: vi.fn(),
   confirmAuthenticatorSetup: vi.fn(),
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh, replace: mocks.replace }) }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: mocks.isPlatformAdministrator } }))
+vi.mock('@/features/country-admins/repository', () => ({ countryAdminRepository: { getCountries: mocks.countryAdminCountries } }))
 vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: mocks.getCurrentMfaStatus }))
 vi.mock('@/features/auth/actions', () => ({ signOut: mocks.signOut }))
 vi.mock('@/features/account-security/admin-step-up-runtime', () => ({ hasAdminStepUp: mocks.hasAdminStepUp }))
@@ -45,6 +47,7 @@ describe('/settings/security (Round 14, 2.11)', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'profile-1' })
     mocks.isPlatformAdministrator.mockResolvedValue(false)
+    mocks.countryAdminCountries.mockResolvedValue(null)
     mocks.getCurrentMfaStatus.mockResolvedValue(off)
   })
 
@@ -117,7 +120,7 @@ describe('/settings/security (Round 14, 2.11)', () => {
     await renderPage()
 
     expect(screen.queryByRole('button', { name: 'Turn off' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Platform administrators must keep two-step verification on/)).toBeInTheDocument()
+    expect(screen.getByText(/Administrators and country admins must keep two-step verification on/)).toBeInTheDocument()
   })
 
   it.each([
@@ -201,5 +204,56 @@ describe('/settings/security (Round 14, 2.11)', () => {
     await renderPage({ required: 'admin', next: '/admin' })
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Continue to the admin console' })).not.toBeInTheDocument()
+  })
+})
+
+describe('/settings/security for country admins (Round GP, Part C follow-up)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'profile-1' })
+    mocks.isPlatformAdministrator.mockResolvedValue(false)
+    mocks.countryAdminCountries.mockResolvedValue(['PH'])
+    mocks.getCurrentMfaStatus.mockResolvedValue(off)
+  })
+
+  it('explains that admin pages need an authenticator app, and returns them to their admin page after setup', async () => {
+    mocks.startAuthenticatorSetup.mockResolvedValueOnce({ status: 'ready', secret: 'ABCDEFGH', otpauthUri: 'otpauth://totp/x', qrDataUrl: 'data:image/png;base64,QR' })
+    mocks.confirmAuthenticatorSetup.mockResolvedValueOnce({ status: 'enabled', message: 'Authenticator app turned on.', redirectTo: '/admin/organizations' })
+    await renderPage({ required: 'admin', next: '/admin/organizations' })
+
+    expect(screen.getByRole('status')).toHaveTextContent('Admin pages need two-step verification.')
+    fireEvent.click(screen.getByRole('button', { name: 'Set up authenticator app' }))
+    fireEvent.change(await screen.findByLabelText(/Enter the 6-digit code/), { target: { value: '123456' } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify and turn on' }))
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/admin/organizations'))
+  })
+
+  it('offers a Google sign-in the confirmation step, then the way back', async () => {
+    mocks.getCurrentMfaStatus.mockResolvedValue({ ...on, hostedSession: true })
+    const { unmount } = await renderPage({ required: 'admin', next: '/admin/organizations' })
+    expect(screen.getByRole('form', { name: 'Confirm it’s you to open admin pages' })).toBeInTheDocument()
+    unmount()
+
+    mocks.hasAdminStepUp.mockResolvedValueOnce(true)
+    await renderPage({ required: 'admin', next: '/admin/organizations' })
+    expect(screen.getByRole('link', { name: 'Continue to the admin console' })).toHaveAttribute('href', '/admin/organizations')
+  })
+
+  it('tells a Google-only sign-in to use email and password, and never offers to turn the app off', async () => {
+    mocks.getCurrentMfaStatus.mockResolvedValue({ ...off, kind: 'federated', hostedSession: true })
+    const { unmount } = await renderPage({ required: 'admin', next: '/admin/organizations' })
+    expect(screen.getByRole('status')).toHaveTextContent(/isn’t linked to your email-and-password account yet/)
+    unmount()
+
+    mocks.getCurrentMfaStatus.mockResolvedValue(on)
+    await renderPage()
+    expect(screen.queryByRole('button', { name: 'Turn off' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Administrators and country admins must keep two-step verification on/)).toBeInTheDocument()
+  })
+
+  it('treats a member whose role lookup fails as a member (no admin notice)', async () => {
+    mocks.countryAdminCountries.mockRejectedValue(new Error('database unavailable'))
+    await renderPage({ required: 'admin', next: '/admin/organizations' })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

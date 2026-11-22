@@ -1,3 +1,4 @@
+import { currentSiteOrigin } from '@/lib/site-url-request'
 import { createEventPaymentService } from './event-payment-service'
 import { getGatewayByName, getPaymentGateway } from './provider'
 
@@ -5,4 +6,5 @@ import { getGatewayByName, getPaymentGateway } from './provider'
 export const eventPaymentService = createEventPaymentService({
   getGateway: getPaymentGateway,
   getGatewayByName,
+  returnSiteUrl: currentSiteOrigin,
 })

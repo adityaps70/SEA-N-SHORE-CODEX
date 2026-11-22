@@ -1,6 +1,16 @@
 import { randomBytes } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import type { NextConfig } from 'next'
 import { getServerActionAllowedOrigins } from './src/lib/auth/server-action-origins'
+
+// Domain move: the other hosts the site answers on while it moves (one per line). Inlined into the
+// build so the running app knows them (src/lib/site-url.ts); empty or missing outside a move.
+const SITE_ALIAS_HOSTS_FILE = 'scripts/aws/site-alias-hosts.txt'
+const SITE_ALIAS_HOSTS = (existsSync(SITE_ALIAS_HOSTS_FILE) ? readFileSync(SITE_ALIAS_HOSTS_FILE, 'utf8') : '')
+  .split(/\s+/)
+  .map((host) => host.trim().toLowerCase())
+  .filter((host) => /^[a-z0-9.-]+$/.test(host))
+  .join(',')
 
 const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -22,7 +32,7 @@ const securityHeaders = [
 const APP_BUILD_ID = process.env.NEXT_PUBLIC_APP_BUILD_ID || `build-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`
 
 const nextConfig: NextConfig = {
-  env: { NEXT_PUBLIC_APP_BUILD_ID: APP_BUILD_ID },
+  env: { NEXT_PUBLIC_APP_BUILD_ID: APP_BUILD_ID, SITE_ALIAS_HOSTS },
   reactStrictMode: true,
   // Round H (H4): do not advertise the framework (`x-powered-by: Next.js`).
   poweredByHeader: false,
@@ -38,7 +48,9 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '6mb',
       allowedOrigins: getServerActionAllowedOrigins(
         process.env.NEXT_PUBLIC_SITE_URL,
-        process.env.SERVER_ACTION_ALLOWED_ORIGINS,
+        [process.env.SERVER_ACTION_ALLOWED_ORIGINS, ...SITE_ALIAS_HOSTS.split(',').filter(Boolean).map((host) => `https://${host}`)]
+          .filter(Boolean)
+          .join(','),
       ),
     },
   },

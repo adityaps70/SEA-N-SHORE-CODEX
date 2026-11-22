@@ -31,6 +31,7 @@ import { createSqlBillingStore } from './subscription-store'
 import { CLOSED_CHECKOUT_STATUSES, TRIAL_BILLING_PROVIDER, type BillingStore, type CheckoutRecord, type LedgerFollowUp, type LedgerResult } from './subscription-types'
 import { parseSubscriptionWebhook } from './subscription-webhook'
 import { runTrialSweep } from './trial-service'
+import { currentSiteOrigin } from '@/lib/site-url-request'
 
 export class BillingNotConfiguredError extends Error {
   constructor() { super('billing_not_configured'); this.name = 'BillingNotConfiguredError' }
@@ -110,6 +111,8 @@ export function createSubscriptionService(deps: {
   storeFor?: (tx: DatabaseQueryClient) => BillingStore
   loadCustomer?: LoadCustomer
   siteUrl?: () => string | null
+  /** Domain move: the origin the buyer is on, for the Cashfree return URL. */
+  returnSiteUrl?: () => Promise<string | null>
   now?: () => Date
   chargeMode?: () => SubscriptionChargeMode
   paymentMethods?: () => string[]
@@ -127,6 +130,7 @@ export function createSubscriptionService(deps: {
   const storeFor = deps.storeFor ?? createSqlBillingStore
   const loadCustomer: LoadCustomer = deps.loadCustomer ?? loadCheckoutCustomer
   const siteUrl = deps.siteUrl ?? (() => siteUrlFromEnvironment())
+  const returnSiteUrl = deps.returnSiteUrl ?? (async () => siteUrl())
   const now = deps.now ?? (() => new Date())
   const chargeMode = deps.chargeMode ?? (() => subscriptionChargeMode())
   const paymentMethods = deps.paymentMethods ?? (() => subscriptionPaymentMethods())
@@ -286,7 +290,7 @@ export function createSubscriptionService(deps: {
           email,
           phoneE164: customer.phone,
         },
-        returnUrl: returnUrlFor(siteUrl(), created.id),
+        returnUrl: returnUrlFor(await returnSiteUrl(), created.id),
         firstChargeAt: startsAt,
         paymentMethods: paymentMethods(),
         note: `${PLAN_LABELS[plan]} (${INTERVAL_LABELS[input.interval].adjective.toLowerCase()})${input.label ? ` for ${input.label}` : ''}`,
@@ -595,4 +599,4 @@ export function billingPaths(subject: BillingSubject) {
 
 export type SubscriptionService = ReturnType<typeof createSubscriptionService>
 
-export const subscriptionService = createSubscriptionService()
+export const subscriptionService = createSubscriptionService({ returnSiteUrl: currentSiteOrigin })

@@ -1,4 +1,5 @@
 import { emitMetric } from '@/lib/observability/emf'
+import { DEFAULT_PUBLIC_SITE_URL } from '@/config/public-site'
 
 /**
  * Round H (H1): a small outside-in health check with no paid service. Once a minute the outbox worker
@@ -14,7 +15,7 @@ export const SITE_HEALTH_CHECKS = [
 ] as const
 
 export function siteHealthBaseUrl(env: Record<string, string | undefined> = process.env) {
-  return (env.HEALTH_PROBE_SITE_URL || env.NEXT_PUBLIC_SITE_URL || 'https://seanshore.in').trim().replace(/\/+$/, '')
+  return (env.HEALTH_PROBE_SITE_URL || env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).trim().replace(/\/+$/, '')
 }
 
 export async function runSiteHealthProbe(input: {

@@ -172,7 +172,7 @@ export function TwoStepPanel({
           {step === 'view' && enabled ? (
             isAdministrator ? (
               <p className="mt-4 text-sm leading-6 text-muted">
-                Platform administrators must keep two-step verification on, so it can’t be turned off here.
+                Administrators and country admins must keep two-step verification on, so it can’t be turned off here.
               </p>
             ) : (
               <div className="mt-4">

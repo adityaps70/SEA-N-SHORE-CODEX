@@ -1,3 +1,4 @@
+import { currentSiteOrigin } from '@/lib/site-url-request'
 import { getGatewayByName, getPaymentGateway } from '@/features/payments/provider'
 import { createCoursePaymentService } from './course-payment-service'
 
@@ -5,4 +6,5 @@ import { createCoursePaymentService } from './course-payment-service'
 export const coursePaymentService = createCoursePaymentService({
   getGateway: getPaymentGateway,
   getGatewayByName,
+  returnSiteUrl: currentSiteOrigin,
 })

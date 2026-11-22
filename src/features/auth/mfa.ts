@@ -91,7 +91,7 @@ export const MFA_MESSAGES = {
   wrongCode: 'That code didn’t match. Check the time on your phone and enter the current 6-digit code.',
   verifyFailed: 'We could not turn on your authenticator app. Please try again.',
   enabled: 'Authenticator app turned on. You’ll enter a code from it each time you sign in with your password.',
-  adminCannotDisable: 'Platform administrators must keep two-step verification on.',
+  adminCannotDisable: 'Administrators and country admins must keep two-step verification on.',
   disableFailed: 'We could not turn off your authenticator app. Please try again.',
   disabled: 'Authenticator app turned off. You’ll sign in with your password only.',
   tooMany: 'Too many attempts. Please wait a few minutes and try again.',
