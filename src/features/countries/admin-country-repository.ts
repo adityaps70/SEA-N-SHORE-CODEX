@@ -11,6 +11,8 @@ import {
 } from './member-country-sql'
 import { isCountryCode } from './catalog'
 import { CountrySchemaMissingError, countrySchemaReady } from './country-schema'
+import { loadCountryAdminAccess } from '@/features/country-admins/scope'
+import { allows } from '@/features/country-admins/sections'
 
 /**
  * Round GP (Global Partners), Part B: Admin › Members by country. Counts only: no member names, emails or phone
@@ -207,7 +209,7 @@ export function createAdminCountryRepository(input: {
   query?: Query
   /** The permission check every read runs first (the platform administrator role). */
   isPlatformAdministrator?: (userId: string) => Promise<boolean>
-  /** Round GP (Part C): a country admin's countries, or null. */
+  /** Round GP (Part C): a country admin's countries, or null (default: only with the Members by country section). */
   countryAdminCountries?: (userId: string) => Promise<string[] | null>
   cacheTtlMs?: number
   countrySchemaReady?: () => Promise<boolean>
@@ -240,10 +242,10 @@ export function createAdminCountryRepository(input: {
     return countries
   }
 
+  /** Round GP Part E: the countries of a country admin who has the Members by country section, else null. */
   async function defaultCountryAdminCountries(adminId: string) {
-    const rows = await query(`select countries from public.country_admins where profile_id = $1`, [adminId])
-    const value = rows[0]?.countries
-    return Array.isArray(value) ? value.filter((code): code is string => typeof code === 'string') : null
+    const access = await loadCountryAdminAccess(query, adminId)
+    return access && allows(access.permissions, 'members') ? access.countries : null
   }
 
   async function loadStats(basis: CountryBasis): Promise<CountryStatsRow[]> {

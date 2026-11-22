@@ -12,7 +12,11 @@ vi.mock('@/lib/env', () => ({
   }),
   publicEnvironment: { NEXT_PUBLIC_SITE_URL: 'https://seanshore.example' },
 }))
-vi.mock('@/lib/site-url', () => ({ siteUrlFor: (path: string) => new URL(path, 'https://seanshore.example') }))
+vi.mock('@/lib/site-url', () => ({
+  siteUrlFor: (path: string) => new URL(path, 'https://seanshore.example'),
+  siteUrlForRequest: (_headers: unknown, path: string) => new URL(path, 'https://seanshore.example'),
+  siteOriginFor: () => 'https://seanshore.example',
+}))
 vi.mock('@/lib/auth/cognito-oauth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/cognito-oauth')>()),
   createCognitoOAuth: () => ({ exchangeCode: mocks.exchangeCode }),

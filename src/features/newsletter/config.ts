@@ -6,7 +6,7 @@ export const DEFAULT_NEWSLETTER_FROM_ADDRESS = 'Sea N Shore <newsletter@mail.sea
  * Newsletter configuration, read from environment variables at call time.
  *
  * NEWSLETTER_TOKEN_SECRET               Secret (32+ chars) that signs unsubscribe/confirm links and hashes IPs. Required.
- * NEWSLETTER_FROM_ADDRESS               Resend sender. Defaults to the verified mail.seanshore.in subdomain.
+ * NEWSLETTER_FROM_ADDRESS               Resend sender. Defaults to the verified Resend sending subdomain.
  * NEWSLETTER_LIST_UNSUBSCRIBE           "app" by default: Sea N Shore adds RFC 8058 one-click headers.
  * NEXT_PUBLIC_SITE_URL                  Used to build absolute links in emails.
  *

@@ -4,6 +4,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction } from '../../src/lib/db/client'
 import { courseRevisionRepository } from '../../src/features/learning/course-revision-repository'
 import { runRoundEContentApply, runRoundEContentPlan } from '../../src/features/learning/round-e-content-task'
+import { DEFAULT_PUBLIC_SITE_URL } from '../../src/config/public-site'
 
 const mode = process.env.ROUND_E_CONTENT_MODE ?? 'plan'
 
@@ -13,7 +14,7 @@ const deps = {
     withTransaction(async (client) => work(async (text, values) => (await client.query(text, values)).rows)),
   startRevision: (actorId: string, liveCourseId: string) => courseRevisionRepository.startRevision(actorId, liveCourseId),
   log: (line: string) => console.info(line),
-  siteUrl: (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://seanshore.in').replace(/\/$/, ''),
+  siteUrl: (process.env.NEXT_PUBLIC_SITE_URL ?? DEFAULT_PUBLIC_SITE_URL).replace(/\/$/, ''),
 }
 
 async function main() {

@@ -343,6 +343,8 @@ resource "aws_cloudfront_cache_policy" "next_image" {
 # cookies, so a signed-in request never shares a signed-out copy, the RSC/router headers, so an
 # RSC request never gets cached HTML, and the whole query string. Everything is still forwarded to
 # the origin by the AllViewerExceptHostHeader origin request policy.
+# Domain move (Phase 1 serve step): the key also holds x-sns-viewer-host (set by the viewer function from the real
+# Host), so a public page cached for one domain is never served on the other.
 resource "aws_cloudfront_cache_policy" "public_pages" {
   name        = "${local.name_prefix}-public-pages"
   comment     = "Pages: only origin-marked public responses; keyed on session cookies, RSC headers, query."
@@ -364,7 +366,7 @@ resource "aws_cloudfront_cache_policy" "public_pages" {
     headers_config {
       header_behavior = "whitelist"
       headers {
-        items = ["rsc", "next-router-prefetch", "next-router-state-tree", "next-router-segment-prefetch"]
+        items = ["rsc", "next-router-prefetch", "next-router-state-tree", "next-router-segment-prefetch", "x-sns-viewer-host"]
       }
     }
 
@@ -384,10 +386,15 @@ locals {
   edge_host           = "d3prih0q6jofyr.cloudfront.net"
   edge_site_url       = "https://${aws_cloudfront_distribution.app.domain_name}"
 
-  # Browser origins the application accepts: the canonical domain first, then the AWS-managed
-  # CloudFront hostname that keeps working during the domain move (Cognito callbacks, S3 CORS,
-  # realtime authorizer, Server Actions all derive from this list).
-  browser_site_urls = [local.canonical_site_url, local.edge_site_url]
+  # Domain move (owner-approved 18 Nov): the other hosts the site answers on during the move, kept equal to
+  # scripts/aws/site-alias-hosts.txt (scripts/aws/domain-move-infra.test.mjs). Each also answers on www.<host>, which
+  # the viewer function redirects to the apex.
+  site_alias_hosts = ["seanshore.net"]
+
+  # Browser origins the application accepts: the canonical domain first, then the alias domains, then the
+  # AWS-managed CloudFront hostname that keeps working during the domain move (Cognito callbacks, S3 CORS,
+  # realtime authorizer all derive from this list; Server Actions read site-alias-hosts.txt at build time).
+  browser_site_urls = concat([local.canonical_site_url], [for host in local.site_alias_hosts : "https://${host}"], [local.edge_site_url])
 }
 
 variable "redirect_edge_host_to_canonical" {
@@ -396,7 +403,8 @@ variable "redirect_edge_host_to_canonical" {
   default     = true
 }
 
-# Viewer-request function: www -> apex, and (once enabled) cloudfront.net -> apex except /api/*.
+# Viewer-request function: www -> apex (for the canonical and each alias domain), and (once enabled)
+# cloudfront.net -> apex except /api/*; sets x-sns-viewer-host from the real Host.
 resource "aws_cloudfront_function" "canonical_host_redirect" {
   name    = "${local.name_prefix}-canonical-host-redirect"
   runtime = "cloudfront-js-2.0"
@@ -405,6 +413,7 @@ resource "aws_cloudfront_function" "canonical_host_redirect" {
 
   code = templatefile("${path.module}/cloudfront/canonical-host-redirect.js.tftpl", {
     canonical_host     = local.canonical_site_host
+    alias_hosts        = jsonencode(local.site_alias_hosts)
     edge_host          = local.edge_host
     redirect_edge_host = var.redirect_edge_host_to_canonical
   })
@@ -415,7 +424,11 @@ resource "aws_cloudfront_distribution" "app" {
   is_ipv6_enabled = true
   comment         = "Sea N Shore staging HTTPS edge"
   web_acl_id      = aws_wafv2_web_acl.edge.arn
-  aliases         = [local.canonical_site_host, "www.${local.canonical_site_host}"]
+  # Domain move: the alias domains (apex and www) ride on the same distribution (aws_acm_certificate.site_edge).
+  aliases = concat(
+    [local.canonical_site_host, "www.${local.canonical_site_host}"],
+    flatten([for host in local.site_alias_hosts : [host, "www.${host}"]]),
+  )
 
   # Round 14 (1.4): HTTPS to the ALB's dedicated origin hostname with the shared X-Origin-Verify
   # secret; the ALB answers 403 to anything without it.
@@ -553,7 +566,9 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.seanshore_edge.arn
+    # Domain move: the certificate for seanshore.in and the alias domains (domain-move.tf). The previous one,
+    # aws_acm_certificate.seanshore_edge, stays (prevent_destroy; no certificate is ever deleted).
+    acm_certificate_arn      = aws_acm_certificate.site_edge.arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -562,8 +577,8 @@ resource "aws_cloudfront_distribution" "app" {
     prevent_destroy = true
 
     precondition {
-      condition     = aws_acm_certificate.seanshore_edge.status == "ISSUED"
-      error_message = "The seanshore.in edge certificate must be ISSUED before CloudFront can serve the custom domain."
+      condition     = aws_acm_certificate.site_edge.status == "ISSUED"
+      error_message = "The seanshore.in + seanshore.net edge certificate must be ISSUED before CloudFront can serve the custom domains."
     }
   }
 

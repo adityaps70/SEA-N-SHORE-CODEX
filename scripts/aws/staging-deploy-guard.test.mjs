@@ -29,7 +29,11 @@ test('staging deploy builds with the exact canonical and CloudFront Server Actio
   const workflow = readFileSync(workflowPath, 'utf8')
   const siteUrl = readFileSync('scripts/aws/public-site-url.txt', 'utf8').trim()
 
-  assert.match(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*https:\/\/seanshore\.in,https:\/\/d3prih0q6jofyr\.cloudfront\.net/)
+  // Domain move: exactly the repository site URL plus the distribution's own cloudfront.net name, no literal domain.
+  assert.match(workflow, /^      EDGE_SITE_ORIGIN: https:\/\/d3prih0q6jofyr\.cloudfront\.net$/m)
+  assert.match(workflow, /echo "SERVER_ACTION_ALLOWED_ORIGINS=\$SITE,\$EDGE_SITE_ORIGIN" >> "\$GITHUB_ENV"/)
+  assert.doesNotMatch(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*https?:/)
+  assert.ok(workflow.indexOf('echo "SERVER_ACTION_ALLOWED_ORIGINS=') < workflow.indexOf('test -n "$SERVER_ACTION_ALLOWED_ORIGINS"'), 'origins are resolved before they are validated')
   assert.match(workflow, /--build-arg SERVER_ACTION_ALLOWED_ORIGINS="\$SERVER_ACTION_ALLOWED_ORIGINS"/)
   assert.match(workflow, /--build-arg NEXT_PUBLIC_SITE_URL="\$NEXT_PUBLIC_SITE_URL"/)
   assert.doesNotMatch(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*['"]?\*/)

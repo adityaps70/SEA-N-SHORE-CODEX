@@ -109,12 +109,15 @@ export function createEventPaymentService(deps: {
   transaction?: RunInTransaction
   log?: (message: string, details?: Record<string, unknown>) => void
   siteUrl?: () => string | null
+  /** Domain move: the origin the buyer is on, for the return URL (the webhook URL stays canonical). */
+  returnSiteUrl?: () => Promise<string | null>
   now?: () => Date
 }) {
   const repository = deps.repository ?? eventPaymentRepository
   const transaction = deps.transaction ?? withTransaction
   const log = deps.log ?? ((message, details) => console.error(message, details ?? {}))
   const siteUrl = deps.siteUrl ?? (() => siteUrlFromEnvironment())
+  const returnSiteUrl = deps.returnSiteUrl ?? (async () => siteUrl())
   const now = deps.now ?? (() => new Date())
 
   async function requireGateway() {
@@ -226,7 +229,7 @@ export function createEventPaymentService(deps: {
         currency: order.currency,
         customer: input.customer,
         description: order.eventTitle || 'Sea N Shore event ticket',
-        returnUrl: paymentReturnUrl(siteUrl(), reference),
+        returnUrl: paymentReturnUrl(await returnSiteUrl(), reference),
         notifyUrl: cashfreeNotifyUrl(siteUrl()),
         expiresAt: new Date(now().getTime() + GATEWAY_ORDER_LIFETIME_MINUTES * 60_000),
         notes: { sns_order_id: order.id, sns_event_id: input.eventId, sns_profile_id: input.profileId },

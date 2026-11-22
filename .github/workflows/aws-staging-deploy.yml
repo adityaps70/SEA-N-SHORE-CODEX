@@ -166,8 +166,10 @@ jobs:
       NOTIFICATION_WORKER_SERVICE: sea-n-shore-staging-notification-worker
       OUTBOX_WORKER_TASK_DEFINITION: sea-n-shore-staging-outbox-worker
       NOTIFICATION_WORKER_TASK_DEFINITION: sea-n-shore-staging-notification-worker
-      # NEXT_PUBLIC_SITE_URL is resolved from scripts/aws/public-site-url.txt (one repository variable).
-      SERVER_ACTION_ALLOWED_ORIGINS: https://seanshore.in,https://d3prih0q6jofyr.cloudfront.net
+      # NEXT_PUBLIC_SITE_URL is resolved from scripts/aws/public-site-url.txt (one repository variable), and
+      # SERVER_ACTION_ALLOWED_ORIGINS from it plus the AWS-managed CloudFront name (it also sets the media bucket's
+      # browser PUT CORS). Domain move: the alias hosts reach Server Actions through next.config.ts, not this list.
+      EDGE_SITE_ORIGIN: https://d3prih0q6jofyr.cloudfront.net
       # Round 14 (1.6): the site is HTTPS end to end for browsers; no insecure auth cookies.
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "false"
       # Round 15: phone/SMS sign-in is retired; OTP_LIMITS_TABLE and ALLOWED_PHONE_CALLING_CODES are
@@ -195,6 +197,8 @@ jobs:
           SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
           [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
           echo "NEXT_PUBLIC_SITE_URL=$SITE" >> "$GITHUB_ENV"
+          [[ "$EDGE_SITE_ORIGIN" =~ ^https://[a-z0-9]+\.cloudfront\.net$ ]] || { echo "EDGE_SITE_ORIGIN must be the distribution's cloudfront.net origin." >&2; exit 1; }
+          echo "SERVER_ACTION_ALLOWED_ORIGINS=$SITE,$EDGE_SITE_ORIGIN" >> "$GITHUB_ENV"
           echo "Public site URL: $SITE"
 
       - name: Validate required staging configuration
