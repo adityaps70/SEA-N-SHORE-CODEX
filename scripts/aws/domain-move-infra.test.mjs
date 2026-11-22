@@ -280,9 +280,6 @@ function servePlan(overrides = {}) {
     update('aws_cognito_user_pool_client.web',
       { name: 'web', callback_urls: OLD_ORIGINS.map((o) => `${o}/auth/google/callback`), logout_urls: OLD_ORIGINS },
       pick('client', { name: 'web', callback_urls: ORIGINS.map((o) => `${o}/auth/google/callback`), logout_urls: ORIGINS })),
-    update('aws_s3_bucket_cors_configuration.media',
-      { bucket: 'media', cors_rule: [{ allowed_methods: ['PUT'], allowed_headers: ['Content-Type'], allowed_origins: OLD_ORIGINS }] },
-      { bucket: 'media', cors_rule: [{ allowed_methods: ['PUT'], allowed_headers: ['Content-Type'], allowed_origins: pick('corsOrigins', ORIGINS) }] }),
     update('aws_lambda_function.realtime_authorizer',
       { function_name: 'authorizer', environment: env(OLD_ORIGINS) },
       { function_name: 'authorizer', environment: pick('authorizerEnv', env(ORIGINS)) },
@@ -298,7 +295,7 @@ const serveArgs = (changes, arn = SITE_EDGE_ARN) => ['serve', planFile(changes),
 test('serve: exactly the approved edge, DNS and origin changes, with the approved values', () => {
   const ok = run(serveArgs(servePlan()))
   assert.equal(ok.status, 0, ok.stdout)
-  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=6 creates=4$/m)
+  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=5 creates=4$/m)
   assert.doesNotMatch(ok.stdout, /arn:|seanshore\.net|cloudfront\.net/)
   const done = run(serveArgs([...servePlan().map((c) => noop(c.address))]))
   assert.equal(done.status, 0, done.stdout)
@@ -319,7 +316,8 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
   refused(servePlan({ pageHeaders: ['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch'] }), 'the cache key without the viewer host')
   refused(servePlan({ client: { name: 'web', callback_urls: [...ORIGINS, 'https://evil.example'].map((o) => `${o}/auth/google/callback`), logout_urls: ORIGINS } }), 'an extra callback')
   refused(servePlan({ client: { name: 'web2', callback_urls: ORIGINS.map((o) => `${o}/auth/google/callback`), logout_urls: ORIGINS } }), 'a client change beyond its URLs')
-  refused(servePlan({ corsOrigins: ['*'] }), 'CORS for every origin')
+  // The media bucket's CORS rule is the staging deploy's: the serve step never creates or changes it.
+  refused(servePlan({ extra: [{ address: 'aws_s3_bucket_cors_configuration.media', mode: 'managed', change: { actions: ['create'], after: { bucket: 'media' } } }] }), 'the media CORS rule created by Terraform')
   refused(servePlan({ authorizerEnv: [{ variables: { REALTIME_TICKET_AUDIENCE: 'other', REALTIME_TICKET_SECRET_ARN: 'arn:secret', REALTIME_ALLOWED_ORIGINS: ORIGINS.join(',') } }] }), 'another authorizer variable changed')
   refused(servePlan({ 'record www.seanshore.net A': { name: 'www.seanshore.net', type: 'A', zone_id: 'Z09758912UIE2T2PK09U', records: null, alias: [{ name: 'elsewhere.cloudfront.net', zone_id: 'Z2FDTNDATAQYW2', evaluate_target_health: false }] } }), 'a record pointing elsewhere')
   refused(servePlan({ extra: [{ address: 'aws_route53_record.seanshore_legacy_apex', mode: 'managed', change: { actions: ['update'] } }] }), 'a seanshore.in record changed')
@@ -356,8 +354,7 @@ test('serve: the runner plans it only after the create step, refuses existing re
   const serveTargets = script.slice(script.indexOf('SERVE_TARGETS=('), script.indexOf('\n)\n', script.indexOf('SERVE_TARGETS=(')))
   assert.deepEqual([...serveTargets.matchAll(/"([^"]+)"/g)].map((m) => m[1]), [
     'aws_cloudfront_distribution.app', 'aws_cloudfront_function.canonical_host_redirect', 'aws_cloudfront_cache_policy.public_pages',
-    'aws_route53_record.site_net_alias', 'aws_cognito_user_pool_client.web', 'aws_s3_bucket_cors_configuration.media',
-    'aws_lambda_function.realtime_authorizer',
+    'aws_route53_record.site_net_alias', 'aws_cognito_user_pool_client.web', 'aws_lambda_function.realtime_authorizer',
   ])
   // A seanshore.net A/AAAA record made elsewhere stops the run before anything is applied.
   const precheck = script.indexOf('EXISTING_NET_RECORDS="$(net_site_records any)"')

@@ -13,8 +13,8 @@
   check-domain-move-plan.py serve PLAN_JSON APP_DISTRIBUTION_ID SITE_EDGE_CERTIFICATE_ARN
       Exits 0 only if the plan serves seanshore.net next to seanshore.in and changes nothing else: the main
       distribution's aliases and certificate, the viewer function's code, the page cache key, the four seanshore.net
-      alias records (created), and the browser origins in the Cognito client, the media upload CORS rule and the
-      realtime authorizer, each with exactly the approved values. Prints DOMAIN_MOVE_PLAN=SERVE updates=<n>
+      alias records (created), and the browser origins in the Cognito client and the realtime authorizer, each
+      with exactly the approved values. The media bucket's CORS rule is the staging deploy's and is never changed here. Prints DOMAIN_MOVE_PLAN=SERVE updates=<n>
       creates=<n>, or DOMAIN_MOVE_PLAN=NO_CHANGES once it is applied.
 
 Prints addresses and counts only.
@@ -95,7 +95,6 @@ SERVE_UPDATES = {
     FUNCTION_ADDRESS: ({"code"}, {"etag", "live_stage_etag", "status"}),
     "aws_cloudfront_cache_policy.public_pages": ({"parameters_in_cache_key_and_forwarded_to_origin"}, {"etag"}),
     "aws_cognito_user_pool_client.web": ({"callback_urls", "logout_urls"}, set()),
-    "aws_s3_bucket_cors_configuration.media": ({"cors_rule"}, set()),
     "aws_lambda_function.realtime_authorizer": ({"environment"},
                                                 {"last_modified", "qualified_arn", "qualified_invoke_arn", "version",
                                                  "code_sha256", "source_code_size"}),
@@ -267,11 +266,6 @@ def check_serve(plan, app_id, certificate_arn):
         refuse("cognito callback urls")
     if sorted(client.get("logout_urls") or []) != sorted(BROWSER_ORIGINS):
         refuse("cognito logout urls")
-
-    rules = after(by["aws_s3_bucket_cors_configuration.media"]).get("cors_rule") or []
-    if (len(rules) != 1 or sorted(rules[0].get("allowed_origins") or []) != sorted(BROWSER_ORIGINS)
-            or rules[0].get("allowed_methods") != ["PUT"] or rules[0].get("allowed_headers") != ["Content-Type"]):
-        refuse("media upload cors")
 
     authorizer = by["aws_lambda_function.realtime_authorizer"]["change"]
     before_vars = ((authorizer.get("before") or {}).get("environment") or [{}])[0].get("variables") or {}

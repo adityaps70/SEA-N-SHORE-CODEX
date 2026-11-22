@@ -12,8 +12,8 @@
 #                      that a faked x-sns-viewer-host still lands on https://seanshore.in.
 #   serve-once <sha>   serves seanshore.net next to seanshore.in: the main distribution's aliases and certificate, the
 #                      viewer function (www.seanshore.net -> seanshore.net), the page cache key, four seanshore.net
-#                      alias records, and the browser origins in Cognito, media upload CORS and the realtime
-#                      authorizer; nothing else. Refuses if seanshore.net already has A/AAAA records, then checks live
+#                      alias records, and the browser origins in Cognito and the realtime authorizer; nothing
+#                      else. The media bucket's upload CORS is the staging deploy's (it lists the alias hosts). Refuses if seanshore.net already has A/AAAA records, then checks live
 #                      that both domains answer (seanshore.in unchanged) through the distribution.
 #
 # Prints addresses, counts and true/false only (the edge-logs bucket is never listed: logs hold visitor IPs).
@@ -67,7 +67,6 @@ SERVE_TARGETS=(
   "aws_cloudfront_cache_policy.public_pages"
   "aws_route53_record.site_net_alias"
   "aws_cognito_user_pool_client.web"
-  "aws_s3_bucket_cors_configuration.media"
   "aws_lambda_function.realtime_authorizer"
 )
 SEANSHORE_NET_ZONE_ID="Z09758912UIE2T2PK09U"
@@ -185,12 +184,12 @@ classify() {
   fi
 }
 
-# Run 45004263159: the media bucket's CORS rule is not in Terraform state, so the serve plan would create it, replacing
-# whatever the bucket has. Read-only facts for that decision (counts and true/false only; the rule itself is never
-# printed).
+# Run 45004263159: the media bucket's CORS rule is the staging deploy's (put-bucket-cors on every deploy), not in
+# Terraform state, so the serve step never targets it. Read-only facts: whether the live rule already lists
+# seanshore.net (a deploy since the alias host was added), counts and true/false only.
 if [[ "$STEP" == serve ]]; then
   if [[ -n "$MEDIA_BUCKET" ]] && aws s3api get-bucket-cors --bucket "$MEDIA_BUCKET" --output json > "$WORK_DIR/media-cors.json" 2> "$WORK_DIR/media-cors.err"; then
-    jq -r '"DOMAIN_MOVE_MEDIA_CORS_LIVE rules=\(.CORSRules | length) put_only=\([.CORSRules[] | .AllowedMethods == ["PUT"]] | all) content_type_only=\([.CORSRules[] | (.AllowedHeaders // []) == ["Content-Type"]] | all) origins=\([.CORSRules[] | (.AllowedOrigins // [])[]] | length) origins_are_in_and_edge=\([.CORSRules[] | (.AllowedOrigins // [])[]] | sort == ["https://d3prih0q6jofyr.cloudfront.net", "https://seanshore.in"])"' "$WORK_DIR/media-cors.json"
+    jq -r '"DOMAIN_MOVE_MEDIA_CORS_LIVE rules=\(.CORSRules | length) put_only=\([.CORSRules[] | .AllowedMethods == ["PUT"]] | all) content_type_only=\([.CORSRules[] | (.AllowedHeaders // []) == ["Content-Type"]] | all) origins=\([.CORSRules[] | (.AllowedOrigins // [])[]] | length) has_in=\([.CORSRules[] | (.AllowedOrigins // [])[]] | index("https://seanshore.in") != null) has_net=\([.CORSRules[] | (.AllowedOrigins // [])[]] | index("https://seanshore.net") != null) has_edge=\([.CORSRules[] | (.AllowedOrigins // [])[]] | index("https://d3prih0q6jofyr.cloudfront.net") != null)"' "$WORK_DIR/media-cors.json"
   elif grep -q NoSuchCORSConfiguration "$WORK_DIR/media-cors.err" 2>/dev/null; then
     echo "DOMAIN_MOVE_MEDIA_CORS_LIVE rules=0"
   else

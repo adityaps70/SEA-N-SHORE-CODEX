@@ -199,6 +199,15 @@ jobs:
           echo "NEXT_PUBLIC_SITE_URL=$SITE" >> "$GITHUB_ENV"
           [[ "$EDGE_SITE_ORIGIN" =~ ^https://[a-z0-9]+\.cloudfront\.net$ ]] || { echo "EDGE_SITE_ORIGIN must be the distribution's cloudfront.net origin." >&2; exit 1; }
           echo "SERVER_ACTION_ALLOWED_ORIGINS=$SITE,$EDGE_SITE_ORIGIN" >> "$GITHUB_ENV"
+          # Domain move: the media bucket's browser PUT CORS is owned by this deploy (Terraform never applied
+          # aws_s3_bucket_cors_configuration.media and the serve step leaves it alone), so it lists the alias hosts of
+          # scripts/aws/site-alias-hosts.txt too: canonical, aliases, then the CloudFront name.
+          ALIASES=""
+          for host in $(tr -s '[:space:],' ' ' < scripts/aws/site-alias-hosts.txt); do
+            [[ "$host" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || { echo "site-alias-hosts.txt holds a host that is not a plain hostname." >&2; exit 1; }
+            ALIASES="$ALIASES,https://$host"
+          done
+          echo "MEDIA_CORS_ORIGINS=$SITE$ALIASES,$EDGE_SITE_ORIGIN" >> "$GITHUB_ENV"
           echo "Public site URL: $SITE"
 
       - name: Validate required staging configuration
@@ -319,7 +328,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          jq -cn --arg origins "$SERVER_ACTION_ALLOWED_ORIGINS" '
+          jq -cn --arg origins "$MEDIA_CORS_ORIGINS" '
             {"CORSRules":[{"AllowedHeaders":["Content-Type"],"AllowedMethods":["PUT"],"AllowedOrigins":($origins|split(",")),"MaxAgeSeconds":300}]}
           ' > /tmp/media-cors.json
 
@@ -333,7 +342,7 @@ jobs:
             --bucket "$AWS_MEDIA_BUCKET" \
             --output json)"
 
-          jq -e --arg origins "$SERVER_ACTION_ALLOWED_ORIGINS" '
+          jq -e --arg origins "$MEDIA_CORS_ORIGINS" '
             (.CORSRules | length) == 1
             and .CORSRules[0].AllowedMethods == ["PUT"]
             and .CORSRules[0].AllowedOrigins == ($origins|split(","))
@@ -344,7 +353,7 @@ jobs:
           echo "MEDIA_CORS_VERIFIED=true"
           echo "### Media bucket CORS verified" >> "$GITHUB_STEP_SUMMARY"
           echo "- Bucket: \`$AWS_MEDIA_BUCKET\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Origins: \`$SERVER_ACTION_ALLOWED_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Origins: \`$MEDIA_CORS_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Method/header: \`PUT / Content-Type\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resolve database credentials

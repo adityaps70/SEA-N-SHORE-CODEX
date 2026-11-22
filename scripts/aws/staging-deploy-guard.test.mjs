@@ -101,6 +101,12 @@ test('one-shot staging deploy applies and verifies only the restricted browser P
   assert.match(workflow, /--bucket "\$AWS_MEDIA_BUCKET"/)
   assert.match(workflow, /"AllowedMethods":\["PUT"\]/)
   assert.match(workflow, /"AllowedOrigins":\(\$origins\|split\(","\)\)/)
+  // Domain move: the CORS origins are the canonical site, the alias hosts of scripts/aws/site-alias-hosts.txt, then the
+  // CloudFront name; the deploy owns this rule (the domain move serve step never targets it).
+  assert.match(workflow, /echo "MEDIA_CORS_ORIGINS=\$SITE\$ALIASES,\$EDGE_SITE_ORIGIN" >> "\$GITHUB_ENV"/)
+  assert.match(workflow, /for host in \$\(tr -s '\[:space:\],' ' ' < scripts\/aws\/site-alias-hosts\.txt\); do/)
+  assert.equal((workflow.match(/jq -(?:cn|e) --arg origins "\$MEDIA_CORS_ORIGINS"/g) ?? []).length, 2)
+  assert.doesNotMatch(workflow, /--arg origins "\$SERVER_ACTION_ALLOWED_ORIGINS"/)
   assert.match(workflow, /AllowedOrigins == \(\$origins\|split\(","\)\)/)
   assert.match(workflow, /"AllowedHeaders":\["Content-Type"\]/)
   assert.match(workflow, /"MaxAgeSeconds":300/)
