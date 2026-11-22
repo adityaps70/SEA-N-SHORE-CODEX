@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSessionGuard, sessionOriginHash, SESSION_CHECK_CACHE_MS } from './session-guard'
+import { accessTokenJtiHash, createSessionGuard, sessionOriginHash, SESSION_CHECK_CACHE_MS } from './session-guard'
 import type { SessionState } from './session-repository'
 
 function accessToken(claims: Record<string, unknown>) {
@@ -15,6 +15,7 @@ function fakeRepository(state: Partial<SessionState> = {}) {
     row,
     findOrCreate: vi.fn(async () => ({ ...row })),
     touch: vi.fn(async () => undefined),
+    markRenewalSeen: vi.fn<(sessionId: string, jtiHash: string) => Promise<void>>(async () => { row.renewalSeen = true }),
   }
 }
 
@@ -130,5 +131,73 @@ describe('session guard (Round H, H3)', () => {
     const broken = Object.assign(new Error('permission denied'), { code: '42501' })
     repository.findOrCreate.mockRejectedValueOnce(broken)
     await expect(guard.check({ accessToken: accessToken({ origin_jti: 'origin-aaaa-0006' }), profileId: PROFILE, context })).rejects.toBe(broken)
+  })
+})
+
+describe('session guard: a renewal is seen on the first request that carries it (owner 19 Nov, refresh recovery)', () => {
+  const ORIGIN = 'origin-recovery-0001'
+  const token = (jti: string) => accessToken({ origin_jti: ORIGIN, jti })
+
+  it('marks the renewal seen on the first request with its access token, bypassing the 30-second cache for a new token once', async () => {
+    let now = 1_000_000
+    const repository = fakeRepository({ lastSeenAt: new Date(now) })
+    const guard = createSessionGuard({ repository, now: () => now })
+
+    // The old access token fills the cache.
+    await guard.check({ accessToken: token('jti-old-00000001'), profileId: PROFILE, context })
+    expect(repository.findOrCreate).toHaveBeenCalledTimes(1)
+
+    // A renewal is recorded for a new token; the device's next request carries it, within the 30 seconds.
+    repository.row.renewalJtiHash = accessTokenJtiHash(token('jti-new-00000002'))
+    repository.row.renewalSeen = false
+    now += 5_000
+    await guard.check({ accessToken: token('jti-new-00000002'), profileId: PROFILE, context })
+    expect(repository.findOrCreate).toHaveBeenCalledTimes(2)
+    expect(repository.markRenewalSeen).toHaveBeenCalledTimes(1)
+    expect(repository.markRenewalSeen).toHaveBeenCalledWith('session-1', accessTokenJtiHash(token('jti-new-00000002')))
+
+    // Once: the same token is answered from the cache again, and nothing is marked twice.
+    now += 5_000
+    await guard.check({ accessToken: token('jti-new-00000002'), profileId: PROFILE, context })
+    expect(repository.findOrCreate).toHaveBeenCalledTimes(2)
+    now += SESSION_CHECK_CACHE_MS + 1
+    await guard.check({ accessToken: token('jti-new-00000002'), profileId: PROFILE, context })
+    expect(repository.findOrCreate).toHaveBeenCalledTimes(3)
+    expect(repository.markRenewalSeen).toHaveBeenCalledTimes(1)
+  })
+
+  it('never counts the request in which the proxy made the renewal, and marks only the renewal\'s own token', async () => {
+    const now = 2_000_000
+    const repository = fakeRepository({ lastSeenAt: new Date(now), renewalJtiHash: accessTokenJtiHash(token('jti-new-00000003')), renewalSeen: false })
+    const guard = createSessionGuard({ repository, now: () => now })
+
+    // The renewing request itself: the new token came from the server, not the device.
+    await guard.check({ accessToken: token('jti-new-00000003'), profileId: PROFILE, context, renewedInRequest: true })
+    expect(repository.markRenewalSeen).not.toHaveBeenCalled()
+    // A token other than the renewal's (an older one still in another request) marks nothing.
+    await guard.check({ accessToken: token('jti-other-0000004'), profileId: PROFILE, context })
+    expect(repository.markRenewalSeen).not.toHaveBeenCalled()
+    // The device's own next request with the new token does, at once, though the cache was filled moments ago.
+    await guard.check({ accessToken: token('jti-new-00000003'), profileId: PROFILE, context })
+    expect(repository.markRenewalSeen).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks nothing for a renewal already seen or a sign-in that ended, and never fails a request on the mark', async () => {
+    const jtiHash = accessTokenJtiHash(token('jti-new-00000005'))
+    const seen = fakeRepository({ renewalJtiHash: jtiHash, renewalSeen: true, lastSeenAt: new Date(1_000_000) })
+    await createSessionGuard({ repository: seen, now: () => 1_000_000 }).check({ accessToken: token('jti-new-00000005'), profileId: PROFILE, context })
+    expect(seen.markRenewalSeen).not.toHaveBeenCalled()
+
+    const ended = fakeRepository({ renewalJtiHash: jtiHash, renewalSeen: false, reuseDetected: true })
+    await expect(createSessionGuard({ repository: ended, now: () => 1_000_000 }).check({ accessToken: token('jti-new-00000005'), profileId: PROFILE, context }))
+      .resolves.toMatchObject({ status: 'revoked', reason: 'refresh_reuse' })
+    expect(ended.markRenewalSeen).not.toHaveBeenCalled()
+
+    const warn = vi.fn()
+    const failing = fakeRepository({ renewalJtiHash: jtiHash, renewalSeen: false, lastSeenAt: new Date(1_000_000) })
+    failing.markRenewalSeen.mockRejectedValueOnce(Object.assign(new Error('down'), { code: '08006' }))
+    await expect(createSessionGuard({ repository: failing, warn, now: () => 1_000_000 }).check({ accessToken: token('jti-new-00000005'), profileId: PROFILE, context }))
+      .resolves.toEqual({ status: 'active', sessionId: 'session-1' })
+    expect(warn).toHaveBeenCalledWith('[auth_session_renewal_seen_unavailable]', { stage: 'mark' })
   })
 })

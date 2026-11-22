@@ -25,6 +25,12 @@ export type SessionState = {
   /** Round I (I3): a refresh token of this sign-in was used again after it had been exchanged for a newer one. */
   reuseDetected: boolean
   lastSeenAt: Date
+  /**
+   * Owner (19 Nov, refresh recovery, migration 0112): the SHA-256 of the latest renewal's access-token id, and whether
+   * a request has carried that token yet. Absent before 0112 (and in callers that never read them).
+   */
+  renewalJtiHash?: string | null
+  renewalSeen?: boolean
 }
 
 export type ActiveSession = {
@@ -59,8 +65,17 @@ function stateOf(row: Record<string, unknown>): SessionState {
     revoked: row.revoked_at !== null && row.revoked_at !== undefined,
     reuseDetected: row.reuse_detected_at !== null && row.reuse_detected_at !== undefined,
     lastSeenAt: toDate(row.last_seen_at),
+    renewalJtiHash: typeof row.renewal_jti_hash === 'string' ? row.renewal_jti_hash : null,
+    renewalSeen: row.renewal_seen_at !== null && row.renewal_seen_at !== undefined,
   }
 }
+
+/**
+ * The columns a session check reads. The two 0112 columns are read through to_jsonb, so the same statement works
+ * before that migration is applied (they then read as null) and after it.
+ */
+const STATE_COLUMNS = `id, profile_id, revoked_at, reuse_detected_at, last_seen_at,
+  to_jsonb(session_row) ->> 'renewal_jti_hash' as renewal_jti_hash, to_jsonb(session_row) ->> 'renewal_seen_at' as renewal_seen_at`
 
 export function createSessionRepository(input: { query: AccountQuery }) {
   const { query } = input
@@ -73,7 +88,7 @@ export function createSessionRepository(input: { query: AccountQuery }) {
      */
     async findOrCreate(session: NewSessionInput): Promise<SessionState> {
       const found = await query(
-        `select id, profile_id, revoked_at, reuse_detected_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
+        `select ${STATE_COLUMNS} from public.auth_sessions session_row where token_origin_hash = $1`,
         [session.originHash],
       )
       if (found[0]) return stateOf(found[0])
@@ -87,7 +102,7 @@ export function createSessionRepository(input: { query: AccountQuery }) {
       )
       if (inserted[0]) return stateOf(inserted[0])
       const existing = await query(
-        `select id, profile_id, revoked_at, reuse_detected_at, last_seen_at from public.auth_sessions where token_origin_hash = $1`,
+        `select ${STATE_COLUMNS} from public.auth_sessions session_row where token_origin_hash = $1`,
         [session.originHash],
       )
       if (!existing[0]) throw new Error('auth_session_unavailable')
@@ -100,6 +115,22 @@ export function createSessionRepository(input: { query: AccountQuery }) {
         [originHash],
       )
       return rows[0] ? stateOf(rows[0]) : null
+    },
+
+    /**
+     * Owner (19 Nov, refresh recovery): a request has arrived with the latest renewal's access token, so the device
+     * received that renewal and nothing of it can be recovered any more (refresh-token-ledger). One update, only
+     * while the row still names that token and it was not seen yet.
+     */
+    async markRenewalSeen(sessionId: string, jtiHash: string) {
+      await query(
+        `update public.auth_sessions
+         set renewal_seen_at = now()
+         where id = $1
+           and renewal_jti_hash = $2
+           and renewal_seen_at is null`,
+        [sessionId, jtiHash],
+      )
     },
 
     /** Moves last_seen_at on, at most once every few minutes per session. */

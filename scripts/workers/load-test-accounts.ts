@@ -14,6 +14,7 @@ import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction } from '../../src/lib/db/client'
 import { provisionProfileForCognitoPrincipal } from '../../src/features/auth/identity-repository'
+import { peopleSuggestions } from '../../src/features/ranking/people-suggestions'
 import { createOnboardingService } from '../../src/features/profiles/onboarding-service'
 import { createOnboardingRepositoryForClient } from '../../src/features/profiles/onboarding-repository'
 import { readFileSync } from 'node:fs'
@@ -88,6 +89,7 @@ const accounts = createLoadTestAccounts({
   },
   provisionProfile: provisionProfileForCognitoPrincipal,
   completeActivation: (profileId, input) => onboarding.completeActivation(profileId, input),
+  refreshPeopleSuggestions: (profileId) => peopleSuggestions.refreshForViewer(profileId),
   readActionIds: async () => actionIdsFromManifest(JSON.parse(readFileSync('.next/server/server-reference-manifest.json', 'utf8'))),
   storeSealed: async (sealed) => {
     if (!/^sessions\/[0-9]{6,20}-[0-9]{1,3}\.sealed$/.test(handoffKey)) throw new Error('load_test_handoff_key_invalid')

@@ -348,6 +348,41 @@ describe('MessagingRealtimeProvider', () => {
       expect(tickets()).toBe(1)
     })
 
+    it('owner 19 Nov: a ticket asked for while hidden is marked background; its 401 waits for the tab to be shown, even a quick return', async () => {
+      const { MessagingRealtimeProvider } = await import('./provider')
+      const base = vi.mocked(fetch).getMockImplementation()
+      const backgroundMarks: Array<string | null> = []
+      vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === '/api/realtime/ticket') {
+          const mark = new Headers(init?.headers).get('X-SNS-Background')
+          backgroundMarks.push(mark)
+          // The server does not renew in the background: the expired session answers 401.
+          if (mark === '1') return new Response(JSON.stringify({ error: 'Authentication required.' }), { status: 401 })
+        }
+        return base!(input, init)
+      })
+      render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Home</div></MessagingRealtimeProvider>)
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+      act(() => FakeWebSocket.instances[0]?.open())
+
+      // Hidden, the socket drops and the network comes back (a laptop waking): it asks for a ticket in the
+      // background and is refused.
+      setVisibility('hidden')
+      act(() => FakeWebSocket.instances[0]?.close())
+      act(() => { window.dispatchEvent(new Event('online')) })
+      await waitFor(() => expect(tickets()).toBe(2))
+      expect(backgroundMarks).toEqual([null, '1'])
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(FakeWebSocket.instances).toHaveLength(1)
+
+      // Back within a minute: no retry is pending, so it asks at once, unmarked, and the socket opens.
+      now += 10_000
+      setVisibility('visible')
+      await waitFor(() => expect(tickets()).toBe(3))
+      expect(backgroundMarks).toEqual([null, '1', null])
+      await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2))
+    })
+
     it('back after more than a minute away, a dropped socket reconnects at once', async () => {
       const { MessagingRealtimeProvider, REALTIME_QUICK_RETURN_MS } = await import('./provider')
       render(<MessagingRealtimeProvider viewerProfileId={viewer}><div>Home</div></MessagingRealtimeProvider>)

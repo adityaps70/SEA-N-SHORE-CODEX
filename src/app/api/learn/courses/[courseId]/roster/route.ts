@@ -2,6 +2,7 @@ import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { rosterToCsv } from '@/features/learning/course-roster'
 import { courseRosterRepository } from '@/features/learning/course-roster-repository'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,6 +18,8 @@ function textError(message: string, status: number) {
  * Round D: a batch's manager and instructors may export their batch (`?batch=`).
  */
 export async function GET(request: Request, { params }: { params: Promise<{ courseId: string }> }) {
+  // Owner (21 Nov): a prefetch never builds or audits a roster export; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   const user = await getVerifiedUser()
   if (!user) return textError('Sign in to export your learners.', 401)
   const { courseId } = await params

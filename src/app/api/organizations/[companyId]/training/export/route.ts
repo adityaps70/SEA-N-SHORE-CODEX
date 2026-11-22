@@ -2,6 +2,7 @@ import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { trainingDashboardRepository } from '@/features/learning/company-training/dashboard-repository'
 import { SeatError } from '@/features/learning/company-training/seat-rules'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,7 +17,9 @@ function textError(message: string, status: number) {
  * D3: CSV of a company's assigned seats (learner, vessel, rank, course, progress and certificate for members who share),
  * for the people who run its crew training and platform admins. Every export is audited with its row count.
  */
-export async function GET(_request: Request, { params }: { params: Promise<{ companyId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ companyId: string }> }) {
+  // Owner (21 Nov): a prefetch never builds or audits a crew training export; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   const user = await getVerifiedUser()
   if (!user) return textError('Sign in to export your crew training.', 401)
   const { companyId } = await params
