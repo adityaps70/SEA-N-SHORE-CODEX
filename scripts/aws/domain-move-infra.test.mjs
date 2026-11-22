@@ -93,9 +93,9 @@ const functionUpdate = (afterOverrides = {}, unknown = { etag: true, live_stage_
 }
 const createArgs = (changes) => ['create', planFile(changes), 'EF1K45UVP11XZ', 'EK1KQZWPWQZNQ']
 
-test('the guard reads plan, import-once or create-once with the exact SHA it arms', () => {
+test('the guard reads plan, import-once, create-once or serve-once with the exact SHA it arms', () => {
   const action = guardAction(read('./domain-move-infra-action.txt'))
-  assert.ok(['plan', 'import-once', 'create-once'].includes(action), `Unexpected domain move infra action: ${action}`)
+  assert.ok(['plan', 'import-once', 'create-once', 'serve-once'].includes(action), `Unexpected domain move infra action: ${action}`)
 })
 
 test('import: exactly the console-made resources, every one a no-op', () => {
