@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { query } from '@/lib/db/client'
+import { cacheClearHub } from '@/lib/cache/runtime'
 import { accountSecurityKey, hashSessionIp } from './keys'
 import { sessionRequestContext } from './request-context'
 import { createSessionControls } from './session-controls'
@@ -13,6 +14,7 @@ export const sessionRepository = createSessionRepository({ query: (text, values)
 export const sessionGuard = createSessionGuard({
   repository: sessionRepository,
   hashIp: (ip) => hashSessionIp(ip, accountSecurityKey('session-ip')),
+  clearHub: cacheClearHub,
 })
 
 export const sessionControls = createSessionControls({ repository: sessionRepository, guard: sessionGuard })
