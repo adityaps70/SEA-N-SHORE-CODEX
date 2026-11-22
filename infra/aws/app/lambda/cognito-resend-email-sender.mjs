@@ -2,8 +2,8 @@
 // forgot password, email change, admin invites) to this function instead of its own
 // 50-a-day default sender. The code arrives encrypted with the AWS Encryption SDK under our
 // KMS key; we unwrap the data key with KMS, decrypt and verify the message here (no bundled
-// dependencies), then send a branded email through Resend from the verified sending
-// domain. Codes, passwords and addresses are never logged.
+// dependencies), then send a branded email through Resend from the verified mail.seanshore.in
+// sender. Codes, passwords and addresses are never logged.
 import {
   createDecipheriv,
   createHash,
