@@ -1,5 +1,5 @@
 # Domain move (seanshore.net), Phase 1 (owner-approved 18 Nov). Applied only by scripts/aws/domain-move-infra.sh, in
-# two guarded steps; no other runner targets anything here.
+# three guarded steps; no other runner targets anything here.
 #
 #   import-once  Brings what was made in the console under Terraform, unchanged: the seanshore.net zone, the
 #                .ph/.nl/.si/seaandshore.si zones with their records, the console redirect distribution, its function
@@ -10,8 +10,12 @@
 #                redirect certificate for all ten old names (Phase 2), the Resend and DMARC records for
 #                seanshore.net, and the private edge-logs bucket with CloudFront log delivery (30 days, owner D4).
 #
-# Serving seanshore.net (aliases, the certificate swap, origins in Cognito/CORS/realtime) is a later step: changing
-# the main distribution here now would show up in every other edge run's plan.
+#   serve-once   Serves seanshore.net next to seanshore.in, with no change for seanshore.in visitors: the main
+#                distribution's aliases (+ seanshore.net, www.seanshore.net) and certificate (site_edge), the viewer
+#                function (www.seanshore.net -> seanshore.net), the page cache key (+ x-sns-viewer-host), the four
+#                seanshore.net alias records below, and the origins derived from local.browser_site_urls (Cognito
+#                callback and sign-out URLs, media upload CORS, realtime authorizer). Those live in edge.tf, auth.tf,
+#                storage.tf and realtime.tf.
 
 locals {
   # Console-made zones of the move (Route 53 ids from the Phase 0 report, 18 Nov).
@@ -21,6 +25,13 @@ locals {
     "seanshore.nl"   = "Z052963238K0EY0F47OHA"
     "seanshore.si"   = "Z062621815JNY5E5LWNPL"
     "seaandshore.si" = "Z08656012EDRU2YXY3ZT8"
+  }
+  # serve-once: seanshore.net and www.seanshore.net point at the main distribution (www redirects to the apex there).
+  site_net_alias_records = {
+    for pair in setproduct(["seanshore.net", "www.seanshore.net"], ["A", "AAAA"]) : "${pair[0]} ${pair[1]}" => {
+      host = pair[0]
+      type = pair[1]
+    }
   }
   console_redirect_hosts = flatten([for zone in sort(keys(local.console_zone_ids)) : [zone, "www.${zone}"]])
   console_redirect_alias_records = {
@@ -469,4 +480,20 @@ resource "aws_cloudwatch_log_delivery" "edge" {
   tags = local.common_tags
 
   depends_on = [aws_s3_bucket_policy.edge_logs]
+}
+
+# --- serve-once: seanshore.net on the main distribution -------------------------------------------------------------
+
+resource "aws_route53_record" "site_net_alias" {
+  for_each = local.site_net_alias_records
+
+  zone_id = aws_route53_zone.seanshore_net.zone_id
+  name    = each.value.host
+  type    = each.value.type
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
 }

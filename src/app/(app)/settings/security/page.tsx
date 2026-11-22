@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft, ShieldCheck } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { backLinkClass, primaryButtonClass, secondaryButtonClass, textLinkClass } from '@/components/ui/interactive-styles'
-import { adminRepository } from '@/features/admin/repository'
+import { holdsAdminRole } from '@/features/admin/admin-roles'
 import { signOut } from '@/features/auth/actions'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { TwoStepPanel } from '@/features/auth/components/two-step-panel'
@@ -54,7 +54,8 @@ export default async function SecuritySettingsPage({ searchParams }: { searchPar
   const params = await searchParams
   const [status, isAdministrator] = await Promise.all([
     getCurrentMfaStatus().catch(() => null),
-    adminRepository.isPlatformAdministrator(user.id).catch(() => false),
+    // Round GP (Part C follow-up): country admins get the same admin notices, step-up and "Continue" as administrators.
+    holdsAdminRole(user.id).catch(() => false),
   ])
   const returnTo = safeAdminReturnPath(single(params.next))
   const sentByAdminGate = isAdministrator && single(params.required) === 'admin'

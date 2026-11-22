@@ -3,6 +3,8 @@ import { LIVE_JOB_SQL } from '@/features/jobs/repository'
 import { memberCountryCtes, memberCountryValues } from '@/features/countries/member-country-sql'
 import { CountrySchemaMissingError, countrySchemaReady } from '@/features/countries/country-schema'
 import { queueOrganizationReviewNotice } from '@/features/organizations/organization-review-notice'
+import { resolveSectionScope, type SectionScope } from '@/features/country-admins/scope'
+import { actorRoleFor, recordAdminAudit } from './admin-audit'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
 import {
@@ -131,6 +133,8 @@ export type AdminAuditFilter = {
   country?: string | null
   /** Round GP (Part C): only decisions made by country admins. */
   countryAdminsOnly?: boolean
+  /** Round GP Part E: decisions in one admin section (metadata.section). */
+  section?: string | null
 }
 
 export const ADMIN_USER_STATUSES = ['active', 'restricted', 'suspended', 'deletion_requested'] as const
@@ -451,7 +455,7 @@ type LockedOrganizationApplicationRow = QueryResultRow & {
 }
 
 /** Round GP (Part C): a platform administrator sees every country; a country admin only theirs. */
-export type AdminScope = { kind: 'platform' } | { kind: 'country'; countries: string[] }
+export type AdminScope = SectionScope
 type CompanyAccessRequestRow = QueryResultRow & {
   request_id: string
   request_status: string
@@ -820,21 +824,12 @@ export function createAdminRepository(input: {
   }
 
   /**
-   * Round GP (Part C): who may review organizations. A platform administrator reviews every country; a country admin
-   * only organizations whose country is one of theirs. Anyone else: admin_forbidden. Checked in SQL on every call.
+   * Round GP (Part C, sections in Part E): who may use Organizations. A platform administrator reviews every country;
+   * a country admin with the Organizations section only organizations whose country is one of theirs, and decides
+   * only with "act". Anyone else: admin_forbidden. Checked in SQL on every call (country-admins/scope.ts).
    */
   async function resolveAdminScope(query: AdminQuery, userId: string, lock = false): Promise<AdminScope> {
-    if (await isPlatformAdministratorWithQuery(query, userId, lock)) return { kind: 'platform' }
-    let countries: string[] = []
-    try {
-      const rows = await query(`select countries from public.country_admins where profile_id = $1`, [userId])
-      const value = rows[0]?.countries
-      countries = Array.isArray(value) ? value.filter((code): code is string => typeof code === 'string') : []
-    } catch {
-      countries = []
-    }
-    if (!countries.length) throw new Error('admin_forbidden')
-    return { kind: 'country', countries }
+    return resolveSectionScope(query, userId, 'organizations', lock ? 'act' : 'view', { lock })
   }
 
   async function getAdminDashboardMetrics(userId: string): Promise<AdminDashboardMetrics> {
@@ -1040,6 +1035,7 @@ export function createAdminRepository(input: {
     if (filter.actorId) where.push('ae.actor_id = ' + bind(filter.actorId) + '::uuid')
     if (filter.country) where.push("ae.metadata->>'country' = " + bind(filter.country))
     if (filter.countryAdminsOnly) where.push("ae.metadata->>'actorRole' = 'country_admin'")
+    if (filter.section) where.push("ae.metadata->>'section' = " + bind(filter.section))
     const limitParameter = bind(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
     const whereSql = where.length ? 'where ' + where.join(' and ') : ''
 
@@ -1976,26 +1972,23 @@ export function createAdminRepository(input: {
         [applicationId, decision, adminId, reviewerNote],
       )
 
-      await txQuery(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, $2, $3, $4, $5::jsonb)`,
-        [
-          adminId,
-          `organization.${decision}`,
-          'organization_application',
-          applicationId,
-          JSON.stringify({
-            companyId: application.company_id,
-            submittedBy: application.submitted_by,
-            previousStatus: application.status,
-            decision,
-            reviewerNote,
-            // Round GP (Part C): who decided (platform or country admin) and the organization's country.
-            actorRole: scope.kind === 'country' ? 'country_admin' : 'platform_admin',
-            country: companyCountry,
-          }),
-        ],
-      )
+      // Round GP (Part C, Part E helper): who decided (platform or country admin), the section and the country.
+      await recordAdminAudit(txQuery, {
+        actorId: adminId,
+        actorRole: actorRoleFor(scope),
+        section: 'organizations',
+        country: companyCountry,
+        action: `organization.${decision}`,
+        targetType: 'organization_application',
+        targetId: applicationId,
+        metadata: {
+          companyId: application.company_id,
+          submittedBy: application.submitted_by,
+          previousStatus: application.status,
+          decision,
+          reviewerNote,
+        },
+      })
 
       // Round GP (Part C): the applicant hears about approve / reject / changes requested, in the app and by email.
       if (decision === 'approved' || decision === 'rejected' || decision === 'changes_requested') {
