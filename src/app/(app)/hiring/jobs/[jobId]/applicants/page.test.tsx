@@ -117,7 +117,7 @@ describe('Hiring applicants page', () => {
     await renderPage()
 
     expect(screen.getByRole('link', { name: 'Oceanic Shipping' })).toHaveAttribute('href', '/organizations/oceanic')
-    expect(screen.getByRole('img', { name: 'Oceanic Shipping logo' })).toHaveAttribute('src', '/api/company-logo/11111111-1111-4111-8111-111111111111')
+    expect(screen.getByRole('img', { name: 'Oceanic Shipping logo' })).toHaveAttribute('src', '/api/public/company-logo/11111111-1111-4111-8111-111111111111?v=logo.png')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Applicants · Chief Officer')
 
     const list = screen.getByRole('region', { name: 'Applicants' })

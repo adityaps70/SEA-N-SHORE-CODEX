@@ -3,6 +3,7 @@ import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
 import { recordPaymentAudit } from '@/features/payments/audit'
 import { gstDocumentsToCsv, isExportMonth, listGstDocumentsForMonth } from '@/features/tax/gst-export'
 import { withTransaction } from '@/lib/db/client'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -13,6 +14,8 @@ function jsonError(error: string, status: number) {
 
 /** C4: the month's GST invoices and credit notes as CSV, for platform administrators only. Every export is audited. */
 export async function GET(request: Request) {
+  // Owner (21 Nov): a prefetch never builds or audits a GST export; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   let adminId: string
   try {
     adminId = (await requirePlatformAdministratorUser()).id

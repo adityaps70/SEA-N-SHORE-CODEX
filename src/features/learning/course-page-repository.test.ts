@@ -65,6 +65,19 @@ describe('course page repository (Round H, H7)', () => {
     })
   })
 
+  it('links a verified organization\'s logo through the cacheable public route, an unverified one signed-in', async () => {
+    const organizationRow = { kind: 'organization', name: 'Placeholder Shipping', slug: 'placeholder-shipping', short_bio: null, avatar_path: null, company_id: 'co1', logo_path: 'organizations/co1/logo-abc.png', tagline: 'Ship management', description: null, mentor_id: null, publisher_company_id: 'co1' }
+    const verified = recorder([[{ ...organizationRow, is_verified: true }], []])
+    await expect(createCoursePageRepository({ query: verified.query }).getPublisherCard(courseId)).resolves.toMatchObject({
+      logoUrl: expect.stringMatching(/^\/api\/public\/company-logo\/co1\?v=/),
+    })
+    expect(verified.seen[0]!.text).toMatch(/company\.is_verified/)
+    const unverified = recorder([[{ ...organizationRow, is_verified: false }], []])
+    await expect(createCoursePageRepository({ query: unverified.query }).getPublisherCard(courseId)).resolves.toMatchObject({
+      logoUrl: expect.stringMatching(/^\/api\/company-logo\/co1\?v=/),
+    })
+  })
+
   it('returns certificate preview settings only when the course issues certificates', async () => {
     const enabled = recorder([[{ certificate_enabled: true, certificate_template: 'formal', certificate_signatory_name: 'Placeholder Signatory', certificate_signatory_title: 'Director', certificate_serial_prefix: 'SNS-SIRE-', certificate_validity_months: '24' }]])
     await expect(createCoursePageRepository({ query: enabled.query }).getCertificatePreviewSettings(courseId)).resolves.toEqual({

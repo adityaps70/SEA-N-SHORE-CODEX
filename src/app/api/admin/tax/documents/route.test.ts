@@ -57,6 +57,19 @@ beforeEach(() => {
 })
 
 describe('GET /api/admin/tax/documents', () => {
+  it('answers a router prefetch or a browser speculative prefetch with an empty 204 and audits nothing (owner 21 Nov)', async () => {
+    for (const headers of [{ rsc: '1' }, { 'next-router-prefetch': '1' }, { 'sec-purpose': 'prefetch' }, { purpose: 'prefetch' }] as Record<string, string>[]) {
+      const response = await GET(new Request('https://seanshore.example/api/admin/tax/documents?month=2026-10', { headers }))
+      expect(response.status).toBe(204)
+      expect(response.headers.get('cache-control')).toBe('private, no-store')
+      expect(await response.text()).toBe('')
+    }
+    expect(mocks.requirePlatformAdministratorUser).not.toHaveBeenCalled()
+    expect(mocks.listGstDocumentsForMonth).not.toHaveBeenCalled()
+    expect(mocks.recordPaymentAudit).not.toHaveBeenCalled()
+    expect(mocks.client.query).not.toHaveBeenCalled()
+  })
+
   it('refuses signed-out visitors and non-administrators before reading anything', async () => {
     mocks.requirePlatformAdministratorUser.mockRejectedValueOnce(new AwsAuthenticationRequiredError())
     expect((await get()).status).toBe(401)

@@ -132,3 +132,19 @@ describe('proxy admin return path (Round 14, 2.11)', () => {
     expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(post)
   })
 })
+
+describe('proxy: the renewed-in-this-request mark (owner 19 Nov)', () => {
+  it('drops a copy sent by the browser, on page loads and on POSTs alike, so only the proxy can set it', async () => {
+    for (const request of [
+      new NextRequest('https://seanshore.in/home', { headers: { 'sec-fetch-dest': 'document', 'x-sns-session-renewed': '1' } }),
+      new NextRequest('https://seanshore.in/home', { method: 'POST', body: 'x', headers: { 'x-sns-session-renewed': '1' } }),
+      new NextRequest('https://seanshore.in/api/realtime/ticket', { method: 'POST', headers: { 'x-sns-session-renewed': '1' } }),
+    ]) {
+      const response = await proxy(request)
+      const forwarded = mocks.updateCognitoRouteSession.mock.lastCall?.[0] as NextRequest
+      expect(forwarded.headers.has('x-sns-session-renewed')).toBe(false)
+      // What reaches the route is the request header list the response passes on.
+      expect(response.headers.get('x-middleware-override-headers')?.split(',')).not.toContain('x-sns-session-renewed')
+    }
+  })
+})

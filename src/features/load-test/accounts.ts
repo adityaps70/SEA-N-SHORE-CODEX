@@ -97,6 +97,17 @@ export function randomLoadTestPassword() {
   return `Lt-${randomBytes(24).toString('base64url')}9a!Z`
 }
 
+/**
+ * Owner (18 Nov): members' People you may know come from shared signals (company, rank, vessel types, location). A
+ * test account with none of them gets no prepared suggestions and falls back to live scoring on every view, which
+ * members with a filled profile never do. Each test account takes one of these port cities, so its prepared list
+ * fills from real members there (read only: no real member is changed, and test accounts are never suggested).
+ */
+export const LOAD_TEST_LOCATIONS = ['Mumbai', 'Chennai', 'Kochi', 'Kolkata', 'Visakhapatnam'] as const
+export function loadTestLocation(index: number) {
+  return LOAD_TEST_LOCATIONS[(index - 1) % LOAD_TEST_LOCATIONS.length]!
+}
+
 export type LoadTestSession = { index: number; accessToken: string; refreshToken: string | null }
 
 /**
@@ -131,6 +142,12 @@ export type LoadTestAccountDeps = {
   }
   provisionProfile(principal: CognitoPrincipal): Promise<string>
   completeActivation(profileId: string, input: OnboardingActivationInput): Promise<unknown>
+  /**
+   * Owner (18 Nov): prepares People you may know for one test account, as onboarding does for a member (the nightly
+   * run skips test accounts). Without it every test page view scored suggestions live, which members never do. Test
+   * accounts are still never anyone's candidate. Returns how many suggestions were stored.
+   */
+  refreshPeopleSuggestions?: (profileId: string) => Promise<number>
   randomPassword?: () => string
   /** The deployed build's ids for the read-only server actions the signed-in load test calls (not secret). */
   readActionIds?: () => Promise<Record<string, string>>
@@ -242,6 +259,7 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
       if (!profile.is_load_test && profile.onboarded) throw new Error('load_test_profile_not_new')
       await deps.query(`update public.profiles set is_load_test = true where id = $1`, [profileId])
       if (!profile.onboarded) await deps.completeActivation(profileId, activation)
+      await deps.query(`update public.profiles set location = $2 where id = $1 and is_load_test`, [profileId, loadTestLocation(index)])
       return profileId
     })
     const followsEach = Math.min(LOAD_TEST_FOLLOWS_PER_ACCOUNT, accountCount - 1)
@@ -275,6 +293,11 @@ export function createLoadTestAccounts(deps: LoadTestAccountDeps) {
         [group.id, profileIds[0]],
       )
     })
+    if (deps.refreshPeopleSuggestions) {
+      const refresh = deps.refreshPeopleSuggestions
+      const stored = await mapLimit(profileIds, LOAD_TEST_ACCOUNT_CONCURRENCY, (profileId) => refresh(profileId))
+      deps.log(`LOAD_TEST_ACCOUNTS_PYMK viewers=${stored.length} with_suggestions=${stored.filter((n) => n > 0).length} rows=${stored.reduce((sum, n) => sum + n, 0)}`)
+    }
     const after = await counts()
     report('CREATED', after)
     if (after.profiles !== accountCount || after.follows < accountCount * followsEach || after.mixedFollows !== 0) throw new Error('load_test_create_incomplete')

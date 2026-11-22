@@ -202,6 +202,13 @@ export async function moderateContent(input: {
     if (code === 'moderation_case_not_found') {
       return { ok: false, error: 'This moderation case could not be found.' }
     }
+    // Round GP Part E: country admins.
+    if (code === 'moderation_out_of_scope') {
+      return { ok: false, error: 'This content is not in your countries. A Sea N Shore administrator handles it.' }
+    }
+    if (code === 'moderation_profile_platform_only') {
+      return { ok: false, error: 'Only Sea N Shore administrators act on reported member profiles.' }
+    }
     if (code === 'moderation_target_not_found') {
       return { ok: false, error: 'The reported content is no longer available.' }
     }

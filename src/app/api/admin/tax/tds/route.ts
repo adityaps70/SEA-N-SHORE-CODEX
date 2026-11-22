@@ -4,6 +4,7 @@ import { recordPaymentAudit } from '@/features/payments/audit'
 import { readClient } from '@/features/payouts/payout-runtime'
 import { isPeriod } from '@/features/payouts/seller-invoice-rules'
 import { listTdsReportRows, tdsReportToCsv } from '@/features/payouts/tds-report'
+import { backgroundFetchRefused, isBackgroundFetch } from '@/lib/http/background-fetch'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,6 +15,8 @@ function jsonError(error: string, status: number) {
 
 /** CSV of the TDS on course payouts created in one month (IST), for platform administrators only. Audited. */
 export async function GET(request: Request) {
+  // Owner (21 Nov): a prefetch never builds or audits a TDS report; only a person's own download does.
+  if (isBackgroundFetch(request.headers)) return backgroundFetchRefused()
   let adminId: string
   try {
     adminId = (await requirePlatformAdministratorUser()).id

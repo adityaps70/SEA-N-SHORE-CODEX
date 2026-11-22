@@ -5,6 +5,8 @@
  * - A sequence number: a slow, older response never replaces a newer one.
  * - The last 20 queries' results stay in memory for the session, so backspacing is instant.
  * - A 429 backs off quietly (old results stay; the next keystroke after the pause tries again).
+ * - Request cuts (owner-approved 18 Nov): nothing is requested until the trimmed text has at least
+ *   SEARCH_MIN_QUERY_LENGTH characters; a single letter matches too much to be useful and cost a request per keystroke.
  */
 export type SuggestItem = {
   id: string
@@ -25,7 +27,13 @@ export type SearchClientState =
 type Fetch = (input: string, init: { signal: AbortSignal; headers?: Record<string, string> }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>
 
 export const SEARCH_MEMORY_SIZE = 20
+export const SEARCH_MIN_QUERY_LENGTH = 2
 const BACKOFF_MS = 2000
+
+/** True when trimmed text is long enough to ask for suggestions (counted in characters, not UTF-16 units). */
+export function isSearchableQuery(text: string) {
+  return Array.from(text.trim()).length >= SEARCH_MIN_QUERY_LENGTH
+}
 
 export function createSearchClient(input: {
   endpoint?: string
@@ -93,18 +101,21 @@ export function createSearchClient(input: {
   }
 
   return {
-    /** Call on every keystroke. Empty text clears the results (the caller shows recent searches). */
+    /**
+     * Call on every keystroke. Empty text clears the results (the caller shows recent searches); text shorter than
+     * SEARCH_MIN_QUERY_LENGTH clears them too and requests nothing.
+     */
     type(raw: string) {
       const query = raw.trim().slice(0, 80)
       if (timer !== null) clearTimer(timer)
       timer = null
       sequence += 1
       const id = sequence
-      if (!query) {
+      if (!isSearchableQuery(query)) {
         controller?.abort()
         shown = id
         last = null
-        input.onState({ status: 'idle', query: '', response: null })
+        input.onState({ status: 'idle', query, response: null })
         return
       }
       const remembered = memory.get(query)

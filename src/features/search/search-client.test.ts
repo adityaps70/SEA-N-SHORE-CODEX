@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSearchClient, type SearchClientState, type SuggestResponse } from './search-client'
+import { createSearchClient, isSearchableQuery, SEARCH_MIN_QUERY_LENGTH, type SearchClientState, type SuggestResponse } from './search-client'
 
 /** A manual clock and timer queue, and fetches the test resolves in any order. */
 function harness() {
@@ -107,5 +107,47 @@ describe('real-time search client', () => {
     h.respond(1, body('sac'))
     await flush()
     expect(h.last()).toMatchObject({ status: 'ready', query: 'sac' })
+  })
+
+  it('requests nothing for fewer than two characters, trimmed (request cuts)', async () => {
+    expect(SEARCH_MIN_QUERY_LENGTH).toBe(2)
+    const h = harness()
+    for (const text of ['s', ' s ', '   ', '']) {
+      h.client.type(text)
+      h.advance(1000)
+      expect(h.last()).toEqual({ status: 'idle', query: text.trim(), response: null })
+    }
+    expect(h.pending).toHaveLength(0)
+    expect(h.states.some((state) => state.status === 'loading')).toBe(false)
+    h.client.type(' sa ')
+    h.advance(120)
+    expect(h.pending.map((item) => item.url)).toEqual(['/api/search/suggest?q=sa'])
+  })
+
+  it('backspacing to one character drops the results and aborts the request in flight', async () => {
+    const h = harness()
+    h.client.type('sa')
+    h.advance(120)
+    h.respond(0, body('sa'))
+    await flush()
+    h.client.type('sac')
+    h.advance(120)
+    h.client.type('s')
+    expect(h.pending[1]!.signal.aborted).toBe(true)
+    expect(h.last()).toEqual({ status: 'idle', query: 's', response: null })
+    h.advance(1000)
+    expect(h.pending).toHaveLength(2)
+    // A late answer for the aborted text never shows.
+    h.respond(1, body('sac'))
+    await flush()
+    expect(h.last()).toEqual({ status: 'idle', query: 's', response: null })
+  })
+
+  it('counts characters, not UTF-16 units', () => {
+    expect(isSearchableQuery('a')).toBe(false)
+    expect(isSearchableQuery(' a ')).toBe(false)
+    expect(isSearchableQuery('\u{1F6A2}')).toBe(false)
+    expect(isSearchableQuery('ab')).toBe(true)
+    expect(isSearchableQuery('\u00e9a')).toBe(true)
   })
 })

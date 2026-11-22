@@ -26,10 +26,17 @@ type CognitoSessionApi = {
 /**
  * Round I (I3): the server-side record of refresh tokens (features/account-security/refresh-token-ledger). `check`
  * runs before Cognito is asked: 'reused' means this token was already exchanged for a newer one more than the grace
- * period ago, so the sign-in it belongs to is ended. `record` runs after a successful refresh.
+ * period ago. `record` runs after a successful refresh.
+ *
+ * Owner (19 Nov): on 'reused', `recover` first returns the renewal that token was exchanged for when the device
+ * evidently never received it (at most once); otherwise `endReused` ends the sign-in it belongs to, as before.
  */
 export type RefreshTokenLedger = {
   check(refreshToken: string): Promise<'ok' | 'reused'>
+  /** The renewal this reused token was exchanged for, handed back once, or null when it cannot be recovered. */
+  recover(refreshToken: string): Promise<CognitoAuthenticationResult | null>
+  /** Ends the sign-in this reused token belongs to (auth_sessions.reuse_detected_at). Never throws. */
+  endReused(refreshToken: string): Promise<void>
   record(input: { previousRefreshToken: string; authentication: CognitoAuthenticationResult }): Promise<void>
   /** Round ARCH: Cognito refused this refresh token as reused; end the sign-in it belongs to in our database too. */
   endSession?(refreshToken: string): Promise<void>
@@ -64,6 +71,8 @@ export function createCognitoSessionManager(input: {
   ledger?: RefreshTokenLedger
   /** Round ARCH: counted (a metric, no member data) each time a reused refresh token is caught. */
   onRefreshReuse?: (source: RefreshReuseSource) => void
+  /** Owner (19 Nov): counted (a metric, no member data) each time a lost renewal is recovered instead of ending. */
+  onRefreshRecovered?: () => void
   /**
    * Owner-approved 15 Nov: one renewal per refresh token (refresh-single-flight). Requests that carry the same refresh
    * token share one Cognito renewal, so every response sets the same new tokens. Without it, each request renews.
@@ -76,6 +85,20 @@ export function createCognitoSessionManager(input: {
     } catch {
       // Counting must never break a request.
     }
+  }
+
+  function reportRecovered() {
+    try {
+      input.onRefreshRecovered?.()
+    } catch {
+      // Counting must never break a request.
+    }
+  }
+
+  function renewWith(refreshToken: string) {
+    return input.renew
+      ? input.renew(refreshToken, () => input.api.refresh(refreshToken))
+      : input.api.refresh(refreshToken)
   }
 
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl)
@@ -105,15 +128,37 @@ export function createCognitoSessionManager(input: {
       if (!refreshToken) return false
 
       if (input.ledger && (await input.ledger.check(refreshToken)) === 'reused') {
+        const ledger = input.ledger
+        // Owner (19 Nov): the device may never have received the renewal this token was exchanged for. If the ledger
+        // still holds it (once, and only while no request has carried its access token), renew from ITS refresh
+        // token, through the single renewal keyed on that token. The old token is never sent to Cognito here.
+        const recoverAndRenew = async () => {
+          const recovered = await ledger.recover(refreshToken).catch(() => null)
+          const recoveredRefreshToken = recovered?.refreshToken
+          if (!recoveredRefreshToken || recoveredRefreshToken === refreshToken) throw new CognitoApiError('NotAuthorizedException')
+          const authentication = await renewWith(recoveredRefreshToken)
+          await ledger.record({ previousRefreshToken: recoveredRefreshToken, authentication })
+          reportRecovered()
+          return { ...authentication, refreshToken: authentication.refreshToken ?? recoveredRefreshToken }
+        }
+        try {
+          // A device that wakes sends several requests with the same old token at once: they share this one recovery
+          // (keyed on the old token, here and on the other servers), so the second does not find it spent and end
+          // the sign-in. Only the request that made it records and counts it.
+          const authentication = input.renew ? await input.renew(refreshToken, recoverAndRenew) : await recoverAndRenew()
+          cookies.setAuthentication(authentication)
+          return true
+        } catch {
+          // Nothing to recover, or any failure with the recovered token: the sign-in ends, as reuse always did.
+        }
         cookies.clearCognitoCookies()
+        await ledger.endReused(refreshToken).catch(() => undefined)
         reportReuse('ledger')
         return false
       }
 
       try {
-        const authentication = input.renew
-          ? await input.renew(refreshToken, () => input.api.refresh(refreshToken))
-          : await input.api.refresh(refreshToken)
+        const authentication = await renewWith(refreshToken)
         // Round I (I3): the refresh cookie is written again on every refresh, with a fresh 30-day Max-Age, so the
         // sign-in lasts until 30 days pass without the site being opened. With rotation on, Cognito returns a new
         // refresh token; without it the same token is kept.

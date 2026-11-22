@@ -93,9 +93,11 @@ describe('jobs list signed out (round H, H5)', () => {
     expect(screen.getAllByRole('link', { name: /Save/ }).every((link) => link.getAttribute('href') === signIn)).toBe(true)
     expect(screen.getByRole('link', { name: /Easy Apply/ })).toHaveAttribute('href', signIn)
     expect(screen.queryByRole('button', { name: /Save|Easy Apply|Not interested/ })).toBeNull()
-    // A verified employer's logo is public (see /api/company-logo); the fixture employer is verified.
+    // A verified employer's logo is public; the fixture employer is verified, so it comes from the cookie-free
+    // public route CloudFront caches once (request cuts).
     expect(job.companyVerified).toBe(true)
-    expect(container.querySelector('img[src^="/api/company-logo/"]')).not.toBeNull()
+    expect(container.querySelector('img[src^="/api/public/company-logo/"]')).not.toBeNull()
+    expect(container.querySelector('img[src^="/api/company-logo/"]')).toBeNull()
   })
 
   it('shows an unverified employer as the initials tile, since its logo is for members only', async () => {

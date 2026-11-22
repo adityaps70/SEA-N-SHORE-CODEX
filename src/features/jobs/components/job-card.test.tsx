@@ -60,12 +60,19 @@ describe('JobCard', () => {
     render(<JobCard job={job} match={match} />)
 
     const logo = screen.getByRole('img', { name: 'Beaufort Marine FZE logo' })
-    expect(logo).toHaveAttribute('src', '/api/company-logo/22222222-2222-4222-8222-222222222222')
+    // Request cuts: a verified employer's logo comes from the cookie-free public route, versioned by the stored key.
+    expect(logo).toHaveAttribute('src', '/api/public/company-logo/22222222-2222-4222-8222-222222222222?v=logo.webp')
     const matchLabel = screen.getByText('Your match')
     expect(matchLabel.closest('[data-job-match]')?.querySelector('svg')).toBeNull()
     // Round 12: banded label with the % from 40%.
     expect(screen.getByText('Good match · 60%')).toBeVisible()
     expect(screen.getByText(job.summary)).toHaveClass('line-clamp-2')
+  })
+
+  it('keeps an unverified employer\'s logo on the signed-in route, never the public one (request cuts)', () => {
+    render(<JobCard job={{ ...job, companyVerified: false }} />)
+
+    expect(screen.getByRole('img', { name: 'Beaufort Marine FZE logo' })).toHaveAttribute('src', '/api/company-logo/22222222-2222-4222-8222-222222222222')
   })
 
   it('links the posting organization to its page and shows where it is based', () => {

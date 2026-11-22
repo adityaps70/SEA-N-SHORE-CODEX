@@ -5,6 +5,7 @@ import {
   CognitoUnauthenticatedError,
   createCognitoSessionManager,
 } from './cognito-session'
+import { createRefreshSingleFlight } from './refresh-single-flight'
 
 type CookieWrite = {
   name: string
@@ -142,7 +143,7 @@ describe('Cognito server session verification', () => {
     const api = createFakeApi({
       refresh: async () => ({ accessToken: 'access-2', refreshToken: 'refresh-token-2', expiresIn: 3600 }),
     })
-    const ledger = { check: vi.fn(async () => 'ok' as const), record: vi.fn(async () => undefined) }
+    const ledger = { check: vi.fn(async () => 'ok' as const), recover: vi.fn(async () => null), endReused: vi.fn(async () => undefined), record: vi.fn(async () => undefined) }
     const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger })
 
     await expect(sessions.refreshSession()).resolves.toBe(true)
@@ -160,7 +161,7 @@ describe('Cognito server session verification', () => {
       [COGNITO_COOKIE_NAMES.refresh]: 'stolen-old-refresh-token',
     })
     const api = createFakeApi()
-    const ledger = { check: vi.fn(async () => 'reused' as const), record: vi.fn(async () => undefined) }
+    const ledger = { check: vi.fn(async () => 'reused' as const), recover: vi.fn(async () => null), endReused: vi.fn(async () => undefined), record: vi.fn(async () => undefined) }
     const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger })
 
     await expect(sessions.refreshSession()).resolves.toBe(false)
@@ -168,6 +169,9 @@ describe('Cognito server session verification', () => {
     expect(ledger.record).not.toHaveBeenCalled()
     expect(fake.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
     expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+    // Owner (19 Nov): check no longer ends the sign-in itself; with nothing to recover, endReused does.
+    expect(ledger.recover).toHaveBeenCalledWith('stolen-old-refresh-token')
+    expect(ledger.endReused).toHaveBeenCalledWith('stolen-old-refresh-token')
   })
 
   it('treats a refresh token Cognito refuses as reused like a refused one: cookies cleared, counted, our record ended (Round ARCH)', async () => {
@@ -176,7 +180,7 @@ describe('Cognito server session verification', () => {
       [COGNITO_COOKIE_NAMES.refresh]: 'reused-refresh-token',
     })
     const api = createFakeApi({ refresh: async () => { throw new CognitoApiError('RefreshTokenReuseException') } })
-    const ledger = { check: vi.fn(async () => 'ok' as const), record: vi.fn(async () => undefined), endSession: vi.fn(async () => undefined) }
+    const ledger = { check: vi.fn(async () => 'ok' as const), recover: vi.fn(async () => null), endReused: vi.fn(async () => undefined), record: vi.fn(async () => undefined), endSession: vi.fn(async () => undefined) }
     const onRefreshReuse = vi.fn()
     const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshReuse })
 
@@ -193,16 +197,98 @@ describe('Cognito server session verification', () => {
   it('never throws on a reused refresh token, even when ending our record or counting it fails (Round ARCH)', async () => {
     const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'reused-refresh-token' })
     const api = createFakeApi({ refresh: async () => { throw new CognitoApiError('RefreshTokenReuseException') } })
-    const ledger = { check: vi.fn(async () => 'ok' as const), record: vi.fn(async () => undefined), endSession: vi.fn(async () => { throw new Error('db down') }) }
+    const ledger = { check: vi.fn(async () => 'ok' as const), recover: vi.fn(async () => null), endReused: vi.fn(async () => undefined), record: vi.fn(async () => undefined), endSession: vi.fn(async () => { throw new Error('db down') }) }
     const onRefreshReuse = vi.fn(() => { throw new Error('metrics down') })
     const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshReuse })
     await expect(sessions.refreshSession()).resolves.toBe(false)
   })
 
+  it('owner 19 Nov: a reused token whose renewal can be recovered renews from the recovered token, through the single renewal, and is counted', async () => {
+    const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'old-refresh-token' })
+    const api = createFakeApi({ refresh: async () => ({ accessToken: 'access-3', refreshToken: 'refresh-token-3', expiresIn: 3600 }) })
+    const recovered = { accessToken: 'access-2', refreshToken: 'refresh-token-2', expiresIn: 60 }
+    const ledger = {
+      check: vi.fn(async () => 'reused' as const),
+      recover: vi.fn(async () => recovered),
+      endReused: vi.fn(async () => undefined),
+      record: vi.fn(async () => undefined),
+    }
+    const renew = vi.fn(async (_token: string, refresh: () => Promise<{ accessToken: string; refreshToken?: string; expiresIn: number }>) => refresh())
+    const onRefreshRecovered = vi.fn()
+    const onRefreshReuse = vi.fn()
+    const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, renew, onRefreshRecovered, onRefreshReuse })
+
+    await expect(sessions.refreshSession()).resolves.toBe(true)
+    expect(ledger.recover).toHaveBeenCalledWith('old-refresh-token')
+    // Cognito is sent the recovered token, never the old one: the recovery is shared by requests carrying the old
+    // token, and its Cognito renewal is keyed on the recovered token, as for any renewal.
+    expect(api.refresh.mock.calls).toEqual([['refresh-token-2']])
+    expect(renew.mock.calls.map((call) => call[0])).toEqual(['old-refresh-token', 'refresh-token-2'])
+    expect(fake.values.get(COGNITO_COOKIE_NAMES.refresh)).toBe('refresh-token-3')
+    expect(fake.values.get(COGNITO_COOKIE_NAMES.access)).toBe('access-3')
+    expect(ledger.record).toHaveBeenCalledWith({
+      previousRefreshToken: 'refresh-token-2',
+      authentication: { accessToken: 'access-3', refreshToken: 'refresh-token-3', expiresIn: 3600 },
+    })
+    expect(onRefreshRecovered).toHaveBeenCalledTimes(1)
+    expect(onRefreshReuse).not.toHaveBeenCalled()
+    expect(ledger.endReused).not.toHaveBeenCalled()
+  })
+
+  it('owner 19 Nov: requests that wake together with the old token share one recovery instead of the second ending the sign-in', async () => {
+    const api = createFakeApi({ refresh: async () => ({ accessToken: 'access-3', refreshToken: 'refresh-token-3', expiresIn: 3600 }) })
+    let kept: { accessToken: string; refreshToken: string; expiresIn: number } | null = { accessToken: 'access-2', refreshToken: 'refresh-token-2', expiresIn: 60 }
+    const ledger = {
+      check: vi.fn(async () => 'reused' as const),
+      // Recoverable once: the second call finds it spent.
+      recover: vi.fn(async () => { const set = kept; kept = null; return set }),
+      endReused: vi.fn(async () => undefined),
+      record: vi.fn(async () => undefined),
+    }
+    const renew = createRefreshSingleFlight()
+    const onRefreshRecovered = vi.fn()
+    const jars = [0, 1, 2].map(() => createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'old-refresh-token' }))
+    const results = await Promise.all(jars.map((jar) => createCognitoSessionManager({ cookieStore: jar.store, api, siteUrl: 'https://staging.example.com', ledger, renew, onRefreshRecovered }).refreshSession()))
+    expect(results).toEqual([true, true, true])
+    for (const jar of jars) expect(jar.values.get(COGNITO_COOKIE_NAMES.refresh)).toBe('refresh-token-3')
+    expect(ledger.recover).toHaveBeenCalledTimes(1)
+    expect(api.refresh.mock.calls).toEqual([['refresh-token-2']])
+    expect(ledger.record).toHaveBeenCalledTimes(1)
+    expect(onRefreshRecovered).toHaveBeenCalledTimes(1)
+    expect(ledger.endReused).not.toHaveBeenCalled()
+  })
+
+  it('owner 19 Nov: when the recovered token fails at Cognito (or recovery throws), the sign-in ends as reuse always did', async () => {
+    for (const failure of ['cognito', 'recover'] as const) {
+      const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.access]: 'expired', [COGNITO_COOKIE_NAMES.refresh]: 'old-refresh-token' })
+      const api = createFakeApi({ refresh: async () => { throw new CognitoApiError(failure === 'cognito' ? 'NotAuthorizedException' : 'TransportError') } })
+      const ledger = {
+        check: vi.fn(async () => 'reused' as const),
+        recover: vi.fn(async () => {
+          if (failure === 'recover') throw new Error('db down')
+          return { accessToken: 'access-2', refreshToken: 'refresh-token-2', expiresIn: 60 }
+        }),
+        endReused: vi.fn(async () => undefined),
+        record: vi.fn(async () => undefined),
+      }
+      const onRefreshRecovered = vi.fn()
+      const onRefreshReuse = vi.fn()
+      const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshRecovered, onRefreshReuse })
+      await expect(sessions.refreshSession()).resolves.toBe(false)
+      expect(api.refresh.mock.calls).toEqual(failure === 'cognito' ? [['refresh-token-2']] : [])
+      expect(fake.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+      expect(fake.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
+      expect(ledger.endReused).toHaveBeenCalledWith('old-refresh-token')
+      expect(ledger.record).not.toHaveBeenCalled()
+      expect(onRefreshReuse).toHaveBeenCalledWith('ledger')
+      expect(onRefreshRecovered).not.toHaveBeenCalled()
+    }
+  })
+
   it('counts a reuse our ledger catches before asking Cognito (Round ARCH)', async () => {
     const fake = createFakeCookieStore({ [COGNITO_COOKIE_NAMES.refresh]: 'stolen-old-refresh-token' })
     const api = createFakeApi()
-    const ledger = { check: vi.fn(async () => 'reused' as const), record: vi.fn(async () => undefined) }
+    const ledger = { check: vi.fn(async () => 'reused' as const), recover: vi.fn(async () => null), endReused: vi.fn(async () => undefined), record: vi.fn(async () => undefined) }
     const onRefreshReuse = vi.fn()
     const sessions = createCognitoSessionManager({ cookieStore: fake.store, api, siteUrl: 'https://staging.example.com', ledger, onRefreshReuse })
     await expect(sessions.refreshSession()).resolves.toBe(false)

@@ -11,7 +11,8 @@ import { communityCategoryRepository } from '@/features/community/category-repos
 import { communityRepository } from '@/features/community/repository'
 import { groupHref, type AdminCommunityGroup } from '@/features/community/types'
 import { pluralize } from '@/lib/format'
-import { requireAdminAccess } from '@/features/admin/admin-access'
+import { requireAdminAccess, type AdminAccess } from '@/features/admin/admin-access'
+import { allows } from '@/features/country-admins/sections'
 
 export const metadata: Metadata = { title: 'Communities · Admin' }
 
@@ -48,19 +49,25 @@ function ArchiveForm({ group }: { group: AdminCommunityGroup }) {
 export default async function AdminCommunitiesPage({ searchParams }: { searchParams: SearchParams }) {
   // Round 14 (2.10): the admin layout's check does not run for every page render (partial
   // rendering), and listAdminGroups takes no admin id, so the page checks for itself.
+  // Round GP Part E: country admins with Communities see their countries' groups; with "act" they edit, archive and
+  // unarchive them. Creating groups, changing owners and categories stay with platform administrators.
+  let access: AdminAccess
   try {
-    await requireAdminAccess('platform')
+    access = await requireAdminAccess('communities')
   } catch (error) {
     if (error instanceof Error && error.message === 'admin_forbidden') notFound()
     throw error
   }
+  const isPlatform = access.kind === 'platform'
+  const canAct = access.kind === 'platform' || allows(access.permissions, 'communities', 'act')
+  const ownerHref = (owner: { id: string; slug?: string | null }) => (isPlatform ? `/admin/users/${owner.id}` : owner.slug ? `/people/${owner.slug}` : null)
   const params = await searchParams
   const query = single(params.q).trim().slice(0, 120)
   const filter = readFilter(params.status)
   const editId = single(params.edit) || single(params.group)
   const createdSlug = single(params.created)
   const [groups, categories] = await Promise.all([
-    communityRepository.listAdminGroups({ search: query, archived: filter }),
+    communityRepository.listAdminGroups({ search: query, archived: filter, ...(access.kind === 'country' ? { countries: access.countries } : {}) }),
     communityCategoryRepository.listPickerOptions(),
   ])
   const editing = editId ? groups.find((group) => group.id === editId) ?? null : null
@@ -80,13 +87,13 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
         title="Communities"
         meta={pluralize(groups.length, 'group')}
         description="Every community group: who owns it, how many members it has and whether it is live. Reports about groups and group posts arrive in Moderation."
-        actions={(
+        actions={isPlatform ? (
           <>
             {/* Round I (I2) */}
             <Link href="/admin/communities/categories" className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">Categories</Link>
             <a href="#create-group" className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Create group</a>
           </>
-        )}
+        ) : undefined}
       />
 
       {createdSlug ? (
@@ -130,8 +137,8 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
                   ]}
                   actions={[
                     { kind: 'link', href: groupHref(group.slug), label: 'View group', icon: <ExternalLink aria-hidden="true" /> },
-                    { kind: 'link', href: `/admin/communities?edit=${group.id}#edit-group`, label: 'Edit, archive or change owner', icon: <PencilLine aria-hidden="true" /> },
-                    ...(group.owner ? [{ kind: 'link' as const, href: `/admin/users/${group.owner.id}`, label: `Owner: ${group.owner.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
+                    ...(canAct ? [{ kind: 'link' as const, href: `/admin/communities?edit=${group.id}#edit-group`, label: isPlatform ? 'Edit, archive or change owner' : 'Edit or archive', icon: <PencilLine aria-hidden="true" /> }] : []),
+                    ...(group.owner && ownerHref(group.owner) ? [{ kind: 'link' as const, href: ownerHref(group.owner)!, label: `Owner: ${group.owner.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
                   ]}
                 />
               ))}
@@ -177,16 +184,20 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
                       </td>
                       <td className="px-4 py-2.5">
                         {group.owner
-                          ? <Link href={`/admin/users/${group.owner.id}`} className="block truncate font-medium text-navy-900 hover:text-ocean-700 hover:underline">{group.owner.fullName}</Link>
+                          ? ownerHref(group.owner)
+                            ? <Link href={ownerHref(group.owner)!} className="block truncate font-medium text-navy-900 hover:text-ocean-700 hover:underline">{group.owner.fullName}</Link>
+                            : <span className="block truncate font-medium text-navy-900">{group.owner.fullName}</span>
                           : <span className="text-muted">No owner</span>}
                       </td>
                       <td className="px-4 py-2.5">{group.archivedAt ? <AdminChip tone="danger">Archived</AdminChip> : <AdminChip tone="success">Live</AdminChip>}</td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(group.createdAt)}</td>
                       <td className="px-4 py-2.5">
-                        <div className="flex flex-wrap justify-end gap-1">
-                          <Link href={`/admin/communities?edit=${group.id}#edit-group`} className={actionClass}><PencilLine aria-hidden="true" className="size-3.5" /> Edit</Link>
-                          <ArchiveForm group={group} />
-                        </div>
+                        {canAct ? (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <Link href={`/admin/communities?edit=${group.id}#edit-group`} className={actionClass}><PencilLine aria-hidden="true" className="size-3.5" /> Edit</Link>
+                            <ArchiveForm group={group} />
+                          </div>
+                        ) : <span className="block text-right text-xs text-muted">View only</span>}
                       </td>
                     </tr>
                   ))}
@@ -197,7 +208,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
         )}
       </AdminPanel>
 
-      {editing ? (
+      {editing && canAct ? (
         <section id="edit-group" aria-labelledby="edit-group-heading" className="scroll-mt-24 space-y-4 rounded-xl border border-mist-100 bg-white p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 id="edit-group-heading" className="text-lg font-bold text-navy-950">Edit {editing.name}</h3>
@@ -208,23 +219,25 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
             </div>
           </div>
           <AdminGroupForm group={editing} categories={categories} />
-          <div className="border-t border-mist-100 pt-4">
-            <h4 className="mb-2 text-sm font-bold text-navy-950">Owner</h4>
-            <AdminGroupOwnerForm group={editing} />
-          </div>
+          {isPlatform ? (
+            <div className="border-t border-mist-100 pt-4">
+              <h4 className="mb-2 text-sm font-bold text-navy-950">Owner</h4>
+              <AdminGroupOwnerForm group={editing} />
+            </div>
+          ) : null}
         </section>
-      ) : editId ? (
+      ) : editId && canAct ? (
         <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">That group is not in this view. Clear the search or filter to find it.</p>
       ) : null}
 
-      <section id="create-group" aria-labelledby="create-group-heading" className="scroll-mt-24 space-y-4 rounded-xl border border-mist-100 bg-white p-4 sm:p-5">
+      {isPlatform ? <section id="create-group" aria-labelledby="create-group-heading" className="scroll-mt-24 space-y-4 rounded-xl border border-mist-100 bg-white p-4 sm:p-5">
         <div>
           <h3 id="create-group-heading" className="text-lg font-bold text-navy-950">Create group</h3>
           <p className="mt-1 text-sm text-muted">The owner is added as an active member at once; they can then appoint moderators from the group’s Members tab.</p>
         </div>
         {/* A new form after each group is created (the form keeps what was typed otherwise; hotfix P2). */}
         <AdminGroupForm key={createdSlug ?? 'new'} categories={categories} />
-      </section>
+      </section> : null}
     </div>
   )
 }

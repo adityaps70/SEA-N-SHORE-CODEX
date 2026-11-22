@@ -147,6 +147,9 @@ export async function reviewCreatorVerificationApplication(
     if (code === 'admin_forbidden') {
       return { ok: false, error: 'You do not have permission to review verification applications.' }
     }
+    if (code === 'verification_out_of_scope') {
+      return { ok: false, error: 'This applicant is not in your countries. A Sea N Shore administrator handles it.' }
+    }
     if (code === 'verification_application_not_found') {
       return { ok: false, error: 'This verification application could not be found.' }
     }

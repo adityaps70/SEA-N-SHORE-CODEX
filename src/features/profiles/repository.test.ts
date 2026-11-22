@@ -234,7 +234,7 @@ describe('Aurora profile repository', () => {
         id: organizationId,
         slug: 'oceanic-shipping',
         name: 'Oceanic Shipping',
-        logoUrl: `/api/company-logo/${organizationId}`,
+        logoUrl: `/api/public/company-logo/${organizationId}`,
         verified: true,
       },
     })

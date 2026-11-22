@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type KeyboardEvent } from 'react'
 import { clearRecentSearchesAction, getRecentSearchesAction, recordSearchAction } from '../search-actions'
 import { viewerInitials } from '@/components/navigation/viewer-avatar'
-import { createSearchClient, type SearchClientState, type SuggestItem } from '../search-client'
+import { createSearchClient, isSearchableQuery, type SearchClientState, type SuggestItem } from '../search-client'
 import { highlightParts } from '../highlight'
 import { cdnImageUrlForWidth } from '@/lib/media-cdn/cdn-url'
 
@@ -13,7 +13,8 @@ import { cdnImageUrlForWidth } from '@/lib/media-cdn/cdn-url'
  * Round G (G4): search as you type, an ARIA combobox (WAI-ARIA 1.2 list autocomplete).
  * - `dropdown` (top bar, desktop): results in a popup under the field.
  * - `fullscreen` (phone search screen): the same live results fill the screen under the field.
- * Empty field: the member's recent searches with Clear all. Up/Down move, Enter opens the active
+ * Empty field: the member's recent searches with Clear all. One character (request cuts, owner-approved 18 Nov): no
+ * suggestions and no request; Enter still opens all results. Up/Down move, Enter opens the active
  * result (or all results), Esc closes. Old results stay while new ones load; the count is announced.
  */
 const KIND_ICON = { person: UsersRound, org: Building2, community: UsersRound, job: BriefcaseBusiness, course: BookOpen, event: CalendarDays, post: FileText } as const
@@ -76,13 +77,14 @@ export function LiveSearchBox({
   }
 
   const query = text.trim()
-  const items = query ? state.response?.items ?? [] : []
-  const options: Option[] = query
+  const searchable = isSearchableQuery(query)
+  const items = searchable ? state.response?.items ?? [] : []
+  const options: Option[] = searchable
     ? [...items.map((item): Option => ({ type: 'result', item })), { type: 'all', query }]
-    : (recent ?? []).map((value): Option => ({ type: 'recent', query: value }))
-  const loading = state.status === 'loading' && Boolean(query)
-  const showList = open && (query ? true : (recent?.length ?? 0) > 0)
-  const statusText = !query
+    : query ? [] : (recent ?? []).map((value): Option => ({ type: 'recent', query: value }))
+  const loading = state.status === 'loading' && searchable
+  const showList = open && (searchable ? true : !query && (recent?.length ?? 0) > 0)
+  const statusText = !searchable
     ? ''
     : loading && !state.response
       ? 'Searching…'
@@ -243,7 +245,7 @@ export function LiveSearchBox({
               )
             })}
           </ul>
-          {query && !items.length && !loading ? <p className="px-4 pb-2 text-sm text-muted">No quick matches. Press Enter to search everything.</p> : null}
+          {searchable && !items.length && !loading ? <p className="px-4 pb-2 text-sm text-muted">No quick matches. Press Enter to search everything.</p> : null}
         </div>
       ) : null}
       {variant === 'fullscreen' && open && text ? (

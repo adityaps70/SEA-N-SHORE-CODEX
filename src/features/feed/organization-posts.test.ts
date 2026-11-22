@@ -74,6 +74,8 @@ describe('feed repository: organization posts', () => {
     const [sql] = callsOf(query)[0]
     expect(sql).toMatch(/left join public\.companies post_company on post_company\.id = p\.company_id/i)
     expect(sql).toMatch(/'logo_path', post_company\.logo_path/i)
+    expect(sql).toMatch(/'is_verified', post_company\.is_verified/i)
+    expect(sql).toMatch(/'logo_path', mentioned_company\.logo_path,\s*'is_verified', mentioned_company\.is_verified/i)
     expect(sql).toMatch(/organization_follows viewer_org_follow[\s\S]*follower_id = \$1/i)
   })
 
@@ -312,6 +314,23 @@ describe('feed queries: organization posts', () => {
     })
   })
 
+  it('links a verified organization\'s logo through the cacheable public route and keeps unverified ones signed-in', async () => {
+    const verifiedRow = feedRow({
+      company_id: companyId,
+      organization: { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG Carriers', logo_path: 'companies/nordic/logo.png', is_verified: true },
+    })
+    const unverifiedRow = feedRow({
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      company_id: companyId,
+      organization: { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG Carriers', logo_path: 'companies/nordic/logo.png', is_verified: false },
+    })
+    const { queries } = await queriesFor([verifiedRow, unverifiedRow], access(null))
+    const page = await queries.getFeedPage({ limit: 5 })
+    const logoById = new Map(page.posts.map((post) => [post.id, post.organization?.logoUrl]))
+    expect(logoById.get(verifiedRow.id)).toBe(`/api/public/company-logo/${companyId}`)
+    expect(logoById.get(unverifiedRow.id)).toBe(`/api/company-logo/${companyId}`)
+  })
+
   it('does not load roles when a page has no organization posts', async () => {
     const { queries, loadAccessContext } = await queriesFor([feedRow()], access('administrator'))
     const page = await queries.getFeedPage({ limit: 5 })
@@ -348,6 +367,13 @@ describe('feed queries: organization posts', () => {
       { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG Carriers', logoUrl: `/api/company-logo/${companyId}` },
     ])
     expect(repository.listCompanyIdentities).toHaveBeenCalledWith([companyId])
+
+    vi.mocked(repository.listCompanyIdentities).mockResolvedValueOnce([
+      { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG Carriers', logoPath: 'companies/nordic/logo.png', verified: true },
+    ])
+    await expect(queries.getPostingOrganizations()).resolves.toEqual([
+      { id: companyId, slug: 'nordic-lng', name: 'Nordic LNG Carriers', logoUrl: `/api/public/company-logo/${companyId}` },
+    ])
 
     const none = await queriesFor([], access('recruiter'))
     await expect(none.queries.getPostingOrganizations()).resolves.toEqual([])
