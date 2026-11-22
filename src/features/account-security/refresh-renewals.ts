@@ -19,31 +19,39 @@ import type { AccountQuery } from './types'
  */
 export const RENEWAL_ABANDONED_SECONDS = 10
 const SEAL_VERSION = 'v1'
+/**
+ * Owner (19 Nov, refresh recovery): the sibling seal for the renewal kept on the old refresh token's row
+ * (refresh-token-ledger). Its own version and AAD, and callers give it its own key ('refresh-recovery'), so a sealed
+ * set never opens as the other kind.
+ */
+const RECOVERY_SEAL_VERSION = 'r1'
 
 type Sealed = { a: string; i?: string; r?: string; e: number; t: number }
+type SealKind = { version: string; label: string }
+const RENEWAL_SEAL: SealKind = { version: SEAL_VERSION, label: 'auth-refresh-renewal' }
+const RECOVERY_SEAL: SealKind = { version: RECOVERY_SEAL_VERSION, label: 'auth-refresh-recovery' }
 
-function aad(tokenHash: string) {
-  return Buffer.from(`sea-n-shore/auth-refresh-renewal/${SEAL_VERSION}/${tokenHash}`)
+function aad(kind: SealKind, tokenHash: string) {
+  return Buffer.from(`sea-n-shore/${kind.label}/${kind.version}/${tokenHash}`)
 }
 
-export function sealRenewal(key: Buffer, tokenHash: string, authentication: CognitoAuthenticationResult, issuedAt: number) {
+function seal(kind: SealKind, key: Buffer, tokenHash: string, authentication: CognitoAuthenticationResult, issuedAt: number) {
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key, iv)
-  cipher.setAAD(aad(tokenHash))
+  cipher.setAAD(aad(kind, tokenHash))
   const payload: Sealed = { a: authentication.accessToken, e: authentication.expiresIn, t: issuedAt }
   if (authentication.idToken) payload.i = authentication.idToken
   if (authentication.refreshToken) payload.r = authentication.refreshToken
   const body = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()])
-  return [SEAL_VERSION, iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), body.toString('base64url')].join('.')
+  return [kind.version, iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), body.toString('base64url')].join('.')
 }
 
-/** The renewed tokens, with the access token's lifetime counted from when it was issued; null if it does not open. */
-export function unsealRenewal(key: Buffer, tokenHash: string, sealed: string, now: number): CognitoAuthenticationResult | null {
+function unseal(kind: SealKind, key: Buffer, tokenHash: string, sealed: string, now: number): CognitoAuthenticationResult | null {
   const [version, iv, tag, body] = sealed.split('.')
-  if (version !== SEAL_VERSION || !iv || !tag || !body) return null
+  if (version !== kind.version || !iv || !tag || !body) return null
   try {
     const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'))
-    decipher.setAAD(aad(tokenHash))
+    decipher.setAAD(aad(kind, tokenHash))
     decipher.setAuthTag(Buffer.from(tag, 'base64url'))
     const payload = JSON.parse(Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8')) as Sealed
     if (typeof payload.a !== 'string' || typeof payload.e !== 'number' || typeof payload.t !== 'number') return null
@@ -57,6 +65,25 @@ export function unsealRenewal(key: Buffer, tokenHash: string, sealed: string, no
   } catch {
     return null
   }
+}
+
+export function sealRenewal(key: Buffer, tokenHash: string, authentication: CognitoAuthenticationResult, issuedAt: number) {
+  return seal(RENEWAL_SEAL, key, tokenHash, authentication, issuedAt)
+}
+
+/** The renewed tokens, with the access token's lifetime counted from when it was issued; null if it does not open. */
+export function unsealRenewal(key: Buffer, tokenHash: string, sealed: string, now: number): CognitoAuthenticationResult | null {
+  return unseal(RENEWAL_SEAL, key, tokenHash, sealed, now)
+}
+
+/** Owner (19 Nov): seals a renewal for recovery, bound to the OLD refresh token's ledger hash. */
+export function sealRecovery(key: Buffer, oldTokenHash: string, authentication: CognitoAuthenticationResult, issuedAt: number) {
+  return seal(RECOVERY_SEAL, key, oldTokenHash, authentication, issuedAt)
+}
+
+/** The recovered renewal, or null when it does not open (another key, another row, or a renewal-store seal). */
+export function unsealRecovery(key: Buffer, oldTokenHash: string, sealed: string, now: number): CognitoAuthenticationResult | null {
+  return unseal(RECOVERY_SEAL, key, oldTokenHash, sealed, now)
 }
 
 export function createRefreshRenewalStore(input: {

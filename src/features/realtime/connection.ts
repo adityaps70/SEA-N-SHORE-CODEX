@@ -51,6 +51,8 @@ type ConnectionOptions = {
   renewalMs?: number
   heartbeatMs?: number
   requestTypingToken?: (conversationId: string) => Promise<TypingTokenGrant | null>
+  /** Owner (19 Nov): whether the tab is hidden now (a refusal received while hidden waits for the tab to be shown). */
+  isHidden?: () => boolean
 }
 
 const DEFAULT_RENEWAL_MS = 55 * 60 * 1000
@@ -78,14 +80,23 @@ export const MAX_TICKET_REFUSALS = 3
 export const SLOW_RETRY_AFTER_FAILURES = 10
 export const SLOW_RETRY_MS = 5 * 60 * 1000
 
-/** Thrown by a requestTicket that got a refusal (401 or 403) from the ticket route. */
+/**
+ * Thrown by a requestTicket that got a refusal (401 or 403) from the ticket route. `background`: the request was sent
+ * while the tab was hidden (X-SNS-Background), so the server did not try to renew the sign-in (owner, 19 Nov).
+ */
 export class RealtimeTicketRefusedError extends Error {
   readonly status: number
-  constructor(status: number) {
+  readonly background: boolean
+  constructor(status: number, options: { background?: boolean } = {}) {
     super('realtime_ticket_refused')
     this.name = 'RealtimeTicketRefusedError'
     this.status = status
+    this.background = options.background === true
   }
+}
+
+function isBackgroundRefusal(error: unknown) {
+  return error instanceof RealtimeTicketRefusedError && error.background
 }
 
 function isTicketRefusal(error: unknown) {
@@ -224,6 +235,14 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
       }
     } catch (error) {
       if (!active) return
+      // Owner (19 Nov): a refusal of a request sent while hidden says only that the server would not renew in the
+      // background. It never counts toward MAX_TICKET_REFUSALS: the tab waits, idle, until it is shown (the
+      // provider's visibilitychange calls reconnectNow), or asks again at once if it was shown meanwhile.
+      if (isBackgroundRefusal(error)) {
+        if (options.isHidden?.() ?? true) setStatus('disconnected')
+        else scheduleReconnect(0)
+        return
+      }
       if (isTicketRefusal(error)) {
         ticketRefusals += 1
         // Stop asking: the socket stays down (so the timed polls run) until the tab is shown or goes online again.

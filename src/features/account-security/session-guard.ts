@@ -19,6 +19,13 @@ import { SESSION_LIST_WINDOW_DAYS, type SessionRepository, type SessionSignInMet
  *
  * Round I (I3): a sign-in also ends when it has not been used for 30 days (idle), or when one of its refresh tokens
  * was used again after it had been exchanged for a newer one (refresh_reuse, see refresh-token-ledger).
+ *
+ * Owner (19 Nov, refresh recovery): the first request that carries a renewal's new access token marks that renewal
+ * seen (auth_sessions.renewal_seen_at), because the device evidently received it; from then on the old refresh token
+ * can no longer recover it (refresh-token-ledger). So that this happens on that first request and not up to 30
+ * seconds later, a cached answer is used only for the access token (jti) that filled it; a request with another
+ * token checks the database once. The request that made the renewal itself (the proxy renewed and passed the new
+ * token on, `renewedInRequest`) never counts: its response may be exactly the one the device never received.
  */
 
 /** Why a session is refused: signed out (from this or another device, or a password change), idle, or token reuse. */
@@ -29,7 +36,8 @@ export type SessionCheck =
   | { status: 'revoked'; sessionId: string; reason: SessionEndReason }
   | { status: 'untracked' }
 
-type CacheEntry = { sessionId: string; profileId: string; ended: SessionEndReason | null; expiresAt: number }
+/** `jtiHash`: the access token that filled the entry, as sent by the device (null when the proxy had just renewed). */
+type CacheEntry = { sessionId: string; profileId: string; ended: SessionEndReason | null; expiresAt: number; jtiHash: string | null }
 
 export const SESSION_CHECK_CACHE_MS = 30 * 1000
 export const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000
@@ -47,17 +55,27 @@ export function accessTokenOriginHash(accessToken: string) {
   return originJti ? sessionOriginHash(originJti) : null
 }
 
+/** Owner (19 Nov): the hash of one access token's id (its jti claim), or null when it carries none. */
+export function accessTokenJtiHash(accessToken: string) {
+  const { jti } = decodeAccessTokenClaims(accessToken)
+  return jti ? createHash('sha256').update(`cognito-jti:${jti}`).digest('hex') : null
+}
+
 function signInMethodOf(accessToken: string): SessionSignInMethod {
   // The hosted (Google) sign-in always adds the openid scope; password sign-ins never get it.
   return decodeAccessTokenClaims(accessToken).scopes.includes('openid') ? 'google' : 'password'
 }
 
+function errorCode(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error ? (error as { code?: unknown }).code : null
+}
+
 function isMissingTable(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === '42P01'
+  return errorCode(error) === '42P01'
 }
 
 export function createSessionGuard(input: {
-  repository: Pick<SessionRepository, 'findOrCreate' | 'touch'>
+  repository: Pick<SessionRepository, 'findOrCreate' | 'touch'> & Partial<Pick<SessionRepository, 'markRenewalSeen'>>
   now?: () => number
   cacheTtlMs?: number
   touchIntervalMs?: number
@@ -87,6 +105,19 @@ export function createSessionGuard(input: {
   })
   let warnedUntracked = false
   let warnedMissingTable = false
+  let warnedRenewalSeen = false
+
+  /** Never fails the request: without the mark, the renewal simply stays recoverable a little longer. */
+  async function markRenewalSeen(sessionId: string, jtiHash: string) {
+    try {
+      await input.repository.markRenewalSeen?.(sessionId, jtiHash)
+    } catch (error) {
+      // 42703: migration 0112 is not applied yet (the row then never names a renewal either).
+      if (errorCode(error) === '42703' || warnedRenewalSeen) return
+      warnedRenewalSeen = true
+      warn('[auth_session_renewal_seen_unavailable]', { stage: 'mark' })
+    }
+  }
 
   function remember(originHash: string, entry: CacheEntry) {
     if (cache.size >= MAX_ENTRIES) {
@@ -106,6 +137,8 @@ export function createSessionGuard(input: {
       accessToken: string
       profileId: string
       context: () => SessionRequestContext | Promise<SessionRequestContext>
+      /** The proxy renewed the sign-in in this same request: the device has not shown it received the new token. */
+      renewedInRequest?: boolean
     }): Promise<SessionCheck> {
       const originHash = accessTokenOriginHash(request.accessToken)
       if (!originHash) {
@@ -117,8 +150,12 @@ export function createSessionGuard(input: {
       }
 
       const timestamp = now()
+      const jtiHash = accessTokenJtiHash(request.accessToken)
+      const renewed = request.renewedInRequest === true
       const cached = cache.get(originHash)
-      if (cached && cached.expiresAt > timestamp && cached.profileId === request.profileId) {
+      // A request with an access token other than the one that filled the entry checks the database once.
+      const sameToken = !jtiHash || renewed || cached?.jtiHash === jtiHash
+      if (cached && cached.expiresAt > timestamp && cached.profileId === request.profileId && sameToken) {
         return checkOf(cached.sessionId, cached.ended)
       }
 
@@ -143,7 +180,14 @@ export function createSessionGuard(input: {
               ? 'idle'
               : null
         if (!ended && idleFor >= touchIntervalMs) await input.repository.touch(row.id)
-        remember(originHash, { sessionId: row.id, profileId: request.profileId, ended, expiresAt: now() + cacheTtlMs })
+        if (!ended && !renewed && jtiHash && row.renewalJtiHash === jtiHash && !row.renewalSeen) await markRenewalSeen(row.id, jtiHash)
+        remember(originHash, {
+          sessionId: row.id,
+          profileId: request.profileId,
+          ended,
+          expiresAt: now() + cacheTtlMs,
+          jtiHash: renewed ? null : jtiHash,
+        })
         return checkOf(row.id, ended)
       } catch (error) {
         // Until migration 0088 is applied the table does not exist: sessions are simply not tracked yet.
