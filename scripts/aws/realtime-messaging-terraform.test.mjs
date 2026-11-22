@@ -38,12 +38,14 @@ test('connect is authorizer-protected and the default route only supports epheme
   assert.doesNotMatch(connectionLambda, /public\.messages|event_outbox|rds-data:/i)
 })
 
-test('realtime authorizer only accepts the canonical domain and the managed CloudFront public origin', () => {
+test('realtime authorizer only accepts the canonical domain, the domain-move alias domains and the managed CloudFront public origin', () => {
   assert.match(edgeTerraform, /resource "aws_cloudfront_distribution" "app"/)
   assert.match(edgeTerraform, /canonical_site_url\s*=\s*"https:\/\/\$\{local\.canonical_site_host\}"/)
   assert.match(edgeTerraform, /canonical_site_host\s*=\s*"seanshore\.in"/)
   assert.match(edgeTerraform, /edge_site_url\s*=\s*"https:\/\/\$\{aws_cloudfront_distribution\.app\.domain_name\}"/)
-  assert.match(edgeTerraform, /browser_site_urls\s*=\s*\[local\.canonical_site_url, local\.edge_site_url\]/)
+  assert.match(edgeTerraform, /browser_site_urls\s*=\s*concat\(\[local\.canonical_site_url\], \[for host in local\.site_alias_hosts : "https:\/\/\$\{host\}"\], \[local\.edge_site_url\]\)/)
+  // Domain move: the one alias domain, seanshore.net, and nothing else (scripts/aws/domain-move-infra.test.mjs).
+  assert.match(edgeTerraform, /site_alias_hosts\s*=\s*\["seanshore\.net"\]/)
   assert.match(terraform, /REALTIME_ALLOWED_ORIGINS\s*=\s*join\(",", local\.browser_site_urls\)/)
   assert.doesNotMatch(terraform, /REALTIME_ALLOWED_ORIGINS?\s*=\s*var\.site_url/)
   assert.match(authorizer, /process\.env\.REALTIME_ALLOWED_ORIGINS/)

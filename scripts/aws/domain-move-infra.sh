@@ -2,10 +2,19 @@
 # Domain move (seanshore.net), Phase 1 infrastructure (owner-approved 18 Nov; infra/aws/app/domain-move.tf).
 #
 #   plan               read only: plans the next step (import while the seanshore.net zone is not in state, then
-#                      create) and checks it with check-domain-move-plan.py.
+#                      create, then serve once the new certificate is in state) and checks it with
+#                      check-domain-move-plan.py.
 #   import-once <sha>  imports the console-made resources; the plan must be exactly those imports, all no-op.
 #   create-once <sha>  creates the new certificates (waits until both are ISSUED), the seanshore.net Resend and DMARC
-#                      records and the private edge-logs bucket with CloudFront log delivery; nothing else.
+#                      records and the private edge-logs bucket with CloudFront log delivery, and updates the main
+#                      distribution's viewer-request function so x-sns-viewer-host is always the real Host (owner,
+#                      21 Nov: the first edge change, before seanshore.net is served); nothing else. Then checks live
+#                      that a faked x-sns-viewer-host still lands on https://seanshore.in.
+#   serve-once <sha>   serves seanshore.net next to seanshore.in: the main distribution's aliases and certificate, the
+#                      viewer function (www.seanshore.net -> seanshore.net), the page cache key, four seanshore.net
+#                      alias records, and the browser origins in Cognito, media upload CORS and the realtime
+#                      authorizer; nothing else. Refuses if seanshore.net already has A/AAAA records, then checks live
+#                      that both domains answer (seanshore.in unchanged) through the distribution.
 #
 # Prints addresses, counts and true/false only (the edge-logs bucket is never listed: logs hold visitor IPs).
 set -euo pipefail
@@ -50,7 +59,19 @@ CREATE_TARGETS=(
   "aws_cloudwatch_log_delivery_source.edge"
   "aws_cloudwatch_log_delivery_destination.edge_logs"
   "aws_cloudwatch_log_delivery.edge"
+  "aws_cloudfront_function.canonical_host_redirect"
 )
+SERVE_TARGETS=(
+  "aws_cloudfront_distribution.app"
+  "aws_cloudfront_function.canonical_host_redirect"
+  "aws_cloudfront_cache_policy.public_pages"
+  "aws_route53_record.site_net_alias"
+  "aws_cognito_user_pool_client.web"
+  "aws_s3_bucket_cors_configuration.media"
+  "aws_lambda_function.realtime_authorizer"
+)
+SEANSHORE_NET_ZONE_ID="Z09758912UIE2T2PK09U"
+EDGE_HOST="d3prih0q6jofyr.cloudfront.net"
 
 [[ "${DOMAIN_MOVE_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "DOMAIN_MOVE_INFRA_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -65,7 +86,7 @@ if compgen -G "$APP_DIR/*import*.tf" >/dev/null; then echo "Import blocks found 
 source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
-case "$ACTION" in plan|import-once|create-once) ;; *) echo "Unsupported domain move infra action." >&2; exit 1 ;; esac
+case "$ACTION" in plan|import-once|create-once|serve-once) ;; *) echo "Unsupported domain move infra action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.domain-move-infra.XXXXXXXX")"
 trap 'rm -rf -- "$WORK_DIR"; rm -f -- "$APP_DIR/zz_domain_move_imports.tf"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
@@ -91,10 +112,13 @@ assert ':' in image.rsplit('/', 1)[-1], f'Expected tag-qualified web image, got 
 with open(sys.argv[2], 'w') as f:
     json.dump({'image_tag': image.rsplit(':', 1)[1], 'site_url': site_url, 'aurora_engine_version': one('aws_rds_cluster', 'aurora')['engine_version']}, f)
 imported = any(r['mode'] == 'managed' and r['type'] == 'aws_route53_zone' and r['name'] == 'seanshore_net' for r in resources)
+site_edge = [r for r in resources if r['mode'] == 'managed' and r['type'] == 'aws_acm_certificate' and r['name'] == 'site_edge']
 with open(sys.argv[3], 'w') as f:
     f.write(f"APP_DISTRIBUTION_ID={one('aws_cloudfront_distribution', 'app')['id']}\n")
     f.write(f"REDIRECT_DISTRIBUTION_ID={one('aws_cloudfront_distribution', 'seaandshore_redirect')['id']}\n")
     f.write(f"IMPORTED={'true' if imported else 'false'}\n")
+    f.write(f"CREATED={'true' if site_edge else 'false'}\n")
+    f.write(f"SITE_EDGE_CERTIFICATE_ARN={site_edge[0]['instances'][0]['attributes']['arn'] if site_edge else ''}\n")
 PY
 rm -f -- "$WORK_DIR/state.json"
 # shellcheck disable=SC1091
@@ -106,9 +130,11 @@ source "$WORK_DIR/facts.env"
 
 STEP=import
 [[ "$IMPORTED" == true ]] && STEP=create
+[[ "$IMPORTED" == true && "$CREATED" == true ]] && STEP=serve
 case "$ACTION" in
   import-once) [[ "$STEP" == import ]] || { echo "DOMAIN_MOVE_INFRA=FAIL the import is already in state." >&2; exit 1; } ;;
-  create-once) [[ "$STEP" == create ]] || { echo "DOMAIN_MOVE_INFRA=FAIL run import-once first." >&2; exit 1; } ;;
+  create-once) [[ "$STEP" == create ]] || { echo "DOMAIN_MOVE_INFRA=FAIL create-once is not the next step." >&2; exit 1; } ;;
+  serve-once) [[ "$STEP" == serve ]] || { echo "DOMAIN_MOVE_INFRA=FAIL serve-once is not the next step." >&2; exit 1; } ;;
 esac
 echo "DOMAIN_MOVE_INFRA_ACTION=$ACTION"
 echo "DOMAIN_MOVE_INFRA_STEP=$STEP"
@@ -129,8 +155,11 @@ PLAN_ARGS=()
 if [[ "$STEP" == import ]]; then
   cp -- "$IMPORTS_TEMPLATE" "$APP_DIR/zz_domain_move_imports.tf"
   for target in "${IMPORT_TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
-else
+elif [[ "$STEP" == create ]]; then
   for target in "${CREATE_TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
+else
+  [[ "$SITE_EDGE_CERTIFICATE_ARN" == arn:aws:acm:us-east-1:310356785722:certificate/* ]]
+  for target in "${SERVE_TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
 fi
 plan() {
   # Bounded like every host plan: interrupted and retried once if it hangs (scripts/aws/bootstrap-terraform-lock.sh).
@@ -143,6 +172,8 @@ plan() {
 classify() {
   if [[ "$STEP" == import ]]; then
     python3 -I scripts/aws/check-domain-move-plan.py import "$1"
+  elif [[ "$STEP" == serve ]]; then
+    python3 -I scripts/aws/check-domain-move-plan.py serve "$1" "$APP_DISTRIBUTION_ID" "$SITE_EDGE_CERTIFICATE_ARN"
   else
     python3 -I scripts/aws/check-domain-move-plan.py create "$1" "$APP_DISTRIBUTION_ID" "$REDIRECT_DISTRIBUTION_ID"
   fi
@@ -167,6 +198,18 @@ fi
   echo "Branch moved after the domain move run started; refusing stale execution." >&2
   exit 1
 }
+# serve-once creates the seanshore.net A/AAAA records: none may exist yet (a record made elsewhere is never replaced).
+# Counts only.
+net_site_records() {
+  aws route53 list-resource-record-sets --hosted-zone-id "$SEANSHORE_NET_ZONE_ID" --output json \
+    | jq --arg kind "$1" '[.ResourceRecordSets[] | select((.Type == "A" or .Type == "AAAA") and (.Name == "seanshore.net." or .Name == "www.seanshore.net."))
+        | select($kind == "any" or ((.AliasTarget.DNSName // "") | ascii_downcase | rtrimstr(".")) == "d3prih0q6jofyr.cloudfront.net")] | length'
+}
+if [[ "$ACTION" == serve-once ]]; then
+  EXISTING_NET_RECORDS="$(net_site_records any)"
+  echo "DOMAIN_MOVE_NET_SITE_RECORDS_BEFORE=$EXISTING_NET_RECORDS"
+  [[ "$EXISTING_NET_RECORDS" == 0 ]] || { echo "DOMAIN_MOVE_INFRA=FAIL seanshore.net already has A/AAAA records; refusing." >&2; exit 1; }
+fi
 STATE_SERIAL_BEFORE="$(terraform -chdir="$APP_DIR" state pull | jq -r '.serial')"
 [[ "$STATE_SERIAL_BEFORE" =~ ^[0-9]+$ ]]
 echo "STATE_SERIAL_BEFORE=$STATE_SERIAL_BEFORE"
@@ -200,6 +243,59 @@ if [[ "$ACTION" == create-once ]]; then
     | jq '[.deliveries[]? | select(.deliverySourceName | startswith("sea-n-shore-staging-edge-"))] | length')"
   echo "DOMAIN_MOVE_EDGE_LOGS public_blocked=$public lifecycle_30_days=$lifecycle deliveries=$deliveries"
   [[ "$public" == true && "$lifecycle" == true && "$deliveries" == 2 ]]
+fi
+# Live, after create-once only (the import changes nothing at the edge): a browser that fakes x-sns-viewer-host must
+# still be sent to https://seanshore.in. /auth/session-ended without a session redirects to sign-in on the origin the
+# app picks, and is never cached. The function was published at the start of the apply and reaches every edge
+# location within minutes; this retries for about 10 more. Prints true/false and the attempt count only.
+if [[ "$ACTION" == create-once ]]; then
+  viewer_host_location() {
+    curl --silent --show-error --max-time 30 -o /dev/null -w '%{redirect_url}' "$@" \
+      "https://seanshore.in/auth/session-ended?viewer_host_check=$(date +%s)" || true
+  }
+  FAKED_OK=false
+  for attempt in $(seq 1 20); do
+    if [[ "$(viewer_host_location -H 'x-sns-viewer-host: seanshore.net')" == "https://seanshore.in/auth/sign-in" ]]; then
+      FAKED_OK=true
+      break
+    fi
+    sleep 30
+  done
+  PLAIN_OK=false
+  [[ "$(viewer_host_location)" == "https://seanshore.in/auth/sign-in" ]] && PLAIN_OK=true
+  WWW_OK=false
+  [[ "$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.seanshore.in/help?viewer_host_check=1" || true)" == "301 https://seanshore.in/help?viewer_host_check=1" ]] && WWW_OK=true
+  echo "DOMAIN_MOVE_VIEWER_HOST_CHECK faked_lands_on_canonical=$FAKED_OK attempts=$attempt plain=$PLAIN_OK www_redirect=$WWW_OK"
+  [[ "$FAKED_OK" == true && "$PLAIN_OK" == true && "$WWW_OK" == true ]]
+fi
+# Live, after serve-once: both domains through the distribution. DNS for seanshore.net is new, so a resolver may still
+# hold an old "no such name" answer; the requests go to the distribution directly with the right name (TLS checks
+# the certificate for that name), and the records are checked in Route 53. Prints true/false only.
+if [[ "$ACTION" == serve-once ]]; then
+  edge() {
+    local host="$1"; shift
+    curl --silent --show-error --max-time 30 --connect-to "$host:443:$EDGE_HOST:443" "$@" || true
+  }
+  NET_HEALTH=false
+  for attempt in $(seq 1 20); do
+    [[ "$(edge seanshore.net -o /dev/null -w '%{http_code}' "https://seanshore.net/api/health/live?serve_check=$(date +%s)")" == 200 ]] && { NET_HEALTH=true; break; }
+    sleep 30
+  done
+  IN_HEALTH=false
+  [[ "$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{http_code}' "https://seanshore.in/api/health/live?serve_check=1" || true)" == 200 ]] && IN_HEALTH=true
+  NET_WWW=false
+  [[ "$(edge www.seanshore.net -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.seanshore.net/help?serve_check=1")" == "301 https://seanshore.net/help?serve_check=1" ]] && NET_WWW=true
+  IN_WWW=false
+  [[ "$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.seanshore.in/help?serve_check=1" || true)" == "301 https://seanshore.in/help?serve_check=1" ]] && IN_WWW=true
+  # The app sends a visitor back to the domain they are on: seanshore.net stays on seanshore.net, and a faked header on
+  # seanshore.in still lands on seanshore.in.
+  NET_STAYS=false
+  [[ "$(edge seanshore.net -o /dev/null -w '%{redirect_url}' "https://seanshore.net/auth/session-ended?serve_check=$(date +%s)")" == "https://seanshore.net/auth/sign-in" ]] && NET_STAYS=true
+  IN_FAKED=false
+  [[ "$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{redirect_url}' -H 'x-sns-viewer-host: seanshore.net' "https://seanshore.in/auth/session-ended?serve_check=$(date +%s)" || true)" == "https://seanshore.in/auth/sign-in" ]] && IN_FAKED=true
+  NET_RECORDS="$(net_site_records edge)"
+  echo "DOMAIN_MOVE_SERVE_CHECK net_health=$NET_HEALTH attempts=$attempt in_health=$IN_HEALTH net_www_redirect=$NET_WWW in_www_redirect=$IN_WWW net_stays_on_net=$NET_STAYS in_faked_lands_on_in=$IN_FAKED net_alias_records=$NET_RECORDS"
+  [[ "$NET_HEALTH" == true && "$IN_HEALTH" == true && "$NET_WWW" == true && "$IN_WWW" == true && "$NET_STAYS" == true && "$IN_FAKED" == true && "$NET_RECORDS" == 4 ]]
 fi
 echo "DOMAIN_MOVE_INFRA_VERIFIED=true"
 echo "DOMAIN_MOVE_INFRA_APPLY_COMPLETE"

@@ -37,8 +37,8 @@ export function organizationMenuItems(organizations: HeaderOrganization[], total
 }
 
 /**
- * Round GP (Part C follow-up): where the Admin entry goes. Platform administrators open the whole console; a country
- * admin (adminCountries) opens the organization review queue, with their countries named. Nobody else gets one.
+ * Round GP (Part C follow-up, Part E): where the Admin entry goes. Platform administrators open the whole console; a
+ * country admin (adminCountries) opens their Overview or first section, with their countries named. Nobody else.
  */
 export function adminMenuLink({ canAccessAdmin = false, adminCountries = null }: {
   canAccessAdmin?: boolean
@@ -48,7 +48,8 @@ export function adminMenuLink({ canAccessAdmin = false, adminCountries = null }:
   if (!adminCountries?.length) return null
   const names = adminCountries.map((code) => countryName(code) ?? code)
   const shown = names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ')
-  return { href: '/admin/organizations?view=queue', description: `Organization reviews · ${shown}` }
+  // Round GP Part E: /admin opens their Overview, or their first section.
+  return { href: '/admin', description: `Country admin · ${shown}` }
 }
 
 /**

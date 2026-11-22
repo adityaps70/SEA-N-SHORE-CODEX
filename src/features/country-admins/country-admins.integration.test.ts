@@ -87,8 +87,8 @@ describe('managing country admins (platform administrators only)', () => {
     await expect(repository.grant(platformAdmin, otherMember, ['XX'])).rejects.toThrow('countries_invalid')
     await expect(repository.grant(otherMember, otherMember, ['PH'])).rejects.toThrow('admin_forbidden')
 
-    expect(await repository.grant(platformAdmin, otherMember, ['in', 'PH', 'PH'])).toEqual({ countries: ['IN', 'PH'], previousCountries: [] })
-    expect(await repository.grant(platformAdmin, otherMember, ['SG'])).toEqual({ countries: ['SG'], previousCountries: ['IN', 'PH'] })
+    expect(await repository.grant(platformAdmin, otherMember, ['in', 'PH', 'PH'])).toEqual({ countries: ['IN', 'PH'], previousCountries: [], permissions: { organizations: 'act' }, previousPermissions: {} })
+    expect(await repository.grant(platformAdmin, otherMember, ['SG'])).toEqual({ countries: ['SG'], previousCountries: ['IN', 'PH'], permissions: { organizations: 'act' }, previousPermissions: { organizations: 'act' } })
     expect(await repository.getCountries(otherMember)).toEqual(['SG'])
     expect(await repository.remove(platformAdmin, otherMember)).toBe(true)
     expect(await repository.getCountries(otherMember)).toBeNull()
@@ -96,7 +96,7 @@ describe('managing country admins (platform administrators only)', () => {
 
     const audit = await run(`select action, metadata from public.audit_events where target_id = $1 and action like 'country_admin.%' order by created_at, action`, [otherMember])
     expect(audit.map((row) => row.action)).toEqual(['country_admin.granted', 'country_admin.updated', 'country_admin.removed'])
-    expect(audit[2]!.metadata).toEqual({ previousCountries: ['SG'] })
+    expect(audit[2]!.metadata).toEqual({ previousCountries: ['SG'], actorRole: 'platform_admin', section: 'country_admins', country: null })
     // Never a platform role.
     expect(await run(`select 1 from public.user_roles where user_id = $1`, [otherMember])).toEqual([])
   })
@@ -124,7 +124,7 @@ describe('a Philippines country admin', () => {
 
   it('sees only Philippine organizations in the queue, the directory and Members by country', async () => {
     const repository = admin()
-    expect(await repository.resolveAdminScope(countryAdmin)).toEqual({ kind: 'country', countries: ['PH'] })
+    expect(await repository.resolveAdminScope(countryAdmin)).toEqual({ kind: 'country', countries: ['PH'], level: 'act' })
     const queue = await repository.listOrganizationApplications(countryAdmin, 'pending')
     expect(queue.map((entry) => entry.applicationId)).toEqual([philippine.applicationId])
     expect((await repository.listOrganizationApplications(platformAdmin, 'pending')).map((entry) => entry.applicationId).sort())

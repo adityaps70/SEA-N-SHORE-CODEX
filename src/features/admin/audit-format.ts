@@ -1,3 +1,4 @@
+import { COUNTRY_ADMIN_SECTION_INFO, isCountryAdminSection } from '@/features/country-admins/sections'
 import { countryName } from '@/features/countries/catalog'
 
 /** Plain-language formatting for administrator audit events, shared by the overview and the audit log. */
@@ -87,6 +88,10 @@ export function auditDetails(metadata: Record<string, unknown>) {
   if (decision) values.push(`Decision: ${decision.replaceAll('_', ' ')}`)
   // Round GP (Part C): the organization's country, and whether a country admin decided.
   if (text('actorRole') === 'country_admin') values.push('By a country admin')
+  // Round GP Part E: the admin section the decision belongs to.
+  const section = text('section')
+  if (isCountryAdminSection(section)) values.push(`Section: ${COUNTRY_ADMIN_SECTION_INFO[section].label}`)
+  else if (section === 'country_admins') values.push('Section: Country admins')
   const country = text('country')
   if (/^[A-Z]{2}$/.test(country)) values.push(`Country: ${countryName(country) ?? country}`)
   const countries = Array.isArray(metadata.countries) ? metadata.countries.filter((code): code is string => typeof code === 'string') : []

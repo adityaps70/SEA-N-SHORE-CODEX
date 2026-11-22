@@ -51,7 +51,7 @@ function CountriesNotReady() {
 export default async function AdminCountriesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   // Round GP (Part C): country admins see their own countries' rows only, and no member lists.
-  const access = await requireAdminAccess('country')
+  const access = await requireAdminAccess('members')
   const admin = access.user
   const basis = readBasis(params.basis)
   const membersLinks = access.kind === 'platform' && basis === 'residence'

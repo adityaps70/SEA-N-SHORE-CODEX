@@ -17,7 +17,8 @@ NEXT_IMAGE_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.next_image'
 # the query string. The default behavior must use it or CachingDisabled; nothing else.
 PUBLIC_PAGES_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.public_pages'
 PUBLIC_PAGES_SESSION_COOKIES = ['sns_cognito_access', 'sns_cognito_refresh']
-PUBLIC_PAGES_KEY_HEADERS = ['next-router-prefetch', 'next-router-segment-prefetch', 'next-router-state-tree', 'rsc']
+# Domain move: x-sns-viewer-host (the real Host, set by the viewer function) keeps each domain's cached pages apart.
+PUBLIC_PAGES_KEY_HEADERS = ['next-router-prefetch', 'next-router-segment-prefetch', 'next-router-state-tree', 'rsc', 'x-sns-viewer-host']
 PUBLIC_PAGES_MAX_TTL = 300
 # Round P3 (B7): signed media. A second origin (the private media bucket through origin access
 # control) and a first ordered behavior for /m/* that trusts the media key group, with the
@@ -112,7 +113,9 @@ def expected_custom_headers(origin_verify):
     return _sorted_headers([{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}, {'name': ORIGIN_VERIFY_HEADER, 'value': origin_verify}])
 
 CANONICAL_HOST = 'seanshore.in'
-EXPECTED_ALIASES = [CANONICAL_HOST, 'www.' + CANONICAL_HOST]
+# Domain move (owner-approved 18 Nov): the alias domains ride on the same distribution, apex and www.
+ALIAS_HOSTS = ['seanshore.net']
+EXPECTED_ALIASES = sorted([CANONICAL_HOST, 'www.' + CANONICAL_HOST] + [h for host in ALIAS_HOSTS for h in (host, 'www.' + host)])
 CERTIFICATE_ARN_PREFIX = 'arn:aws:acm:us-east-1:310356785722:certificate/'
 FUNCTION_ADDRESS = 'aws_cloudfront_function.canonical_host_redirect'
 FUNCTION_NAME = 'sea-n-shore-staging-canonical-host-redirect'
@@ -404,6 +407,7 @@ def rendered_function_code(redirect_edge_host, template_path=None):
     return (
         template
         .replace('${canonical_host}', CANONICAL_HOST)
+        .replace('${alias_hosts}', json.dumps(ALIAS_HOSTS, separators=(',', ':')))
         .replace('${edge_host}', FORWARDED_HOST)
         .replace('${redirect_edge_host}', 'true' if redirect_edge_host else 'false')
     )
@@ -536,7 +540,7 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
                         continue
                     errors.append('Unknown safety field in ' + block)
     if cf.get('web_acl_id') != WAF_ARN or cf.get('enabled') is not True: errors.append('CloudFront ACL/enabled mismatch')
-    if sorted(cf.get('aliases') or []) != EXPECTED_ALIASES: errors.append('CloudFront aliases must be exactly seanshore.in and www.seanshore.in')
+    if sorted(cf.get('aliases') or []) != EXPECTED_ALIASES: errors.append('CloudFront aliases must be exactly seanshore.in, seanshore.net and their www names')
     cert = cf.get('viewer_certificate', [])
     if (
         not certificate_arn
@@ -548,7 +552,7 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
         or cert[0].get('cloudfront_default_certificate') not in [None, False]
         or cert[0].get('iam_certificate_id') not in [None, '']
     ):
-        errors.append('seanshore.in ACM certificate with SNI and TLSv1.2_2021 required')
+        errors.append('seanshore.in + seanshore.net ACM certificate with SNI and TLSv1.2_2021 required')
     all_origins = cf.get('origin', []) or []
     media_origins = [o for o in all_origins if o.get('origin_id') == MEDIA_ORIGIN_ID]
     origins = [o for o in all_origins if o.get('origin_id') != MEDIA_ORIGIN_ID]
