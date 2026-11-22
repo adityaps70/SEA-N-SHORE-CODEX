@@ -7,20 +7,41 @@ import { auditSummary, auditTargetHref, auditTargetLabel } from '@/features/admi
 import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminRepository } from '@/features/admin/repository'
 import { pluralizeWithVerb } from '@/lib/format'
+import { adminCountryRepository } from '@/features/countries/admin-country-repository'
+import { CountryAdminOverview, NoCountryPanel } from '@/features/country-admins/components/admin-overview-panels'
+import { adminOverviewRepository } from '@/features/country-admins/overview-repository'
+import { allows, countryAdminHome } from '@/features/country-admins/sections'
 
 export const metadata: Metadata = { title: 'Admin' }
 
 type AttentionItem = { label: string; count: number; href: string; urgent?: boolean }
 
 export default async function AdminPage() {
-  const access = await requireAdminAccess('country')
-  // Round GP (Part C): the overview is for platform administrators; a country admin starts at their review queue.
-  if (access.kind === 'country') redirect('/admin/organizations?view=queue')
+  const access = await requireAdminAccess('console')
+  // Round GP Part E: a country admin with the Overview sees their countries' counts; without it, their first section.
+  if (access.kind === 'country') {
+    if (!allows(access.permissions, 'overview')) redirect(countryAdminHome(access.permissions) ?? '/admin/organizations?view=queue')
+    const [{ countries, counts }, stats] = await Promise.all([
+      adminOverviewRepository.countsForCountryAdmin(access.user.id),
+      allows(access.permissions, 'members') ? adminCountryRepository.listCountryStats(access.user.id).catch(() => null) : null,
+    ])
+    const newMembers = stats
+      ? { week: stats.reduce((sum, row) => sum + row.newThisWeek, 0), month: stats.reduce((sum, row) => sum + row.newThisMonth, 0) }
+      : null
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Overview" />
+        <CountryAdminOverview countries={countries} counts={counts} permissions={access.permissions} newMembers={newMembers} />
+      </div>
+    )
+  }
   const user = access.user
-  const [metrics, recentEvents, otherRoles] = await Promise.all([
+  const [metrics, recentEvents, otherRoles, withoutCountry] = await Promise.all([
     adminRepository.getAdminDashboardMetrics(user.id),
     adminRepository.listAuditEvents(user.id, { targetType: 'all', limit: 8 }).catch(() => []),
     adminRepository.listOtherRoleTexts(user.id, { days: 90, limit: 30 }).catch(() => []),
+    // Round GP Part E (owner, 21 Nov): what only platform administrators can decide, because it has no country.
+    adminOverviewRepository.countsWithoutCountry(user.id).catch(() => null),
   ])
 
   const attention: AttentionItem[] = [
@@ -80,6 +101,8 @@ export default async function AdminPage() {
           </p>
         )}
       </AdminPanel>
+
+      {withoutCountry ? <NoCountryPanel counts={withoutCountry} /> : null}
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mist-100 bg-mist-100 sm:grid-cols-3 xl:grid-cols-6">
         {stats.map((stat) => (

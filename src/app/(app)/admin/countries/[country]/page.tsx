@@ -35,7 +35,7 @@ export default async function AdminCountryDetailPage({ params, searchParams }: {
   if (code === undefined) notFound()
   const basis = readBasis((await searchParams).basis)
   // Round GP (Part C): a country admin opens only their own countries.
-  const access = await requireAdminAccess('country')
+  const access = await requireAdminAccess('members')
   const admin = access.user
   let detail: CountryDetail
   try {

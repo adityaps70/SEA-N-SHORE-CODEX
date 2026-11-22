@@ -11,6 +11,7 @@ import { countryLabel } from '@/features/countries/admin-country-view'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { OrganizationReviewActions } from '@/features/admin/components/organization-review-actions'
+import { allows } from '@/features/country-admins/sections'
 import {
   isWellbeingType,
   organizationTypeHasField,
@@ -44,7 +45,7 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
   if (!z.string().uuid().safeParse(applicationId).success) notFound()
 
   // Round GP (Part C): country admins review organizations from their own countries only.
-  const access = await requireAdminAccess('country')
+  const access = await requireAdminAccess('organizations')
   const user = access.user
   let review: Awaited<ReturnType<typeof adminRepository.getOrganizationApplicationReview>>
   try {
@@ -246,7 +247,12 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
       </>
       ) : null}
 
-      <OrganizationReviewActions applicationId={review.applicationId} status={review.status} canSuspend={access.kind === 'platform'} />
+      {/* Round GP Part E: a country admin with Organizations as "view" sees the review without its decisions. */}
+      {access.kind === 'platform' || allows(access.permissions, 'organizations', 'act') ? (
+        <OrganizationReviewActions applicationId={review.applicationId} status={review.status} canSuspend={access.kind === 'platform'} />
+      ) : (
+        <p className="text-sm text-muted">You can view this review. Decisions on organizations are not part of your country admin access.</p>
+      )}
     </div>
   )
 }

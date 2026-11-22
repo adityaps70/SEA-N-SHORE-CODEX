@@ -1,3 +1,4 @@
+import { COUNTRY_ADMIN_SECTION_INFO, COUNTRY_ADMIN_SECTIONS, isCountryAdminSection } from '@/features/country-admins/sections'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ExternalLink, UserRound } from 'lucide-react'
@@ -46,12 +47,16 @@ export default async function AdminAuditPage({
   const countryCandidate = (firstValue(params.country) ?? '').toUpperCase()
   const country = isCountryCode(countryCandidate) ? countryCandidate : null
   const countryAdminsOnly = firstValue(params.role) === 'country_admin'
+  // Round GP Part E: one admin section (a country admin section, or Country admins itself).
+  const sectionCandidate = firstValue(params.section) ?? ''
+  const section = isCountryAdminSection(sectionCandidate) || sectionCandidate === 'country_admins' ? sectionCandidate : null
   const events = await adminRepository.listAuditEvents(user.id, {
     targetType,
     limit: 100,
     ...(actorId ? { actorId } : {}),
     ...(country ? { country } : {}),
     ...(countryAdminsOnly ? { countryAdminsOnly } : {}),
+    ...(section ? { section } : {}),
   })
   const keep = (next: Record<string, string | null>) => {
     const search = new URLSearchParams()
@@ -60,6 +65,7 @@ export default async function AdminAuditPage({
       actor: actorId,
       country,
       role: countryAdminsOnly ? 'country_admin' : null,
+      section,
       ...next,
     }
     for (const [key, value] of Object.entries(values)) if (value) search.set(key, value)
@@ -100,13 +106,21 @@ export default async function AdminAuditPage({
           <label htmlFor="audit-country" className="block text-xs font-semibold text-muted">Country</label>
           <CountrySelect id="audit-country" name="country" defaultValue={country} emptyLabel="All countries" className="mt-1 min-h-9 rounded-lg border border-mist-200 bg-white px-2 text-sm text-navy-950" />
         </div>
+        <div>
+          <label htmlFor="audit-section" className="block text-xs font-semibold text-muted">Section</label>
+          <select id="audit-section" name="section" defaultValue={section ?? ''} className="mt-1 min-h-9 rounded-lg border border-mist-200 bg-white px-2 text-sm text-navy-950">
+            <option value="">All sections</option>
+            {COUNTRY_ADMIN_SECTIONS.map((value) => <option key={value} value={value}>{COUNTRY_ADMIN_SECTION_INFO[value].label}</option>)}
+            <option value="country_admins">Country admins</option>
+          </select>
+        </div>
         <label className="flex min-h-9 items-center gap-2 text-navy-900">
           <input type="checkbox" name="role" value="country_admin" defaultChecked={countryAdminsOnly} className="size-4" />
           Country admin decisions only
         </label>
         <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Filter</button>
-        {actorId || country || countryAdminsOnly ? (
-          <Link href={keep({ actor: null, country: null, role: null })} className="min-h-9 py-2 text-sm font-semibold text-ocean-700 hover:underline">Clear</Link>
+        {actorId || country || countryAdminsOnly || section ? (
+          <Link href={keep({ actor: null, country: null, role: null, section: null })} className="min-h-9 py-2 text-sm font-semibold text-ocean-700 hover:underline">Clear</Link>
         ) : null}
         {actorId ? <AdminChip tone="info">One administrator</AdminChip> : null}
       </form>

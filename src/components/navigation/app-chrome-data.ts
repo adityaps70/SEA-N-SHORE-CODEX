@@ -1,6 +1,7 @@
 import { isRankingEnabled } from '@/features/ranking/switches'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { countryAdminRepository } from '@/features/country-admins/repository'
+import { allows, LIVE_COUNTRY_ADMIN_SECTIONS } from '@/features/country-admins/sections'
 import type { AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { calculateProfileCompletion } from '@/features/feed/profile-completion'
 import { getChromeCountsForRequest } from './chrome-counts'
@@ -31,8 +32,10 @@ function trimmed(value: string | null | undefined) {
  */
 async function adminEntry(userId: string): Promise<{ canAccessAdmin: boolean; adminCountries: string[] | null }> {
   if (await canAccessPlatformAdmin(userId)) return { canAccessAdmin: true, adminCountries: null }
-  const countries = await countryAdminRepository.getCountries(userId).catch(() => null)
-  return { canAccessAdmin: false, adminCountries: countries?.length ? countries : null }
+  // Round GP Part E: only a country admin with at least one section the console can open gets an entry.
+  const access = await countryAdminRepository.getAccess(userId).catch(() => null)
+  const usable = access && LIVE_COUNTRY_ADMIN_SECTIONS.some((section) => allows(access.permissions, section))
+  return { canAccessAdmin: false, adminCountries: usable && access.countries.length ? access.countries : null }
 }
 
 /** Everything the signed-in header, phone top bar, side drawer and bottom tabs need, loaded in parallel. */
