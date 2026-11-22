@@ -6,17 +6,20 @@ const templateUrl = new URL('../../infra/aws/app/cloudfront/canonical-host-redir
 
 const CANONICAL_HOST = 'seanshore.in'
 const EDGE_HOST = 'd3prih0q6jofyr.cloudfront.net'
+const ALIAS_HOSTS = ['seanshore.net']
 
 async function loadHandler({ redirectEdgeHost }) {
   const template = await readFile(templateUrl, 'utf8')
   const placeholders = template.match(/\$\{[^}]+\}/g) ?? []
   assert.deepEqual(
     [...new Set(placeholders)].sort(),
-    ['${canonical_host}', '${edge_host}', '${redirect_edge_host}'],
+    ['${alias_hosts}', '${canonical_host}', '${edge_host}', '${redirect_edge_host}'],
     'the template must expose exactly the placeholders edge.tf renders',
   )
   const code = template
     .replaceAll('${canonical_host}', CANONICAL_HOST)
+    // edge.tf renders jsonencode(local.site_alias_hosts).
+    .replaceAll('${alias_hosts}', JSON.stringify(ALIAS_HOSTS))
     .replaceAll('${edge_host}', EDGE_HOST)
     .replaceAll('${redirect_edge_host}', String(redirectEdgeHost))
   // CloudFront Functions expose a global `handler`; evaluate the rendered script the same way.
@@ -125,5 +128,35 @@ test('x-sns-viewer-host is always the Host CloudFront answered on, never what th
     assert.equal(redirected.statusCode, 301)
     assert.equal(redirected.headers.location.value, 'https://seanshore.in/jobs')
     assert.equal(redirected.headers['x-sns-viewer-host'], undefined)
+  }
+})
+
+// Domain move, Phase 1 serve step: seanshore.net is served by the same distribution; www.seanshore.net goes to its
+// own apex (not to seanshore.in), and the apex passes through with x-sns-viewer-host: seanshore.net.
+test('www.seanshore.net is redirected to https://seanshore.net with path and query kept, for every path', async () => {
+  for (const redirectEdgeHost of [false, true]) {
+    const handler = await loadHandler({ redirectEdgeHost })
+    const result = handler(event('www.seanshore.net', '/jobs', { search: { value: 'Chief Engineer' } }))
+    assert.equal(result.statusCode, 301)
+    assert.equal(result.headers.location.value, 'https://seanshore.net/jobs?search=Chief%20Engineer')
+    assert.equal(result.headers['cache-control'].value, 'public, max-age=3600')
+    assert.equal(handler(event('WWW.SEANSHORE.NET:443', '/')).headers.location.value, 'https://seanshore.net/')
+    assert.equal(handler(event('www.seanshore.net', '/api/health/live')).headers.location.value, 'https://seanshore.net/api/health/live')
+    // www.seanshore.in still goes to seanshore.in.
+    assert.equal(handler(event('www.seanshore.in', '/x')).headers.location.value, 'https://seanshore.in/x')
+  }
+})
+
+test('seanshore.net passes through and is named in x-sns-viewer-host, whatever the client sent', async () => {
+  const handler = await loadHandler({ redirectEdgeHost: true })
+  const incoming = event('seanshore.net', '/home')
+  incoming.request.headers['x-sns-viewer-host'] = { value: 'seanshore.in' }
+  const result = handler(incoming)
+  assert.equal(result, incoming.request)
+  assert.deepEqual(result.headers['x-sns-viewer-host'], { value: 'seanshore.net' })
+  // Look-alike hosts are neither redirected nor treated as an alias.
+  for (const host of ['wwwseanshore.net', 'www.seanshore.net.example.com', 'mail.seanshore.net']) {
+    const other = event(host, '/home')
+    assert.equal(handler(other), other.request, host)
   }
 })

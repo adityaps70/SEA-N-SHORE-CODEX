@@ -16,7 +16,7 @@ def cloudfront_after(custom_header):
     return {
         'web_acl_id': guard.WAF_ARN,
         'enabled': True,
-        'aliases': ['seanshore.in', 'www.seanshore.in'],
+        'aliases': ['seanshore.in', 'www.seanshore.in', 'seanshore.net', 'www.seanshore.net'],
         'viewer_certificate': [{
             'acm_certificate_arn': CERT_ARN,
             'cloudfront_default_certificate': False,
