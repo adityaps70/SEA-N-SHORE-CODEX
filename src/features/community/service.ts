@@ -308,7 +308,7 @@ export function createCommunityService(input: {
 
   // Site administration (the caller has already required a platform administrator).
 
-  async function updateGroupAsAdmin(adminId: string, groupId: string, group: GroupInput) {
+  async function updateGroupAsAdmin(adminId: string, groupId: string, group: GroupInput, audit: Record<string, unknown> = {}) {
     const before = await repository.getById(adminId, groupId)
     if (!before) fail('group_not_found')
     await requireAssignableCategory(group.categoryId, before.category?.id ?? null)
@@ -318,22 +318,23 @@ export function createCommunityService(input: {
       visibility: group.visibility,
       join_policy: group.joinPolicy ?? before.joinPolicy,
       category_id: group.categoryId === undefined ? before.category?.id ?? null : group.categoryId,
+      ...audit,
     })
     if (group.joinPolicy && group.joinPolicy !== before.joinPolicy) {
-      await repository.insertAuditEvent(adminId, 'community.join_policy_changed', groupId, { from: before.joinPolicy, to: group.joinPolicy })
+      await repository.insertAuditEvent(adminId, 'community.join_policy_changed', groupId, { from: before.joinPolicy, to: group.joinPolicy, ...audit })
     }
   }
 
-  async function archiveGroup(adminId: string, groupId: string) {
+  async function archiveGroup(adminId: string, groupId: string, audit: Record<string, unknown> = {}) {
     const changed = await repository.setArchived(groupId, true)
     if (!changed) fail('group_not_found')
-    await repository.insertAuditEvent(adminId, 'community.group_archived', groupId)
+    await repository.insertAuditEvent(adminId, 'community.group_archived', groupId, audit)
   }
 
-  async function unarchiveGroup(adminId: string, groupId: string) {
+  async function unarchiveGroup(adminId: string, groupId: string, audit: Record<string, unknown> = {}) {
     const changed = await repository.setArchived(groupId, false)
     if (!changed) fail('group_not_found')
-    await repository.insertAuditEvent(adminId, 'community.group_unarchived', groupId)
+    await repository.insertAuditEvent(adminId, 'community.group_unarchived', groupId, audit)
   }
 
   /** An active member by sign-in email or profile handle (site-admin owner picker). */
