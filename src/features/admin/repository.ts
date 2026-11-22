@@ -2012,7 +2012,8 @@ export function createAdminRepository(input: {
     adminId: string,
     filter: AdminCompanyAccessFilter,
   ): Promise<AdminCompanyAccessRequest[]> {
-    await requirePlatformAdministrator(queryRows, adminId)
+    // Round GP Part E: a country admin with Access requests sees their countries' organizations only.
+    const scope = await resolveSectionScope(queryRows, adminId, 'access', 'view')
     const where = {
       needs_platform: needsPlatformSql('car'),
       with_organization: `(car.status = 'pending' and not ${needsPlatformSql('car')})`,
@@ -2054,14 +2055,16 @@ export function createAdminRepository(input: {
        join public.profiles p on p.id = car.user_id
        left join public.profiles reviewer on reviewer.id = car.reviewed_by
        where ${where}
+         ${scope.kind === 'country' ? 'and c.country = any($1::text[])' : ''}
        order by ${order}
        limit 100`,
+      scope.kind === 'country' ? [scope.countries] : [],
     ) as CompanyAccessRequestRow[]
     return rows.map(mapCompanyAccessRequest)
   }
 
   async function countCompanyAccessRequests(adminId: string): Promise<Record<AdminCompanyAccessFilter, number>> {
-    await requirePlatformAdministrator(queryRows, adminId)
+    const scope = await resolveSectionScope(queryRows, adminId, 'access', 'view')
     const rows = await queryRows(
       `select
          count(*) filter (where ${needsPlatformSql('car')}) as needs_platform,
@@ -2069,7 +2072,9 @@ export function createAdminRepository(input: {
          count(*) filter (where car.status = 'approved') as approved,
          count(*) filter (where car.status = 'rejected') as rejected,
          count(*) filter (where car.status = 'cancelled') as cancelled
-       from public.company_access_requests car`,
+       from public.company_access_requests car
+       ${scope.kind === 'country' ? 'join public.companies c on c.id = car.company_id where c.country = any($1::text[])' : ''}`,
+      scope.kind === 'country' ? [scope.countries] : [],
     ) as Array<QueryResultRow & Record<AdminCompanyAccessFilter, unknown>>
     const row = rows[0] ?? {}
     return {
@@ -2094,12 +2099,13 @@ export function createAdminRepository(input: {
     grantedRole: AdminCompanyAccessRole | null = null,
   ) {
     return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
+      const scope = await resolveSectionScope(txQuery, adminId, 'access', 'act', { lock: true })
       await decideAccessRequestWithQuery(txQuery, adminId, {
         requestId,
         decision,
         grantedRole,
         note: reviewerNote,
+        countryAdmin: scope.kind === 'country' ? { countries: scope.countries } : null,
       })
       return true
     })
