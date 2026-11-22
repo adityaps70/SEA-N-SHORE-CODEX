@@ -238,7 +238,7 @@ test('the runner: account and branch checks, host lock, one classified apply, ve
   // The edge-logs bucket is never listed or read (logs hold visitor IP addresses).
   assert.doesNotMatch(script, /list-objects|get-object[^\n]*edge-logs|s3 (ls|cp)/)
   const calls = [...script.matchAll(/\baws ([a-z0-9]+) ([a-z-]+)/g)].map((m) => `${m[1]} ${m[2]}`)
-  for (const call of calls) assert.match(call, /^(sts get-caller-identity|s3api (get-object|get-public-access-block|get-bucket-lifecycle-configuration)|acm describe-certificate|logs describe-deliveries|route53 list-resource-record-sets)$/, call)
+  for (const call of calls) assert.match(call, /^(sts get-caller-identity|s3api (get-object|get-public-access-block|get-bucket-lifecycle-configuration)|acm describe-certificate|logs describe-deliveries|route53 list-resource-record-sets|s3api get-bucket-cors)$/, call)
 })
 
 test('the workflow runs the guarded host runner from the exact armed commit, with room for ACM validation', () => {
@@ -280,9 +280,6 @@ function servePlan(overrides = {}) {
     update('aws_cognito_user_pool_client.web',
       { name: 'web', callback_urls: OLD_ORIGINS.map((o) => `${o}/auth/google/callback`), logout_urls: OLD_ORIGINS },
       pick('client', { name: 'web', callback_urls: ORIGINS.map((o) => `${o}/auth/google/callback`), logout_urls: ORIGINS })),
-    update('aws_s3_bucket_cors_configuration.media',
-      { bucket: 'media', cors_rule: [{ allowed_methods: ['PUT'], allowed_headers: ['Content-Type'], allowed_origins: OLD_ORIGINS }] },
-      { bucket: 'media', cors_rule: [{ allowed_methods: ['PUT'], allowed_headers: ['Content-Type'], allowed_origins: pick('corsOrigins', ORIGINS) }] }),
     update('aws_lambda_function.realtime_authorizer',
       { function_name: 'authorizer', environment: env(OLD_ORIGINS) },
       { function_name: 'authorizer', environment: pick('authorizerEnv', env(ORIGINS)) },
@@ -298,7 +295,7 @@ const serveArgs = (changes, arn = SITE_EDGE_ARN) => ['serve', planFile(changes),
 test('serve: exactly the approved edge, DNS and origin changes, with the approved values', () => {
   const ok = run(serveArgs(servePlan()))
   assert.equal(ok.status, 0, ok.stdout)
-  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=6 creates=4$/m)
+  assert.match(ok.stdout, /^DOMAIN_MOVE_PLAN=SERVE updates=5 creates=4$/m)
   assert.doesNotMatch(ok.stdout, /arn:|seanshore\.net|cloudfront\.net/)
   const done = run(serveArgs([...servePlan().map((c) => noop(c.address))]))
   assert.equal(done.status, 0, done.stdout)
@@ -319,7 +316,8 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
   refused(servePlan({ pageHeaders: ['rsc', 'next-router-prefetch', 'next-router-state-tree', 'next-router-segment-prefetch'] }), 'the cache key without the viewer host')
   refused(servePlan({ client: { name: 'web', callback_urls: [...ORIGINS, 'https://evil.example'].map((o) => `${o}/auth/google/callback`), logout_urls: ORIGINS } }), 'an extra callback')
   refused(servePlan({ client: { name: 'web2', callback_urls: ORIGINS.map((o) => `${o}/auth/google/callback`), logout_urls: ORIGINS } }), 'a client change beyond its URLs')
-  refused(servePlan({ corsOrigins: ['*'] }), 'CORS for every origin')
+  // The media bucket's CORS rule is the staging deploy's: the serve step never creates or changes it.
+  refused(servePlan({ extra: [{ address: 'aws_s3_bucket_cors_configuration.media', mode: 'managed', change: { actions: ['create'], after: { bucket: 'media' } } }] }), 'the media CORS rule created by Terraform')
   refused(servePlan({ authorizerEnv: [{ variables: { REALTIME_TICKET_AUDIENCE: 'other', REALTIME_TICKET_SECRET_ARN: 'arn:secret', REALTIME_ALLOWED_ORIGINS: ORIGINS.join(',') } }] }), 'another authorizer variable changed')
   refused(servePlan({ 'record www.seanshore.net A': { name: 'www.seanshore.net', type: 'A', zone_id: 'Z09758912UIE2T2PK09U', records: null, alias: [{ name: 'elsewhere.cloudfront.net', zone_id: 'Z2FDTNDATAQYW2', evaluate_target_health: false }] } }), 'a record pointing elsewhere')
   refused(servePlan({ extra: [{ address: 'aws_route53_record.seanshore_legacy_apex', mode: 'managed', change: { actions: ['update'] } }] }), 'a seanshore.in record changed')
@@ -330,10 +328,19 @@ test('serve: exactly the approved edge, DNS and origin changes, with the approve
     ? update(c.address, { ...c.change.before, source_code_hash: 'OLDHASH' }, { ...c.change.after, source_code_hash: 'NEWHASH' }, c.change.after_unknown)
     : c)))
   assert.notEqual(lambdas.status, 0)
-  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=source_code_hash$/m)
-  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.realtime_authorizer actions=update attributes=environment,last_modified,qualified_arn,source_code_hash,version$/m)
+  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=source_code_hash paths=source_code_hash$/m)
+  assert.match(lambdas.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.realtime_authorizer actions=update attributes=environment,last_modified,qualified_arn,source_code_hash,version paths=environment\.variables\.REALTIME_ALLOWED_ORIGINS,source_code_hash$/m)
   assert.match(lambdas.stdout, /DOMAIN_MOVE_PLAN_REFUSED changes=2/)
   assert.doesNotMatch(lambdas.stdout, /OLDHASH|NEWHASH|seanshore\.net/)
+  // Nested keys are named too, never their values (run 45004263159 said only "environment").
+  const nested = run(serveArgs(servePlan({ extra: [
+    update('aws_lambda_function.cognito_resend_email_sender', { environment: [{ variables: { SITE_URL: 'OLDVALUE', EMAIL_FROM: 'same' } }] }, { environment: [{ variables: { SITE_URL: 'NEWVALUE', EMAIL_FROM: 'same' } }] }),
+    update('aws_sesv2_configuration_set.transactional', { delivery_options: [{ tls_policy: 'OPTIONAL', max_delivery_seconds: 0 }] }, { delivery_options: [] }),
+  ] })))
+  assert.notEqual(nested.status, 0)
+  assert.match(nested.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_lambda_function\.cognito_resend_email_sender actions=update attributes=environment paths=environment\.variables\.SITE_URL$/m)
+  assert.match(nested.stdout, /^DOMAIN_MOVE_PLAN_DIFF address=aws_sesv2_configuration_set\.transactional actions=update attributes=delivery_options paths=delivery_options$/m)
+  assert.doesNotMatch(nested.stdout, /OLDVALUE|NEWVALUE|OPTIONAL/)
   refused(servePlan({ extra: [{ address: 'aws_acm_certificate.seanshore_edge', mode: 'managed', change: { actions: ['delete'] } }] }), 'the old certificate deleted')
   refused(servePlan().filter((c) => c.address !== 'aws_lambda_function.realtime_authorizer'), 'partly applied')
   refused(servePlan().map((c) => c.address === FUNCTION ? functionUpdate({ code: renderedFunction().replace("'www.' + ALIAS_HOSTS[i]", "'w.' + ALIAS_HOSTS[i]") }) : c), 'function code that is not the template')
@@ -347,8 +354,7 @@ test('serve: the runner plans it only after the create step, refuses existing re
   const serveTargets = script.slice(script.indexOf('SERVE_TARGETS=('), script.indexOf('\n)\n', script.indexOf('SERVE_TARGETS=(')))
   assert.deepEqual([...serveTargets.matchAll(/"([^"]+)"/g)].map((m) => m[1]), [
     'aws_cloudfront_distribution.app', 'aws_cloudfront_function.canonical_host_redirect', 'aws_cloudfront_cache_policy.public_pages',
-    'aws_route53_record.site_net_alias', 'aws_cognito_user_pool_client.web', 'aws_s3_bucket_cors_configuration.media',
-    'aws_lambda_function.realtime_authorizer',
+    'aws_route53_record.site_net_alias', 'aws_cognito_user_pool_client.web', 'aws_lambda_function.realtime_authorizer',
   ])
   // A seanshore.net A/AAAA record made elsewhere stops the run before anything is applied.
   const precheck = script.indexOf('EXISTING_NET_RECORDS="$(net_site_records any)"')
@@ -363,6 +369,18 @@ test('serve: the runner plans it only after the create step, refuses existing re
   assert.match(live, /== "https:\/\/seanshore\.net\/auth\/sign-in" \]\] && NET_STAYS=true/)
   assert.match(live, /-H 'x-sns-viewer-host: seanshore\.net' "https:\/\/seanshore\.in\/auth\/session-ended/)
   assert.match(live, /"\$NET_RECORDS" == 4 \]\]/)
+})
+
+test('serve: the runner passes site_url as the Cognito runners do, and reads the live media CORS facts only', () => {
+  // Run 45004263159: the email-sender Lambda's SITE_URL comes from var.site_url; the Cognito runners pass
+  // scripts/aws/public-site-url.txt, so this runner does too (never the task definition).
+  assert.match(script, /with open\('scripts\/aws\/public-site-url\.txt'\) as f:\n    site_url = f\.read\(\)\.strip\(\)/)
+  assert.doesNotMatch(script, /NEXT_PUBLIC_SITE_URL/)
+  for (const runner of ['refresh-rotation-infra.sh', 'account-security-infra.sh']) assert.match(read(`./${runner}`), /PUBLIC_SITE_URL="\$\(tr -d '\[:space:\]' < scripts\/aws\/public-site-url\.txt\)"/)
+  // The media CORS facts are read before the plan, in the serve step only, and print counts and true/false.
+  const cors = script.slice(script.indexOf('if [[ "$STEP" == serve ]]; then\n  if [[ -n "$MEDIA_BUCKET" ]]'))
+  assert.ok(cors.length < script.length && script.indexOf('aws s3api get-bucket-cors') < script.indexOf('plan before\n'))
+  assert.doesNotMatch(cors.slice(0, cors.indexOf('\nfi\n')), /cat |AllowedOrigins \|/)
 })
 
 test('serve: Terraform serves the alias hosts of scripts/aws/site-alias-hosts.txt, and nothing is deleted', () => {

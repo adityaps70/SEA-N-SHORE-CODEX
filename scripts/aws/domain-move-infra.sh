@@ -12,8 +12,8 @@
 #                      that a faked x-sns-viewer-host still lands on https://seanshore.in.
 #   serve-once <sha>   serves seanshore.net next to seanshore.in: the main distribution's aliases and certificate, the
 #                      viewer function (www.seanshore.net -> seanshore.net), the page cache key, four seanshore.net
-#                      alias records, and the browser origins in Cognito, media upload CORS and the realtime
-#                      authorizer; nothing else. Refuses if seanshore.net already has A/AAAA records, then checks live
+#                      alias records, and the browser origins in Cognito and the realtime authorizer; nothing
+#                      else. The media bucket's upload CORS is the staging deploy's (it lists the alias hosts). Refuses if seanshore.net already has A/AAAA records, then checks live
 #                      that both domains answer (seanshore.in unchanged) through the distribution.
 #
 # Prints addresses, counts and true/false only (the edge-logs bucket is never listed: logs hold visitor IPs).
@@ -67,7 +67,6 @@ SERVE_TARGETS=(
   "aws_cloudfront_cache_policy.public_pages"
   "aws_route53_record.site_net_alias"
   "aws_cognito_user_pool_client.web"
-  "aws_s3_bucket_cors_configuration.media"
   "aws_lambda_function.realtime_authorizer"
 )
 SEANSHORE_NET_ZONE_ID="Z09758912UIE2T2PK09U"
@@ -92,6 +91,7 @@ WORK_DIR="$(mktemp -d "$PWD/.domain-move-infra.XXXXXXXX")"
 trap 'rm -rf -- "$WORK_DIR"; rm -f -- "$APP_DIR/zz_domain_move_imports.tf"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
+MEDIA_BUCKET="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_s3_bucket" and .name == "app") | .instances[] | select(.index_key == "media") | .attributes.bucket][0] // empty' "$WORK_DIR/state.json")"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
 # Variables for the configuration (as the other targeted runners), and the two distribution ids the log delivery
 # names, checked against state.
@@ -106,7 +106,12 @@ def one(kind, name):
     return matches[0]['instances'][0]['attributes']
 
 web = next(c for c in json.loads(one('aws_ecs_task_definition', 'web')['container_definitions']) if c['name'] == 'web')
-site_url = next(item['value'] for item in web['environment'] if item['name'] == 'NEXT_PUBLIC_SITE_URL')
+# site_url as the Cognito runners pass it (scripts/aws/public-site-url.txt; refresh-rotation-infra.sh,
+# account-security-infra.sh): the serve step plans the Cognito client, which pulls in the user pool and the email-sender
+# Lambda, whose SITE_URL comes from this variable (run 45004263159 planned a change to that Lambda's environment).
+with open('scripts/aws/public-site-url.txt') as f:
+    site_url = f.read().strip()
+assert site_url.startswith('https://') and '/' not in site_url[len('https://'):], 'public-site-url.txt must be an https origin'
 image = web['image']
 assert ':' in image.rsplit('/', 1)[-1], f'Expected tag-qualified web image, got {image}'
 with open(sys.argv[2], 'w') as f:
@@ -179,6 +184,18 @@ classify() {
   fi
 }
 
+# Run 45004263159: the media bucket's CORS rule is the staging deploy's (put-bucket-cors on every deploy), not in
+# Terraform state, so the serve step never targets it. Read-only facts: whether the live rule already lists
+# seanshore.net (a deploy since the alias host was added), counts and true/false only.
+if [[ "$STEP" == serve ]]; then
+  if [[ -n "$MEDIA_BUCKET" ]] && aws s3api get-bucket-cors --bucket "$MEDIA_BUCKET" --output json > "$WORK_DIR/media-cors.json" 2> "$WORK_DIR/media-cors.err"; then
+    jq -r '"DOMAIN_MOVE_MEDIA_CORS_LIVE rules=\(.CORSRules | length) put_only=\([.CORSRules[] | .AllowedMethods == ["PUT"]] | all) content_type_only=\([.CORSRules[] | (.AllowedHeaders // []) == ["Content-Type"]] | all) origins=\([.CORSRules[] | (.AllowedOrigins // [])[]] | length) has_in=\([.CORSRules[] | (.AllowedOrigins // [])[]] | index("https://seanshore.in") != null) has_net=\([.CORSRules[] | (.AllowedOrigins // [])[]] | index("https://seanshore.net") != null) has_edge=\([.CORSRules[] | (.AllowedOrigins // [])[]] | index("https://d3prih0q6jofyr.cloudfront.net") != null)"' "$WORK_DIR/media-cors.json"
+  elif grep -q NoSuchCORSConfiguration "$WORK_DIR/media-cors.err" 2>/dev/null; then
+    echo "DOMAIN_MOVE_MEDIA_CORS_LIVE rules=0"
+  else
+    echo "DOMAIN_MOVE_MEDIA_CORS_LIVE unreadable"
+  fi
+fi
 plan before
 # The checker's refusal line is printed before the run stops (a failing $(...) would end the script first).
 CLASSIFY_STATUS=0
