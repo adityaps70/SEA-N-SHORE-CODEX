@@ -18,6 +18,17 @@ const COUNTRY_ADMIN_ENTRY_POINTS: Record<string, string> = {
   'src/app/(app)/admin/organizations/[applicationId]/page.tsx': 'organizations',
   'src/app/(app)/admin/organizations/page.tsx': 'organizations',
   'src/app/(app)/admin/page.tsx': 'console',
+  // Round GP Part E (E2).
+  'src/app/(app)/admin/verifications/page.tsx': 'verification',
+  'src/app/(app)/admin/access/page.tsx': 'access',
+  // Round GP Part E (E3).
+  'src/app/(app)/admin/learning/page.tsx': 'learning',
+  'src/app/(app)/admin/learning/courses/page.tsx': 'learning',
+  // Round GP Part E (E4).
+  'src/app/(app)/admin/moderation/page.tsx': 'moderation',
+  'src/app/(app)/admin/events/page.tsx': 'events',
+  // Round GP Part E (E5).
+  'src/app/(app)/admin/communities/page.tsx': 'communities',
 }
 const AREA = /requireAdminAccess\('([a-z]+)'\)/
 

@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { companyCountrySql } from '@/features/country-admins/item-country-sql'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import {
   ACCESS_REQUEST_ESCALATION_DAYS,
@@ -59,6 +60,7 @@ export function needsPlatformSql(alias = 'car') {
 }
 
 type LockedFactsRow = QueryResultRow & {
+  company_country?: string | null
   id: string
   company_id: string
   user_id: string
@@ -176,7 +178,8 @@ async function lockRequestFacts(txQuery: AccessRequestQuery, requestId: string, 
          where platform_role.user_id = $2 and platform_role.role::text = 'administrator'
        ) as actor_is_platform_admin,
        ${activeAuthorityCountSql('car.company_id', 'car.user_id')} as active_authority_count,
-       ${organizationSuspendedSql('car.company_id')} as organization_suspended
+       ${organizationSuspendedSql('car.company_id')} as organization_suspended,
+       ${companyCountrySql('car.company_id')} as company_country
      from public.company_access_requests car
      where car.id = $1
      for update of car`,
@@ -198,10 +201,20 @@ export async function decideAccessRequestWithQuery(
     decision: AccessRequestDecision
     grantedRole?: CompanyAccessRequestRole | null
     note: string | null
+    /**
+     * Round GP Part E: the actor is a country admin with Access requests (act). They decide like Sea N Shore (the
+     * same fallback rules), but only for organizations in their countries, and never grant the organization
+     * Administrator role (owner, 21 Nov: that stays with platform administrators).
+     */
+    countryAdmin?: { countries: string[] } | null
   },
 ) {
   const request = await lockRequestFacts(txQuery, input.requestId, actorId)
   if (!request) throw new Error('company_access_request_not_found')
+  const companyCountry = request.company_country ?? null
+  if (input.countryAdmin && !(companyCountry && input.countryAdmin.countries.includes(companyCountry))) {
+    throw new Error('company_access_request_out_of_scope')
+  }
 
   const authority = resolveAccessDecisionAuthority({
     status: request.status,
@@ -210,7 +223,7 @@ export async function decideAccessRequestWithQuery(
     escalatedAt: request.escalated_at,
     actorId,
     actorOrganizationRole: request.actor_organization_role,
-    actorIsPlatformAdmin: Boolean(request.actor_is_platform_admin),
+    actorIsPlatformAdmin: Boolean(request.actor_is_platform_admin) || Boolean(input.countryAdmin),
     activeAuthorityCount: count(request.active_authority_count),
     organizationSuspended: Boolean(request.organization_suspended),
   })
@@ -230,6 +243,9 @@ export async function decideAccessRequestWithQuery(
   if (!requestedRole) throw new Error('company_access_request_role_invalid')
   const grantedRole = input.decision === 'approved' ? input.grantedRole ?? requestedRole : null
   if (input.decision === 'approved' && !accessRequestRole(grantedRole)) throw new Error('company_access_request_role_invalid')
+  if (input.countryAdmin && input.decision === 'approved' && grantedRole === 'administrator') {
+    throw new Error('company_access_request_admin_role_platform_only')
+  }
 
   if (input.decision === 'approved') {
     // Never downgrade an owner through an access request.
@@ -272,7 +288,11 @@ export async function decideAccessRequestWithQuery(
         grantedRole,
         reviewerNote: input.note,
         decidedVia: via,
-        deciderRole: authority.via === 'organization' ? authority.actorRole : 'platform_administrator',
+        deciderRole: authority.via === 'organization' ? authority.actorRole : input.countryAdmin ? 'country_admin' : 'platform_administrator',
+        // Round GP Part E: Sea N Shore decisions carry who decided, the section and the organization's country.
+        ...(authority.via === 'platform'
+          ? { actorRole: input.countryAdmin ? 'country_admin' : 'platform_admin', section: 'access', country: companyCountry }
+          : {}),
         fallbackReason: authority.via === 'platform' ? authority.reason : null,
         escalated: Boolean(request.escalated_at),
       }),

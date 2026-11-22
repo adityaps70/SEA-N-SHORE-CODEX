@@ -1,4 +1,7 @@
 import type { QueryResultRow } from 'pg'
+import { actorRoleFor } from '@/features/admin/admin-audit'
+import { courseCountrySql, courseReviewCountrySql } from '@/features/country-admins/item-country-sql'
+import { resolveSectionScope, scopeCoversCountry } from '@/features/country-admins/scope'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { assessPlatformText, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { courseManagerAccessSql } from './course-access'
@@ -203,14 +206,6 @@ function evaluate(row: EligibilityRow | undefined): { reason: CourseReviewInelig
   return { reason: null, progressPercent, enrollmentId: row.enrollment_id }
 }
 
-async function requireAdministrator(query: Query, adminId: string) {
-  const rows = await query(
-    `select 1 as allowed from public.user_roles where user_id = $1 and role::text = 'administrator' limit 1`,
-    [adminId],
-  )
-  if (!rows[0]) throw new Error('admin_forbidden')
-}
-
 export function createCourseRatingRepository(input: { query?: Query; transaction?: Transaction } = {}) {
   const queryRows: Query = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
   const transaction = input.transaction ?? runtimeTransaction
@@ -315,7 +310,8 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
 
   /** Platform administrators: reviews waiting for approval, oldest first, with the automated screening's view. */
   async function listPendingReviews(adminId: string, options: { limit?: number } = {}): Promise<PendingCourseReview[]> {
-    await requireAdministrator(queryRows, adminId)
+    // Round GP Part E: a country admin with Learning sees ratings of their countries' courses.
+    const scope = await resolveSectionScope(queryRows, adminId, 'learning', 'view')
     const limit = Math.min(Math.max(Math.trunc(options.limit ?? 50), 1), 100)
     const rows = await queryRows(
       `select review.id, review.rating, review.body, review.created_at, review.updated_at,
@@ -325,9 +321,10 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
        inner join public.learning_courses course on course.id = review.course_id
        inner join public.profiles reviewer on reviewer.id = review.learner_id
        where review.status = 'pending'
+         ${scope.kind === 'country' ? `and ${courseCountrySql('course')} = any($2::text[])` : ''}
        order by review.updated_at asc, review.id asc
        limit $1`,
-      [limit],
+      scope.kind === 'country' ? [limit, scope.countries] : [limit],
     )
     return rows.map((row) => {
       const body = String(row.body ?? '')
@@ -354,13 +351,16 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
    */
   async function decideReview(adminId: string, input: { reviewId: string; decision: CourseReviewDecision; note: string | null; expectedUpdatedAt?: string | null }) {
     return transaction(async (query) => {
-      await requireAdministrator(query, adminId)
+      const scope = await resolveSectionScope(query, adminId, 'learning', 'act', { lock: true })
       const rows = await query(
-        `select id, status, updated_at, course_id from public.learning_course_reviews where id = $1 for update`,
+        `select id, status, updated_at, course_id, ${courseReviewCountrySql('public.learning_course_reviews')} as course_country
+         from public.learning_course_reviews where id = $1 for update`,
         [input.reviewId],
-      ) as Array<ReviewRow & { course_id: string }>
+      ) as Array<ReviewRow & { course_id: string; course_country?: string | null }>
       const review = rows[0]
       if (!review) throw new Error('review_not_found')
+      const country = review.course_country ?? null
+      if (!scopeCoversCountry(scope, country)) throw new Error('learning_out_of_scope')
       if (review.status !== 'pending') throw new Error('review_not_pending')
       if (input.expectedUpdatedAt && iso(review.updated_at) !== iso(input.expectedUpdatedAt)) throw new Error('review_changed')
 
@@ -377,7 +377,7 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
           adminId,
           input.decision === 'approved' ? 'moderation.course_review_approved' : 'moderation.course_review_rejected',
           input.reviewId,
-          JSON.stringify({ decision: input.decision, courseId: review.course_id, ...(input.note ? { note: input.note } : {}) }),
+          JSON.stringify({ decision: input.decision, courseId: review.course_id, ...(input.note ? { note: input.note } : {}), actorRole: actorRoleFor(scope), section: 'learning', country }),
         ],
       )
       return { courseId: review.course_id, status: input.decision }
@@ -481,7 +481,7 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
 
   /** Round H: platform administrators: the newest owner replies, visible and hidden, for the moderation page. */
   async function listReviewReplies(adminId: string, options: { limit?: number } = {}): Promise<ModerationCourseReviewReply[]> {
-    await requireAdministrator(queryRows, adminId)
+    const scope = await resolveSectionScope(queryRows, adminId, 'learning', 'view')
     const limit = Math.min(Math.max(Math.trunc(options.limit ?? 30), 1), 100)
     const rows = await queryRows(
       `select review.id, review.owner_reply, review.owner_replied_at, review.owner_reply_status, review.rating, review.body,
@@ -494,9 +494,10 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
          on application.id = mentor.application_id and application.user_id = mentor.user_id
        left join public.companies company on company.id = course.company_id
        where review.owner_reply is not null
+         ${scope.kind === 'country' ? `and ${courseCountrySql('course')} = any($2::text[])` : ''}
        order by review.owner_replied_at desc, review.id desc
        limit $1`,
-      [limit],
+      scope.kind === 'country' ? [limit, scope.countries] : [limit],
     )
     return rows.map((row) => ({
       reviewId: String(row.id),
@@ -516,13 +517,16 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
    */
   async function setReplyStatus(adminId: string, input: { reviewId: string; status: CourseReviewReplyStatus; note: string | null }) {
     return transaction(async (query) => {
-      await requireAdministrator(query, adminId)
+      const scope = await resolveSectionScope(query, adminId, 'learning', 'act', { lock: true })
       const rows = await query(
-        `select id, course_id, owner_reply, owner_reply_status from public.learning_course_reviews where id = $1 for update`,
+        `select id, course_id, owner_reply, owner_reply_status, ${courseReviewCountrySql('public.learning_course_reviews')} as course_country
+         from public.learning_course_reviews where id = $1 for update`,
         [input.reviewId],
-      ) as ReplyRow[]
+      ) as Array<ReplyRow & { course_country?: string | null }>
       const review = rows[0]
       if (!review) throw new Error('reply_review_not_found')
+      const country = review.course_country ?? null
+      if (!scopeCoversCountry(scope, country)) throw new Error('learning_out_of_scope')
       if (review.owner_reply === null) throw new Error('reply_not_found')
       if (review.owner_reply_status === input.status) throw new Error('reply_status_unchanged')
       await query(`update public.learning_course_reviews set owner_reply_status = $2 where id = $1`, [review.id, input.status])
@@ -533,7 +537,7 @@ export function createCourseRatingRepository(input: { query?: Query; transaction
           adminId,
           input.status === 'hidden' ? 'moderation.course_review_reply_hidden' : 'moderation.course_review_reply_restored',
           review.id,
-          JSON.stringify({ courseId: review.course_id, ...(input.note ? { note: input.note } : {}) }),
+          JSON.stringify({ courseId: review.course_id, ...(input.note ? { note: input.note } : {}), actorRole: actorRoleFor(scope), section: 'learning', country }),
         ],
       )
       return { courseId: review.course_id, status: input.status }

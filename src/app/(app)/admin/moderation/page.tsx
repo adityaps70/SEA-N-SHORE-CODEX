@@ -16,6 +16,7 @@ import {
   type ModerationReportReason,
 } from '@/features/moderation/types'
 import { requireAdminAccess } from '@/features/admin/admin-access'
+import { allows } from '@/features/country-admins/sections'
 
 export const metadata: Metadata = { title: 'Moderation · Admin' }
 
@@ -56,9 +57,13 @@ export default async function AdminModerationPage({
     ? requestedType as ModerationTargetType
     : 'all'
 
-  const user = (await requireAdminAccess('platform')).user
+  // Round GP Part E: country admins with Moderation see reports on their countries' items (decisions need "act").
+  // Course ratings and owner replies are under Learning for them.
+  const access = await requireAdminAccess('moderation')
+  const user = access.user
+  const panelMode = access.kind === 'platform' ? 'platform' : allows(access.permissions, 'moderation', 'act') ? 'country' : 'view'
   // Learning round C: course reviews wait for approval before they are public; they lead the open queue.
-  const showPendingReviews = status === 'open' && (targetType === 'all' || targetType === 'course_review')
+  const showPendingReviews = access.kind === 'platform' && status === 'open' && (targetType === 'all' || targetType === 'course_review')
   const [cases, pendingReviews, reviewReplies] = await Promise.all([
     adminRepository.listModerationCases(user.id, {
       status,
@@ -119,7 +124,7 @@ export default async function AdminModerationPage({
 
       <section className="space-y-4">
         {cases.map((item) => {
-          const href = targetHref(item.targetType, item.targetId)
+          const href = access.kind === 'platform' || (item.targetType !== 'profile' && item.targetType !== 'group') ? targetHref(item.targetType, item.targetId) : null
           const copyrightPrefix = '[COPYRIGHT/IP COMPLAINT]\n'
           const automatedPrefix = '[AUTOMATED MODERATION]\n'
           const copyrightComplaint = item.latestDetails?.startsWith(copyrightPrefix) ?? false
@@ -209,6 +214,7 @@ export default async function AdminModerationPage({
                   targetType={item.targetType}
                   targetId={item.targetId}
                   targetState={item.targetState}
+                  mode={panelMode}
                 />
               </div>
             </article>
