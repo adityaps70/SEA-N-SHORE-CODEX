@@ -413,15 +413,20 @@ async function verifyUsernameEditLifecycle(page, user, initialUsername, takenUse
   )
   await page.getByRole('button', { name: 'Save changes' }).click()
   await thirdChangeResponse
+  // A saved profile redirects to /profile; the refused change stays on the edit page. Since hotfix P2 (c9bbed5e) the
+  // edit form keeps what was typed after a refused save, so the field may still show the forced value: the server's
+  // record is what counts, read back below after a reload.
   await expect(page).toHaveURL((url) => url.pathname === '/profile/edit')
-  await expect(usernameInput(page)).toHaveValue(secondChangedUsername, { timeout: 10_000 })
-  console.log('ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true')
 
   await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(usernameInput(page)).toHaveValue(secondChangedUsername)
   await expect(usernameInput(page)).not.toBeEditable()
   await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
+  const blockedProfile = await page.goto(siteUrl + '/people/' + blockedThirdUsername, { waitUntil: 'domcontentloaded' })
+  assert.equal(blockedProfile?.status(), 404, 'The refused third username must not resolve to a public profile')
+  await expectPublicProfileUrl(page, secondChangedUsername, user.fullName)
+  console.log('ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true')
   console.log('ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true')
 }
 

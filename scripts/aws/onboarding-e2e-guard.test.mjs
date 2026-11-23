@@ -292,6 +292,12 @@ test('run-once proves the full live Username contract and two-change server limi
   assert.match(browserScript, /both username changes have been used/)
   assert.match(browserScript, /removeAttribute\('readonly'\)/)
   assert.match(browserScript, /ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true/)
+  // The refusal is proven from the server's record after a reload, and the refused name has no public profile.
+  const thirdChange = browserScript.slice(browserScript.indexOf('await thirdChangeResponse'), browserScript.indexOf("ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true"))
+  assert.match(thirdChange, /page\.reload\(/)
+  assert.match(thirdChange, /toHaveValue\(secondChangedUsername\)/)
+  assert.match(thirdChange, /'\/people\/' \+ blockedThirdUsername/)
+  assert.match(thirdChange, /status\(\), 404/)
   assert.match(browserScript, /page\.reload/)
   assert.match(browserScript, /ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true/)
   assert.doesNotMatch(
