@@ -2,6 +2,20 @@
 set -euo pipefail
 
 PUBLIC_SITE_URL="${PUBLIC_SITE_URL:-https://seanshore.in}"
+PUBLIC_SITE_URL="${PUBLIC_SITE_URL%/}"
+# Domain move: the probe also runs against an alias domain the site answers on (scripts/aws/site-alias-hosts.txt), never
+# any other host. The callback and sign-out checks below follow the site probed.
+CANONICAL_SITE_URL="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+SITE_HOST="${PUBLIC_SITE_URL#https://}"
+if [[ "$PUBLIC_SITE_URL" != "$CANONICAL_SITE_URL" ]]; then
+  [[ "$PUBLIC_SITE_URL" =~ ^https://[a-z0-9.-]+$ ]] && tr -s '[:space:],' '\n' < scripts/aws/site-alias-hosts.txt | grep -qxF "$SITE_HOST" || {
+    echo "PUBLIC_SITE_URL must be the canonical site or an alias host from scripts/aws/site-alias-hosts.txt." >&2
+    exit 1
+  }
+fi
+CALLBACK_PARAM="redirect_uri=$(jq -rn --arg value "$PUBLIC_SITE_URL/auth/google/callback" '$value | @uri')"
+LOGOUT_PARAM="logout_uri=$(jq -rn --arg value "$PUBLIC_SITE_URL" '$value | @uri')"
+echo "GOOGLE_AUTH_PROBE_SITE=$PUBLIC_SITE_URL"
 EXPECTED_COGNITO_ORIGIN="https://auth.seanshore.in"
 EXPECTED_GOOGLE_ORIGIN="https://accounts.google.com"
 WORK_DIR="$(mktemp -d)"
@@ -33,7 +47,7 @@ for intent in sign-in sign-up; do
     echo "LOCATION=$LOCATION" >&2
     exit 1
   }
-  [[ "$LOCATION" == *"redirect_uri=https%3A%2F%2Fseanshore.in%2Fauth%2Fgoogle%2Fcallback"* ]] || {
+  [[ "$LOCATION" == *"$CALLBACK_PARAM"* ]] || {
     echo "Google start redirect uses an unexpected callback URI for $intent." >&2
     echo "LOCATION=$LOCATION" >&2
     exit 1
@@ -71,13 +85,20 @@ CLIENT_ID="$(grep -o 'client_id=[^&]*' <<<"$LOCATION" | head -n 1 | cut -d= -f2)
 [[ "$CLIENT_ID" =~ ^[a-z0-9]+$ ]] || { echo "Could not read the Cognito client id from the Google start redirect." >&2; exit 1; }
 LOGOUT_HEADERS="$WORK_DIR/logout.headers"
 LOGOUT_STATUS="$(curl --silent --show-error --max-time 45 -D "$LOGOUT_HEADERS" -o /dev/null -w '%{http_code}' \
-  "$EXPECTED_COGNITO_ORIGIN/logout?client_id=$CLIENT_ID&logout_uri=https%3A%2F%2Fseanshore.in")"
+  "$EXPECTED_COGNITO_ORIGIN/logout?client_id=$CLIENT_ID&$LOGOUT_PARAM")"
 LOGOUT_LOCATION="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$LOGOUT_HEADERS" | tail -n 1)"
-[[ "$LOGOUT_STATUS" =~ ^30[1278]$ && "$LOGOUT_LOCATION" =~ ^https://seanshore\.in/?$ ]] || {
+[[ "$LOGOUT_STATUS" =~ ^30[1278]$ && ( "$LOGOUT_LOCATION" == "$PUBLIC_SITE_URL" || "$LOGOUT_LOCATION" == "$PUBLIC_SITE_URL/" ) ]] || {
   echo "Cognito sign-out did not return to the site (status $LOGOUT_STATUS)." >&2
   echo "LOGOUT_LOCATION=$LOGOUT_LOCATION" >&2
   exit 1
 }
 echo "COGNITO_SIGN_OUT_VERIFIED=true"
+
+# An alias domain's www name redirects to its apex (the main distribution's viewer function).
+if [[ "$PUBLIC_SITE_URL" != "$CANONICAL_SITE_URL" ]]; then
+  WWW_RESULT="$(curl --silent --show-error --max-time 45 -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.$SITE_HOST/auth/sign-in?googleProbe=1")"
+  [[ "$WWW_RESULT" == "301 $PUBLIC_SITE_URL/auth/sign-in?googleProbe=1" ]] || { echo "www.$SITE_HOST did not redirect to $PUBLIC_SITE_URL." >&2; exit 1; }
+  echo "ALIAS_WWW_REDIRECT_VERIFIED=true"
+fi
 
 echo "GOOGLE_AUTH_LIVE_VERIFIED=true"

@@ -25,3 +25,20 @@ test('live Google auth probe is bounded to the canonical site and expected Cogni
   assert.match(script, /GOOGLE_AUTH_LIVE_VERIFIED=true/)
   assert.doesNotMatch(script, /aws\s+(ecs|cognito-idp|secretsmanager)\s+(update|create|delete|register)/)
 })
+
+test('domain move: the probe also checks an alias domain, and only the canonical site or a listed alias', async () => {
+  const script = await readFile(new URL('./google-auth-live-probe.sh', import.meta.url), 'utf8')
+  const workflow = await readFile(new URL('../../.github/workflows/aws-google-auth-live-verify.yml', import.meta.url), 'utf8')
+  assert.match(script, /CANONICAL_SITE_URL="\$\(tr -d '\[:space:\]' < scripts\/aws\/public-site-url\.txt\)"/)
+  assert.match(script, /scripts\/aws\/site-alias-hosts\.txt \| grep -qxF "\$SITE_HOST"/)
+  // The callback and sign-out checks follow the site probed (no hard-coded seanshore.in left in them).
+  assert.match(script, /\[\[ "\$LOCATION" == \*"\$CALLBACK_PARAM"\* \]\]/)
+  assert.match(script, /logout\?client_id=\$CLIENT_ID&\$LOGOUT_PARAM/)
+  assert.doesNotMatch(script, /redirect_uri=https%3A%2F%2Fseanshore|logout_uri=https%3A%2F%2Fseanshore|\^https:\/\/seanshore/)
+  assert.match(script, /ALIAS_WWW_REDIRECT_VERIFIED=true/)
+  // Started by the deploy with no inputs, it still probes the canonical site.
+  assert.match(workflow, /default: canonical/)
+  assert.match(workflow, /SITE_INPUT: \$\{\{ inputs\.site \|\| 'canonical' \}\}/)
+  assert.match(workflow, /options:\n\s+- canonical\n\s+- seanshore\.net\n/)
+  assert.doesNotMatch(workflow, /id-token: write|aws-actions/)
+})

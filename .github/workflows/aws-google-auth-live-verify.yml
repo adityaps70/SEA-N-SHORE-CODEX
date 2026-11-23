@@ -4,6 +4,17 @@ on:
   # Actions minutes: started once per deploy by aws-staging-deploy.yml (after the ECS rollout is
   # verified), or by hand; not on every push.
   workflow_dispatch:
+    inputs:
+      site:
+        # Domain move: a hand-started run may check an alias domain the site answers on (Phase 1: seanshore.net).
+        # The probe refuses any host that is not the canonical site or in scripts/aws/site-alias-hosts.txt.
+        description: "Site to probe"
+        required: false
+        type: choice
+        options:
+          - canonical
+          - seanshore.net
+        default: canonical
 
 permissions:
   contents: read
@@ -23,4 +34,13 @@ jobs:
       - name: Verify probe contract
         run: node --test scripts/aws/google-auth-live-probe.test.mjs
       - name: Verify live Google auth entry points
-        run: bash scripts/aws/google-auth-live-probe.sh
+        env:
+          SITE_INPUT: ${{ inputs.site || 'canonical' }}
+        run: |
+          set -euo pipefail
+          if [[ "$SITE_INPUT" == canonical ]]; then
+            export PUBLIC_SITE_URL="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          else
+            export PUBLIC_SITE_URL="https://$SITE_INPUT"
+          fi
+          bash scripts/aws/google-auth-live-probe.sh
