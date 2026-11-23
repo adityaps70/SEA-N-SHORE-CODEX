@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { chromium, expect } from '@playwright/test'
+import { stayOnSite } from './e2e-site-host.mjs'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
@@ -34,6 +35,7 @@ if (phase === 'social') {
 }
 
 const browser = await chromium.launch()
+const assertStayedOnSite = stayOnSite(browser, siteUrl)
 
 async function signUp(user) {
   const context = await browser.newContext()
@@ -558,6 +560,7 @@ try {
     await realtimeJourney()
     console.log('REALTIME_E2E_BROWSER_VERIFIED=true')
   }
+  assertStayedOnSite()
 } finally {
   await browser.close()
 }

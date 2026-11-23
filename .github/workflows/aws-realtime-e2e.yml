@@ -9,6 +9,7 @@ on:
       - scripts/aws/realtime-staging-e2e.mjs
       - scripts/aws/realtime-e2e-ssm.mjs
       - scripts/aws/realtime-e2e-remote.sh
+      - scripts/aws/e2e-site-host.mjs
       - .github/workflows/aws-realtime-e2e.yml
   workflow_dispatch:
 
@@ -29,6 +30,7 @@ jobs:
       pull-requests: read
     outputs:
       run_e2e: ${{ steps.guard.outputs.run_e2e }}
+      site_alias: ${{ steps.guard.outputs.site_alias }}
       messaging_only: ${{ steps.guard.outputs.messaging_only }}
       run_probe: ${{ steps.guard.outputs.run_probe }}
       run_cleanup: ${{ steps.guard.outputs.run_cleanup }}
@@ -55,6 +57,17 @@ jobs:
               ;;
             run-once)
               echo 'run_e2e=true' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
+              echo 'run_probe=false' >> "$GITHUB_OUTPUT"
+              echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
+              echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
+              echo 'run_diagnostic=false' >> "$GITHUB_OUTPUT"
+              echo 'diagnostic_source_run_id=' >> "$GITHUB_OUTPUT"
+              ;;
+            run-once-net)
+              # Domain move Phase 1 check B: the same full E2E, on the alias site https://seanshore.net.
+              echo 'run_e2e=true' >> "$GITHUB_OUTPUT"
+              echo 'site_alias=seanshore.net' >> "$GITHUB_OUTPUT"
               echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
               echo 'run_probe=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
@@ -129,11 +142,18 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
+        env:
+          SITE_ALIAS: ${{ needs.guard.outputs.site_alias }}
         shell: bash
         run: |
           set -euo pipefail
           SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
           [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          # run-once-net: the alias site, only while it is a listed alias (scripts/aws/site-alias-hosts.txt).
+          if [[ -n "$SITE_ALIAS" ]]; then
+            [[ "$SITE_ALIAS" == seanshore.net ]] && grep -qx "$SITE_ALIAS" scripts/aws/site-alias-hosts.txt || { echo "$SITE_ALIAS is not a listed site alias." >&2; exit 1; }
+            SITE="https://$SITE_ALIAS"
+          fi
           echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
           echo "Public site URL: $SITE"
 

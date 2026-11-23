@@ -10,7 +10,7 @@ const persistenceAuditPath = 'scripts/aws/onboarding-e2e-persistence-audit.sh'
 
 test('onboarding e2e is safe by default and branch-scoped with exact-head CI gating', () => {
   const action = guardAction(readFileSync(actionPath, 'utf8'))
-  assert.ok(['plan', 'probe', 'run-once'].includes(action), `Unexpected onboarding e2e action: ${action}`)
+  assert.ok(['plan', 'probe', 'run-once', 'run-once-net'].includes(action), `Unexpected onboarding e2e action: ${action}`)
 
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /feat\/aws-native-phase-0-1/)
@@ -454,4 +454,24 @@ test('every run removes its own eight disposable users at the end, by exact addr
   // Never a pattern delete.
   assert.doesNotMatch(script, /email ~ /)
   assert.doesNotMatch(script, /LIKE/i)
+})
+
+test('domain move check B: run-once-net is the same one-shot E2E on https://seanshore.net, from an owner-merged arm only', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /plan\|discover\|probe\|run-once\|run-once-net\) echo "approval=false"/)
+  const net = workflow.slice(workflow.indexOf('            run-once-net)'), workflow.indexOf('            *)\n              echo "Unsupported onboarding E2E action'))
+  assert.match(net, /\[\[ "\$GITHUB_EVENT_NAME" == push \]\] \|\| \{/)
+  assert.match(net, /grep -qx 'seanshore\.net' scripts\/aws\/site-alias-hosts\.txt \|\| \{/)
+  assert.match(net, /echo "SITE_URL=https:\/\/seanshore\.net" >> "\$GITHUB_ENV"/)
+  assert.match(net, /echo "run_e2e=true" >> "\$GITHUB_OUTPUT"/)
+  // The dispatch choices stay plan, probe and run-once: the alias run is never started by hand.
+  assert.doesNotMatch(workflow.slice(0, workflow.indexOf('permissions:')), /run-once-net/)
+  // Every browser script of this run stays on the site it was pointed at.
+  assert.match(workflow, /- scripts\/aws\/e2e-site-host\.mjs/)
+  for (const path of [browserScriptPath, 'scripts/aws/feed-avatar-staging-e2e.mjs']) {
+    const script = readFileSync(path, 'utf8')
+    assert.match(script, /import \{ stayOnSite \} from '\.\/e2e-site-host\.mjs'/)
+    assert.match(script, /const assertStayedOnSite = stayOnSite\(browser, siteUrl\)/)
+    assert.match(script, /\n  assertStayedOnSite\(\)\n/)
+  }
 })
