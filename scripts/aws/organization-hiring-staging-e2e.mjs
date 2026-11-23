@@ -95,7 +95,7 @@ async function signUp(user) {
   await page.goto(`${siteUrl}/auth/sign-up`, { waitUntil: 'networkidle' })
   await page.getByLabel('Full name').fill(user.fullName)
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Create account' }).click()
 
   const authError = page.locator('p[role="alert"]')
@@ -116,7 +116,7 @@ async function signUp(user) {
 async function signInForOnboarding(page, user) {
   await page.goto(`${siteUrl}/auth/sign-in`, { waitUntil: 'networkidle' })
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
   await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
@@ -125,7 +125,7 @@ async function signInForOnboarding(page, user) {
 async function signInCompleted(page, user) {
   await page.goto(`${siteUrl}/auth/sign-in`, { waitUntil: 'networkidle' })
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 }
