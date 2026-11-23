@@ -357,7 +357,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+          # From the lockfile, so a tool release (for example a new axe-core rule) cannot change results unannounced.
+          npx -y npm@11.6.0 ci --include=dev --no-audit --no-fund
           npx playwright install --with-deps chromium
 
       - name: Generate disposable onboarding identities
