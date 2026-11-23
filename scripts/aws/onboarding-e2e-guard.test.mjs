@@ -493,3 +493,12 @@ test('the browser E2E installs from the lockfile, so tool releases cannot change
   assert.match(lock.packages['node_modules/axe-core']?.version ?? '', /^\d+\.\d+\.\d+$/)
   assert.match(lock.packages['node_modules/@axe-core/playwright']?.version ?? '', /^\d+\.\d+\.\d+$/)
 })
+
+test('the sea-job gate finds the temporary job on the newest-first list, by path (cards add ?src=jobs)', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const gate = browserScript.slice(browserScript.indexOf('async function verifySeaJobGate'), browserScript.indexOf('ONBOARDING_E2E_ENTHUSIAST_SEA_JOB_REFUSED_VERIFIED=true'))
+  assert.match(gate, /'\/jobs\?mode=sea&sort=recent'/)
+  assert.match(gate, /split\(\/\[\?#\]\/, 1\)\[0\]/)
+  assert.match(gate, /paths\.includes\(jobHref\)/)
+  assert.doesNotMatch(gate, /hrefs\.includes\(jobHref\)/)
+})
