@@ -476,3 +476,14 @@ test('domain move check B: run-once-net is the same one-shot E2E on https://sean
     assert.match(script, /\n  assertStayedOnSite\(\)\n/)
   }
 })
+
+test('the browser E2E installs from the lockfile, so tool releases cannot change its results unannounced', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const install = workflow.slice(workflow.indexOf('- name: Install browser E2E dependencies'), workflow.indexOf('- name: Generate disposable onboarding identities'))
+  assert.match(install, /npx -y npm@11\.6\.0 ci --include=dev --no-audit --no-fund\n/)
+  assert.doesNotMatch(install, /package-lock=false|npm@11\.6\.0 install/)
+  // axe-core and its Playwright adapter come from package-lock.json.
+  const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'))
+  assert.match(lock.packages['node_modules/axe-core']?.version ?? '', /^\d+\.\d+\.\d+$/)
+  assert.match(lock.packages['node_modules/@axe-core/playwright']?.version ?? '', /^\d+\.\d+\.\d+$/)
+})
