@@ -71,7 +71,8 @@ test('execution guards allow only one approved one-shot stage at a time', () => 
   const allowed = [
     new Set(['plan', 'migrate-once']),
     new Set(['plan', 'deploy-once']),
-    new Set(['plan', 'run-once']),
+    // run-once-net: the same one-shot onboarding E2E on the domain move alias site (aws-onboarding-e2e.yml).
+    new Set(['plan', 'run-once', 'run-once-net']),
   ]
   // An armed guard reads "<action> <40-hex SHA of the commit it arms>" (scripts/aws/arm-commit-guard.sh); plan has no SHA.
   const states = guardPaths.map((path) => readFileSync(path, 'utf8').trim())
