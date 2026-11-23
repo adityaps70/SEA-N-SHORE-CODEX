@@ -43,7 +43,7 @@ async function signUp(user) {
   await page.goto(`${siteUrl}/auth/sign-up`, { waitUntil: 'networkidle' })
   await page.getByLabel('Full name').fill(user.fullName)
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Create account' }).click()
   await page.waitForURL((url) => url.pathname === '/auth/sign-up' && url.searchParams.get('confirm') === '1', { timeout: 30_000 })
   await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
@@ -53,7 +53,7 @@ async function signUp(user) {
 async function signInForOnboarding(page, user) {
   await page.goto(`${siteUrl}/auth/sign-in`, { waitUntil: 'networkidle' })
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
 }
@@ -81,7 +81,7 @@ async function completeProfessional(user, suffix) {
 async function signInCompleted(page, user) {
   await page.goto(`${siteUrl}/auth/sign-in`, { waitUntil: 'networkidle' })
   await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 }

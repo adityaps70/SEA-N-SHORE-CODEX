@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { guardAction } from './guard-value.mjs'
 
@@ -335,4 +335,13 @@ test('domain move check B: run-once-net is the same full E2E on https://seanshor
   assert.match(browser, /import \{ stayOnSite \} from '\.\/e2e-site-host\.mjs'/)
   assert.match(browser, /const assertStayedOnSite = stayOnSite\(browser, siteUrl\)/)
   assert.match(browser, /\n  assertStayedOnSite\(\)\n/)
+})
+
+test('browser E2E scripts find the password field exactly (the auth pages also have a "Show password" button)', () => {
+  const scripts = readdirSync('scripts/aws').filter((name) => /-staging-e2e\.mjs$/.test(name))
+  assert.ok(scripts.length >= 5)
+  for (const name of scripts) {
+    const source = readFileSync(`scripts/aws/${name}`, 'utf8')
+    assert.doesNotMatch(source, /getByLabel\('Password'\)/, `${name}: getByLabel('Password') also matches "Show password"`)
+  }
 })
