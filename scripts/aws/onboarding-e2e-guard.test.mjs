@@ -458,7 +458,8 @@ test('every run removes its own eight disposable users at the end, by exact addr
 
 test('domain move check B: run-once-net is the same one-shot E2E on https://seanshore.net, from an owner-merged arm only', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
-  assert.match(workflow, /plan\|discover\|probe\|run-once\|run-once-net\) echo "approval=false"/)
+  // Not a pinned test-data value (apply-approval-gate.test.mjs): the alias run waits for the owner in staging-apply.
+  assert.match(workflow, /plan\|discover\|probe\|run-once\) echo "approval=false"/)
   const net = workflow.slice(workflow.indexOf('            run-once-net)'), workflow.indexOf('            *)\n              echo "Unsupported onboarding E2E action'))
   assert.match(net, /\[\[ "\$GITHUB_EVENT_NAME" == push \]\] \|\| \{/)
   assert.match(net, /grep -qx 'seanshore\.net' scripts\/aws\/site-alias-hosts\.txt \|\| \{/)

@@ -88,7 +88,7 @@ jobs:
           ACTION="$(cut -d' ' -f1 < scripts/aws/onboarding-e2e-action.txt | tr -d '[:space:]')"
           case "$ACTION" in
             # Round 16 follow-up: read-only and test-data runs (E2E, audits, test-account cleanup) never wait.
-            plan|discover|probe|run-once|run-once-net) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
+            plan|discover|probe|run-once) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
           esac
           echo "Guard action: $ACTION"
