@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { chromium, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { stayOnSite } from './e2e-site-host.mjs'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
@@ -168,6 +169,7 @@ function usernameInput(page) {
 }
 
 const browser = await chromium.launch()
+const assertStayedOnSite = stayOnSite(browser, siteUrl)
 
 async function verifyAccessibility(page, label) {
   const results = await new AxeBuilder({ page }).analyze()
@@ -546,6 +548,7 @@ try {
     }
     console.log('ONBOARDING_E2E_ALL_PERSONAS_VERIFIED=true')
   }
+  assertStayedOnSite()
 } finally {
   await browser.close()
 }

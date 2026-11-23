@@ -16,6 +16,7 @@ test('realtime e2e is branch-scoped and guarded by plan, run-once, bounded conne
   assert.ok(
     action === 'plan'
       || action === 'run-once'
+      || action === 'run-once-net'
       || action === 'messaging-once'
       || action === 'probe-connect-once'
       || /^cleanup-once:[0-9]+$/.test(action)
@@ -314,4 +315,24 @@ test('realtime messaging E2E covers rich composer, arbitrary reactions, replies,
   assert.match(remote, /order by occurred_at desc, id desc/i)
   assert.doesNotMatch(remote, /event_outbox[\s\S]{0,240}order by created_at desc/i)
   assert.match(remote, /sea-n-shore-staging-310356785722-media/)
+})
+
+test('domain move check B: run-once-net is the same full E2E on https://seanshore.net, only while it is a listed alias', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const net = workflow.slice(workflow.indexOf('            run-once-net)'), workflow.indexOf('            messaging-once)'))
+  assert.match(net, /echo 'run_e2e=true'/)
+  assert.match(net, /echo 'site_alias=seanshore\.net'/)
+  assert.match(net, /echo 'messaging_only=false'/)
+  assert.match(workflow, /site_alias: \$\{\{ steps\.guard\.outputs\.site_alias \}\}/)
+  // Only the full E2E job reads the alias; the connect probe, cleanup and diagnosis keep the canonical site.
+  assert.equal(workflow.match(/SITE_ALIAS: \$\{\{ needs\.guard\.outputs\.site_alias \}\}/g).length, 1)
+  const job = workflow.slice(workflow.indexOf('  realtime-e2e:\n'), workflow.indexOf('  realtime-connect-probe:\n'))
+  assert.match(job, /SITE_ALIAS: \$\{\{ needs\.guard\.outputs\.site_alias \}\}/)
+  assert.match(job, /\[\[ "\$SITE_ALIAS" == seanshore\.net \]\] && grep -qx "\$SITE_ALIAS" scripts\/aws\/site-alias-hosts\.txt \|\| \{/)
+  assert.match(job, /SITE="https:\/\/\$SITE_ALIAS"/)
+  assert.match(workflow, /- scripts\/aws\/e2e-site-host\.mjs/)
+  const browser = readFileSync(browserPath, 'utf8')
+  assert.match(browser, /import \{ stayOnSite \} from '\.\/e2e-site-host\.mjs'/)
+  assert.match(browser, /const assertStayedOnSite = stayOnSite\(browser, siteUrl\)/)
+  assert.match(browser, /\n  assertStayedOnSite\(\)\n/)
 })

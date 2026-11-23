@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
 import { chromium, expect } from '@playwright/test'
+import { stayOnSite } from './e2e-site-host.mjs'
 
 const siteUrl = process.env.SITE_URL
 const runId = process.env.GITHUB_RUN_ID
@@ -85,6 +86,7 @@ const avatarPng = gradientPng(160)
 const postText = 'Feed avatar hydration staging proof ' + runId
 const fallbackPostText = 'Feed avatar fallback staging proof ' + runId
 const browser = await chromium.launch()
+const assertStayedOnSite = stayOnSite(browser, siteUrl)
 const contexts = []
 
 function initials(name) {
@@ -373,6 +375,7 @@ try {
   await createPost(authorPage, postText)
   await repostAndVerify(reposterPage, reposterSession.context)
   await verifyFallbackInitials(fallbackPage)
+  assertStayedOnSite()
 
   console.log('FEED_AVATAR_STAGING_E2E_VERIFIED=true')
 } catch (error) {
