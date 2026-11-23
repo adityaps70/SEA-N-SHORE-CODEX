@@ -435,15 +435,18 @@ async function verifyUsernameEditLifecycle(page, user, initialUsername, takenUse
  * refuses them with the seafarer message instead of an Apply button.
  */
 async function verifySeaJobGate(page) {
-  await page.goto(siteUrl + '/jobs?mode=sea', { waitUntil: 'networkidle' })
+  // Newest first: the temporary job (not urgent, no verified company) is then on the first page, whatever else is listed.
+  await page.goto(siteUrl + '/jobs?mode=sea&sort=recent', { waitUntil: 'networkidle' })
   const body = await page.locator('main').innerText()
   assert.doesNotMatch(body, /(Partial|Good|Strong) match · \d+%|\d+% match/, 'A Maritime Enthusiast must not see a match % on sea jobs')
   console.log('ONBOARDING_E2E_ENTHUSIAST_NO_SEA_MATCH_VERIFIED=true')
 
   // The temporary sea job this run created (minimum match 70) must be listed, and must refuse.
   const jobHref = '/jobs/' + tempSeaJobId
+  // Job cards link with a source tag (/jobs/<id>?src=jobs), so compare the path only.
   const hrefs = await page.locator('a[href^="/jobs/"]').evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')))
-  assert.ok(hrefs.includes(jobHref), 'Expected the temporary sea job in the sea jobs list')
+  const paths = hrefs.map((href) => (href ?? '').split(/[?#]/, 1)[0])
+  assert.ok(paths.includes(jobHref), 'Expected the temporary sea job in the sea jobs list')
 
   await page.goto(siteUrl + jobHref, { waitUntil: 'networkidle' })
   await expect(page.getByText('Sea-going role. Your profile type is Maritime Enthusiast.', { exact: true }).first()).toBeVisible()
