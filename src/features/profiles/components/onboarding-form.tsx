@@ -213,12 +213,12 @@ function OnboardingFields({
             const descriptionId = `persona-${option.id}-description`
             // The button's name is its visible label only; the description sits outside it and is linked with
             // aria-describedby, so the accessible name always matches what is shown (WCAG 2.5.3 Label in Name).
-            // The button's ::after covers the whole card, so the card stays one click target, and the card draws
-            // the focus ring.
+            // The button's ::after covers the whole card, so the card stays one click target and its focus ring
+            // goes round the whole card.
             return (
               <div
                 key={option.id}
-                className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-(--focus-ring) max-md:flex max-md:items-start max-md:gap-3 max-md:p-3.5 ${
+                className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 max-md:flex max-md:items-start max-md:gap-3 max-md:p-3.5 ${
                   selected
                     ? 'border-ocean-600 bg-ocean-50 shadow-[0_12px_30px_rgba(15,113,151,0.10)] ring-1 ring-ocean-200'
                     : 'border-mist-200 bg-white hover:-translate-y-0.5 hover:border-ocean-300 hover:shadow-md'
@@ -235,7 +235,7 @@ function OnboardingFields({
                     onClick={() => setPersona(option.id)}
                     aria-pressed={selected}
                     aria-describedby={descriptionId}
-                    className="block pr-8 text-left text-sm font-semibold text-navy-950 after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-none max-md:text-[15px]"
+                    className="block pr-8 text-left text-sm font-semibold text-navy-950 after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-(--focus-ring) max-md:text-[15px]"
                   >
                     {option.label}
                   </button>
