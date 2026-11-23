@@ -210,13 +210,14 @@ function OnboardingFields({
           {personaOptions.map((option) => {
             const selected = persona === option.id
             const Icon = option.icon
+            const descriptionId = `persona-${option.id}-description`
+            // The button's name is its visible label only; the description sits outside it and is linked with
+            // aria-describedby, so the accessible name always matches what is shown (WCAG 2.5.3 Label in Name).
+            // The button's ::after covers the whole card, so the card stays one click target and its focus ring
+            // goes round the whole card.
             return (
-              <button
+              <div
                 key={option.id}
-                type="button"
-                onClick={() => setPersona(option.id)}
-                aria-label={option.label}
-                aria-pressed={selected}
                 className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 max-md:flex max-md:items-start max-md:gap-3 max-md:p-3.5 ${
                   selected
                     ? 'border-ocean-600 bg-ocean-50 shadow-[0_12px_30px_rgba(15,113,151,0.10)] ring-1 ring-ocean-200'
@@ -229,15 +230,23 @@ function OnboardingFields({
                   <Icon aria-hidden="true" className="size-5" />
                 </span>
                 <span className="block min-w-0">
-                  <span className="block pr-8 text-sm font-semibold text-navy-950 max-md:text-[15px]">{option.label}</span>
-                  <span className="mt-1 block text-xs leading-5 text-muted max-md:mt-0.5 max-md:text-[13px]">{option.description}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPersona(option.id)}
+                    aria-pressed={selected}
+                    aria-describedby={descriptionId}
+                    className="block pr-8 text-left text-sm font-semibold text-navy-950 after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-(--focus-ring) max-md:text-[15px]"
+                  >
+                    {option.label}
+                  </button>
+                  <span id={descriptionId} className="mt-1 block text-xs leading-5 text-muted max-md:mt-0.5 max-md:text-[13px]">{option.description}</span>
                 </span>
                 {selected ? (
-                  <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-ocean-700 text-white" aria-hidden="true">
+                  <span className="pointer-events-none absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-ocean-700 text-white" aria-hidden="true">
                     <Check className="size-3.5" />
                   </span>
                 ) : null}
-              </button>
+              </div>
             )
           })}
         </div>
@@ -266,7 +275,6 @@ function OnboardingFields({
                   key={option.id}
                   type="button"
                   onClick={() => toggleIntent(option.id)}
-                  aria-label={option.label}
                   aria-pressed={selected}
                   className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                     selected
@@ -274,7 +282,7 @@ function OnboardingFields({
                       : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-300'
                   }`}
                 >
-                  {selected ? '✓ ' : ''}{option.label}
+                  {selected ? <span aria-hidden="true">✓ </span> : null}{option.label}
                 </button>
               )
             })}

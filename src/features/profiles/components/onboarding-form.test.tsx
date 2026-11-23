@@ -51,6 +51,24 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.queryByRole('button', { name: /^Organisation$/i })).not.toBeInTheDocument()
   })
 
+  it('names each choice by its visible label only and links the persona description (WCAG 2.5.3 Label in Name)', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+
+    const seafarer = screen.getByRole('button', { name: 'Seafarer' })
+    // No aria-label: the name comes from the visible label, and the description is outside the button.
+    expect(seafarer).not.toHaveAttribute('aria-label')
+    expect(seafarer).toHaveTextContent(/^Seafarer$/)
+    expect(seafarer).toHaveAccessibleDescription('Master, officer, engineer, rating, cadet or other sea-going professional.')
+    expect(screen.getByRole('button', { name: 'Shore Professional' })).toHaveAccessibleDescription(/shore-based professional/)
+
+    fireEvent.click(seafarer)
+    const network = screen.getByRole('button', { name: 'Network' })
+    expect(network).not.toHaveAttribute('aria-label')
+    fireEvent.click(network)
+    // The selected tick is decoration: the name stays exactly "Network".
+    expect(screen.getByRole('button', { name: 'Network' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('supports keyboard activation for persona and intent choices with selected state exposed to assistive technology', async () => {
     const user = userEvent.setup()
     render(<OnboardingForm initialFullName="Asha Singh" />)
