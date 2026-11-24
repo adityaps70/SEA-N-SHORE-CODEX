@@ -17,6 +17,7 @@ on:
       - scripts/aws/onboarding-e2e-stale-feed-proof-runs.txt
       - scripts/aws/feed-avatar-staging-e2e.mjs
       - scripts/aws/e2e-site-host.mjs
+      - scripts/aws/e2e-media-src.mjs
       - .github/workflows/aws-onboarding-e2e.yml
   workflow_dispatch:
     inputs:

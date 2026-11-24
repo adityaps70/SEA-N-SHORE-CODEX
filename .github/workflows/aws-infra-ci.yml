@@ -287,6 +287,8 @@ jobs:
         run: node --test scripts/aws/resend-domain-verify.test.mjs
       - name: Verify domain move browser E2E site-host guard (stays on the site it was pointed at)
         run: node --test scripts/aws/e2e-site-host.test.mjs
+      - name: Verify the uploaded-avatar source check (signed CDN photo on the site's host, or first-party profiles/)
+        run: node --test scripts/aws/e2e-media-src.test.mjs
       - name: Verify guarded staging data cleanup contract
         run: node scripts/aws/staging-data-cleanup.test.mjs
       - name: Verify social event parity runtime audit contract

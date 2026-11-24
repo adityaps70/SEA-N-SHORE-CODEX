@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { deflateSync } from 'node:zlib'
 import { chromium, expect } from '@playwright/test'
 import { stayOnSite } from './e2e-site-host.mjs'
+import { describeProfilePhotoSrc } from './e2e-media-src.mjs'
 
 const siteUrl = process.env.SITE_URL
 const runId = process.env.GITHUB_RUN_ID
@@ -226,7 +227,9 @@ async function uploadAvatar(page, user) {
     const path = new URL(state.src, siteUrl).pathname
     throw new Error('Uploaded profile avatar must decode (' + path + ' returned HTTP ' + (response ? response.status() : 'no response') + ')')
   }
-  assert.ok(state.src.includes('/profiles/') || state.src.includes('profiles%2F') || state.src.includes('profiles/'), 'Uploaded profile avatar should resolve from profile media storage')
+  const source = describeProfilePhotoSrc(state.src, siteUrl)
+  console.log('FEED_AVATAR_UPLOAD_SOURCE=' + source.kind)
+  assert.ok(source.ok, 'Uploaded profile avatar should resolve from profile media storage (' + source.kind + ': ' + describeImageUrl(state.src) + ')')
 }
 
 async function createPost(page, text) {
