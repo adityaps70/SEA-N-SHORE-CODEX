@@ -267,6 +267,37 @@ while IFS=$'\t' read -r type state_name id live_name; do
   esac
 done < <(jq -r '.[] | . as $resource | .instances[]? | [$resource.type, $resource.name, (.id // ""), (.name // "")] | @tsv' "$EDGE_JSON")
 
+# Domain move: signed media links are signed for any host (https://*/m/<kind>/<folder>/*), so the
+# signed-media key group must be trusted by exactly one distribution, the main one
+# (aws_cloudfront_distribution.app), and its public key must be in no other key group. Ids only.
+echo "=== SIGNED MEDIA KEY GROUP USE (READ ONLY) ==="
+state_id() { jq -r --arg type "$1" --arg name "$2" '[.[] | select(.type == $type and .name == $name) | .instances[]?.id // empty] | if length == 1 then .[0] else "" end' "$EDGE_JSON"; }
+MEDIA_KEY_GROUP_ID="$(state_id aws_cloudfront_key_group media_cdn)"
+MEDIA_PUBLIC_KEY_ID="$(state_id aws_cloudfront_public_key media_cdn)"
+APP_DISTRIBUTION_ID="$(state_id aws_cloudfront_distribution app)"
+if [[ -z "$MEDIA_KEY_GROUP_ID" || -z "$MEDIA_PUBLIC_KEY_ID" || -z "$APP_DISTRIBUTION_ID" ]]; then
+  LIVE_CHECK_FAILED=1
+  echo "EDGE_AUDIT_MEDIA_KEY_GROUP_CHECK=skipped reason=missing-state-id"
+else
+  MEDIA_KEY_GROUP_USERS="$(jq -r --arg group "$MEDIA_KEY_GROUP_ID" '
+    [.DistributionList.Items[]?
+      | select(([.DefaultCacheBehavior] + (.CacheBehaviors.Items // [])) | map(.TrustedKeyGroups.Items // []) | flatten | index($group))
+      | .Id] | sort | join(",")' "$EVIDENCE_DIR/distributions.json")"
+  MEDIA_KEY_GROUP_USER_COUNT="$(jq -rn --arg users "$MEDIA_KEY_GROUP_USERS" '$users | if . == "" then 0 else (split(",") | length) end')"
+  if [[ "$MEDIA_KEY_GROUP_USERS" == "$APP_DISTRIBUTION_ID" ]]; then MEDIA_KEY_GROUP_ONLY_MAIN=true; else MEDIA_KEY_GROUP_ONLY_MAIN=false; LIVE_CHECK_FAILED=1; fi
+  echo "EDGE_AUDIT_MEDIA_KEY_GROUP_DISTRIBUTIONS=$MEDIA_KEY_GROUP_USER_COUNT only_main=$MEDIA_KEY_GROUP_ONLY_MAIN"
+  if aws cloudfront list-key-groups --output json > "$EVIDENCE_DIR/key-groups.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
+    MEDIA_PUBLIC_KEY_OTHER_GROUPS="$(jq -r --arg group "$MEDIA_KEY_GROUP_ID" --arg key "$MEDIA_PUBLIC_KEY_ID" '
+      [.KeyGroupList.Items[]?.KeyGroup | select(.Id != $group and ((.KeyGroupConfig.Items // []) | index($key)))] | length' "$EVIDENCE_DIR/key-groups.json")"
+    echo "EDGE_AUDIT_MEDIA_PUBLIC_KEY_OTHER_KEY_GROUPS=$MEDIA_PUBLIC_KEY_OTHER_GROUPS"
+    [[ "$MEDIA_PUBLIC_KEY_OTHER_GROUPS" == 0 ]] || LIVE_CHECK_FAILED=1
+  else
+    LIVE_CHECK_FAILED=1
+    ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+    echo "EDGE_AUDIT_MEDIA_PUBLIC_KEY_OTHER_KEY_GROUPS=unknown error=$ERROR_TEXT"
+  fi
+fi
+
 echo
 [[ "$LIVE_CHECK_FAILED" == 0 ]] || { echo "Edge audit incomplete: live checks failed." >&2; exit 1; }
 echo "=== ORIGIN HTTPS READINESS (READ ONLY) ==="
