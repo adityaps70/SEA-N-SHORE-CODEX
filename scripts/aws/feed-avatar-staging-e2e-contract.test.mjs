@@ -35,3 +35,21 @@ test('feed avatar staging proof uses current eight-persona onboarding identities
   assert.doesNotMatch(source, /E2E_ORGANISATION_EMAIL/)
   assert.doesNotMatch(source, /professional\|custom\|organisation/)
 })
+
+// Onboarding run 45399844739 (seanshore.net): the repost card was missing after a fixed 800 ms wait
+// and a reload into Top for you, which serves a snapshot built before the repost. The proof now waits
+// for the repost's own answer and reads the Recent sort of the same Home feed.
+test('feed avatar repost proof waits for the repost to answer and reads the Recent feed', () => {
+  assert.doesNotMatch(source, /waitForTimeout\(/)
+  assert.match(source, /locator\('article'\)\.getByRole\('status'\)\.filter\(\{ hasText: 'Reposted to your feed\.' \}\)/)
+  assert.match(source, /locator\('article'\)\.getByRole\('alert'\)/)
+  assert.match(source, /throw new Error\('Repost failed: '/)
+  assert.match(source, /getByRole\('radiogroup', \{ name: 'Sort the feed' \}\)\.getByRole\('radio', \{ name: 'Recent' \}\)/)
+  assert.match(source, /toHaveAttribute\('aria-checked', 'true'/)
+  const repostAt = source.indexOf("filter({ hasText: 'reposted' })")
+  assert.ok(repostAt > source.indexOf("radio', { name: 'Recent' }"), 'the repost card is looked for after switching to Recent')
+})
+
+test('infra CI runs this contract', () => {
+  assert.match(readFileSync('.github/workflows/aws-infra-ci.yml', 'utf8'), /node --test scripts\/aws\/feed-avatar-staging-e2e-contract\.test\.mjs/)
+})

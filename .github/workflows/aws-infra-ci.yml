@@ -289,6 +289,8 @@ jobs:
         run: node --test scripts/aws/e2e-site-host.test.mjs
       - name: Verify the uploaded-avatar source check (signed CDN photo on the site's host, or first-party profiles/)
         run: node --test scripts/aws/e2e-media-src.test.mjs
+      - name: Verify the feed avatar E2E contract (repost answers before reload, Recent feed, cleanup-safe)
+        run: node --test scripts/aws/feed-avatar-staging-e2e-contract.test.mjs
       - name: Verify guarded staging data cleanup contract
         run: node scripts/aws/staging-data-cleanup.test.mjs
       - name: Verify social event parity runtime audit contract
