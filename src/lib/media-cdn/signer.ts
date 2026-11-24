@@ -34,7 +34,7 @@ let cached: { source: string; config: SigningConfig } | null = null
 
 /**
  * Signing settings from the web task: the private key (Secrets Manager), the CloudFront public key
- * id and the site origin the policy names. Null when any is missing (local dev, tests, or before the
+ * id and the site origin (signing is on only for an https site; the policy itself names any host). Null when any is missing (local dev, tests, or before the
  * key is rolled out), in which case callers keep the first-party URLs.
  */
 export function mediaCdnSigningConfig(environment: Environment = process.env): SigningConfig | null {
@@ -69,6 +69,20 @@ export function mediaCdnExpiry(folder: string, access: MediaCdnAccess, now = Dat
   return (window + 2) * windowSeconds - offset
 }
 
+/**
+ * Domain move: the policy names any host, so one signed link works on every name the main distribution
+ * answers on (the site address, its alias hosts and its CloudFront name) and keeps working through the switch. It
+ * stays as narrow as before: only the main distribution trusts this key group (the edge audit checks it), and
+ * the policy still names one folder. Folders are exactly `m/<kind>/<id>` with no wildcard or slash in the id.
+ */
+export const MEDIA_CDN_POLICY_HOST = 'https://*'
+const MEDIA_CDN_FOLDER = /^m\/[a-z]\/[A-Za-z0-9_-]+$/
+
+/** The policy resource for a folder: any host, that folder only. */
+export function mediaCdnResource(folder: string): string {
+  return `${MEDIA_CDN_POLICY_HOST}/${folder}/*`
+}
+
 const QUERY_CACHE_LIMIT = 5000
 const queryCache = new Map<string, string>()
 
@@ -79,7 +93,8 @@ export function mediaCdnPolicy(resource: string, expiresAt: number): string {
 
 /**
  * Signed query (without the leading `?`) for every object under `folder` (a key prefix such as
- * `m/i/<id>`), or null when signing is not configured.
+ * `m/i/<id>`), on any host the main distribution serves, or null when signing is not configured or the
+ * folder is not a media folder.
  */
 export function signMediaCdnFolder(
   folder: string,
@@ -87,8 +102,8 @@ export function signMediaCdnFolder(
   options: { now?: number; environment?: Environment } = {},
 ): string | null {
   const config = mediaCdnSigningConfig(options.environment)
-  if (!config) return null
-  const resource = `${config.origin}/${folder}/*`
+  if (!config || !MEDIA_CDN_FOLDER.test(folder)) return null
+  const resource = mediaCdnResource(folder)
   const expiresAt = mediaCdnExpiry(folder, access, options.now)
   const cacheKey = `${config.keyPairId}\n${resource}\n${expiresAt}`
   const hit = queryCache.get(cacheKey)

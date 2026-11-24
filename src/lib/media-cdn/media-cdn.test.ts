@@ -16,7 +16,7 @@ import { cdnImageSrcSet, cdnImageUrlForWidth, imageVariantWidthFor, isCdnImageUr
 import { cdnFileUrl, cdnImageSrc, cdnMediaUrl, mediaCdnAccessFor, mediaCdnEnabled } from './media-cdn'
 import { cdnImageRedirect } from './cdn-redirect'
 import { prepareMediaForCdn, renderImageVariants } from './prepare-media'
-import { MEDIA_CDN_WINDOW_SECONDS, mediaCdnExpiry, mediaCdnPolicy, mediaCdnSigningConfig, signMediaCdnFolder } from './signer'
+import { MEDIA_CDN_WINDOW_SECONDS, mediaCdnExpiry, mediaCdnPolicy, mediaCdnResource, mediaCdnSigningConfig, signMediaCdnFolder } from './signer'
 
 const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
 const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
@@ -44,7 +44,7 @@ describe('CloudFront signing', () => {
     expect(policy).not.toMatch(/\s/)
     const statement = JSON.parse(policy).Statement
     expect(statement).toHaveLength(1)
-    expect(statement[0].Resource).toBe('https://seanshore.in/m/i/abc/*')
+    expect(statement[0].Resource).toBe('https://*/m/i/abc/*')
     expect(verify('sha256', Buffer.from(policy), { key: publicKey, dsaEncoding: 'der' }, fromUrlSafe(params.Signature!))).toBe(true)
   })
 
@@ -83,6 +83,51 @@ describe('CloudFront signing', () => {
     const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
     expect(mediaCdnSigningConfig({ ...ENV, MEDIA_CDN_SIGNING_KEY: rsa })).toBeNull()
     expect(signMediaCdnFolder('m/i/abc', 'public', { environment: {} })).toBeNull()
+  })
+})
+
+/**
+ * What CloudFront does with a custom policy: the signature must verify with the distribution's public key, the
+ * request URL must match the policy's Resource (`*` is any run of characters, `?` one character), and the time
+ * must be before DateLessThan.
+ */
+function cloudFrontAllows(url: string, query: string, at: number) {
+  const params = parseQuery(query)
+  const policy = fromUrlSafe(params.Policy!).toString()
+  if (!verify('sha256', Buffer.from(policy), { key: publicKey, dsaEncoding: 'der' }, fromUrlSafe(params.Signature!))) return false
+  const [{ Resource, Condition }] = JSON.parse(policy).Statement
+  const pattern = new RegExp('^' + String(Resource).split('').map((c) => (c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[.+^${}()|[\]\\/]/g, '\\$&'))).join('') + '$')
+  return pattern.test(url) && at / 1000 < Condition.DateLessThan['AWS:EpochTime']
+}
+
+describe('Domain move: one signed link works on every site name', () => {
+  const now = Date.UTC(2026, 10, 24)
+  const folder = 'm/i/' + 'A'.repeat(31) + 'b'
+  const query = signMediaCdnFolder(folder, 'public', { environment: ENV, now })!
+
+  it('opens the photo on seanshore.in, seanshore.net and the CloudFront name', () => {
+    for (const host of ['seanshore.in', 'seanshore.net', 'd3prih0q6jofyr.cloudfront.net']) {
+      expect(cloudFrontAllows(`https://${host}/${folder}/320.webp`, query, now)).toBe(true)
+      expect(cloudFrontAllows(`https://${host}/${folder}/768.webp`, query, now)).toBe(true)
+    }
+  })
+
+  it('does not open a different photo folder, another media kind or an expired link', () => {
+    const other = 'm/i/' + 'C'.repeat(31) + 'd'
+    for (const host of ['seanshore.in', 'seanshore.net']) {
+      expect(cloudFrontAllows(`https://${host}/${other}/320.webp`, query, now)).toBe(false)
+      expect(cloudFrontAllows(`https://${host}/m/f/${folder.slice(4)}/file.mp4`, query, now)).toBe(false)
+      expect(cloudFrontAllows(`https://${host}/${folder}`, query, now)).toBe(false)
+    }
+    const expiry = mediaCdnExpiry(folder, 'public', now)
+    expect(cloudFrontAllows(`https://seanshore.net/${folder}/320.webp`, query, expiry * 1000)).toBe(false)
+  })
+
+  it('names exactly one folder: no wildcard, slash or other prefix can widen the policy', () => {
+    expect(mediaCdnResource(folder)).toBe(`https://*/${folder}/*`)
+    for (const bad of ['m/i/*', 'm/i/abc/def', 'm/i/', 'x/i/abc', 'm/i/a?c', 'm/i/abc*', '../m/i/abc', 'm/I/abc']) {
+      expect(signMediaCdnFolder(bad, 'public', { environment: ENV, now })).toBeNull()
+    }
   })
 })
 
