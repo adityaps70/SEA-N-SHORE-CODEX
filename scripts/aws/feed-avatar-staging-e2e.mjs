@@ -300,8 +300,27 @@ async function repostAndVerify(page, context) {
   await sourceArticle.getByRole('button', { name: /^(Repost|Share)$/ }).click()
   // The share menu is portaled to the page body (it never gets clipped by the card).
   await page.getByRole('menuitem', { name: 'Repost to feed' }).click()
-  await page.waitForTimeout(800)
+  // Wait for the repost Server Action to answer in the card (success notice, or its error), not a
+  // fixed delay: a reload before it answers can lose the repost.
+  // Any feed card: the feed may re-render with the new repost card first. Cards only, so the page's
+  // route announcer (also an alert) never counts.
+  const reposted = page.locator('article').getByRole('status').filter({ hasText: 'Reposted to your feed.' })
+  const refused = page.locator('article').getByRole('alert')
+  await expect.poll(async () => {
+    if (await refused.count()) return 'error'
+    if (await reposted.count()) return 'reposted'
+    return 'pending'
+  }, { timeout: 20_000 }).not.toBe('pending')
+  if (await refused.count()) throw new Error('Repost failed: ' + ((await refused.first().innerText()).trim() || 'no message'))
+  console.log('FEED_AVATAR_REPOST_SAVED=true')
+
+  // Top for you serves a snapshot built on an earlier visit, so a repost made a moment ago may not be
+  // in it yet. Recent is the same Home feed, newest first, and shows the new repost card at once.
   await page.reload({ waitUntil: 'domcontentloaded' })
+  const recent = page.getByRole('radiogroup', { name: 'Sort the feed' }).getByRole('radio', { name: 'Recent' })
+  await expect(recent).toBeVisible({ timeout: 20_000 })
+  if ((await recent.getAttribute('aria-checked')) !== 'true') await recent.click()
+  await expect(recent).toHaveAttribute('aria-checked', 'true', { timeout: 20_000 })
 
   const repost = page.locator('article')
     .filter({ hasText: users.reposter.fullName })
