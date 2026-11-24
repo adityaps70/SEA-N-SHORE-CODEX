@@ -71,7 +71,7 @@ export function mediaCdnExpiry(folder: string, access: MediaCdnAccess, now = Dat
 
 /**
  * Domain move: the policy names any host, so one signed link works on every name the main distribution
- * answers on (seanshore.in, seanshore.net, its CloudFront name) and keeps working through the switch. It
+ * answers on (the site address, its alias hosts and its CloudFront name) and keeps working through the switch. It
  * stays as narrow as before: only the main distribution trusts this key group (the edge audit checks it), and
  * the policy still names one folder. Folders are exactly `m/<kind>/<id>` with no wildcard or slash in the id.
  */
