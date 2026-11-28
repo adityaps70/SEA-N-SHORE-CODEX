@@ -7,6 +7,7 @@ on:
       - scripts/aws/events-e2e-action.txt
       - scripts/aws/events-e2e-guard.test.mjs
       - scripts/aws/events-staging-e2e.mjs
+      - scripts/aws/e2e-onboarding.mjs
       - scripts/aws/events-e2e-ssm.mjs
       - scripts/aws/events-e2e-remote.sh
       - .github/workflows/aws-events-e2e.yml

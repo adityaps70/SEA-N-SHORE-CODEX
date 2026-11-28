@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { chromium, expect } from '@playwright/test'
 import { stayOnSite } from './e2e-site-host.mjs'
+import { chooseSeafarerMaster } from './e2e-onboarding.mjs'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
@@ -62,15 +63,11 @@ async function completeProfessional(user, suffix) {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInForOnboarding(page, user)
-  await page.getByRole('button', { name: /Professional Build your individual maritime identity/ }).click()
-  await page.getByLabel('Search professional identities').fill('Master')
-  await page.getByRole('button', { name: 'Master — Sea-going · Deck' }).click()
+  await chooseSeafarerMaster(page, { organisation: `Sea N Shore Realtime E2E ${suffix}` })
   const username = `rt-${suffix}-${runId}`
   assert.ok(username.length <= 30, `Realtime E2E username is too long: ${username}`)
   await page.locator('input[name="slug"]').fill(username)
   await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
-  await page.getByLabel('Location').fill('Mumbai')
-  await page.getByLabel('Current organisation').fill(`Sea N Shore Realtime E2E ${suffix}`)
   const completeButton = page.getByRole('button', { name: 'Complete profile' })
   await expect(completeButton).toBeEnabled()
   await completeButton.click()
