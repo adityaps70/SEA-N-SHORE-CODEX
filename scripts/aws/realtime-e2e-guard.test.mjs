@@ -57,8 +57,13 @@ test('realtime e2e proves canonical message and read-cursor fanout over authenti
   assert.match(browser, /input\[name="slug"\]/)
   assert.doesNotMatch(browser, /Profile address/)
   assert.doesNotMatch(browser, /message-read-sentinel/)
-  assert.match(browser, /1 unread messages/)
-  assert.match(browser, /\[aria-label="1 unread messages"\]:visible/)
+  // Round H (d8eeb613): the badge says "1 unread message" (pluralized), and per-message buttons name whose message it is.
+  assert.match(browser, /\[aria-label="1 unread message"\]:visible/)
+  assert.doesNotMatch(browser, /1 unread messages/)
+  assert.match(browser, /'More actions for your message'/)
+  assert.match(browser, /`Reply to \$\{users\.sender\.fullName\}'s message`/)
+  assert.match(browser, /`React to \$\{users\.sender\.fullName\}'s message`/)
+  assert.doesNotMatch(browser, /(More actions for|Reply to|React to) message /)
   assert.match(browser, /Unread conversation with/)
   assert.match(browser, /REALTIME_E2E_UNREAD_BADGE_CLEARED=true/)
   assert.match(browser, /malformed/i)
@@ -290,7 +295,8 @@ test('realtime messaging E2E covers rich composer, arbitrary reactions, replies,
   assert.match(browser, /Insert 🫡/)
   assert.match(browser, /Custom emoji reaction/)
   assert.match(browser, /Use custom emoji/)
-  assert.match(browser, /Reply to message/)
+  assert.match(browser, /Reply to \$\{users\.sender\.fullName\}'s message/)
+  assert.match(browser, /Replying to message/)
   assert.match(browser, /input\[type="file"\]/)
   assert.match(browser, /Ready to send/)
   assert.match(browser, /Edit message/)
@@ -343,5 +349,30 @@ test('browser E2E scripts find the password field exactly (the auth pages also h
   for (const name of scripts) {
     const source = readFileSync(`scripts/aws/${name}`, 'utf8')
     assert.doesNotMatch(source, /getByLabel\('Password'\)/, `${name}: getByLabel('Password') also matches "Show password"`)
+  }
+})
+
+// Round ARCH broadcast fix (1201db39): a new post's hint reaches only the author's network, a like's or comment's only
+// the post's author, and a hint never re-renders the page. Realtime run 46165639753 (seanshore.net) still clicked the
+// old "Post" button; the social journey now connects first, posts with "Post Update", reads new posts through
+// "N new posts" in the Recent feed, and checks likes and comments on a fresh page.
+test('realtime social journey follows the audience-scoped feed hints', () => {
+  const browser = readFileSync(browserPath, 'utf8')
+  const social = browser.slice(browser.indexOf('async function socialJourney()'), browser.indexOf('async function realtimeJourney()'))
+  const accept = social.indexOf("waitForSignal(senderPage, 'social_sender_connection', 'connection.accepted')")
+  const post = social.indexOf("getByRole('button', { name: 'Post Update', exact: true })")
+  assert.ok(accept > 0 && post > accept, 'the members connect before the post, so the hint has an audience')
+  assert.doesNotMatch(social, /name: 'Post', exact: true/)
+  assert.match(social, /getByRole\('menuitem', \{ name: 'Cancel request' \}\)/)
+  assert.match(social, /getByRole\('button', \{ name: 'Message', exact: true \}\)/)
+  assert.match(social, /getByRole\('button', \{ name: \/\^\\d\+ new posts\?\$\/ \}\)/)
+  assert.match(social, /expectOnFreshHome\(senderContext, socialPostBody/)
+  assert.match(social, /name: \/\^\(Repost\|Share\)\$\//)
+  assert.match(browser, /radio', \{ name: 'Recent' \}/)
+  for (const marker of ['CONNECTION_ACCEPTED', 'FEED_POST_CREATED', 'FEED_REACTION_TOGGLE', 'FEED_COMMENT', 'FEED_REPOST', 'SOCIAL_RECONNECT_CONVERGENCE', 'SOCIAL_BROWSER']) {
+    assert.match(social, new RegExp(`REALTIME_E2E_${marker}_VERIFIED=true`))
+  }
+  for (const signal of ['connection.accepted', 'feed.post_created', 'feed.post_reaction_changed', 'feed.post_comments_changed', 'feed.post_reposted']) {
+    assert.match(social, new RegExp(`assertSocialSignalMetadataOnly\\([^)]*'${signal.replace('.', '\\.')}'`))
   }
 })
