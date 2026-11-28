@@ -8,6 +8,7 @@ on:
       - scripts/aws/learning-assignment-review-e2e-action.txt
       - scripts/aws/learning-assignment-review-e2e-guard.test.mjs
       - scripts/aws/learning-assignment-review-staging-e2e.mjs
+      - scripts/aws/e2e-onboarding.mjs
       - scripts/aws/learning-assignment-review-e2e-ssm.mjs
       - scripts/aws/learning-assignment-review-e2e-remote.sh
       - .github/workflows/aws-learning-assignment-review-e2e.yml
@@ -85,7 +86,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/learning-assignment-review-e2e-action.txt
-          RUNNER_FILES: "scripts/aws/learning-assignment-review-e2e-guard.test.mjs scripts/aws/learning-assignment-review-staging-e2e.mjs scripts/aws/learning-assignment-review-e2e-ssm.mjs scripts/aws/learning-assignment-review-e2e-remote.sh"
+          RUNNER_FILES: "scripts/aws/learning-assignment-review-e2e-guard.test.mjs scripts/aws/learning-assignment-review-staging-e2e.mjs scripts/aws/e2e-onboarding.mjs scripts/aws/learning-assignment-review-e2e-ssm.mjs scripts/aws/learning-assignment-review-e2e-remote.sh"
         shell: bash
         run: |
           set -euo pipefail
