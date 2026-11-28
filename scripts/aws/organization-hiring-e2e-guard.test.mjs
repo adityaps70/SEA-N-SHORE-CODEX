@@ -55,15 +55,87 @@ test('run-once uses disposable authenticated users and the live organization app
   assert.match(browserScript, /Verified employer/)
   assert.match(browserScript, /\/hiring\/jobs\/new/)
   assert.match(browserScript, /Post a maritime job/)
-  assert.match(browserScript, /Create job/)
+  assert.match(browserScript, /getByRole\('button', \{ name: 'Publish job', exact: true \}\)/)
   assert.match(browserScript, /\/jobs\?q=/)
   assert.match(browserScript, /Easy Apply/)
   assert.match(browserScript, /Applied/)
   assert.match(browserScript, /\/jobs\/\$\{jobId\}/)
   assert.match(browserScript, /Application submitted/)
   assert.match(browserScript, /ORGANIZATION_HIRING_E2E_JOB_APPLICATION_UI_VERIFIED=true/)
-  assert.match(browserScript, /Hiring access required/)
+  assert.match(browserScript, /To publish this job, you still need:/)
   assert.match(browserScript, /cross-company edit route must return 404/)
+})
+
+test('the disposable admin turns on two-step verification, then approves and grants only hiring access', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const remote = readFileSync(remoteScriptPath, 'utf8')
+  const twoStep = browserScript.match(/async function enableAdminTwoStep[\s\S]*?\n}\n/)?.[0] ?? ''
+  const approval = browserScript.match(/async function approveOrganization[\s\S]*?\n}\n/)?.[0] ?? ''
+  const grant = browserScript.match(/async function grantOrganizationEntitlement[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  // Admin pages and decisions require an authenticator app (Round 14); the E2E uses the real setup, not a bypass.
+  assert.match(browserScript, /^import \{ freshTotpCode \} from '\.\/e2e-totp\.mjs'$/m)
+  assert.match(twoStep, /url\.pathname === '\/settings\/security' && url\.searchParams\.get\('required'\) === 'admin'/)
+  assert.match(twoStep, /getByRole\('button', \{ name: 'Set up authenticator app' \}\)/)
+  assert.match(twoStep, /getByLabel\('Setup key', \{ exact: true \}\)/)
+  assert.match(twoStep, /freshTotpCode\(secret\)/)
+  assert.match(twoStep, /Verify and turn on/)
+  assert.doesNotMatch(twoStep, /console\.log\([^)]*secret/)
+  assert.match(approval, /enableAdminTwoStep\(page\)/)
+  assert.match(approval, /assert\.equal\(new URL\(page\.url\(\)\)\.pathname, `\/admin\/organizations\/\$\{applicationId\}`/)
+
+  // Verification alone gives no publishing; exactly these two admin grants, each with a reason naming the run.
+  assert.deepEqual([...approval.matchAll(/grantOrganizationEntitlement\(page, '([a-z._]+)'\)/g)].map((match) => match[1]), ['job.publish', 'job.manage_applicants'])
+  assert.match(grant, /Disposable staging hiring E2E \$\{runId\}: \$\{capability\}/)
+  assert.match(grant, /Entitlement granted and recorded in the audit trail\./)
+  assert.match(grant, /toBeDisabled\(\)/)
+  assert.match(remote, /g\.source='admin' AND g\.granted_by=\(\$admin_id_sql\)/)
+  assert.match(remote, /\[\[ "\$GRANTS" == 'job\.manage_applicants,job\.publish' \]\]/)
+  assert.match(remote, /\[\[ "\$OTHER_GRANTS" == 0 \]\]/)
+  assert.match(workflow, /grep -q '\^ORGANIZATION_HIRING_E2E_HIRING_GRANTS_VERIFIED=true\$'/)
+  assert.match(workflow, /paths:[\s\S]*?\n\s+- scripts\/aws\/e2e-totp\.mjs\n[\s\S]*?workflow_dispatch:/)
+  assert.match(workflow, /RUNNER_FILES: "[^"]*\bscripts\/aws\/e2e-totp\.mjs\b[^"]*"/)
+})
+
+test('the owner publishes through the current job form, with roles from the taxonomy and no match gate', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const ownerFlow = browserScript.match(/async function postJobAsOwner[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  assert.match(ownerFlow, /getByText\(`Ready · \$\{organizationName\}`, \{ exact: true \}\)/)
+  assert.match(ownerFlow, /getByRole\('radio', \{ name: new RegExp\(`\^\$\{escapeRegExp\(organizationName\)\}`\) \}\)/)
+  assert.match(ownerFlow, /toBeChecked\(\)/)
+  assert.match(ownerFlow, /getByLabel\('Department', \{ exact: true \}\)\.selectOption\('deck_officers'\)/)
+  assert.match(ownerFlow, /getByRole\('group', \{ name: 'Accepted ranks \/ roles' \}\)\.getByRole\('checkbox', \{ name: 'Chief Officer', exact: true \}\)\.check\(\)/)
+  assert.match(ownerFlow, /getByLabel\('Last date to apply', \{ exact: true \}\)\.fill\(isoDateFromToday\(30\)\)/)
+  assert.match(ownerFlow, /getByLabel\('Minimum match to apply'\)\.fill\('0'\)/)
+  assert.match(ownerFlow, /url\.pathname === '\/hiring\/jobs'/)
+  assert.match(ownerFlow, /name: 'Your jobs'/)
+  assert.match(ownerFlow, /getByText\('Live', \{ exact: true \}\)/)
+})
+
+test('the retired job form, lifecycle and access screens are gone', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  for (const retired of [
+    "'Create job'",
+    'Job saved successfully.',
+    'Changes saved successfully.',
+    "getByLabel('Status')",
+    "getByLabel('Apply until')",
+    "getByLabel('Rank / position')",
+    "getByLabel('Visas')",
+    "fill('Deck')",
+    "'2026-09-01'",
+    "'Company jobs'",
+    "'Verified company'",
+    "'Review candidate'",
+    "'Hiring access required'",
+    "'Hiring access'",
+    "getByText('published', { exact: true })",
+    "getByText('closed', { exact: true })",
+  ]) {
+    assert.equal(browserScript.includes(retired), false, `retired hiring UI is still used: ${retired}`)
+  }
 })
 
 
@@ -78,8 +150,28 @@ test('organization hiring e2e proves expired published visibility and archived r
   assert.match(workflow, /verify-republish/)
   assert.match(browserScript, /ORGANIZATION_HIRING_E2E_JOBS_DISCOVERY_RENDERED=true/)
   assert.match(browserScript, /ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true/)
-  assert.match(browserScript, /selectOption\('closed'\)/)
   assert.match(browserScript, /ORGANIZATION_HIRING_E2E_ARCHIVE_REPUBLISH_UI_VERIFIED=true/)
+
+  // The UI refuses a past apply-by date, so one guarded SSM step backdates this run's published job only.
+  const expire = remote.match(/\n  expire-job\)\n[\s\S]*?\n    ;;\n/)?.[0] ?? ''
+  assert.match(ssmHelper, /'expire-job'/)
+  assert.match(workflow, /organization-hiring-e2e-ssm\.mjs expire-job\)"[\s\S]*?grep -q '\^ORGANIZATION_HIRING_E2E_JOB_EXPIRED=true\$'/)
+  assert.ok(workflow.indexOf('ssm.mjs resolve-job') < workflow.indexOf('ssm.mjs expire-job'), 'the job is resolved before it is expired')
+  assert.ok(workflow.indexOf('ssm.mjs expire-job') < workflow.indexOf('E2E_PHASE: candidate-expired-visibility'), 'the job is expired before the candidate checks it')
+  assert.match(expire, /UPDATE public\.jobs SET apply_until = current_date - 1 WHERE id='\$JOB_ID'::uuid AND company_id='\$COMPANY_ID'::uuid AND title='\$JOB_TITLE' AND status::text='published' AND deleted_at IS NULL RETURNING/)
+  assert.match(expire, /\[\[ "\$UPDATED" == 1 \]\]/)
+  assert.doesNotMatch(expire, /\b(?:DELETE|INSERT)\b/i)
+
+  // Members still find the expired job but cannot apply; the owner archives, then republishes with no closing date.
+  const expired = browserScript.match(/async function verifyExpiredPublishedJobVisible[\s\S]*?\n}\n/)?.[0] ?? ''
+  const lifecycle = browserScript.match(/async function archiveAndRepublishJob[\s\S]*?\n}\n/)?.[0] ?? ''
+  assert.match(expired, /getByText\('Applications closed', \{ exact: true \}\)/)
+  assert.match(expired, /getByRole\('button', \{ name: 'Easy Apply' \}\)\)\.toHaveCount\(0\)/)
+  assert.match(expired, /Applications for this job closed on /)
+  assert.match(lifecycle, /runLifecycleAction\(page, 'Archive', 'Archive job', 'Job archived\./)
+  assert.match(lifecycle, /runLifecycleAction\(page, 'Republish', 'Republish job', 'Job republished\./)
+  assert.match(lifecycle, /getByLabel\('No closing date', \{ exact: true \}\)\.check\(\)/)
+  assert.match(lifecycle, /getByLabel\('Last date to apply', \{ exact: true \}\)\)\.toHaveValue\(''\)/)
   assert.match(ssmHelper, /verify-republish/)
   assert.match(remote, /verify-republish\)/)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_REPUBLISH_VERIFIED=true/)
@@ -202,6 +294,8 @@ test('database audit proves admin grant, approval, published job ownership and u
   assert.match(remote, /job_application_events/i)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_JOB_APPLICATION_VERIFIED=true/)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_UNAUTHORIZED_VERIFIED=true/)
+  assert.match(remote, /entitlement_grants WHERE profile_id=\(\$unauthorized_id_sql\)/)
+  assert.match(remote, /\[\[ "\$MEMBER_COUNT" == 0 && "\$ADMIN_COUNT" == 0 && "\$GRANT_COUNT" == 0 \]\]/)
 })
 
 test('cleanup is unconditional, prefix constrained, and removes every disposable hiring artifact', () => {
@@ -215,6 +309,11 @@ test('cleanup is unconditional, prefix constrained, and removes every disposable
   assert.match(remote, /delete from public\.company_access_requests/i)
   assert.match(remote, /delete from public\.company_members/i)
   assert.match(remote, /delete from public\.companies/i)
+  assert.match(remote, /delete from public\.entitlement_grants/i)
+  assert.match(remote, /RUN_ID="\$\{ORGANIZATION_NAME##\* \}"/)
+  assert.match(remote, /\[\[ "\$RUN_ID" =~ \^\[0-9\]\+\$ && "\$JOB_TITLE" == "E2E Chief Officer \$RUN_ID" \]\]/)
+  assert.match(remote, /entitlement_grants WHERE reason LIKE 'Disposable staging hiring E2E \$RUN_ID:%'/)
+  assert.ok(remote.indexOf('DELETE FROM public.entitlement_grants') < remote.indexOf('DELETE FROM public.companies'), 'grants are removed before their company')
   assert.match(remote, /delete from public\.user_roles/i)
   assert.match(remote, /delete from public\.profiles/i)
   assert.match(remote, /admin-delete-user/)

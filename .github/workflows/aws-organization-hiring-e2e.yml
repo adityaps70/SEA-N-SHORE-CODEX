@@ -11,6 +11,7 @@ on:
       - scripts/aws/organization-hiring-e2e-ssm.mjs
       - scripts/aws/organization-hiring-e2e-remote.sh
       - scripts/aws/e2e-onboarding.mjs
+      - scripts/aws/e2e-totp.mjs
       - .github/workflows/aws-organization-hiring-e2e.yml
   workflow_dispatch:
 
@@ -86,7 +87,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/organization-hiring-e2e-action.txt
-          RUNNER_FILES: "scripts/aws/organization-hiring-e2e-guard.test.mjs scripts/aws/organization-hiring-staging-e2e.mjs scripts/aws/organization-hiring-e2e-ssm.mjs scripts/aws/organization-hiring-e2e-remote.sh scripts/aws/e2e-onboarding.mjs"
+          RUNNER_FILES: "scripts/aws/organization-hiring-e2e-guard.test.mjs scripts/aws/organization-hiring-staging-e2e.mjs scripts/aws/organization-hiring-e2e-ssm.mjs scripts/aws/organization-hiring-e2e-remote.sh scripts/aws/e2e-onboarding.mjs scripts/aws/e2e-totp.mjs"
         shell: bash
         run: |
           set -euo pipefail
@@ -341,6 +342,7 @@ jobs:
         run: |
           OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs verify-approval)"
           printf '%s\n' "$OUTPUT"
+          grep -q '^ORGANIZATION_HIRING_E2E_HIRING_GRANTS_VERIFIED=true$' <<<"$OUTPUT"
           grep -q '^ORGANIZATION_HIRING_E2E_APPROVAL_VERIFIED=true$' <<<"$OUTPUT"
 
       - name: Create published maritime job through live owner UI
@@ -362,6 +364,15 @@ jobs:
           JOB_ID="$(sed -n 's/^ORGANIZATION_HIRING_E2E_JOB_ID=//p' <<<"$OUTPUT" | tail -n1)"
           [[ "$JOB_ID" =~ ^[0-9a-f-]{36}$ ]]
           echo "E2E_JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+
+      - name: Move the disposable job's apply-by date into the past through SSM
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        run: |
+          OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs expire-job)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^ORGANIZATION_HIRING_E2E_JOB_EXPIRED=true$' <<<"$OUTPUT"
 
       - name: Verify expired published job remains visible but blocks application
         if: steps.action.outputs.run_e2e == 'true'

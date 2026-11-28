@@ -289,6 +289,8 @@ jobs:
         run: node --test scripts/aws/e2e-site-host.test.mjs
       - name: Verify the shared browser E2E onboarding helper (Seafarer Master, matches the live onboarding form)
         run: node --test scripts/aws/e2e-onboarding.test.mjs
+      - name: Verify the browser E2E authenticator codes (RFC 6238 vectors, for the disposable admin's two-step setup)
+        run: node --test scripts/aws/e2e-totp.test.mjs
       - name: Verify the uploaded-avatar source check (signed CDN photo on the site's host, or first-party profiles/)
         run: node --test scripts/aws/e2e-media-src.test.mjs
       - name: Verify the feed avatar E2E contract (repost answers before reload, Recent feed, cleanup-safe)

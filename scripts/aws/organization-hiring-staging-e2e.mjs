@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { chromium, expect } from '@playwright/test'
 import { chooseSeafarerMaster } from './e2e-onboarding.mjs'
+import { freshTotpCode } from './e2e-totp.mjs'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
@@ -212,52 +213,123 @@ async function submitOrganizationApplication() {
   await context.close()
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** A date as YYYY-MM-DD in UTC, like the job lifecycle's "today". */
+function isoDateFromToday(days) {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+/**
+ * Round 14: a platform administrator needs an authenticator app before any admin page opens or any admin decision
+ * is accepted. The disposable admin turns one on the way a person would: the admin gate sends them to Settings →
+ * Two-step verification, they type the setup key's current code, and the same password session then satisfies
+ * the rule. The key is never printed; Cognito deletes it with the user at cleanup.
+ */
+async function enableAdminTwoStep(page) {
+  await page.waitForURL((url) => url.pathname === '/settings/security' && url.searchParams.get('required') === 'admin', { timeout: 20_000 })
+  const twoStep = page.locator('section[aria-labelledby="two-step-heading"]')
+  await twoStep.getByRole('button', { name: 'Set up authenticator app' }).click()
+  const setupKey = twoStep.getByLabel('Setup key', { exact: true })
+  await expect(setupKey).toBeVisible({ timeout: 20_000 })
+  const secret = (await setupKey.innerText()).replace(/\s+/g, '')
+  await twoStep.getByLabel(/Enter the 6-digit code the app shows/).fill(await freshTotpCode(secret))
+  await twoStep.getByRole('button', { name: 'Verify and turn on' }).click()
+  const outcome = await Promise.race([
+    page.waitForURL((url) => url.pathname.startsWith('/admin'), { timeout: 20_000 }).then(() => ({ kind: 'admin' })),
+    twoStep.getByRole('status').waitFor({ state: 'visible', timeout: 20_000 }).then(() => ({ kind: 'enabled' })),
+    twoStep.getByRole('alert').waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'error', text: (await twoStep.getByRole('alert').innerText()).trim() })),
+  ]).catch(() => null)
+  if (!outcome || outcome.kind === 'error') {
+    throw new Error(`Disposable admin could not turn on two-step verification: ${outcome?.text ?? 'timeout'}`)
+  }
+  console.log('ORGANIZATION_HIRING_E2E_ADMIN_TWO_STEP_VERIFIED=true')
+}
+
+/** Admin → organization review → Manual access overrides: one recorded grant, read back after a reload. */
+async function grantOrganizationEntitlement(page, capability) {
+  const overrides = page.locator('section', { has: page.getByRole('heading', { name: 'Manual access overrides', exact: true }) })
+  await overrides.getByLabel('Capability', { exact: true }).selectOption(capability)
+  await overrides.getByLabel('Reason', { exact: true }).fill(`Disposable staging hiring E2E ${runId}: ${capability} for the test organization only.`)
+  await overrides.getByRole('button', { name: 'Grant entitlement' }).click()
+  await expect(overrides.getByRole('status')).toHaveText('Entitlement granted and recorded in the audit trail.', { timeout: 20_000 })
+  await page.reload({ waitUntil: 'networkidle' })
+  // An active grant can't be granted again: its option is disabled.
+  await expect(overrides.getByLabel('Capability', { exact: true }).locator(`option[value="${capability}"]`)).toBeDisabled()
+}
+
 async function approveOrganization() {
   assert.match(applicationId ?? '', /^[0-9a-f-]{36}$/)
   assert.ok(organizationName)
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.admin)
-  await page.goto(`${siteUrl}/admin/organizations/${applicationId}`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: organizationName })).toBeVisible()
-  await expect(page.getByText('Not verified', { exact: true })).toBeVisible()
+  const reviewUrl = `${siteUrl}/admin/organizations/${applicationId}`
+  await page.goto(reviewUrl, { waitUntil: 'networkidle' })
+  if (new URL(page.url()).pathname === '/settings/security') {
+    await enableAdminTwoStep(page)
+    await page.goto(reviewUrl, { waitUntil: 'networkidle' })
+  }
+  assert.equal(new URL(page.url()).pathname, `/admin/organizations/${applicationId}`, `Admin review did not open: ${new URL(page.url()).pathname}`)
+  await expect(page.getByRole('heading', { level: 2, name: organizationName, exact: true })).toBeVisible()
+  // The header badge comes before the "Organization verification" detail, which says the same.
+  await expect(page.getByText('Not verified', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Approve organization' }).click()
   await expect(page.getByText('Verified employer', { exact: true })).toBeVisible({ timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_ADMIN_APPROVAL_UI_VERIFIED=true')
+
+  // Verification alone does not let an organization publish jobs: that needs Organization Pro, or an admin grant.
+  await grantOrganizationEntitlement(page, 'job.publish')
+  await grantOrganizationEntitlement(page, 'job.manage_applicants')
+  console.log('ORGANIZATION_HIRING_E2E_ADMIN_HIRING_GRANTS_UI_VERIFIED=true')
   await context.close()
 }
 
 async function postJobAsOwner() {
   assert.ok(jobTitle)
+  assert.ok(organizationName)
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.applicant)
   await page.goto(`${siteUrl}/hiring`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Hiring', exact: true })).toBeVisible()
-  await expect(page.getByText('Verified company', { exact: true })).toBeVisible()
+  await expect(page.getByText(`Ready · ${organizationName}`, { exact: true })).toBeVisible()
   await page.goto(`${siteUrl}/hiring/jobs/new`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Post a maritime job' })).toBeVisible()
-  await page.getByLabel('Job title').fill(jobTitle)
-  await page.getByLabel('Job type').selectOption('sea')
-  await page.getByLabel('Department').fill('Deck')
-  await page.getByLabel('Rank / position').fill('Chief Officer')
-  await page.getByLabel('Location').fill('Worldwide')
-  await page.getByLabel('Summary').fill('Chief Officer required for a disposable staging tanker vacancy used to verify the complete hiring authorization flow.')
-  await page.getByLabel('Description').fill('Join an oil tanker for a guarded staging-only vacancy. This posting verifies verified-company authorization, structured maritime requirements and publication, then is deleted automatically.')
-  await page.getByLabel('Vessel types').fill('Oil Tanker, Chemical Tanker')
-  await page.getByLabel('Minimum years').fill('2')
-  await page.getByLabel('Maximum years').fill('8')
-  await page.getByLabel('Sailing regions').fill('Worldwide, Middle East')
-  await page.getByLabel('Certificates').fill('STCW, Advanced Oil Tanker')
-  await page.getByLabel('Visas').fill('US C1/D')
-  await page.getByLabel('Other requirements').fill('Valid medical and tanker sea service required for this staging-only test vacancy.')
-  await page.getByLabel('Apply until').fill('2026-09-01')
-  await page.getByLabel('Salary minimum').fill('7000')
-  await page.getByLabel('Salary maximum').fill('8500')
-  await page.getByLabel('Currency').fill('USD')
-  await page.getByLabel('Salary period').selectOption('month')
-  await page.getByLabel('Urgent joining').check()
-  await page.getByLabel('Status').selectOption('published')
+
+  // The radio's name is its whole card: the organization's name first, then its kind and role.
+  const publisher = page.getByRole('radio', { name: new RegExp(`^${escapeRegExp(organizationName)}`) })
+  await expect(publisher).toBeEnabled()
+  await publisher.check()
+  await expect(publisher).toBeChecked()
+
+  await page.getByLabel('Job title', { exact: true }).fill(jobTitle)
+  await page.getByLabel('Department', { exact: true }).selectOption('deck_officers')
+  await page.getByRole('group', { name: 'Accepted ranks / roles' }).getByRole('checkbox', { name: 'Chief Officer', exact: true }).check()
+  const jobType = page.getByLabel('Job type', { exact: true })
+  await expect(jobType).toHaveValue('sea')
+  await expect(jobType).toBeDisabled()
+  await page.getByLabel('Location', { exact: true }).fill('Worldwide')
+  await page.getByLabel('Summary', { exact: true }).fill('Chief Officer required for a disposable staging tanker vacancy used to verify the complete hiring authorization flow.')
+  await page.getByLabel('Description', { exact: true }).fill('Join an oil tanker for a guarded staging-only vacancy. This posting verifies verified-company authorization, structured maritime requirements and publication, then is deleted automatically.')
+  await page.getByLabel('Vessel types', { exact: true }).fill('Oil Tanker, Chemical Tanker')
+  await page.getByLabel('Minimum years', { exact: true }).fill('6')
+  await page.getByLabel('Maximum years', { exact: true }).fill('12')
+  await page.getByLabel('Sailing regions', { exact: true }).fill('Worldwide, Middle East')
+  await page.getByLabel('Certificates', { exact: true }).fill('STCW, Advanced Oil Tanker')
+  await page.getByLabel('Visa / documents note (optional)', { exact: true }).fill('US C1/D')
+  await page.getByLabel('Other requirements', { exact: true }).fill('Valid medical and tanker sea service required for this staging-only test vacancy.')
+  // A future date: the job must go live open. The expired state is made afterwards through SSM.
+  await page.getByLabel('Last date to apply', { exact: true }).fill(isoDateFromToday(30))
+  await page.getByLabel('Salary minimum', { exact: true }).fill('7000')
+  await page.getByLabel('Salary maximum', { exact: true }).fill('8500')
+  await page.getByLabel('Currency', { exact: true }).fill('USD')
+  await page.getByLabel('Salary period', { exact: true }).selectOption('month')
+  await page.getByLabel('Urgent joining', { exact: true }).check()
+  // 0 turns the minimum match off, so the disposable candidate's Easy Apply never depends on match scoring.
+  await page.getByLabel('Minimum match to apply').fill('0')
 
   const postObservations = []
   const requestFailures = []
@@ -276,19 +348,17 @@ async function postJobAsOwner() {
     if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
   })
 
-  const jobStatus = page.locator('p[role="status"]')
-  await page.getByRole('button', { name: 'Create job' }).click()
+  const jobStatus = page.locator('form p[role="status"]')
+  const jobIssues = page.locator('#hiring-job-issues')
+  await page.getByRole('button', { name: 'Publish job', exact: true }).click()
   const outcome = await Promise.race([
     page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 20_000 }).then(() => ({ kind: 'navigated' })),
-    jobStatus.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'status', text: (await jobStatus.innerText()).trim() })),
+    jobIssues.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'issues', text: (await jobIssues.innerText()).trim() })),
   ]).catch(() => null)
 
-  if (outcome?.kind === 'status' && outcome.text !== 'Job saved successfully.') {
+  if (outcome?.kind === 'issues') {
     const probe = runFailedJobProbe()
-    throw new Error(`Job create action failed: status=${JSON.stringify(outcome.text)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
-  }
-  if (outcome?.kind === 'status') {
-    await page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 10_000 }).catch(() => null)
+    throw new Error(`Job create action failed: issues=${JSON.stringify(outcome.text)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
   }
   if (new URL(page.url()).pathname !== '/hiring/jobs') {
     const statusText = await jobStatus.textContent().catch(() => null)
@@ -296,11 +366,21 @@ async function postJobAsOwner() {
     throw new Error(`Job create navigation failed: outcome=${JSON.stringify(outcome)} status=${JSON.stringify(statusText?.trim() || null)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
   }
 
-  await expect(page.getByRole('heading', { name: 'Company jobs' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
-  await expect(page.getByText('published', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Your jobs', exact: true })).toBeVisible()
+  await expect(page.getByText(/^Your job is live: share it\./)).toBeVisible()
+  await expect(ownerJobRow(page).getByText('Live', { exact: true }).filter({ visible: true })).toHaveCount(1)
   console.log('ORGANIZATION_HIRING_E2E_OWNER_JOB_UI_VERIFIED=true')
   await context.close()
+}
+
+/** The job's row on /hiring/jobs (the phone menu copy is hidden at this width). */
+function ownerJobRow(page) {
+  return page.locator('article').filter({ has: page.getByRole('heading', { level: 2, name: jobTitle, exact: true }) })
+}
+
+/** Discovery, newest first: plain SQL paging, so the ranked pool or "Applied" section never moves the job. */
+function jobSearchUrl() {
+  return `${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}&sort=recent`
 }
 
 async function verifyExpiredPublishedJobVisible() {
@@ -310,22 +390,33 @@ async function verifyExpiredPublishedJobVisible() {
   const page = await context.newPage()
   await signInCompleted(page, users.unauthorized)
   await page.goto(`${siteUrl}/jobs`, { waitUntil: 'networkidle' })
-  await expect(page.locator('form[role="search"][action="/jobs"]')).toBeVisible()
+  // The phone toolbar's search form is in the DOM too, hidden at this width.
+  await expect(page.locator('form[role="search"][action="/jobs"]').filter({ visible: true })).toHaveCount(1)
   await expect(page.getByPlaceholder('Position, rank, company or keyword')).toBeVisible()
   console.log('ORGANIZATION_HIRING_E2E_JOBS_DISCOVERY_RENDERED=true')
 
-  await page.goto(`${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}`, { waitUntil: 'networkidle' })
+  // A published job past its apply-by date stays discoverable for members, but offers no way to apply.
+  await page.goto(jobSearchUrl(), { waitUntil: 'networkidle' })
   const jobLink = page.getByRole('link', { name: jobTitle, exact: true })
   await expect(jobLink).toBeVisible()
-  const applyButton = page.getByRole('button', { name: 'Easy Apply' })
-  await expect(applyButton).toBeVisible()
-  await applyButton.click()
-  const applyDialog = page.getByRole('dialog', { name: 'Apply for this job' })
-  await expect(applyDialog).toBeVisible()
-  await applyDialog.getByRole('button', { name: 'Submit application' }).click()
-  await expect(applyDialog.getByRole('alert')).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
+  await expect(page.getByText('Applications closed', { exact: true }).filter({ visible: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Easy Apply' })).toHaveCount(0)
+
+  await jobLink.click()
+  await page.waitForURL((url) => url.pathname === `/jobs/${jobId}`, { timeout: 20_000 })
+  await expect(page.getByText(/^Applications for this job closed on /).filter({ visible: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /^(Easy Apply|Apply now)$/ })).toHaveCount(0)
   console.log('ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true')
   await context.close()
+}
+
+async function runLifecycleAction(page, action, confirmLabel, successText, prepare) {
+  await page.getByRole('group', { name: `Manage ${jobTitle}` }).getByRole('button', { name: action, exact: true }).click()
+  const confirmPanel = page.getByRole('region', { name: `${action} “${jobTitle}”?`, exact: true })
+  await expect(confirmPanel).toBeVisible()
+  if (prepare) await prepare(confirmPanel)
+  await confirmPanel.getByRole('button', { name: confirmLabel, exact: true }).click()
+  await expect(page.getByText(successText, { exact: true })).toBeVisible({ timeout: 20_000 })
 }
 
 async function archiveAndRepublishJob() {
@@ -334,29 +425,33 @@ async function archiveAndRepublishJob() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.applicant)
+  const editUrl = `${siteUrl}/hiring/jobs/${jobId}/edit`
+  const jobState = page.getByRole('region', { name: jobTitle, exact: true })
 
-  await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
+  await page.goto(editUrl, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Edit vacancy' })).toBeVisible()
-  await expect(page.getByLabel('Apply until')).toHaveValue('2026-09-01')
-  await page.getByLabel('Status').selectOption('closed')
-  await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect(page.locator('p[role="status"]')).toHaveText('Changes saved successfully.', { timeout: 20_000 })
+  await expect(jobState.getByText('Applications closed', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Last date to apply', { exact: true })).not.toHaveValue('')
+
+  // Archive: hidden from job search, still reviewable.
+  await runLifecycleAction(page, 'Archive', 'Archive job', 'Job archived. It is hidden from job search; you can still review applicants.')
+  await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
+  await expect(ownerJobRow(page).getByText('Archived', { exact: true }).filter({ visible: true })).toHaveCount(1)
+
+  // Republish: the passed apply-by date is not carried over; "No closing date" keeps applications open.
+  await page.goto(editUrl, { waitUntil: 'networkidle' })
+  await expect(jobState.getByText('Archived', { exact: true })).toBeVisible()
+  await runLifecycleAction(page, 'Republish', 'Republish job', 'Job republished. It is visible in job search again.', async (confirmPanel) => {
+    await expect(confirmPanel.getByText(/^The previous apply-by date \(.+\) has passed\. Choose a new date or remove it\.$/)).toBeVisible()
+    await expect(confirmPanel.getByLabel('Apply by', { exact: true })).toHaveValue('')
+    await confirmPanel.getByLabel('No closing date', { exact: true }).check()
+  })
+  await page.goto(editUrl, { waitUntil: 'networkidle' })
+  await expect(jobState.getByText('Live', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Last date to apply', { exact: true })).toHaveValue('')
 
   await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
-  await expect(page.getByText('closed', { exact: true })).toBeVisible()
-
-  await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Edit vacancy' })).toBeVisible()
-  await expect(page.getByLabel('Status')).toHaveValue('closed')
-  await expect(page.getByLabel('Apply until')).toHaveValue('2026-09-01')
-  await page.getByLabel('Status').selectOption('published')
-  await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect(page.locator('p[role="status"]')).toHaveText('Changes saved successfully.', { timeout: 20_000 })
-
-  await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
-  await expect(page.getByText('published', { exact: true })).toBeVisible()
+  await expect(ownerJobRow(page).getByText('Live', { exact: true }).filter({ visible: true })).toHaveCount(1)
   console.log('ORGANIZATION_HIRING_E2E_ARCHIVE_REPUBLISH_UI_VERIFIED=true')
   await context.close()
 }
@@ -367,7 +462,7 @@ async function applyToPublishedJob() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.unauthorized)
-  await page.goto(`${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}`, { waitUntil: 'networkidle' })
+  await page.goto(jobSearchUrl(), { waitUntil: 'networkidle' })
   const jobLink = page.getByRole('link', { name: jobTitle, exact: true })
   await expect(jobLink).toBeVisible()
   await expect(page.getByRole('button', { name: 'Easy Apply' })).toBeVisible()
@@ -422,8 +517,9 @@ async function applyToPublishedJob() {
   await page.waitForURL((url) => url.pathname === `/jobs/${jobId}`, { timeout: 20_000 })
   await expect(page.getByText('Application submitted', { exact: true }).first()).toBeVisible()
 
+  // The phone list repeats each title, hidden at this width; getByRole sees only the visible link.
   await page.goto(`${siteUrl}/jobs/applications`, { waitUntil: 'networkidle' })
-  await expect(page.getByText(jobTitle, { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('link', { name: jobTitle, exact: true })).toBeVisible({ timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_JOB_APPLICATION_UI_VERIFIED=true')
   await context.close()
 
@@ -431,16 +527,17 @@ async function applyToPublishedJob() {
   const ownerPage = await ownerContext.newPage()
   await signInCompleted(ownerPage, users.applicant)
   await ownerPage.goto(`${siteUrl}/hiring/jobs/${jobId}/applicants`, { waitUntil: 'networkidle' })
-  await expect(ownerPage.getByText(users.unauthorized.fullName, { exact: true })).toBeVisible({ timeout: 20_000 })
-  await ownerPage.getByRole('link', { name: 'Review candidate' }).click()
+  await expect(ownerPage.getByRole('heading', { name: users.unauthorized.fullName, exact: true })).toBeVisible({ timeout: 20_000 })
+  await ownerPage.getByRole('link', { name: 'Review application' }).click()
   await expect(ownerPage.getByText('Candidate CV', { exact: true })).toBeVisible()
   await expect(ownerPage.getByText(cvFileName, { exact: true })).toBeVisible()
   const cvLink = ownerPage.getByRole('link', { name: 'View CV (PDF)' })
   await expect(cvLink).toBeVisible()
   const cvHref = await cvLink.getAttribute('href')
-  assert.ok(cvHref, 'Recruiter CV link must have a signed href')
-  const cvResponse = await ownerContext.request.get(cvHref)
-  assert.equal(cvResponse.status(), 200, `Expected signed CV URL to return 200, got ${cvResponse.status()}`)
+  assert.ok(cvHref, 'Recruiter CV link must have an href')
+  // The first-party CV route checks the signed-in hiring team on every request; the context sends its cookies.
+  const cvResponse = await ownerContext.request.get(new URL(cvHref, siteUrl).href)
+  assert.equal(cvResponse.status(), 200, `Expected the CV route to return 200, got ${cvResponse.status()}`)
   assert.match(cvResponse.headers()['content-type'] ?? '', /^application\/pdf(?:;|$)/i)
   console.log('ORGANIZATION_HIRING_E2E_CV_UPLOAD_REVIEW_VERIFIED=true')
   await ownerContext.close()
@@ -451,12 +548,24 @@ async function verifyUnauthorized() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.unauthorized)
+
+  // The form renders for any member, but no identity of theirs can publish.
   await page.goto(`${siteUrl}/hiring/jobs/new`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Hiring access required' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Post a maritime job' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'To publish this job, you still need:', exact: true })).toBeVisible()
+  await expect(page.getByRole('radio')).toHaveCount(1)
+  await expect(page.getByRole('radio', { disabled: false })).toHaveCount(0)
+  await expect(page.getByText('Verification required', { exact: true })).toBeVisible()
+
   await page.goto(`${siteUrl}/hiring`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Hiring access' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hiring', exact: true })).toBeVisible()
+  await expect(page.getByText('Publishing setup required', { exact: true })).toBeVisible()
+  await expect(page.getByText(/^Ready · /)).toHaveCount(0)
+
   const crossCompanyResponse = await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
   assert.equal(crossCompanyResponse?.status(), 404, 'Unauthorized cross-company edit route must return 404')
+  const crossCompanyApplicants = await page.goto(`${siteUrl}/hiring/jobs/${jobId}/applicants`, { waitUntil: 'networkidle' })
+  assert.equal(crossCompanyApplicants?.status(), 404, 'Unauthorized cross-company applicants route must return 404')
   console.log('ORGANIZATION_HIRING_E2E_UNAUTHORIZED_UI_VERIFIED=true')
   await context.close()
 }

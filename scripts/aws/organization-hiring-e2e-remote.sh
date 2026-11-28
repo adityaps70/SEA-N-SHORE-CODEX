@@ -18,6 +18,9 @@ for EMAIL in "$APPLICANT" "$ADMIN" "$UNAUTHORIZED"; do
 done
 [[ "$ORGANIZATION_NAME" == "E2E Hiring Organization "* ]] || { echo "Unsafe organization target." >&2; exit 1; }
 [[ "$JOB_TITLE" == "E2E Chief Officer "* ]] || { echo "Unsafe job target." >&2; exit 1; }
+# The run id ends the organization name; the browser E2E writes it into each admin grant's reason.
+RUN_ID="${ORGANIZATION_NAME##* }"
+[[ "$RUN_ID" =~ ^[0-9]+$ && "$JOB_TITLE" == "E2E Chief Officer $RUN_ID" ]] || { echo "Unsafe run target." >&2; exit 1; }
 
 resolve_pool() {
   POOL_ID=$(aws cognito-idp list-user-pools --region "$AWS_REGION" --max-results 60 --query "UserPools[?Name=='$COGNITO_POOL_NAME'].Id | [0]" --output text)
@@ -76,6 +79,12 @@ case "$PHASE" in
     RESULT=$(sql "SELECT oa.status::text, c.is_verified::text, (cm.approved_at IS NOT NULL)::text, cm.is_verified::text FROM public.organization_applications oa JOIN public.companies c ON c.id=oa.company_id JOIN public.company_members cm ON cm.company_id=c.id AND cm.user_id=oa.submitted_by AND cm.role::text='owner' WHERE oa.id='$APPLICATION_ID'::uuid AND c.id='$COMPANY_ID'::uuid")
     ROW=$(jq -r '.records[0] | map(.stringValue // "") | @tsv' <<<"$RESULT")
     [[ "$ROW" == $'approved\ttrue\ttrue\ttrue' ]] || { echo "Approval state mismatch: $ROW" >&2; exit 1; }
+    # Verification alone gives no publishing: the disposable admin granted exactly these two, recorded as admin grants.
+    GRANTS=$(sql "SELECT coalesce(string_agg(g.capability, ',' ORDER BY g.capability), '') FROM public.entitlement_grants g WHERE g.company_id='$COMPANY_ID'::uuid AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > now()) AND g.source='admin' AND g.granted_by=($admin_id_sql)" | jq -r '.records[0][0].stringValue // empty')
+    [[ "$GRANTS" == 'job.manage_applicants,job.publish' ]] || { echo "Hiring grant mismatch: $GRANTS" >&2; exit 1; }
+    OTHER_GRANTS=$(sql "SELECT count(*)::text FROM public.entitlement_grants g WHERE g.company_id='$COMPANY_ID'::uuid AND NOT (g.source='admin' AND g.granted_by=($admin_id_sql) AND g.capability IN ('job.publish','job.manage_applicants'))" | jq -r '.records[0][0].stringValue // empty')
+    [[ "$OTHER_GRANTS" == 0 ]] || { echo "Unexpected organization grants: $OTHER_GRANTS" >&2; exit 1; }
+    echo 'ORGANIZATION_HIRING_E2E_HIRING_GRANTS_VERIFIED=true'
     echo 'ORGANIZATION_HIRING_E2E_APPROVAL_VERIFIED=true'
     ;;
 
@@ -90,6 +99,18 @@ case "$PHASE" in
     [[ "$JOB_ID" =~ ^[0-9a-f-]{36}$ && "$STATUS" == published && "$JOB_COMPANY_ID" == "$COMPANY_ID" && "$OWNER_MATCH" == true ]]
     echo "ORGANIZATION_HIRING_E2E_JOB_ID=$JOB_ID"
     echo 'ORGANIZATION_HIRING_E2E_JOB_VERIFIED=true'
+    ;;
+
+  expire-job)
+    # The UI refuses a past apply-by date, so the disposable job's date is moved back here, for this one job only.
+    resolve_db
+    [[ "$JOB_ID" =~ ^[0-9a-f-]{36}$ && "$COMPANY_ID" =~ ^[0-9a-f-]{36}$ ]]
+    UPDATED=$(sql "UPDATE public.jobs SET apply_until = current_date - 1 WHERE id='$JOB_ID'::uuid AND company_id='$COMPANY_ID'::uuid AND title='$JOB_TITLE' AND status::text='published' AND deleted_at IS NULL RETURNING id::text" | jq -r '.records | length')
+    [[ "$UPDATED" == 1 ]] || { echo "Expected to expire exactly one disposable job; updated $UPDATED." >&2; exit 1; }
+    RESULT=$(sql "SELECT j.status::text, (j.apply_until < current_date)::text FROM public.jobs j WHERE j.id='$JOB_ID'::uuid")
+    ROW=$(jq -r '.records[0] | map(.stringValue // "") | @tsv' <<<"$RESULT")
+    [[ "$ROW" == $'published\ttrue' ]] || { echo "Expired job state mismatch: $ROW" >&2; exit 1; }
+    echo 'ORGANIZATION_HIRING_E2E_JOB_EXPIRED=true'
     ;;
 
   probe-job)
@@ -133,7 +154,8 @@ case "$PHASE" in
     resolve_db
     MEMBER_COUNT=$(sql "SELECT count(*)::text FROM public.company_members WHERE user_id=($unauthorized_id_sql)" | jq -r '.records[0][0].stringValue // empty')
     ADMIN_COUNT=$(sql "SELECT count(*)::text FROM public.user_roles WHERE user_id=($unauthorized_id_sql) AND role::text='administrator'" | jq -r '.records[0][0].stringValue // empty')
-    [[ "$MEMBER_COUNT" == 0 && "$ADMIN_COUNT" == 0 ]]
+    GRANT_COUNT=$(sql "SELECT count(*)::text FROM public.entitlement_grants WHERE profile_id=($unauthorized_id_sql)" | jq -r '.records[0][0].stringValue // empty')
+    [[ "$MEMBER_COUNT" == 0 && "$ADMIN_COUNT" == 0 && "$GRANT_COUNT" == 0 ]]
     echo 'ORGANIZATION_HIRING_E2E_UNAUTHORIZED_VERIFIED=true'
     ;;
 
@@ -145,11 +167,12 @@ case "$PHASE" in
     sql "DELETE FROM public.organization_applications WHERE submitted_by IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
     sql "DELETE FROM public.company_access_requests WHERE user_id IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
     sql "DELETE FROM public.company_members WHERE user_id IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
+    sql "DELETE FROM public.entitlement_grants WHERE company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME' OR created_by=($applicant_id_sql)) OR profile_id IN ($profile_ids_sql)" >/dev/null
     sql "DELETE FROM public.companies WHERE name='$ORGANIZATION_NAME' OR created_by=($applicant_id_sql)" >/dev/null
     sql "DELETE FROM public.user_roles WHERE user_id IN ($profile_ids_sql)" >/dev/null
     sql "DELETE FROM public.profiles WHERE id IN ($profile_ids_sql)" >/dev/null
 
-    DB_LEFT=$(sql "SELECT ((SELECT count(*) FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$APPLICANT','$ADMIN','$UNAUTHORIZED')) + (SELECT count(*) FROM public.companies WHERE name='$ORGANIZATION_NAME') + (SELECT count(*) FROM public.jobs WHERE title='$JOB_TITLE'))::text" | jq -r '.records[0][0].stringValue // empty')
+    DB_LEFT=$(sql "SELECT ((SELECT count(*) FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$APPLICANT','$ADMIN','$UNAUTHORIZED')) + (SELECT count(*) FROM public.companies WHERE name='$ORGANIZATION_NAME') + (SELECT count(*) FROM public.jobs WHERE title='$JOB_TITLE') + (SELECT count(*) FROM public.entitlement_grants WHERE reason LIKE 'Disposable staging hiring E2E $RUN_ID:%'))::text" | jq -r '.records[0][0].stringValue // empty')
     [[ "$DB_LEFT" == 0 ]] || { echo "Disposable DB artifacts remain: $DB_LEFT" >&2; exit 1; }
 
     for EMAIL in "$APPLICANT" "$ADMIN" "$UNAUTHORIZED"; do
