@@ -10,6 +10,7 @@ on:
       - scripts/aws/organization-hiring-staging-e2e.mjs
       - scripts/aws/organization-hiring-e2e-ssm.mjs
       - scripts/aws/organization-hiring-e2e-remote.sh
+      - scripts/aws/e2e-onboarding.mjs
       - .github/workflows/aws-organization-hiring-e2e.yml
   workflow_dispatch:
 
@@ -85,7 +86,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GUARD_FILE: scripts/aws/organization-hiring-e2e-action.txt
-          RUNNER_FILES: "scripts/aws/organization-hiring-e2e-guard.test.mjs scripts/aws/organization-hiring-staging-e2e.mjs scripts/aws/organization-hiring-e2e-ssm.mjs scripts/aws/organization-hiring-e2e-remote.sh"
+          RUNNER_FILES: "scripts/aws/organization-hiring-e2e-guard.test.mjs scripts/aws/organization-hiring-staging-e2e.mjs scripts/aws/organization-hiring-e2e-ssm.mjs scripts/aws/organization-hiring-e2e-remote.sh scripts/aws/e2e-onboarding.mjs"
         shell: bash
         run: |
           set -euo pipefail

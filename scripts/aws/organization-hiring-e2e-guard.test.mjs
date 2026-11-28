@@ -45,11 +45,11 @@ test('run-once uses disposable authenticated users and the live organization app
 
   assert.match(browserScript, /\/auth\/sign-up/)
   assert.match(browserScript, /\/auth\/sign-in/)
-  assert.match(browserScript, /Search organisation identities/)
-  assert.match(browserScript, /Shipowner — Shipping & Ship Management/)
-  assert.match(browserScript, /\/hiring\/organization/)
+  assert.match(browserScript, /\/organizations\/register/)
+  assert.match(browserScript, /getByRole\('form', \{ name: 'Register a new organization' \}\)/)
+  assert.match(browserScript, /selectOption\('shipowner'\)/)
   assert.match(browserScript, /Submit for verification/)
-  assert.match(browserScript, /Verification in progress/)
+  assert.match(browserScript, /Organization verification in progress/)
   assert.match(browserScript, /\/admin\/organizations\//)
   assert.match(browserScript, /Approve organization/)
   assert.match(browserScript, /Verified employer/)
@@ -87,19 +87,66 @@ test('organization hiring e2e proves expired published visibility and archived r
   assert.match(remote, /published_at > created_at/i)
 })
 
-test('organization onboarding follows the production organization hiring redirect', () => {
+test('applicant onboarding is the Recruiter / HR persona and lands on Home, like production', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
   const organizationFlow = browserScript.match(/async function completeApplicantOrganisation[\s\S]*?\n}\n/)?.[0] ?? ''
 
-  assert.match(organizationFlow, /url\.pathname === '\/hiring\/organization'/)
-  assert.doesNotMatch(organizationFlow, /url\.pathname === '\/home'/)
+  // Persona onboarding no longer creates an organization (src/features/profiles/actions-organization-redirect.test.ts).
+  assert.match(organizationFlow, /getByRole\('button', \{ name: 'Recruiter \/ HR', exact: true \}\)/)
+  assert.match(organizationFlow, /getByRole\('button', \{ name: 'Hire people', exact: true \}\)/)
+  assert.match(organizationFlow, /toHaveAttribute\('aria-pressed', 'true'\)/)
+  assert.match(organizationFlow, /getByLabel\('Current organisation', \{ exact: true \}\)/)
+  assert.match(organizationFlow, /`hire-org-\$\{runId\}`/)
+  assert.match(organizationFlow, /url\.pathname === '\/home'/)
+  assert.doesNotMatch(organizationFlow, /hiring\/organization/)
+  assert.doesNotMatch(organizationFlow, /Organisation name/)
+})
+
+test('member onboarding uses the shared Seafarer Master helper with the script\'s own disposable username', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const professionalFlow = browserScript.match(/async function completeProfessional[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  assert.match(browserScript, /^import \{ chooseSeafarerMaster \} from '\.\/e2e-onboarding\.mjs'$/m)
+  assert.match(professionalFlow, /await chooseSeafarerMaster\(page, \{ organisation \}\)/)
+  assert.match(professionalFlow, /`hire-\$\{slugSuffix\}-\$\{runId\}`/)
+  assert.match(professionalFlow, /username\.length <= 30/)
+  assert.match(professionalFlow, /input\[name="slug"\]/)
+  assert.match(professionalFlow, /getByText\('Username is available\.', \{ exact: true \}\)/)
+  assert.match(professionalFlow, /url\.pathname === '\/home'/)
+
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /paths:[\s\S]*?\n\s+- scripts\/aws\/e2e-onboarding\.mjs\n[\s\S]*?workflow_dispatch:/)
+  assert.match(workflow, /RUNNER_FILES: "[^"]*\bscripts\/aws\/e2e-onboarding\.mjs\b[^"]*"/)
+})
+
+test('the retired Professional / Organisation onboarding cards and old hiring form are gone', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  for (const retired of [
+    'Professional Build your individual maritime identity',
+    'Organisation Represent a maritime organisation',
+    'Search professional identities',
+    'Search organisation identities',
+    'Master — Sea-going · Deck',
+    'Shipowner — Shipping & Ship Management',
+    'data-primary-identity',
+    'Organisation name',
+    'Organization verification\'',
+    'Official company email',
+    "fill('Shipowner and Ship Manager')",
+  ]) {
+    assert.equal(browserScript.includes(retired), false, `retired onboarding or registration UI is still used: ${retired}`)
+  }
+  assert.doesNotMatch(browserScript, /\$\{siteUrl\}\/hiring\/organization/)
 })
 
 test('organization submission verifies durable review state instead of a transient toast', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
   const submissionFlow = browserScript.match(/async function submitOrganizationApplication[\s\S]*?\n}\n/)?.[0] ?? ''
 
-  assert.match(submissionFlow, /getByRole\('heading', \{ name: 'Verification in progress' \}\)/)
+  assert.match(submissionFlow, /\$\{siteUrl\}\/organizations\/register/)
+  assert.match(submissionFlow, /getByLabel\('Organization name', \{ exact: true \}\)\.fill\(organizationName\)/)
+  // The status line only proves the action returned; the review state is read back after loading Organizations.
+  assert.match(submissionFlow, /getByRole\('status'\)[\s\S]*goto\(`\$\{siteUrl\}\/organizations`[\s\S]*getByRole\('heading', \{ name: 'Organization verification in progress', exact: true \}\)/)
   assert.doesNotMatch(submissionFlow, /getByText\('Organization submitted for verification\.'\)/)
 })
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { chromium, expect } from '@playwright/test'
+import { chooseSeafarerMaster } from './e2e-onboarding.mjs'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
@@ -130,23 +131,34 @@ async function signInCompleted(page, user) {
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 }
 
+/**
+ * Persona onboarding no longer creates an organization: the applicant activates as Recruiter / HR (intent: Hire
+ * people) and lands on Home, like every persona. The organization page and its hiring access come from the separate
+ * registration flow (/organizations/register) in the applicant-submit phase, and from admin approval after that.
+ */
 async function completeApplicantOrganisation() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInForOnboarding(page, users.applicant)
-  await page.getByRole('button', { name: /Organisation Represent a maritime organisation/ }).click()
-  await page.getByLabel('Search organisation identities').fill('Shipowner')
-  await page.getByRole('button', { name: 'Shipowner — Shipping & Ship Management' }).click()
-  await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Shipowner')
-  await page.getByLabel('Organisation name').fill(`E2E Applicant Maritime ${runId}`)
+  const persona = page.getByRole('button', { name: 'Recruiter / HR', exact: true })
+  await persona.click()
+  await expect(persona).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText('What are you here to do?', { exact: true })).toBeVisible()
+  const intent = page.getByRole('button', { name: 'Hire people', exact: true })
+  await intent.click()
+  await expect(intent).toHaveAttribute('aria-pressed', 'true')
+  // Typed without choosing from the list, so it stays profile text and creates no organization page.
+  await page.getByLabel('Current organisation', { exact: true }).fill('Sea N Shore E2E Applicant')
+  await page.getByLabel('Role', { exact: true }).selectOption('hr_crewing_manager')
   const username = `hire-org-${runId}`
+  assert.ok(username.length <= 30, `Disposable hiring username is too long: ${username}`)
   await page.locator('input[name="slug"]').fill(username)
   await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
-  await page.getByLabel('Location').fill('Mumbai')
+  await page.getByLabel('Location', { exact: true }).fill('Mumbai')
   const completeButton = page.getByRole('button', { name: 'Complete profile' })
   await expect(completeButton).toBeEnabled()
   await completeButton.click()
-  await page.waitForURL((url) => url.pathname === '/hiring/organization', { timeout: 20_000 })
+  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
   await context.close()
 }
 
@@ -154,16 +166,12 @@ async function completeProfessional(user, slugSuffix, organisation) {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInForOnboarding(page, user)
-  await page.getByRole('button', { name: /Professional Build your individual maritime identity/ }).click()
-  await page.getByLabel('Search professional identities').fill('Master')
-  await page.getByRole('button', { name: 'Master — Sea-going · Deck' }).click()
-  await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Master')
+  await chooseSeafarerMaster(page, { organisation })
   const username = `hire-${slugSuffix}-${runId}`
   assert.ok(username.length <= 30, `Disposable hiring username is too long: ${username}`)
   await page.locator('input[name="slug"]').fill(username)
   await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
-  await page.getByLabel('Location').fill('Mumbai')
-  await page.getByLabel('Current organisation').fill(organisation)
+  await page.getByLabel('Location', { exact: true }).fill('Mumbai')
   const completeButton = page.getByRole('button', { name: 'Complete profile' })
   await expect(completeButton).toBeEnabled()
   await completeButton.click()
@@ -176,21 +184,30 @@ async function submitOrganizationApplication() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.applicant)
-  await page.goto(`${siteUrl}/hiring/organization`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: 'Organization verification' })).toBeVisible()
-  await page.getByLabel('Organization name').fill(organizationName)
-  await page.getByLabel('Organization type').fill('Shipowner and Ship Manager')
-  await page.getByLabel('Website').fill('https://example.com')
-  await page.getByLabel('Official company email').fill(users.applicant.email)
-  await page.getByLabel('Office location').fill('Mumbai, India')
-  await page.getByLabel('Description').fill('Disposable maritime employer record created only for the guarded Sea N Shore staging hiring end-to-end verification.')
-  await page.getByLabel('Fleet summary').fill('Two test-managed tanker vessels used only as structured staging verification data.')
-  await page.getByLabel('Vessel types').fill('Oil Tanker, Chemical Tanker')
-  await page.getByLabel('Your role / relationship').fill('Director')
-  await page.getByLabel('Registration / reference number').fill(`E2E-${runId}`)
-  await page.getByLabel('Supporting notes').fill('Guarded staging E2E. This organization and all linked records must be deleted by workflow cleanup.')
-  await page.getByRole('button', { name: 'Submit for verification' }).click()
-  await expect(page.getByRole('heading', { name: 'Verification in progress' })).toBeVisible({ timeout: 20_000 })
+  // /hiring/organization now only redirects to /organizations; registration has its own page.
+  await page.goto(`${siteUrl}/organizations/register`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { level: 1, name: 'Register your organization', exact: true })).toBeVisible()
+  const form = page.getByRole('form', { name: 'Register a new organization' })
+  // The type comes first: it shows the fleet fields and renames the registration number for a shipowner.
+  await form.getByLabel('Organization type', { exact: true }).selectOption('shipowner')
+  await form.getByLabel('Organization name', { exact: true }).fill(organizationName)
+  await form.getByLabel('Website').fill('https://example.com')
+  await form.getByLabel('Official work email', { exact: true }).fill(users.applicant.email)
+  await form.getByLabel('Office location', { exact: true }).fill('Mumbai, India')
+  await form.getByLabel('Country', { exact: true }).selectOption('IN')
+  await form.getByLabel('Description', { exact: true }).fill('Disposable maritime employer record created only for the guarded Sea N Shore staging hiring end-to-end verification.')
+  await form.getByLabel('Number of vessels').fill('2')
+  await form.getByLabel('Vessel types').fill('Oil Tanker, Chemical Tanker')
+  await form.getByLabel('Fleet summary').fill('Two test-managed tanker vessels used only as structured staging verification data.')
+  await form.getByLabel('Your role / relationship', { exact: true }).fill('Director')
+  await form.getByLabel('Company registration or IMO company number').fill(`E2E-${runId}`)
+  await form.getByLabel('Supporting notes').fill('Guarded staging E2E. This organization and all linked records must be deleted by workflow cleanup.')
+  await form.getByRole('button', { name: 'Submit for verification' }).click()
+  // The form's status line only says the action returned; the durable review state is read back from Organizations.
+  await expect(form.getByRole('status')).toHaveText(/^Organization submitted\./, { timeout: 20_000 })
+  await page.goto(`${siteUrl}/organizations`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Organization verification in progress', exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(`Sea N Shore is reviewing ${organizationName}.`, { exact: false })).toBeVisible()
   console.log('ORGANIZATION_HIRING_E2E_APPLICATION_SUBMITTED=true')
   await context.close()
 }
