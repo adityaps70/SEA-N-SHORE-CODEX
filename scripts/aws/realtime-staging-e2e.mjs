@@ -176,6 +176,38 @@ async function connectProbeJourney() {
   }
 }
 
+// Home in the Recent sort (newest first), remembered on the server for this member. Top for you serves a
+// snapshot built on an earlier visit, so a post or repost made a moment ago may not be in it yet.
+async function openRecentHome(page) {
+  await page.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
+  const recent = page.getByRole('radiogroup', { name: 'Sort the feed' }).getByRole('radio', { name: 'Recent' })
+  await expect(recent).toBeVisible({ timeout: 20_000 })
+  if ((await recent.getAttribute('aria-checked')) !== 'true') await recent.click()
+  await expect(recent).toHaveAttribute('aria-checked', 'true', { timeout: 20_000 })
+}
+
+// A feed hint never re-renders the open page (Round ARCH), so the author checks a like or comment on a fresh
+// page of the same session; the page holding the probe socket stays open.
+async function expectOnFreshHome(context, postBody, check) {
+  const page = await context.newPage()
+  try {
+    await openRecentHome(page)
+    const card = page.locator('article').filter({ hasText: postBody }).first()
+    await expect(card).toBeVisible({ timeout: 30_000 })
+    await check(card)
+  } finally {
+    await page.close()
+  }
+}
+
+// A card shows its comments in an open thread; desktop cards keep them behind the Comment button.
+async function expectCommentOnCard(card, commentBody) {
+  const comment = card.getByText(commentBody, { exact: true }).first()
+  const shown = await comment.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false)
+  if (!shown) await card.getByRole('button', { name: 'Comment', exact: true }).first().click()
+  await expect(comment).toBeVisible({ timeout: 30_000 })
+}
+
 async function socialJourney() {
   const senderContext = await browser.newContext()
   const recipientContext = await browser.newContext()
@@ -185,63 +217,17 @@ async function socialJourney() {
   try {
     await signInCompleted(senderPage, users.sender)
     await signInCompleted(recipientPage, users.recipient)
-    await senderPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
-    await recipientPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
-
-    const senderTicket = await openProbeSocket(senderPage, 'social_sender')
-    const recipientTicket = await openProbeSocket(recipientPage, 'social_recipient')
-    assert.match(senderTicket.webSocketUrl, /^wss:/)
-    assert.equal(senderTicket.webSocketUrl, recipientTicket.webSocketUrl)
-
-    await senderPage.getByRole('button', { name: 'Start a post' }).click()
-    await senderPage.getByLabel('Post to Sea N Shore').fill(socialPostBody)
-    await senderPage.getByRole('button', { name: 'Post', exact: true }).click()
-    await expect(senderPage.getByText(socialPostBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-
-    const createdSignal = await waitForSignal(recipientPage, 'social_recipient', 'feed.post_created')
-    assertSocialSignalMetadataOnly(createdSignal, 'feed.post_created', 'feed', socialPostBody)
-    await expect(recipientPage.getByText(socialPostBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-    console.log('REALTIME_E2E_FEED_POST_CREATED_VERIFIED=true')
-
-    const recipientPost = recipientPage.locator('article').filter({ hasText: socialPostBody }).first()
-    await recipientPost.getByRole('button', { name: 'Like', exact: true }).click()
-    const reactionAdded = await waitForSignal(senderPage, 'social_sender', 'feed.post_reaction_changed', 1)
-    assertSocialSignalMetadataOnly(reactionAdded, 'feed.post_reaction_changed', 'feed', socialPostBody)
-    const senderPost = senderPage.locator('article').filter({ hasText: socialPostBody }).first()
-    await expect(senderPost.getByRole('button', { name: 'View 1 reaction' })).toBeVisible({ timeout: 30_000 })
-
-    await recipientPost.getByRole('button', { name: 'Like', exact: true }).click()
-    const reactionRemoved = await waitForSignal(senderPage, 'social_sender', 'feed.post_reaction_changed', 2)
-    assertSocialSignalMetadataOnly(reactionRemoved, 'feed.post_reaction_changed', 'feed', socialPostBody)
-    await expect(senderPost.getByRole('button', { name: 'View 1 reaction' })).toHaveCount(0, { timeout: 30_000 })
-    console.log('REALTIME_E2E_FEED_REACTION_TOGGLE_VERIFIED=true')
-
-    await recipientPost.getByRole('button', { name: 'Comment', exact: true }).click()
-    await recipientPost.getByLabel('Add a comment').fill(socialCommentBody)
-    await recipientPost.getByRole('button', { name: 'Comment', exact: true }).last().click()
-    await expect(recipientPost.getByText(socialCommentBody, { exact: true })).toBeVisible({ timeout: 20_000 })
-    const commentSignal = await waitForSignal(senderPage, 'social_sender', 'feed.post_comments_changed')
-    assertSocialSignalMetadataOnly(commentSignal, 'feed.post_comments_changed', 'feed', socialCommentBody)
-    await expect(senderPost.getByText(socialCommentBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-    console.log('REALTIME_E2E_FEED_COMMENT_VERIFIED=true')
-
-    await recipientPost.getByRole('button', { name: 'Share', exact: true }).click()
-    await recipientPost.getByRole('menuitem', { name: 'Repost to feed' }).click()
-    const repostSignal = await waitForSignal(senderPage, 'social_sender', 'feed.post_reposted')
-    assertSocialSignalMetadataOnly(repostSignal, 'feed.post_reposted', 'feed', socialPostBody)
-    await senderPage.waitForFunction((body) => {
-      return Array.from(document.querySelectorAll('article')).filter((article) => article.textContent?.includes(body)).length >= 2
-    }, socialPostBody, { timeout: 30_000 })
-    console.log('REALTIME_E2E_FEED_REPOST_VERIFIED=true')
-
-    await closeProbeSocket(senderPage, 'social_sender')
-    await closeProbeSocket(recipientPage, 'social_recipient')
-
+    // Round ARCH broadcast fix (1201db39): a new post's or repost's hint reaches only the author's network, and a
+    // like's or comment's only the post's author; a hint never re-renders the page. So the two members connect
+    // first, the reader sees a new post through "N new posts", and the author sees a like or comment on a fresh page.
     await senderPage.goto(`${siteUrl}/people/rt-recipient-${runId}`, { waitUntil: 'domcontentloaded' })
     await openProbeSocket(senderPage, 'social_sender_connection')
     await senderPage.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect(senderPage.getByText('Pending', { exact: true })).toBeVisible({ timeout: 20_000 })
-    await expect(senderPage.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled({ timeout: 20_000 })
+    // A pending request can still be withdrawn: Cancel request sits in the profile's More menu.
+    await senderPage.getByRole('button', { name: 'More', exact: true }).click()
+    await expect(senderPage.getByRole('menuitem', { name: 'Cancel request' })).toBeEnabled({ timeout: 20_000 })
+    await senderPage.keyboard.press('Escape')
 
     await recipientPage.goto(`${siteUrl}/people/rt-sender-${runId}`, { waitUntil: 'domcontentloaded' })
     await openProbeSocket(recipientPage, 'social_recipient_connection')
@@ -250,15 +236,82 @@ async function socialJourney() {
     const recipientConnectionSignal = await waitForSignal(recipientPage, 'social_recipient_connection', 'connection.accepted')
     assertSocialSignalMetadataOnly(senderConnectionSignal, 'connection.accepted', 'network')
     assertSocialSignalMetadataOnly(recipientConnectionSignal, 'connection.accepted', 'network')
-    await expect(senderPage.getByText('Connected', { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(recipientPage.getByText('Connected', { exact: true })).toBeVisible({ timeout: 30_000 })
+    // Connected members see Message where Connect, Pending or Accept was.
+    await expect(recipientPage.getByRole('button', { name: 'Message', exact: true })).toBeVisible({ timeout: 30_000 })
+    await senderPage.reload({ waitUntil: 'domcontentloaded' })
+    await expect(senderPage.getByRole('button', { name: 'Message', exact: true })).toBeVisible({ timeout: 30_000 })
     console.log('REALTIME_E2E_CONNECTION_ACCEPTED_VERIFIED=true')
-
-    await closeProbeSocket(senderPage, 'social_sender_connection')
     await closeProbeSocket(recipientPage, 'social_recipient_connection')
-    await recipientPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
+
+    await openRecentHome(senderPage)
+    await openRecentHome(recipientPage)
+    const recipientTicket = await openProbeSocket(recipientPage, 'social_recipient')
+
+    await senderPage.getByRole('button', { name: 'Start a post' }).click()
+    await senderPage.getByLabel('Post to Sea N Shore').fill(socialPostBody)
+    await senderPage.getByRole('button', { name: 'Post Update', exact: true }).click()
+    await expect(senderPage.getByRole('heading', { name: 'Create a post' })).toBeHidden({ timeout: 20_000 })
+    await openRecentHome(senderPage)
+    await expect(senderPage.locator('article').filter({ hasText: socialPostBody }).first()).toBeVisible({ timeout: 30_000 })
+    const senderTicket = await openProbeSocket(senderPage, 'social_sender')
+    assert.match(senderTicket.webSocketUrl, /^wss:/)
+    assert.equal(senderTicket.webSocketUrl, recipientTicket.webSocketUrl)
+
+    const createdSignal = await waitForSignal(recipientPage, 'social_recipient', 'feed.post_created')
+    assertSocialSignalMetadataOnly(createdSignal, 'feed.post_created', 'feed', socialPostBody)
+    await recipientPage.getByRole('button', { name: /^\d+ new posts?$/ }).click({ timeout: 30_000 })
+    const recipientPost = recipientPage.locator('article').filter({ hasText: socialPostBody }).first()
+    await expect(recipientPost).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_FEED_POST_CREATED_VERIFIED=true')
+
+    await recipientPost.getByRole('button', { name: 'Like', exact: true }).click()
+    const reactionAdded = await waitForSignal(senderPage, 'social_sender', 'feed.post_reaction_changed', 1)
+    assertSocialSignalMetadataOnly(reactionAdded, 'feed.post_reaction_changed', 'feed', socialPostBody)
+    await expectOnFreshHome(senderContext, socialPostBody, async (card) => {
+      await expect(card.getByRole('button', { name: 'View 1 reaction' })).toBeVisible({ timeout: 30_000 })
+    })
+
+    await recipientPost.getByRole('button', { name: 'Like', exact: true }).click()
+    const reactionRemoved = await waitForSignal(senderPage, 'social_sender', 'feed.post_reaction_changed', 2)
+    assertSocialSignalMetadataOnly(reactionRemoved, 'feed.post_reaction_changed', 'feed', socialPostBody)
+    await expectOnFreshHome(senderContext, socialPostBody, async (card) => {
+      await expect(card.getByRole('button', { name: 'View 1 reaction' })).toHaveCount(0, { timeout: 30_000 })
+    })
+    console.log('REALTIME_E2E_FEED_REACTION_TOGGLE_VERIFIED=true')
+
+    await recipientPost.getByRole('button', { name: 'Comment', exact: true }).click()
+    await recipientPost.getByLabel('Add a comment').fill(socialCommentBody)
+    await recipientPost.getByRole('button', { name: 'Comment', exact: true }).last().click()
+    await expect(recipientPost.getByText(socialCommentBody, { exact: true })).toBeVisible({ timeout: 20_000 })
+    const commentSignal = await waitForSignal(senderPage, 'social_sender', 'feed.post_comments_changed')
+    assertSocialSignalMetadataOnly(commentSignal, 'feed.post_comments_changed', 'feed', socialCommentBody)
+    await expectOnFreshHome(senderContext, socialPostBody, (card) => expectCommentOnCard(card, socialCommentBody))
+    console.log('REALTIME_E2E_FEED_COMMENT_VERIFIED=true')
+
+    // The action reads "Repost" on posts that can be reposted ("Share" only when reposting is not allowed);
+    // its menu is portaled to the page body.
+    await recipientPost.getByRole('button', { name: /^(Repost|Share)$/ }).click()
+    await recipientPage.getByRole('menuitem', { name: 'Repost to feed' }).click()
+    await expect(recipientPage.locator('article').getByRole('status').filter({ hasText: 'Reposted to your feed.' })).toBeVisible({ timeout: 20_000 })
+    const repostSignal = await waitForSignal(senderPage, 'social_sender', 'feed.post_reposted')
+    assertSocialSignalMetadataOnly(repostSignal, 'feed.post_reposted', 'feed', socialPostBody)
+    const senderCheck = await senderContext.newPage()
+    try {
+      await openRecentHome(senderCheck)
+      await senderCheck.waitForFunction((body) => {
+        return Array.from(document.querySelectorAll('article')).filter((article) => article.textContent?.includes(body)).length >= 2
+      }, socialPostBody, { timeout: 30_000 })
+    } finally {
+      await senderCheck.close()
+    }
+    console.log('REALTIME_E2E_FEED_REPOST_VERIFIED=true')
+
+    await closeProbeSocket(senderPage, 'social_sender')
+    await closeProbeSocket(recipientPage, 'social_recipient')
+
+    await openRecentHome(recipientPage)
     await expect(recipientPage.getByText(socialPostBody, { exact: true }).first()).toBeVisible({ timeout: 20_000 })
-    await expect(recipientPage.getByText(socialCommentBody, { exact: true }).first()).toBeVisible({ timeout: 20_000 })
+    await expectCommentOnCard(recipientPage.locator('article').filter({ hasText: socialPostBody }).filter({ hasNotText: 'reposted' }).first(), socialCommentBody)
     await expect(recipientPage.getByText('reposted', { exact: true }).first()).toBeVisible({ timeout: 20_000 })
     console.log('REALTIME_E2E_SOCIAL_RECONNECT_CONVERGENCE_VERIFIED=true')
     console.log('REALTIME_E2E_SOCIAL_BROWSER_VERIFIED=true')
@@ -328,7 +381,7 @@ async function realtimeJourney() {
     console.log('REALTIME_E2E_MESSAGE_CREATED_SIGNAL_VERIFIED=true')
 
     await recipientPage.bringToFront()
-    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread message"]:visible')).toBeVisible({ timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toBeVisible({ timeout: 30_000 })
 
     console.log('REALTIME_E2E_UNREAD_CONVERSATION_BADGE_VERIFIED=true')
@@ -338,7 +391,7 @@ async function realtimeJourney() {
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 30_000 })
     await expect(recipientPage.getByText(unreadBurstTwoBody, { exact: true })).toBeVisible({ timeout: 30_000 })
     await expect(recipientPage.getByText(unreadBurstThreeBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toHaveCount(0, { timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread message"]:visible')).toHaveCount(0, { timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toHaveCount(0, { timeout: 30_000 })
 
     await senderPage.waitForFunction(({ conversationId }) => {
@@ -367,7 +420,7 @@ async function realtimeJourney() {
     await expect(senderPage.getByText(editOriginalBody, { exact: true })).toBeVisible({ timeout: 20_000 })
     await expect(recipientPage.getByText(editOriginalBody, { exact: true })).toBeVisible({ timeout: 30_000 })
 
-    const editMoreButtons = senderPage.getByRole('button', { name: /^More actions for message / })
+    const editMoreButtons = senderPage.getByRole('button', { name: 'More actions for your message', exact: true })
     await editMoreButtons.last().click({ force: true })
     await senderPage.getByRole('button', { name: 'Edit message' }).click()
     const editBox = senderPage.getByRole('textbox', { name: 'Edit message text' })
@@ -392,7 +445,7 @@ async function realtimeJourney() {
     await expect(recipientPage.getByText('🫡', { exact: true }).last()).toBeVisible({ timeout: 30_000 })
     console.log('REALTIME_E2E_EMOJI_MESSAGE_VERIFIED=true')
 
-    const recipientReplyButtons = recipientPage.getByRole('button', { name: /^Reply to message / })
+    const recipientReplyButtons = recipientPage.getByRole('button', { name: `Reply to ${users.sender.fullName}'s message`, exact: true })
     await recipientReplyButtons.last().click({ force: true })
     await expect(recipientPage.getByText('Replying to message', { exact: true })).toBeVisible()
     await recipientPage.getByLabel('Write a message').fill(richReplyBody)
@@ -426,7 +479,7 @@ async function realtimeJourney() {
     await expect(recipientPage.getByText(richFileName, { exact: true })).toBeVisible({ timeout: 30_000 })
     console.log('REALTIME_E2E_FILE_ATTACHMENT_VERIFIED=true')
 
-    const recipientReactionButtons = recipientPage.getByRole('button', { name: /^React to message / })
+    const recipientReactionButtons = recipientPage.getByRole('button', { name: `React to ${users.sender.fullName}'s message`, exact: true })
     await recipientReactionButtons.last().click({ force: true })
     await recipientPage.getByRole('button', { name: 'More reaction emojis' }).click()
     await recipientPage.getByLabel('Custom emoji reaction').fill('🧭')
@@ -438,7 +491,7 @@ async function realtimeJourney() {
     await expect(senderPage.getByRole('button', { name: '🧭 1 reaction' })).toBeVisible({ timeout: 30_000 })
     console.log('REALTIME_E2E_CUSTOM_REACTION_VERIFIED=true')
 
-    const senderMoreButtons = senderPage.getByRole('button', { name: /^More actions for message / })
+    const senderMoreButtons = senderPage.getByRole('button', { name: 'More actions for your message', exact: true })
     await senderMoreButtons.last().click({ force: true })
     await senderPage.getByRole('button', { name: 'Unsend message' }).click()
     await recipientPage.waitForFunction(({ conversationId }) => {
@@ -464,12 +517,12 @@ async function realtimeJourney() {
     await senderPage.getByLabel('Write a message').fill(dockFollowUpBody)
     await senderPage.getByRole('button', { name: 'Send message' }).click()
     await expect(senderPage.getByText(dockFollowUpBody, { exact: true })).toBeVisible({ timeout: 20_000 })
-    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread message"]:visible')).toBeVisible({ timeout: 30_000 })
 
     await recipientPage.getByRole('button', { name: 'Open messaging dock' }).click()
     await recipientPage.getByRole('button', { name: `Open compact chat with ${users.sender.fullName}` }).click()
     await expect(recipientPage.getByText(dockFollowUpBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toHaveCount(0, { timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread message"]:visible')).toHaveCount(0, { timeout: 30_000 })
     await senderPage.waitForFunction(({ conversationId, minimumCount }) => {
       const signals = globalThis.__realtime_sender_signals ?? []
       return signals.filter((signal) => (
@@ -500,7 +553,7 @@ async function realtimeJourney() {
           cache: 'no-store',
         })
         const payload = response.ok ? await response.json() : {}
-        const unreadBadges = Array.from(document.querySelectorAll('[aria-label$="unread messages"]')).filter((element) => {
+        const unreadBadges = Array.from(document.querySelectorAll('[aria-label$="unread message"], [aria-label$="unread messages"]')).filter((element) => {
           const style = getComputedStyle(element)
           return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0
         }).length

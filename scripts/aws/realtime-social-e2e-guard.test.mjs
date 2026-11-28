@@ -34,7 +34,8 @@ test('realtime staging e2e proves all metadata-only social invalidations through
 test('connection journey waits for the sender request to reach canonical state before recipient opens the request', () => {
   const browser = readFileSync(browserPath, 'utf8')
   const connectIndex = browser.indexOf("name: 'Connect'")
-  const cancelIndex = browser.indexOf("name: 'Cancel'", connectIndex)
+  // The pending request's Cancel request sits in the profile's More menu (relationship-controls).
+  const cancelIndex = browser.indexOf("name: 'Cancel request'", connectIndex)
   const enabledIndex = browser.indexOf('toBeEnabled', cancelIndex)
   const recipientProfileIndex = browser.indexOf('rt-sender-${runId}', connectIndex)
 
